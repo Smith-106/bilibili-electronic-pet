@@ -1,0 +1,121 @@
+version: "3.9"
+
+services:
+  migrate:
+    build: .
+    command: alembic upgrade head
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/bili_pet}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      - KILL_SWITCH=${KILL_SWITCH:-false}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-__SET_LLM_API_KEY__}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-30}
+      - PUBLISHER_MODE=${PUBLISHER_MODE:-manual_queue}
+      - PUBLISHER_WEBHOOK_URL=${PUBLISHER_WEBHOOK_URL:-}
+      - PUBLISHER_WEBHOOK_TOKEN=${PUBLISHER_WEBHOOK_TOKEN:-__SET_PUBLISHER_WEBHOOK_TOKEN__}
+      - PUBLISHER_TIMEOUT_SECONDS=${PUBLISHER_TIMEOUT_SECONDS:-15}
+      - PUBLISHER_HMAC_SECRET=${PUBLISHER_HMAC_SECRET:-__SET_PUBLISHER_HMAC_SECRET__}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-__SET_GATEWAY_TOKEN__}
+      - GATEWAY_HMAC_SECRET=${GATEWAY_HMAC_SECRET:-__SET_GATEWAY_HMAC_SECRET__}
+      - API_KEY=${API_KEY:-__SET_API_KEY__}
+    volumes:
+      - ./:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/bili_pet}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      - KILL_SWITCH=${KILL_SWITCH:-false}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-__SET_LLM_API_KEY__}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-30}
+      - PUBLISHER_MODE=${PUBLISHER_MODE:-manual_queue}
+      - PUBLISHER_WEBHOOK_URL=${PUBLISHER_WEBHOOK_URL:-}
+      - PUBLISHER_WEBHOOK_TOKEN=${PUBLISHER_WEBHOOK_TOKEN:-__SET_PUBLISHER_WEBHOOK_TOKEN__}
+      - PUBLISHER_TIMEOUT_SECONDS=${PUBLISHER_TIMEOUT_SECONDS:-15}
+      - PUBLISHER_HMAC_SECRET=${PUBLISHER_HMAC_SECRET:-__SET_PUBLISHER_HMAC_SECRET__}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-__SET_GATEWAY_TOKEN__}
+      - GATEWAY_HMAC_SECRET=${GATEWAY_HMAC_SECRET:-__SET_GATEWAY_HMAC_SECRET__}
+      - API_KEY=${API_KEY:-__SET_API_KEY__}
+    volumes:
+      - ./:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  worker:
+    build: .
+    command: celery -A app.workers.jobs worker --loglevel=info
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://postgres:postgres@db:5432/bili_pet}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL:-redis://redis:6379/0}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
+      - KILL_SWITCH=${KILL_SWITCH:-false}
+      - LLM_PROVIDER=${LLM_PROVIDER:-mock}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o-mini}
+      - LLM_BASE_URL=${LLM_BASE_URL:-https://api.openai.com/v1}
+      - LLM_API_KEY=${LLM_API_KEY:-__SET_LLM_API_KEY__}
+      - LLM_TIMEOUT_SECONDS=${LLM_TIMEOUT_SECONDS:-30}
+      - PUBLISHER_MODE=${PUBLISHER_MODE:-manual_queue}
+      - PUBLISHER_WEBHOOK_URL=${PUBLISHER_WEBHOOK_URL:-}
+      - PUBLISHER_WEBHOOK_TOKEN=${PUBLISHER_WEBHOOK_TOKEN:-__SET_PUBLISHER_WEBHOOK_TOKEN__}
+      - PUBLISHER_TIMEOUT_SECONDS=${PUBLISHER_TIMEOUT_SECONDS:-15}
+      - PUBLISHER_HMAC_SECRET=${PUBLISHER_HMAC_SECRET:-__SET_PUBLISHER_HMAC_SECRET__}
+      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-__SET_GATEWAY_TOKEN__}
+      - GATEWAY_HMAC_SECRET=${GATEWAY_HMAC_SECRET:-__SET_GATEWAY_HMAC_SECRET__}
+      - API_KEY=${API_KEY:-__SET_API_KEY__}
+    volumes:
+      - ./:/app
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=bili_pet
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bili_pet"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

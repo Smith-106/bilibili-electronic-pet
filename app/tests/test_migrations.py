@@ -1,0 +1,85 @@
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect, text
+
+EXPECTED_TABLES = {
+    "comments",
+    "reply_jobs",
+    "user_state",
+    "publish_logs",
+    "operation_audit_logs",
+}
+
+
+def _build_alembic_config(database_url: str) -> Config:
+    project_root = Path(__file__).resolve().parents[2]
+    config = Config(str(project_root / "alembic.ini"))
+    config.set_main_option("script_location", str(project_root / "migrations"))
+    config.set_main_option("sqlalchemy.url", database_url)
+    return config
+
+
+def _list_tables(database_url: str) -> set[str]:
+    engine = create_engine(database_url)
+    try:
+        return set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+
+def _get_revision(database_url: str) -> str | None:
+    engine = create_engine(database_url)
+    try:
+        with engine.connect() as connection:
+            tables = set(inspect(connection).get_table_names())
+            if "alembic_version" not in tables:
+                return None
+            row = connection.execute(text("SELECT version_num FROM alembic_version")).first()
+            if row is None:
+                return None
+            return str(row[0])
+    finally:
+        engine.dispose()
+
+
+def test_migration_init_and_upgrade_creates_full_schema(tmp_path: Path):
+    database_url = f"sqlite:///{tmp_path / 'init.sqlite3'}"
+    config = _build_alembic_config(database_url)
+
+    command.upgrade(config, "head")
+
+    tables = _list_tables(database_url)
+    assert EXPECTED_TABLES.issubset(tables)
+    assert _get_revision(database_url) == "20260306_160851"
+
+
+def test_migration_reapply_is_idempotent(tmp_path: Path):
+    database_url = f"sqlite:///{tmp_path / 'reapply.sqlite3'}"
+    config = _build_alembic_config(database_url)
+
+    command.upgrade(config, "head")
+    first_revision = _get_revision(database_url)
+    command.upgrade(config, "head")
+    second_revision = _get_revision(database_url)
+
+    assert first_revision == "20260306_160851"
+    assert second_revision == "20260306_160851"
+    assert EXPECTED_TABLES.issubset(_list_tables(database_url))
+
+
+def test_migration_upgrade_downgrade_roundtrip(tmp_path: Path):
+    database_url = f"sqlite:///{tmp_path / 'roundtrip.sqlite3'}"
+    config = _build_alembic_config(database_url)
+
+    command.upgrade(config, "head")
+    command.downgrade(config, "base")
+    tables_after_downgrade = _list_tables(database_url)
+
+    assert EXPECTED_TABLES.isdisjoint(tables_after_downgrade)
+    assert _get_revision(database_url) is None
+
+    command.upgrade(config, "head")
+    assert EXPECTED_TABLES.issubset(_list_tables(database_url))
+    assert _get_revision(database_url) == "20260306_160851"
