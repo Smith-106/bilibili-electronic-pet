@@ -1,0 +1,8 @@
+.ace-tool/
+.claude/
+.workflow/
+**/.workflow/
+**/__pycache__/
+*.py[cod]
+local.db
+**/local.db
