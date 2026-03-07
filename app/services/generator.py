@@ -5,7 +5,12 @@ from typing import Callable, Protocol
 import httpx
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
-from app.services.prompt_config import get_prompt_action_pool
+from app.services.prompt_config import (
+    get_prompt_action_pool,
+    get_prompt_banned_words,
+    get_prompt_default_length,
+    get_prompt_length_distribution,
+)
 from app.settings import settings
 
 
@@ -89,6 +94,36 @@ def _pick_action(index: int) -> str:
     return pool[index % len(pool)] if pool else ""
 
 
+def _normalize_length_mode(length_mode: str) -> str:
+    mode = str(length_mode or "").strip().lower()
+    if mode in {"short", "medium", "long"}:
+        return mode
+
+    default_mode = get_prompt_default_length()
+    if default_mode == "extra_long":
+        distribution = get_prompt_length_distribution()
+        return "long" if distribution.get("long", 0.0) >= distribution.get("medium", 0.0) else "medium"
+    if default_mode in {"short", "medium", "long"}:
+        return default_mode
+    return "medium"
+
+
+def _build_length_hint(length_mode: str) -> str:
+    mode = _normalize_length_mode(length_mode)
+    if mode == "short":
+        return "回复长度偏短（1-2句），保持温柔和在场感。"
+    if mode == "long":
+        return "回复长度偏长（3-5句），允许更完整的安抚与陪伴表达。"
+    return "回复长度中等（2-3句），简洁且有温度。"
+
+
+def _build_banned_words_hint() -> str:
+    words = get_prompt_banned_words()
+    if not words:
+        return ""
+    return f"禁用词: {', '.join(words)}。"
+
+
 def _mock_reply(
     content: str,
     style_mode: str,
@@ -163,6 +198,8 @@ def _build_messages(
         "禁止引战、辱骂、隐私泄露。"
         "输出只包含最终回复文本。"
     )
+    system_prompt += _build_length_hint(length_mode)
+    system_prompt += _build_banned_words_hint()
     if role_card_key:
         system_prompt += f"当前角色卡为 {role_card_key}。"
         if role_card_system_prompt:

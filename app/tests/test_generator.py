@@ -21,6 +21,15 @@ def test_build_messages_includes_search_context():
     assert "example.com" in messages[0]["content"]
 
 
+def test_build_messages_includes_length_hint_and_banned_words(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_banned_words", lambda: ["禁词A", "禁词B"])
+
+    messages = generator._build_messages("你好", "normal", "short")
+
+    assert "回复长度偏短" in messages[0]["content"]
+    assert "禁用词: 禁词A, 禁词B" in messages[0]["content"]
+
+
 def test_build_messages_includes_role_profile_prompting():
     messages = generator._build_messages("你好", "normal", "medium", "", "", "comfort")
 
@@ -71,6 +80,17 @@ def test_mock_reply_uses_prompt_config_action_pool(monkeypatch):
     assert "(动作甲)" in empathy
     assert "(动作乙)" in meme
     assert "(动作丙)" in normal
+
+
+def test_normalize_length_mode_uses_prompt_default(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_default_length", lambda: "short")
+    assert generator._normalize_length_mode("unknown") == "short"
+
+
+def test_normalize_length_mode_maps_extra_long_to_long_when_distribution_prefers_long(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_default_length", lambda: "extra_long")
+    monkeypatch.setattr(generator, "get_prompt_length_distribution", lambda: {"short": 0.0, "medium": 0.1, "long": 0.9, "extra_long": 0.0})
+    assert generator._normalize_length_mode("unknown") == "long"
 
 
 def test_generate_reply_with_meta_resolves_explicit_role_card_first(monkeypatch):
