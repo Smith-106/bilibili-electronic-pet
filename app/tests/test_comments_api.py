@@ -147,24 +147,50 @@ def test_duplicate_comment_id_is_ignored_across_sources(client_and_state):
         assert count == 1
 
 
-def test_poller_missing_fields_returns_clear_error(client_and_state):
+def test_douyin_ingest_returns_platform_disabled_when_switch_off(client_and_state, monkeypatch):
     client, session_local, queued_payloads = client_and_state
+    _ = session_local
+    monkeypatch.setattr(comments_api.settings, "platform_douyin_enabled", False)
 
     response = client.post(
-        "/api/events/comment/poller",
+        "/api/events/comment/douyin",
         json={
-            "id": "c-missing-1",
-            "oid": "v-missing",
-            "mid": "u-missing",
+            "item_id": "c-douyin-disabled-1",
+            "aweme_id": "v-douyin-disabled-1",
+            "sec_uid": "u-douyin-disabled-1",
+            "text": "hello douyin",
         },
     )
 
-    assert response.status_code == 400
-    detail = response.json().get("detail", "")
-    assert "invalid_poller_payload" in detail
-    assert "missing_fields=content" in detail
+    assert response.status_code == 403
+    assert response.json()["detail"] == "platform_disabled: douyin"
     assert not queued_payloads
 
+
+def test_bilibili_ingest_uses_platform_route_mapping(client_and_state, monkeypatch):
+    client, session_local, queued_payloads = client_and_state
+    monkeypatch.setattr(comments_api.settings, "platform_bilibili_enabled", True)
+
+    response = client.post(
+        "/api/events/comment/bilibili",
+        json={
+            "rpid": "c-bili-route-1",
+            "aid": "v-bili-route-1",
+            "mid": 12345,
+            "message": "hello bilibili route",
+            "root": "p-bili-route-1",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["queued"] is True
+    assert payload["comment_id"] == "c-bili-route-1"
+    assert len(queued_payloads) == 1
+    assert queued_payloads[0]["user_id"] == "12345"
+
     with session_local() as db:
-        count = db.query(Comment).filter(Comment.comment_id == "c-missing-1").count()
-        assert count == 0
+        record = db.query(Comment).filter(Comment.comment_id == "c-bili-route-1").first()
+        assert record is not None
+        assert record.video_id == "v-bili-route-1"

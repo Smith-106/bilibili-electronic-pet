@@ -7,8 +7,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import Base
-from app.models.entities import Comment, ReplyJob
+from app.models.entities import Comment, KnowledgeEntry, ReplyJob, RoleCard
 from app.services.generator import GenerationResult
+from app.services.search_provider import SearchItem, SearchResult
 from app.settings import settings
 from app.workers import jobs
 
@@ -135,10 +136,12 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
 
     def test_force_long_payload_passed_to_decider_and_job(self) -> None:
         self._insert_comment("comment-force-long", content="短评")
-        captured = {"force_long": None}
+        captured = {"force_long": None, "role_profile": None, "role_card_key": None}
 
         def fake_should_reply(event: object) -> tuple[bool, str, str]:
             captured["force_long"] = getattr(event, "force_long", None)
+            captured["role_profile"] = getattr(event, "role_profile", None)
+            captured["role_card_key"] = getattr(event, "role_card_key", None)
             return True, "normal", "long"
 
         with (
@@ -149,19 +152,179 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)) as publish_mock,
         ):
             result = jobs.process_comment_event_task.run(
-                {"comment_id": "comment-force-long", "force_long": True, "trace_id": "trace-force-long"}
+                {
+                    "comment_id": "comment-force-long",
+                    "force_long": True,
+                    "role_profile": "comfort",
+                    "role_card_key": "comfort_plus",
+                    "trace_id": "trace-force-long",
+                }
             )
 
         self.assertTrue(result["ok"])
         self.assertEqual(result["status"], "manual_queue")
         self.assertEqual(result["trace_id"], "trace-force-long")
         self.assertTrue(captured["force_long"])
+        self.assertEqual(captured["role_profile"], "comfort")
+        self.assertEqual(captured["role_card_key"], "comfort_plus")
         publish_mock.assert_called_once()
 
         item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-force-long").order_by(ReplyJob.id.desc()).first()
         self.assertIsNotNone(item)
         self.assertEqual(item.length_mode, "long")
 
+    def test_knowledge_hit_marks_generation_flags(self) -> None:
+        self._insert_comment("comment-knowledge-hit", content="Doro 喜欢欧润吉")
+        self.db.add(
+            KnowledgeEntry(
+                category="faq",
+                title="欧润吉",
+                content="Doro 喜欢欧润吉梗，可以温柔回应。",
+                enabled=True,
+            )
+        )
+        self.db.commit()
 
-if __name__ == "__main__":
-    unittest.main()
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("收到，欧润吉~")),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+        ):
+            result = jobs.process_comment_event_task.run({"comment_id": "comment-knowledge-hit"})
+
+        self.assertTrue(result["ok"])
+        item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-knowledge-hit").order_by(ReplyJob.id.desc()).first()
+        self.assertIsNotNone(item)
+        self.assertTrue(item.risk_flags.get("knowledge_hit"))
+        self.assertIn("faq", item.risk_flags.get("knowledge_categories", []))
+
+    def test_knowledge_search_error_falls_back_safely(self) -> None:
+        self._insert_comment("comment-knowledge-error", content="测试知识检索异常")
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "search_knowledge", side_effect=RuntimeError("knowledge down")),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("继续主流程")),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+        ):
+            result = jobs.process_comment_event_task.run({"comment_id": "comment-knowledge-error"})
+
+        self.assertTrue(result["ok"])
+        item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-knowledge-error").order_by(ReplyJob.id.desc()).first()
+        self.assertIsNotNone(item)
+        self.assertFalse(item.risk_flags.get("knowledge_hit"))
+        self.assertIn("knowledge_error", item.risk_flags)
+
+    def test_search_hit_marks_generation_flags(self) -> None:
+        self._insert_comment("comment-search-hit", content="今天热点新闻")
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(
+                jobs,
+                "search_web",
+                return_value=SearchResult(
+                    items=[
+                        SearchItem(
+                            title="热点",
+                            url="https://example.com",
+                            snippet="这是摘要",
+                            source="mock",
+                        )
+                    ],
+                    provider="mock",
+                ),
+            ),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("收到热点信息")),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+        ):
+            result = jobs.process_comment_event_task.run({"comment_id": "comment-search-hit"})
+
+        self.assertTrue(result["ok"])
+        item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-search-hit").order_by(ReplyJob.id.desc()).first()
+        self.assertIsNotNone(item)
+        self.assertTrue(item.risk_flags.get("search_hit"))
+        self.assertIn("mock", item.risk_flags.get("search_sources", []))
+
+    def test_role_card_priority_prefers_explicit_then_active_then_profile(self) -> None:
+        self._insert_comment("comment-role-card", content="角色卡优先级")
+        self.db.add(
+            RoleCard(
+                key="active_card",
+                name="Active",
+                description="active",
+                system_prompt="active prompt",
+                tone={"warm": 1},
+                constraints={"no_sarcasm": True},
+                enabled=True,
+                is_active=True,
+            )
+        )
+        self.db.add(
+            RoleCard(
+                key="explicit_card",
+                name="Explicit",
+                description="explicit",
+                system_prompt="explicit prompt",
+                tone={"warm": 2},
+                constraints={"no_sarcasm": False},
+                enabled=True,
+                is_active=False,
+            )
+        )
+        self.db.commit()
+
+        captured_calls: list[dict] = []
+
+        def fake_generate(*args, **kwargs):
+            captured_calls.append(kwargs)
+            return self._generation("继续主流程")
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "generate_reply_with_meta", side_effect=fake_generate),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+        ):
+            jobs.process_comment_event_task.run(
+                {
+                    "comment_id": "comment-role-card",
+                    "role_profile": "playful",
+                    "role_card_key": "explicit_card",
+                }
+            )
+
+        self.assertEqual(len(captured_calls), 1)
+        first_call = captured_calls[0]
+        self.assertEqual(first_call["role_profile"], "playful")
+        self.assertEqual(first_call["role_card"].get("key"), "explicit_card")
+        self.assertEqual(first_call["active_role_card"].get("key"), "active_card")
+
+        captured_calls.clear()
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "generate_reply_with_meta", side_effect=fake_generate),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+        ):
+            jobs.process_comment_event_task.run(
+                {
+                    "comment_id": "comment-role-card",
+                    "role_profile": "comfort",
+                }
+            )
+
+        second_call = captured_calls[0]
+        self.assertEqual(second_call["role_profile"], "comfort")
+        self.assertIsNone(second_call["role_card"])
+        self.assertEqual(second_call["active_role_card"].get("key"), "active_card")
+

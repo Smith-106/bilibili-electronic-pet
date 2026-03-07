@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from app.services.publisher import RealPublishPublisher, publish_gateway_reply, publish_reply
+from app.services.publisher import RealPublishPublisher, publish_gateway_reply, publish_platform_reply, publish_reply
 from app.settings import settings
 
 
@@ -57,6 +57,35 @@ def test_publish_reply_real_publish_mode_success(monkeypatch):
     assert captured["payload"]["trace_id"] == "trace-2"
     assert captured["headers"]["Authorization"] == "Bearer token-123"
     assert "X-Signature" in captured["headers"]
+
+
+
+
+def test_publish_platform_reply_uses_platform_source(monkeypatch):
+    monkeypatch.setattr(settings, "publisher_real_publish_url", "https://publisher.example.com/reply")
+    monkeypatch.setattr(settings, "platform_douyin_publish_source", "douyin-open")
+
+    captured: dict[str, dict] = {}
+
+    def fake_send(self, payload: dict, headers: dict):
+        captured["payload"] = payload
+        captured["headers"] = headers
+        return DummyResponse({"ok": True, "published": True, "reason": "platform_ok"})
+
+    monkeypatch.setattr(RealPublishPublisher, "_send", fake_send)
+
+    published, reason, published_at = publish_platform_reply(
+        platform="douyin",
+        comment_id="comment-4",
+        reply_text="reply text",
+        trace_id="trace-platform",
+    )
+
+    assert published is True
+    assert reason == "platform_ok"
+    assert isinstance(published_at, datetime)
+    assert captured["payload"]["source"] == "douyin-open"
+    assert captured["payload"]["trace_id"] == "trace-platform"
 
 
 def test_publish_gateway_reply_preserves_source_and_reason(monkeypatch):

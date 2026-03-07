@@ -11,10 +11,19 @@ from sqlalchemy.orm import Session
 from app.api.auth import require_api_key
 from app.db import get_db
 from app.models.entities import Comment, OperationAuditLog, ReplyJob
-from app.schemas import ApproveJobRequest, BatchApproveJobsRequest, BatchRetryJobsRequest, CommentEvent, RetryJobRequest
-from app.services.collector import collect_official_connector_event, collect_poller_event, collect_webhook_event
+from app.schemas import (
+    ApproveJobRequest,
+    BatchApproveJobsRequest,
+    BatchRetryJobsRequest,
+    CommentEvent,
+    PlatformName,
+    RetryJobRequest,
+)
+from app.settings import settings
+from app.services.collector import collect_official_connector_event, collect_platform_event, collect_poller_event, collect_webhook_event
 from app.services.dedupe import remember_reply_phrase
 from app.services.observability import build_log_context, ensure_trace_id, normalize_status_counts
+from app.services.platforms import is_platform_enabled
 from app.services.publisher import publish_reply
 from app.workers.jobs import enqueue_comment_event, process_comment_event_task
 
@@ -139,6 +148,15 @@ def _normalize_event_payload(raw_payload: dict, source: str) -> CommentEvent:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _normalize_platform_event_payload(raw_payload: dict, platform: PlatformName) -> CommentEvent:
+    if not is_platform_enabled(platform):
+        raise HTTPException(status_code=403, detail=f"platform_disabled: {platform}")
+    try:
+        return collect_platform_event(raw_payload, platform)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _approve_job_core(
     db: Session,
     job: ReplyJob,
@@ -208,6 +226,24 @@ def ingest_comment_from_official(payload: dict, db: Session = Depends(get_db)):
     return _ingest_comment_event_core(db, event, source="official")
 
 
+@router.post("/events/comment/bilibili")
+def ingest_comment_from_bilibili(payload: dict, db: Session = Depends(get_db)):
+    event = _normalize_platform_event_payload(payload, platform="bilibili")
+    return _ingest_comment_event_core(db, event, source="bilibili")
+
+
+@router.post("/events/comment/douyin")
+def ingest_comment_from_douyin(payload: dict, db: Session = Depends(get_db)):
+    event = _normalize_platform_event_payload(payload, platform="douyin")
+    return _ingest_comment_event_core(db, event, source="douyin")
+
+
+@router.post("/events/comment/kuaishou")
+def ingest_comment_from_kuaishou(payload: dict, db: Session = Depends(get_db)):
+    event = _normalize_platform_event_payload(payload, platform="kuaishou")
+    return _ingest_comment_event_core(db, event, source="kuaishou")
+
+
 @router.post("/jobs/{job_id}/retry")
 def retry_job(job_id: int, payload: RetryJobRequest, db: Session = Depends(get_db)):
     trace_id = ensure_trace_id()
@@ -226,7 +262,14 @@ def retry_job(job_id: int, payload: RetryJobRequest, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="job_not_found")
 
     process_comment_event_task.delay(
-        {"comment_id": job.comment_id, "force_long": payload.force_long, "trace_id": trace_id}
+        {
+            "comment_id": job.comment_id,
+            "force_long": payload.force_long,
+            "style_profile": payload.style_profile,
+            "role_profile": payload.role_profile,
+            "role_card_key": payload.role_card_key,
+            "trace_id": trace_id,
+        }
     )
     _write_audit_log(
         db,
@@ -236,7 +279,13 @@ def retry_job(job_id: int, payload: RetryJobRequest, db: Session = Depends(get_d
         trace_id=trace_id,
         comment_id=job.comment_id,
         status="queued",
-        payload={"comment_id": job.comment_id, "force_long": payload.force_long},
+        payload={
+            "comment_id": job.comment_id,
+            "force_long": payload.force_long,
+            "style_profile": payload.style_profile,
+            "role_profile": payload.role_profile,
+            "role_card_key": payload.role_card_key,
+        },
     )
     _log_info("job_retry_queued", trace_id=trace_id, comment_id=job.comment_id, job_id=job_id, status="queued")
     return {"ok": True, "requeued": True, "job_id": job_id, "trace_id": trace_id}
@@ -379,7 +428,12 @@ def retry_jobs_batch(payload: BatchRetryJobsRequest, db: Session = Depends(get_d
             continue
 
         process_comment_event_task.delay(
-            {"comment_id": job.comment_id, "force_long": payload.force_long, "trace_id": trace_id}
+            {
+                "comment_id": job.comment_id,
+                "force_long": payload.force_long,
+                "role_profile": settings.role_profile_default,
+                "trace_id": trace_id,
+            }
         )
         success += 1
         results.append({"job_id": job_id, "ok": True, "requeued": True})

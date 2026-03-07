@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     _allowed_app_envs: ClassVar[set[str]] = {"development", "test", "staging", "production"}
     _allowed_publisher_modes: ClassVar[set[str]] = {"manual_queue", "simulated", "webhook", "real_publish"}
     _allowed_safety_pii_actions: ClassVar[set[str]] = {"manual_queue", "blocked"}
+    _allowed_search_providers: ClassVar[set[str]] = {"mock", "disabled"}
+    _allowed_style_profiles: ClassVar[set[str]] = {"auto", "empathy", "meme", "normal"}
+    _allowed_role_profiles: ClassVar[set[str]] = {"auto", "default", "comfort", "playful"}
 
     app_env: str = "development"
 
@@ -50,6 +53,27 @@ class Settings(BaseSettings):
     safety_pii_action: str = "manual_queue"
     safety_max_reply_chars: int = 900
 
+    knowledge_enabled: bool = True
+    knowledge_max_hits: int = 3
+
+    search_enabled: bool = True
+    search_provider: str = "mock"
+    search_api_url: str = ""
+    search_api_key: str = ""
+    search_timeout_seconds: int = 5
+    search_max_hits: int = 3
+    search_allowed_domains: list[str] = Field(default_factory=list)
+
+    style_profile_default: str = "auto"
+    role_profile_default: str = "auto"
+
+    platform_bilibili_enabled: bool = True
+    platform_douyin_enabled: bool = False
+    platform_kuaishou_enabled: bool = False
+    platform_bilibili_publish_source: str = "bilibili-bot"
+    platform_douyin_publish_source: str = "douyin-bot"
+    platform_kuaishou_publish_source: str = "kuaishou-bot"
+
     @field_validator("app_env")
     @classmethod
     def validate_app_env(cls, value: str) -> str:
@@ -78,6 +102,33 @@ class Settings(BaseSettings):
             raise ValueError(f"SAFETY_PII_ACTION must be one of: {allowed}")
         return normalized
 
+    @field_validator("search_provider")
+    @classmethod
+    def validate_search_provider(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in cls._allowed_search_providers:
+            allowed = ", ".join(sorted(cls._allowed_search_providers))
+            raise ValueError(f"SEARCH_PROVIDER must be one of: {allowed}")
+        return normalized
+
+    @field_validator("style_profile_default")
+    @classmethod
+    def validate_style_profile_default(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in cls._allowed_style_profiles:
+            allowed = ", ".join(sorted(cls._allowed_style_profiles))
+            raise ValueError(f"STYLE_PROFILE_DEFAULT must be one of: {allowed}")
+        return normalized
+
+    @field_validator("role_profile_default")
+    @classmethod
+    def validate_role_profile_default(cls, value: str) -> str:
+        normalized = (value or "").strip().lower()
+        if normalized not in cls._allowed_role_profiles:
+            allowed = ", ".join(sorted(cls._allowed_role_profiles))
+            raise ValueError(f"ROLE_PROFILE_DEFAULT must be one of: {allowed}")
+        return normalized
+
     @field_validator("safety_keyword_blacklist")
     @classmethod
     def normalize_safety_keyword_blacklist(cls, value: list[str]) -> list[str]:
@@ -87,6 +138,36 @@ class Settings(BaseSettings):
             if keyword and keyword not in normalized:
                 normalized.append(keyword)
         return normalized
+
+    @field_validator("knowledge_max_hits")
+    @classmethod
+    def validate_knowledge_max_hits(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("KNOWLEDGE_MAX_HITS must be >= 1")
+        if n > 20:
+            raise ValueError("KNOWLEDGE_MAX_HITS must be <= 20")
+        return n
+
+    @field_validator("search_timeout_seconds")
+    @classmethod
+    def validate_search_timeout_seconds(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("SEARCH_TIMEOUT_SECONDS must be >= 1")
+        if n > 60:
+            raise ValueError("SEARCH_TIMEOUT_SECONDS must be <= 60")
+        return n
+
+    @field_validator("search_max_hits")
+    @classmethod
+    def validate_search_max_hits(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("SEARCH_MAX_HITS must be >= 1")
+        if n > 20:
+            raise ValueError("SEARCH_MAX_HITS must be <= 20")
+        return n
 
     @field_validator("safety_pii_patterns")
     @classmethod
@@ -111,6 +192,14 @@ class Settings(BaseSettings):
         "gateway_hmac_secret",
         "api_key",
         "safety_pii_action",
+        "search_provider",
+        "search_api_url",
+        "search_api_key",
+        "style_profile_default",
+        "role_profile_default",
+        "platform_bilibili_publish_source",
+        "platform_douyin_publish_source",
+        "platform_kuaishou_publish_source",
         mode="before",
     )
     @classmethod

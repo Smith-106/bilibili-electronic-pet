@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 from app.schemas import CommentEvent, LengthMode, StyleMode
+from app.settings import settings
 
 SHORT_COMMENT_MAX_CHARS = 12
 LONG_COMMENT_MIN_CHARS = 81
@@ -29,7 +30,18 @@ def decide_length(comment_text: str, *, force_long: bool = False) -> LengthMode:
 
 
 def should_reply(event: CommentEvent) -> tuple[bool, StyleMode, LengthMode]:
+    configured = str(settings.style_profile_default or "auto").strip().lower()
+    requested = str(getattr(event, "style_profile", "auto") or "auto").strip().lower()
+
     style = classify_style(event.content)
+    style_profile = requested if requested != "auto" else configured
+    if style_profile == "empathy":
+        style = "empathy"
+    elif style_profile == "meme":
+        style = "meme"
+    elif style_profile == "normal":
+        style = "normal"
+
     length_mode = decide_length(event.content, force_long=event.force_long)
 
     skip_keywords = ["广告", "vx", "加群", "私聊"]

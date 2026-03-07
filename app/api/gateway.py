@@ -6,10 +6,11 @@ from sqlalchemy.orm import Session
 from app.api.auth import require_api_key
 from app.db import get_db
 from app.models.entities import PublishLog
-from app.schemas import PublishWebhookRequest
+from app.schemas import PlatformName, PublishWebhookRequest
 from app.services.hashing import reply_hash, verify_payload_signature
 from app.services.observability import build_log_context, ensure_trace_id
-from app.services.publisher import publish_gateway_reply
+from app.services.platforms import is_platform_enabled
+from app.services.publisher import publish_gateway_reply, publish_platform_reply
 from app.settings import settings
 
 router = APIRouter(prefix="/gateway", tags=["gateway"], dependencies=[Depends(require_api_key)])
@@ -23,13 +24,14 @@ def _normalize_failed_reason(reason: str) -> str:
     return "real_publish_failed:unknown"
 
 
-@router.post("/publish")
-def publish_gateway(
+def _publish_core(
     payload: PublishWebhookRequest,
-    authorization: str | None = Header(default=None),
-    x_signature: str | None = Header(default=None),
-    x_trace_id: str | None = Header(default=None),
-    db: Session = Depends(get_db),
+    *,
+    authorization: str | None,
+    x_signature: str | None,
+    x_trace_id: str | None,
+    db: Session,
+    platform: PlatformName | None = None,
 ):
     trace_id = ensure_trace_id(payload.trace_id or x_trace_id)
     expected_token = settings.gateway_token.strip()
@@ -93,13 +95,22 @@ def publish_gateway(
             "trace_id": trace_id,
         }
 
-    published, publish_reason, published_at = publish_gateway_reply(
-        comment_id=payload.comment_id,
-        reply_text=payload.reply_text,
-        force_publish=payload.force_publish,
-        source=payload.source,
-        trace_id=trace_id,
-    )
+    if platform:
+        published, publish_reason, published_at = publish_platform_reply(
+            platform=platform,
+            comment_id=payload.comment_id,
+            reply_text=payload.reply_text,
+            force_publish=payload.force_publish,
+            trace_id=trace_id,
+        )
+    else:
+        published, publish_reason, published_at = publish_gateway_reply(
+            comment_id=payload.comment_id,
+            reply_text=payload.reply_text,
+            force_publish=payload.force_publish,
+            source=payload.source,
+            trace_id=trace_id,
+        )
     if not published:
         normalized_reason = _normalize_failed_reason(publish_reason)
         logger.warning(
@@ -118,7 +129,15 @@ def publish_gateway(
             "trace_id": trace_id,
         }
 
-    log = PublishLog(comment_id=payload.comment_id, reply_hash=hashed, source=payload.source)
+    source_value = payload.source
+    if platform == "bilibili":
+        source_value = settings.platform_bilibili_publish_source
+    elif platform == "douyin":
+        source_value = settings.platform_douyin_publish_source
+    elif platform == "kuaishou":
+        source_value = settings.platform_kuaishou_publish_source
+
+    log = PublishLog(comment_id=payload.comment_id, reply_hash=hashed, source=source_value)
     db.add(log)
     db.commit()
     logger.info(
@@ -139,6 +158,77 @@ def publish_gateway(
         "published_at": published_at.isoformat() if published_at else None,
         "trace_id": trace_id,
     }
+
+
+@router.post("/publish")
+def publish_gateway(
+    payload: PublishWebhookRequest,
+    authorization: str | None = Header(default=None),
+    x_signature: str | None = Header(default=None),
+    x_trace_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    return _publish_core(
+        payload,
+        authorization=authorization,
+        x_signature=x_signature,
+        x_trace_id=x_trace_id,
+        db=db,
+        platform=None,
+    )
+
+
+def _publish_for_platform(
+    platform: PlatformName,
+    payload: PublishWebhookRequest,
+    authorization: str | None,
+    x_signature: str | None,
+    x_trace_id: str | None,
+    db: Session,
+):
+    if not is_platform_enabled(platform):
+        raise HTTPException(status_code=403, detail=f"platform_disabled: {platform}")
+    return _publish_core(
+        payload,
+        authorization=authorization,
+        x_signature=x_signature,
+        x_trace_id=x_trace_id,
+        db=db,
+        platform=platform,
+    )
+
+
+@router.post("/publish/bilibili")
+def publish_gateway_bilibili(
+    payload: PublishWebhookRequest,
+    authorization: str | None = Header(default=None),
+    x_signature: str | None = Header(default=None),
+    x_trace_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    return _publish_for_platform("bilibili", payload, authorization, x_signature, x_trace_id, db)
+
+
+@router.post("/publish/douyin")
+def publish_gateway_douyin(
+    payload: PublishWebhookRequest,
+    authorization: str | None = Header(default=None),
+    x_signature: str | None = Header(default=None),
+    x_trace_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    return _publish_for_platform("douyin", payload, authorization, x_signature, x_trace_id, db)
+
+
+@router.post("/publish/kuaishou")
+def publish_gateway_kuaishou(
+    payload: PublishWebhookRequest,
+    authorization: str | None = Header(default=None),
+    x_signature: str | None = Header(default=None),
+    x_trace_id: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    return _publish_for_platform("kuaishou", payload, authorization, x_signature, x_trace_id, db)
 
 
 @router.get("/publish-logs")

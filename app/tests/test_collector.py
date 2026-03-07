@@ -1,6 +1,11 @@
 import pytest
 
-from app.services.collector import collect_official_connector_event, collect_poller_event, collect_webhook_event
+from app.services.collector import (
+    collect_official_connector_event,
+    collect_platform_event,
+    collect_poller_event,
+    collect_webhook_event,
+)
 
 
 def test_collect_webhook_event_maps_standard_fields():
@@ -57,6 +62,63 @@ def test_collect_official_event_maps_nested_fields():
     assert event.user_id == "u-3"
     assert event.content == "hello official"
     assert event.parent_id == "p-3"
+
+
+def test_collect_bilibili_platform_event_maps_fields():
+    event = collect_platform_event(
+        {
+            "rpid": "c-bili-1",
+            "aid": "v-bili-1",
+            "mid": 9527,
+            "message": "hello bilibili",
+            "root": "p-bili-1",
+        },
+        "bilibili",
+    )
+
+    assert event.comment_id == "c-bili-1"
+    assert event.video_id == "v-bili-1"
+    assert event.user_id == "9527"
+    assert event.content == "hello bilibili"
+    assert event.parent_id == "p-bili-1"
+
+
+def test_collect_douyin_platform_event_maps_fields():
+    event = collect_platform_event(
+        {
+            "item_id": "c-douyin-1",
+            "aweme_id": "v-douyin-1",
+            "sec_uid": "u-douyin-1",
+            "text": "hello douyin",
+            "reply_id": "p-douyin-1",
+        },
+        "douyin",
+    )
+
+    assert event.comment_id == "c-douyin-1"
+    assert event.video_id == "v-douyin-1"
+    assert event.user_id == "u-douyin-1"
+    assert event.content == "hello douyin"
+    assert event.parent_id == "p-douyin-1"
+
+
+def test_collect_kuaishou_platform_event_maps_fields():
+    event = collect_platform_event(
+        {
+            "comment_id_str": "c-ks-1",
+            "photo_id": "v-ks-1",
+            "author_id": "u-ks-1",
+            "message": "hello kuaishou",
+            "root_comment_id": "p-ks-1",
+        },
+        "kuaishou",
+    )
+
+    assert event.comment_id == "c-ks-1"
+    assert event.video_id == "v-ks-1"
+    assert event.user_id == "u-ks-1"
+    assert event.content == "hello kuaishou"
+    assert event.parent_id == "p-ks-1"
 
 
 def test_collect_poller_event_missing_required_fields():

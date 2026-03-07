@@ -155,6 +155,65 @@ def test_gateway_publish_duplicate_replay_skips_adapter(gateway_test_client, mon
     assert body["reason"] == "idempotent_replay"
 
 
+def test_gateway_publish_douyin_route_returns_platform_disabled(gateway_test_client, monkeypatch):
+    client, _ = gateway_test_client
+    monkeypatch.setattr(settings, "platform_douyin_enabled", False)
+
+    response = client.post(
+        "/gateway/publish/douyin",
+        json={"comment_id": "comment-dy-1", "reply_text": "reply text"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "platform_disabled: douyin"
+
+
+def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway_test_client, monkeypatch):
+    client, testing_session_local = gateway_test_client
+    monkeypatch.setattr(settings, "platform_bilibili_enabled", True)
+    monkeypatch.setattr(settings, "platform_bilibili_publish_source", "bilibili-open")
+
+    captured: dict[str, object] = {}
+
+    def fake_publish_platform_reply(platform, comment_id, reply_text, force_publish=False, trace_id=None):
+        captured["platform"] = platform
+        captured["comment_id"] = comment_id
+        captured["reply_text"] = reply_text
+        captured["force_publish"] = force_publish
+        captured["trace_id"] = trace_id
+        return True, "platform_publish_ok", datetime(2026, 3, 7, 2, 0, 0)
+
+    monkeypatch.setattr(gateway_api, "publish_platform_reply", fake_publish_platform_reply)
+
+    response = client.post(
+        "/gateway/publish/bilibili",
+        json={
+            "comment_id": "comment-bili-1",
+            "reply_text": "reply text",
+            "force_publish": True,
+            "trace_id": "trace-bili-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["published"] is True
+    assert body["reason"] == "platform_publish_ok"
+    assert captured == {
+        "platform": "bilibili",
+        "comment_id": "comment-bili-1",
+        "reply_text": "reply text",
+        "force_publish": True,
+        "trace_id": "trace-bili-1",
+    }
+
+    with testing_session_local() as db:
+        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-bili-1").all()
+        assert len(logs) == 1
+        assert logs[0].source == "bilibili-open"
+
+
 def test_gateway_publish_failure_returns_traceable_reason(gateway_test_client, monkeypatch):
     client, testing_session_local = gateway_test_client
 

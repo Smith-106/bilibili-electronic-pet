@@ -3,10 +3,13 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
-CollectorSource = Literal["webhook", "poller", "official"]
+CollectorSource = Literal["webhook", "poller", "official", "bilibili", "douyin", "kuaishou"]
+PlatformName = Literal["bilibili", "douyin", "kuaishou"]
 
 LengthMode = Literal["short", "medium", "long"]
 StyleMode = Literal["empathy", "meme", "normal"]
+StyleProfile = Literal["auto", "empathy", "meme", "normal"]
+RoleProfile = Literal["auto", "default", "comfort", "playful"]
 
 
 class CommentEvent(BaseModel):
@@ -17,10 +20,16 @@ class CommentEvent(BaseModel):
     parent_id: str | None = None
     trace_id: str | None = Field(default=None, min_length=1, max_length=64)
     force_long: bool = False
+    style_profile: StyleProfile = "auto"
+    role_profile: RoleProfile = "auto"
+    role_card_key: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class RetryJobRequest(BaseModel):
     force_long: bool = False
+    style_profile: StyleProfile = "auto"
+    role_profile: RoleProfile = "auto"
+    role_card_key: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class ApproveJobRequest(BaseModel):

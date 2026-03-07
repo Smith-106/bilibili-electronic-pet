@@ -1,10 +1,10 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.models.entities import OperationAuditLog
 
 
 def test_metrics_overview_counts(client, make_comment, make_job):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     make_comment(comment_id="metrics-c-1", user_id="metrics-u-1")
     make_comment(comment_id="metrics-c-2", user_id="metrics-u-2")
 
@@ -25,7 +25,7 @@ def test_metrics_overview_counts(client, make_comment, make_job):
 
 
 def test_metrics_daily_aggregates_recent_days(client, make_comment, make_job):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     make_comment(comment_id="daily-c-1", user_id="daily-u-1")
     make_comment(comment_id="daily-c-2", user_id="daily-u-2")
 
@@ -85,7 +85,7 @@ def test_metrics_overview_includes_audit_dimensions(client, db_session, make_com
 
 
 def test_metrics_daily_includes_status_breakdown_for_new_status(client, make_comment, make_job):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     make_comment(comment_id="daily-status-c-1", user_id="daily-status-u-1")
     make_job(comment_id="daily-status-c-1", status="human_escalated", created_at=now)
     make_job(comment_id="daily-status-c-1", status="published", created_at=now)

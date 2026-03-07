@@ -10,6 +10,8 @@ EXPECTED_TABLES = {
     "user_state",
     "publish_logs",
     "operation_audit_logs",
+    "knowledge_entries",
+    "role_cards",
 }
 
 
@@ -52,7 +54,7 @@ def test_migration_init_and_upgrade_creates_full_schema(tmp_path: Path):
 
     tables = _list_tables(database_url)
     assert EXPECTED_TABLES.issubset(tables)
-    assert _get_revision(database_url) == "20260306_160851"
+    assert _get_revision(database_url) == "20260307_role_cards"
 
 
 def test_migration_reapply_is_idempotent(tmp_path: Path):
@@ -64,8 +66,8 @@ def test_migration_reapply_is_idempotent(tmp_path: Path):
     command.upgrade(config, "head")
     second_revision = _get_revision(database_url)
 
-    assert first_revision == "20260306_160851"
-    assert second_revision == "20260306_160851"
+    assert first_revision == "20260307_role_cards"
+    assert second_revision == "20260307_role_cards"
     assert EXPECTED_TABLES.issubset(_list_tables(database_url))
 
 
@@ -82,4 +84,4 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path: Path):
 
     command.upgrade(config, "head")
     assert EXPECTED_TABLES.issubset(_list_tables(database_url))
-    assert _get_revision(database_url) == "20260306_160851"
+    assert _get_revision(database_url) == "20260307_role_cards"

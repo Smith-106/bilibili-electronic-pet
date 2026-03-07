@@ -1,10 +1,12 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 import httpx
 from tenacity import retry, stop_after_attempt, wait_fixed
 
+from app.schemas import PlatformName
 from app.services.hashing import sign_payload
+from app.services.platforms import get_platform_publish_source
 from app.settings import settings
 
 
@@ -48,8 +50,8 @@ class SimulatedPublisher:
     ) -> tuple[bool, str, datetime | None]:
         _ = comment_id, reply_text, trace_id
         if force_publish:
-            return True, "approved_simulated_publish", datetime.utcnow()
-        return True, "simulated_auto_publish", datetime.utcnow()
+            return True, "approved_simulated_publish", datetime.now(timezone.utc)
+        return True, "simulated_auto_publish", datetime.now(timezone.utc)
 
 
 class WebhookPublisher:
@@ -75,7 +77,7 @@ class WebhookPublisher:
             "reply_text": reply_text,
             "force_publish": force_publish,
             "source": "bili-pet-bot",
-            "ts": int(datetime.utcnow().timestamp()),
+            "ts": int(datetime.now(timezone.utc).timestamp()),
         }
         if trace_id:
             payload["trace_id"] = trace_id
@@ -90,7 +92,7 @@ class WebhookPublisher:
             data = response.json() if response.content else {}
             published, reason = _parse_publish_result(data, "webhook_response")
             if published:
-                return True, reason, datetime.utcnow()
+                return True, reason, datetime.now(timezone.utc)
             return False, reason, None
         except Exception as exc:
             return False, f"webhook_error:{type(exc).__name__}", None
@@ -135,7 +137,7 @@ class RealPublishPublisher:
             "reply_text": reply_text,
             "force_publish": force_publish,
             "source": source,
-            "ts": int(datetime.utcnow().timestamp()),
+            "ts": int(datetime.now(timezone.utc).timestamp()),
         }
         if trace_id:
             payload["trace_id"] = trace_id
@@ -150,7 +152,7 @@ class RealPublishPublisher:
             data = response.json() if response.content else {}
             published, reason = _parse_publish_result(data, "real_publish_response")
             if published:
-                return True, reason, datetime.utcnow()
+                return True, reason, datetime.now(timezone.utc)
             return False, reason, None
         except Exception as exc:
             return False, f"real_publish_error:{type(exc).__name__}", None
@@ -191,6 +193,23 @@ def publish_gateway_reply(
 ) -> tuple[bool, str, datetime | None]:
     publisher = RealPublishPublisher()
     return publisher.publish_with_source(
+        comment_id=comment_id,
+        reply_text=reply_text,
+        force_publish=force_publish,
+        source=source,
+        trace_id=trace_id,
+    )
+
+
+def publish_platform_reply(
+    platform: PlatformName,
+    comment_id: str,
+    reply_text: str,
+    force_publish: bool = False,
+    trace_id: str | None = None,
+) -> tuple[bool, str, datetime | None]:
+    source = get_platform_publish_source(platform)
+    return publish_gateway_reply(
         comment_id=comment_id,
         reply_text=reply_text,
         force_publish=force_publish,

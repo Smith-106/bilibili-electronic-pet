@@ -5,13 +5,15 @@ from celery import Celery
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
-from app.models.entities import Comment, ReplyJob
+from app.models.entities import Comment, ReplyJob, RoleCard
 from app.services.dedupe import is_recent_duplicate, remember_reply_phrase
 from app.services.decider import decide_safety_action, should_reply
 from app.services.generator import generate_reply_with_meta
+from app.services.knowledge import build_knowledge_context, search_knowledge
 from app.services.observability import build_log_context, ensure_trace_id
 from app.services.publisher import publish_reply
 from app.services.safety import safety_check
+from app.services.search_provider import build_search_context, search_web
 from app.settings import settings
 from app.schemas import CommentEvent
 
@@ -41,6 +43,9 @@ def process_comment_event_task(event_payload: dict):
     db: Session = SessionLocal()
     try:
         force_long = event_payload.get("force_long", False)
+        requested_style_profile = str(event_payload.get("style_profile") or "auto").strip().lower()
+        requested_role_profile = str(event_payload.get("role_profile") or "auto").strip().lower()
+        requested_role_card_key = str(event_payload.get("role_card_key") or "").strip().lower()
         comment = db.query(Comment).filter(Comment.comment_id == comment_id).first()
         if not comment:
             logger.warning(
@@ -62,6 +67,9 @@ def process_comment_event_task(event_payload: dict):
             parent_id=comment.parent_id,
             trace_id=trace_id,
             force_long=force_long,
+            style_profile=requested_style_profile,
+            role_profile=requested_role_profile,
+            role_card_key=requested_role_card_key or None,
         )
 
         should, style_mode, length_mode = should_reply(event)
@@ -82,12 +90,88 @@ def process_comment_event_task(event_payload: dict):
             )
             return {"ok": True, "status": "skipped", "trace_id": trace_id}
 
-        generation = generate_reply_with_meta(comment.content, style_mode=style_mode, length_mode=length_mode)
+        knowledge_entries = []
+        knowledge_context = ""
+        knowledge_error: str | None = None
+        try:
+            knowledge_entries = search_knowledge(db, comment.content)
+            knowledge_context = build_knowledge_context(knowledge_entries)
+        except Exception as exc:
+            knowledge_entries = []
+            knowledge_context = ""
+            knowledge_error = f"{type(exc).__name__}: {exc}"
+
+        search_items = []
+        search_context = ""
+        search_error: str | None = None
+        try:
+            search_result = search_web(comment.content)
+            search_items = search_result.items
+            search_context = build_search_context(search_items)
+            if search_result.error_type:
+                search_error = f"{search_result.error_type}: {search_result.error_message or ''}".strip()
+        except Exception as exc:
+            search_items = []
+            search_context = ""
+            search_error = f"{type(exc).__name__}: {exc}"
+
+        explicit_role_card = None
+        if event.role_card_key:
+            explicit_role_card_item = (
+                db.query(RoleCard)
+                .filter(RoleCard.key == event.role_card_key, RoleCard.enabled.is_(True))
+                .first()
+            )
+            if explicit_role_card_item:
+                explicit_role_card = {
+                    "key": explicit_role_card_item.key,
+                    "enabled": bool(explicit_role_card_item.enabled),
+                    "system_prompt": explicit_role_card_item.system_prompt,
+                    "tone": explicit_role_card_item.tone or {},
+                    "constraints": explicit_role_card_item.constraints or {},
+                }
+
+        active_role_card_item = (
+            db.query(RoleCard)
+            .filter(RoleCard.is_active.is_(True), RoleCard.enabled.is_(True))
+            .order_by(RoleCard.updated_at.desc(), RoleCard.id.desc())
+            .first()
+        )
+        active_role_card = None
+        if active_role_card_item:
+            active_role_card = {
+                "key": active_role_card_item.key,
+                "enabled": bool(active_role_card_item.enabled),
+                "system_prompt": active_role_card_item.system_prompt,
+                "tone": active_role_card_item.tone or {},
+                "constraints": active_role_card_item.constraints or {},
+            }
+
+        generation = generate_reply_with_meta(
+            comment.content,
+            style_mode=style_mode,
+            length_mode=length_mode,
+            knowledge_context=knowledge_context,
+            search_context=search_context,
+            role_profile=event.role_profile if event.role_profile != "auto" else settings.role_profile_default,
+            role_card=explicit_role_card,
+            active_role_card=active_role_card,
+        )
         reply_text = generation.reply_text
         generation_flags = {
             "llm_provider": generation.provider,
             "llm_fallback": generation.used_fallback,
+            "knowledge_hit": bool(knowledge_entries),
+            "knowledge_categories": [entry.category for entry in knowledge_entries],
+            "search_hit": bool(search_items),
+            "search_sources": [item.source for item in search_items],
+            "role_profile": generation.resolved_role_profile,
+            "role_card_key": generation.resolved_role_card_key,
         }
+        if knowledge_error:
+            generation_flags["knowledge_error"] = knowledge_error
+        if search_error:
+            generation_flags["search_error"] = search_error
         if generation.error_type:
             generation_flags["llm_error_type"] = generation.error_type
         if generation.error_message:
