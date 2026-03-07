@@ -93,6 +93,26 @@ def test_normalize_length_mode_maps_extra_long_to_long_when_distribution_prefers
     assert generator._normalize_length_mode("unknown") == "long"
 
 
+def test_should_expand_long_reply_uses_length_distribution_threshold(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_length_distribution", lambda: {"short": 0.0, "medium": 0.8, "long": 0.15, "extra_long": 0.05})
+    monkeypatch.setattr(generator.random, "random", lambda: 0.19)
+
+    assert generator._should_expand_long_reply("long") is True
+
+
+def test_should_expand_long_reply_false_when_probability_not_met(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_length_distribution", lambda: {"short": 0.0, "medium": 0.8, "long": 0.15, "extra_long": 0.05})
+    monkeypatch.setattr(generator.random, "random", lambda: 0.25)
+
+    assert generator._should_expand_long_reply("long") is False
+
+
+def test_should_expand_long_reply_false_for_non_long_mode(monkeypatch):
+    monkeypatch.setattr(generator.random, "random", lambda: 0.0)
+
+    assert generator._should_expand_long_reply("short") is False
+
+
 def test_generate_reply_with_meta_resolves_explicit_role_card_first(monkeypatch):
     monkeypatch.setattr(settings, "llm_provider", "mock")
 

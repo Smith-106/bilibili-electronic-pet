@@ -124,6 +124,18 @@ def _build_banned_words_hint() -> str:
     return f"禁用词: {', '.join(words)}。"
 
 
+def _should_expand_long_reply(length_mode: str) -> bool:
+    if _normalize_length_mode(length_mode) != "long":
+        return False
+
+    distribution = get_prompt_length_distribution()
+    long_probability = max(0.0, float(distribution.get("long", 0.0)))
+    extra_long_probability = max(0.0, float(distribution.get("extra_long", 0.0)))
+    threshold = min(1.0, long_probability + extra_long_probability)
+
+    return random.random() < threshold
+
+
 def _mock_reply(
     content: str,
     style_mode: str,
@@ -168,7 +180,7 @@ def _mock_reply(
         elif role_profile == "playful":
             body += " 今天继续营业开心小剧场，给你加一颗星！"
 
-    if length_mode == "long" and random.random() < 0.35:
+    if _should_expand_long_reply(length_mode):
         body += (
             "\n\n有时候一句话背后，可能是好多天没说出口的情绪。"
             "你能写下来，就已经很勇敢了。先别急着给自己下结论，"
