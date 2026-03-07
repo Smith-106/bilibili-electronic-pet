@@ -5,6 +5,7 @@ from typing import Callable, Protocol
 import httpx
 from tenacity import Retrying, retry_if_exception_type, stop_after_attempt, wait_fixed
 
+from app.services.prompt_config import get_prompt_action_pool
 from app.settings import settings
 
 
@@ -83,6 +84,11 @@ def _resolve_role_context(
     return normalized_profile, None, "", {}, {}
 
 
+def _pick_action(index: int) -> str:
+    pool = get_prompt_action_pool()
+    return pool[index % len(pool)] if pool else ""
+
+
 def _mock_reply(
     content: str,
     style_mode: str,
@@ -104,19 +110,19 @@ def _mock_reply(
 
     if style_mode == "empathy":
         body = (
-            f"[Doro_Doro] {role_hint} (轻轻靠近) 我看到你说“{quote}”，心里也跟着酸酸的。"
+            f"[Doro_Doro] {role_hint} {_pick_action(0)} 我看到你说“{quote}”，心里也跟着酸酸的。"
             "你不是一个人扛着，先慢一点、喘口气也没关系。"
             "如果你愿意，把今天最难受的那一刻告诉我，我们一起把它揉小一点。"
         )
     elif style_mode == "meme":
         body = (
-            f"[Doro_Doro] {role_hint} (小声嘟囔) “{quote}”这句太有画面感啦。"
+            f"[Doro_Doro] {role_hint} {_pick_action(1)} “{quote}”这句太有画面感啦。"
             "Doro 已经在地上打滚三圈了，今天这条评论先记作一颗快乐欧润吉。"
             "再投喂我一个关键词，我给你续上下一段离谱小剧场。"
         )
     else:
         body = (
-            f"[Doro_Doro] {role_hint} (抬头认真看) 我看到“{quote}”了。"
+            f"[Doro_Doro] {role_hint} {_pick_action(2)} 我看到“{quote}”了。"
             "谢谢你认真留言，这种被看见的连接很珍贵。"
             "你要是愿意，我会一直在评论区和你慢慢聊。"
         )

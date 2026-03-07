@@ -50,7 +50,8 @@ def test_build_messages_prefers_role_card_context():
     assert "角色设定: comfort_plus" in messages[1]["content"]
 
 
-def test_mock_reply_differs_by_role_profile():
+def test_mock_reply_differs_by_role_profile(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_action_pool", lambda: ["(A)", "(B)", "(C)"])
     text = "今天有点累"
     comfort = generator._mock_reply(text, "normal", "medium", role_profile="comfort")
     playful = generator._mock_reply(text, "normal", "medium", role_profile="playful")
@@ -58,6 +59,18 @@ def test_mock_reply_differs_by_role_profile():
     assert comfort != playful
     assert "温柔" in comfort
     assert "小剧场" in playful
+
+
+def test_mock_reply_uses_prompt_config_action_pool(monkeypatch):
+    monkeypatch.setattr(generator, "get_prompt_action_pool", lambda: ["(动作甲)", "(动作乙)", "(动作丙)"])
+
+    empathy = generator._mock_reply("你好", "empathy", "medium")
+    meme = generator._mock_reply("你好", "meme", "medium")
+    normal = generator._mock_reply("你好", "normal", "medium")
+
+    assert "(动作甲)" in empathy
+    assert "(动作乙)" in meme
+    assert "(动作丙)" in normal
 
 
 def test_generate_reply_with_meta_resolves_explicit_role_card_first(monkeypatch):

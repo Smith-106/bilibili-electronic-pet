@@ -30,6 +30,21 @@ def test_should_reply_skip_keyword_keep_decision_output():
     assert length_mode == "long"
 
 
+def test_should_reply_uses_prompt_config_skip_keywords(monkeypatch):
+    monkeypatch.setattr("app.services.decider.get_prompt_skip_keywords", lambda: ["联系我"])
+    event = CommentEvent(
+        comment_id="c-1a",
+        video_id="v-1",
+        user_id="u-1",
+        content="欢迎联系我领取资料",
+        force_long=False,
+    )
+
+    should, _, _ = should_reply(event)
+
+    assert should is False
+
+
 def test_should_reply_uses_requested_style_profile_override():
     event = CommentEvent(
         comment_id="c-2",

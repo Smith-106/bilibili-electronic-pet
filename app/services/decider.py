@@ -1,6 +1,7 @@
 from typing import Any, Literal
 
 from app.schemas import CommentEvent, LengthMode, StyleMode
+from app.services.prompt_config import get_prompt_skip_keywords
 from app.settings import settings
 
 SHORT_COMMENT_MAX_CHARS = 12
@@ -44,7 +45,7 @@ def should_reply(event: CommentEvent) -> tuple[bool, StyleMode, LengthMode]:
 
     length_mode = decide_length(event.content, force_long=event.force_long)
 
-    skip_keywords = ["广告", "vx", "加群", "私聊"]
+    skip_keywords = [keyword.lower() for keyword in get_prompt_skip_keywords()]
     if any(word in event.content.lower() for word in skip_keywords):
         return False, style, length_mode
 
