@@ -11,6 +11,7 @@ from app.api import comments as comments_api
 from app.api.comments import router as comments_router
 from app.db import Base, get_db
 from app.models.entities import Comment
+from app.settings import settings
 
 
 @pytest.fixture
@@ -25,6 +26,8 @@ def client_and_state(monkeypatch) -> Generator[tuple[TestClient, sessionmaker, l
 
     app = FastAPI()
     app.include_router(comments_router)
+
+    monkeypatch.setattr(settings, "api_key", "")
 
     def override_get_db():
         db = testing_session_local()

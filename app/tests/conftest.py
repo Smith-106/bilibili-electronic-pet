@@ -62,8 +62,12 @@ def session_factory(
 
 
 @pytest.fixture()
-def client(session_factory: sessionmaker[Session]) -> Generator[TestClient, None, None]:
+def client(
+    session_factory: sessionmaker[Session],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Generator[TestClient, None, None]:
     _ = session_factory
+    monkeypatch.setattr(settings, "api_key", "")
     with TestClient(main_module.app) as api_client:
         yield api_client
 

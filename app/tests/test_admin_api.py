@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from app.api import comments as comments_api
+from app.api import gateway as gateway_api
 from app.models.entities import OperationAuditLog
 
 
@@ -8,6 +9,30 @@ def test_admin_page_returns_html(client):
     response = client.get("/admin")
     assert response.status_code == 200
     assert "Bili Pet 管理页" in response.text
+    assert "section-knowledge" in response.text
+    assert "knowledge-create-btn" in response.text
+    assert "section-gateway" in response.text
+    assert "gateway-publish-btn" in response.text
+    assert "gateway-refresh-btn" in response.text
+    assert "audit-summary-days" in response.text
+    assert "audit-summary-refresh-btn" in response.text
+    assert "card-audit-total" in response.text
+    assert "card-audit-ok" in response.text
+    assert "card-audit-failed" in response.text
+    assert "card-audit-top-action" in response.text
+    assert "section-single-diagnostics" in response.text
+    assert "comment-detail-id" in response.text
+    assert "comment-detail-query-btn" in response.text
+    assert "comment-detail-clear-btn" in response.text
+    assert "comment-detail-meta" in response.text
+    assert "job-detail-id" in response.text
+    assert "job-detail-query-btn" in response.text
+    assert "job-detail-clear-btn" in response.text
+    assert "job-detail-meta" in response.text
+    assert "single-retry-job-id" in response.text
+    assert "single-retry-force-long" in response.text
+    assert "single-retry-auto-reset-force" in response.text
+    assert "single-retry-btn" in response.text
 
 
 def test_admin_knowledge_crud_endpoints(client):
@@ -133,6 +158,50 @@ def test_admin_role_card_crud_and_activation(client):
     assert missing.status_code == 404
 
 
+def test_admin_gateway_publish_endpoint(client, monkeypatch):
+    monkeypatch.setattr(gateway_api.settings, "gateway_token", "")
+    monkeypatch.setattr(gateway_api.settings, "gateway_hmac_secret", "")
+
+    captured: dict[str, object] = {}
+
+    def fake_publish_gateway_reply(comment_id, reply_text, force_publish=False, source="bili-pet-bot", trace_id=None):
+        captured["comment_id"] = comment_id
+        captured["reply_text"] = reply_text
+        captured["force_publish"] = force_publish
+        captured["source"] = source
+        captured["trace_id"] = trace_id
+        return True, "admin_publish_ok", None
+
+    monkeypatch.setattr(gateway_api, "publish_gateway_reply", fake_publish_gateway_reply)
+
+    response = client.post(
+        "/gateway/publish",
+        json={
+            "comment_id": "admin-gateway-c-1",
+            "reply_text": "admin 手动发布",
+            "force_publish": True,
+            "source": "admin-ui",
+            "trace_id": "admin-trace-1",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["published"] is True
+    assert payload["reason"] == "admin_publish_ok"
+    assert payload["comment_id"] == "admin-gateway-c-1"
+    assert payload["trace_id"] == "admin-trace-1"
+
+    assert captured == {
+        "comment_id": "admin-gateway-c-1",
+        "reply_text": "admin 手动发布",
+        "force_publish": True,
+        "source": "admin-ui",
+        "trace_id": "admin-trace-1",
+    }
+
+
 def test_batch_approve_and_retry_endpoints(client, make_comment, make_job, db_session, monkeypatch, task_delay_spy):
     make_comment(comment_id="admin-c-1", user_id="admin-user-1")
     make_comment(comment_id="admin-c-2", user_id="admin-user-2")
@@ -188,6 +257,109 @@ def test_batch_approve_and_retry_endpoints(client, make_comment, make_job, db_se
     assert retry_audit.payload["summary"]["failed"] == 1
 
 
+
+
+
+
+def test_single_comment_and_job_detail_endpoints(client, make_comment, make_job):
+    make_comment(comment_id="admin-detail-c-1", user_id="admin-detail-u-1", content="单项详情评论")
+    job = make_job(
+        comment_id="admin-detail-c-1",
+        status="manual_queue",
+        reply_text="单项详情回复",
+        risk_flags={"source": "admin-test"},
+    )
+
+    comment_response = client.get("/api/comments/admin-detail-c-1")
+    assert comment_response.status_code == 200
+    comment_payload = comment_response.json()
+    assert comment_payload["ok"] is True
+    assert comment_payload["comment"]["comment_id"] == "admin-detail-c-1"
+    assert comment_payload["comment"]["content"] == "单项详情评论"
+    assert len(comment_payload["jobs"]) == 1
+    assert comment_payload["jobs"][0]["id"] == job.id
+
+    missing_comment = client.get("/api/comments/not-exists-comment")
+    assert missing_comment.status_code == 404
+    assert missing_comment.json()["detail"] == "comment_not_found"
+
+    job_response = client.get(f"/api/jobs/{job.id}")
+    assert job_response.status_code == 200
+    job_payload = job_response.json()
+    assert job_payload["ok"] is True
+    assert job_payload["item"]["id"] == job.id
+    assert job_payload["item"]["comment_id"] == "admin-detail-c-1"
+    assert job_payload["item"]["comment_content"] == "单项详情评论"
+
+    missing_job = client.get("/api/jobs/999999")
+    assert missing_job.status_code == 404
+    assert missing_job.json()["detail"] == "job_not_found"
+
+
+def test_retry_single_endpoint_success_and_not_found(client, make_comment, make_job, db_session, task_delay_spy):
+    make_comment(comment_id="admin-retry-single-c-1", user_id="admin-retry-single-u-1")
+    job = make_job(comment_id="admin-retry-single-c-1", status="blocked", reply_text="待重试")
+
+    ok_response = client.post(
+        f"/api/jobs/{job.id}/retry",
+        json={
+            "force_long": True,
+            "style_profile": "meme",
+            "role_profile": "comfort",
+            "role_card_key": "comfort_plus",
+        },
+    )
+    assert ok_response.status_code == 200
+    ok_payload = ok_response.json()
+    assert ok_payload["ok"] is True
+    assert ok_payload["requeued"] is True
+    assert ok_payload["job_id"] == job.id
+    assert isinstance(ok_payload["trace_id"], str) and ok_payload["trace_id"]
+
+    assert len(task_delay_spy) == 1
+    assert task_delay_spy[0]["comment_id"] == "admin-retry-single-c-1"
+    assert task_delay_spy[0]["force_long"] is True
+    assert task_delay_spy[0]["style_profile"] == "meme"
+    assert task_delay_spy[0]["role_profile"] == "comfort"
+    assert task_delay_spy[0]["role_card_key"] == "comfort_plus"
+    assert isinstance(task_delay_spy[0]["trace_id"], str) and task_delay_spy[0]["trace_id"]
+    assert task_delay_spy[0]["trace_id"] == ok_payload["trace_id"]
+
+    success_audit = (
+        db_session.query(OperationAuditLog)
+        .filter(OperationAuditLog.action == "retry_single", OperationAuditLog.ok.is_(True))
+        .order_by(OperationAuditLog.id.desc())
+        .first()
+    )
+    assert success_audit is not None
+    assert success_audit.payload["status"] == "queued"
+    assert success_audit.payload["comment_id"] == "admin-retry-single-c-1"
+    assert success_audit.payload["force_long"] is True
+    assert success_audit.payload["style_profile"] == "meme"
+    assert success_audit.payload["role_profile"] == "comfort"
+    assert success_audit.payload["role_card_key"] == "comfort_plus"
+    assert isinstance(success_audit.payload["trace_id"], str) and success_audit.payload["trace_id"]
+    assert success_audit.payload["trace_id"] == ok_payload["trace_id"]
+
+    missing_response = client.post("/api/jobs/999999/retry", json={"force_long": False})
+    assert missing_response.status_code == 404
+    assert missing_response.json()["detail"] == "job_not_found"
+
+    missing_trace_id = missing_response.headers.get("x-trace-id")
+
+    job_not_found_audit = db_session.query(OperationAuditLog).filter(OperationAuditLog.action == "retry_single").order_by(OperationAuditLog.id.desc()).first()
+    assert job_not_found_audit is not None
+    assert job_not_found_audit.ok is False
+    assert job_not_found_audit.payload["status"] == "job_not_found"
+    assert job_not_found_audit.payload["error"] == "job_not_found"
+    assert job_not_found_audit.payload["force_long"] is False
+    assert isinstance(job_not_found_audit.payload["trace_id"], str) and job_not_found_audit.payload["trace_id"]
+    if missing_trace_id:
+        assert job_not_found_audit.payload["trace_id"] == missing_trace_id
+    assert job_not_found_audit.payload["trace_id"] != ok_payload["trace_id"]
+
+
+
 def test_admin_export_csv_endpoints(client, task_delay_spy):
     _ = task_delay_spy
     create_response = client.post(
@@ -211,3 +383,24 @@ def test_admin_export_csv_endpoints(client, task_delay_spy):
     assert audit_csv.status_code == 200
     assert "text/csv" in audit_csv.headers["content-type"]
     assert "action,target_type,target_id" in audit_csv.text
+
+
+def test_admin_audit_summary_endpoint(client, make_comment, make_job):
+    make_comment(comment_id="audit-summary-c-1", user_id="audit-user-1")
+    make_job(comment_id="audit-summary-c-1", status="manual_queue", reply_text="待处理")
+
+    client.post(
+        "/api/jobs/retry-batch",
+        json={"job_ids": [999999], "force_long": False},
+    )
+
+    response = client.get("/api/audit-logs/summary?days=7")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["days"] == 7
+    assert "totals" in payload and "audit_logs" in payload["totals"]
+    assert "by_action" in payload and isinstance(payload["by_action"], dict)
+    assert "by_result" in payload and isinstance(payload["by_result"], dict)
+    assert payload["by_result"]["ok"] >= 0
+    assert payload["by_result"]["failed"] >= 0

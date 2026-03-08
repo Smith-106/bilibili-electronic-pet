@@ -20,108 +20,308 @@ def admin_page():
   <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
   <title>Bili Pet Admin</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; margin: 24px; background: #f8fafc; color: #0f172a; }
-    h1 { margin-bottom: 12px; }
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --bg-elevated: #121a2e;
+      --panel: #141f36;
+      --text: #e5ecff;
+      --muted: #9fb0d8;
+      --line: #243456;
+      --line-strong: #315089;
+      --primary: #5b8cff;
+      --primary-hover: #729dff;
+      --success: #26c281;
+      --warning: #f8b84e;
+      --danger: #ff6f7d;
+      --shadow: 0 14px 30px rgba(2, 8, 24, 0.35);
+      --radius: 14px;
+      --focus: 0 0 0 2px rgba(91, 140, 255, 0.45);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--sans);
+      margin: 0;
+      background: radial-gradient(circle at top right, #16284a 0%, var(--bg) 44%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+      line-height: 1.5;
+    }
+
+    h1 { margin: 0 0 6px; font-size: 30px; }
+    .page-subtitle { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+
+    .shell {
+      border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(20, 31, 54, 0.94), rgba(16, 26, 44, 0.95));
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+      margin-bottom: 14px;
+    }
+
     .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-    .quick-nav { margin-bottom: 12px; }
-    .quick-nav a { text-decoration: none; color: #1d4ed8; border: 1px solid #bfdbfe; background: #eff6ff; border-radius: 999px; padding: 4px 10px; font-size: 13px; display: inline-block; margin-right: 6px; }
-    .quick-nav a:hover { background: #dbeafe; }
-    .panel { border: 1px solid #e2e8f0; background: #ffffff; border-radius: 10px; padding: 14px; margin-bottom: 14px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04); }
-    input, button, select { padding: 6px 10px; }
-    table { border-collapse: collapse; width: 100%; font-size: 14px; background: #fff; }
-    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
-    th { background: #f6f6f6; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    textarea { width: 100%; height: 90px; }
-    .comment-box { max-width: 420px; white-space: pre-wrap; }
+    .quick-nav { margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .quick-nav a {
+      text-decoration: none;
+      color: #cfe0ff;
+      border: 1px solid #314e85;
+      background: rgba(91, 140, 255, 0.14);
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-size: 13px;
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      transition: background-color 160ms ease, border-color 160ms ease;
+    }
+
+    .quick-nav a:hover,
+    .quick-nav a:focus-visible {
+      background: rgba(91, 140, 255, 0.25);
+      border-color: #4f79c9;
+      outline: none;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 14px;
+      box-shadow: inset 0 1px 0 rgba(158, 180, 230, 0.06);
+    }
+
+    .section-title { margin: 16px 0 10px; font-size: 17px; color: #dbe7ff; }
+    label { color: var(--muted); font-size: 13px; }
+
+    input, button, select, textarea {
+      border-radius: 10px;
+      border: 1px solid var(--line-strong);
+      background: #0f1a30;
+      color: var(--text);
+      min-height: 36px;
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+
+    textarea { width: 100%; min-height: 90px; resize: vertical; line-height: 1.45; }
+
+    button {
+      background: linear-gradient(180deg, #355da8, #2f4f8e);
+      border-color: #496ebb;
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 150ms ease, filter 150ms ease;
+    }
+
+    button:hover:not(:disabled) { filter: brightness(1.06); }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button:disabled { cursor: not-allowed; opacity: 0.62; filter: grayscale(0.25); }
+
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    button:focus-visible {
+      outline: none;
+      box-shadow: var(--focus);
+    }
+
+    table {
+      border-collapse: separate;
+      border-spacing: 0;
+      width: 100%;
+      font-size: 13px;
+      background: #0f1a2e;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    th, td {
+      border-bottom: 1px solid #1f2e4d;
+      padding: 8px;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    th {
+      background: #12203a;
+      color: #c5d7ff;
+      text-align: left;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .mono { font-family: var(--mono); }
+    .comment-box { max-width: 420px; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
+
     .section-title { margin: 18px 0 10px; }
     .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
-    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; background: #f8fafc; }
-    .card-title { font-size: 12px; color: #475569; margin-bottom: 6px; }
-    .card-value { font-size: 24px; font-weight: 600; }
-    .help-panel { display: none; border: 1px solid #ddd; background: #fff; padding: 12px; margin-bottom: 12px; }
+
+    .card {
+      border: 1px solid #30446c;
+      border-radius: 12px;
+      padding: 10px;
+      background: linear-gradient(180deg, rgba(37, 54, 89, 0.44), rgba(18, 32, 57, 0.62));
+    }
+
+    .card-title { font-size: 12px; color: #b6c7ed; margin-bottom: 6px; }
+    .card-value { font-size: 24px; font-weight: 700; }
+
+    .help-panel {
+      display: none;
+      border: 1px dashed #45639d;
+      background: rgba(18, 31, 54, 0.92);
+      border-radius: 12px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
     .help-panel ul { margin: 6px 0 0 18px; }
-    .status-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid transparent; }
-    .status-badge-published { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
-    .status-badge-manual { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
-    .status-badge-blocked { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
-    .status-badge-neutral { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
-    .status-pill { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 12px; border: 1px solid transparent; }
-    .status-idle { background: #f3f4f6; color: #374151; border-color: #d1d5db; }
-    .status-loading { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
-    .status-success { background: #ecfdf5; color: #065f46; border-color: #6ee7b7; }
-    .status-error { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
-    .status-partial { background: #eff6ff; color: #1e3a8a; border-color: #93c5fd; }
-    .toast { position: fixed; right: 16px; bottom: 16px; max-width: 520px; z-index: 9999; display: none; background: #111827; color: #f9fafb; border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.25); border: 1px solid #374151; }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid transparent;
+    }
+
+    .status-badge-published { background: rgba(38, 194, 129, 0.2); color: #a4f0cf; border-color: rgba(38, 194, 129, 0.45); }
+    .status-badge-manual { background: rgba(248, 184, 78, 0.2); color: #ffd79a; border-color: rgba(248, 184, 78, 0.45); }
+    .status-badge-blocked { background: rgba(255, 111, 125, 0.2); color: #ffc2ca; border-color: rgba(255, 111, 125, 0.45); }
+    .status-badge-neutral { background: rgba(145, 163, 200, 0.16); color: #d4def4; border-color: rgba(145, 163, 200, 0.35); }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 10px;
+      border: 1px solid #2f4674;
+      background: #12203a;
+      font-size: 12px;
+      min-height: 36px;
+    }
+
+    .status-idle { color: #c7dafd; }
+    .status-loading { background: rgba(91, 140, 255, 0.2); color: #cfe0ff; border-color: #4f79c9; }
+    .status-success { background: rgba(38, 194, 129, 0.2); color: #aff1d4; border-color: rgba(38, 194, 129, 0.55); }
+    .status-error { background: rgba(255, 111, 125, 0.2); color: #ffc9cf; border-color: rgba(255, 111, 125, 0.55); }
+    .status-partial { background: rgba(248, 184, 78, 0.2); color: #ffe1ab; border-color: rgba(248, 184, 78, 0.55); }
+
+    .table-wrap { overflow-x: auto; border-radius: 12px; }
+
+    .toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      width: min(640px, calc(100vw - 32px));
+      max-height: min(62vh, 520px);
+      overflow: auto;
+      background: #111c31;
+      color: #eaf0ff;
+      border: 1px solid #345184;
+      border-radius: 12px;
+      box-shadow: var(--shadow);
+      padding: 12px;
+      display: none;
+      z-index: 9999;
+    }
+
     .toast.show { display: block; }
-    .toast-info { background: #111827; color: #f9fafb; border-color: #374151; }
-    .toast-success { background: #052e16; color: #ecfdf5; border-color: #22c55e; }
-    .toast-error { background: #450a0a; color: #fef2f2; border-color: #ef4444; }
+    .toast-info { border-color: #3e5f9c; }
+    .toast-success { border-color: rgba(38, 194, 129, 0.7); }
+    .toast-error { border-color: rgba(255, 111, 125, 0.75); }
     .toast-title { font-weight: 600; margin-bottom: 6px; }
     .toast pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.4; }
     .toast-actions { display: flex; gap: 8px; margin-top: 8px; }
     .toast-btn { background: #1f2937; color: #f9fafb; border: 1px solid #374151; border-radius: 6px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
     .toast-btn:hover { background: #374151; }
+
+    @media (max-width: 900px) {
+      body { padding: 12px; }
+      .shell { padding: 12px; }
+      h1 { font-size: 25px; }
+      .card-value { font-size: 22px; }
+      th, td { padding: 7px; }
+    }
   </style>
 </head>
 <body>
-  <h1>Bili Pet 管理页</h1>
+  <div class="shell">
+    <h1>Bili Pet 管理页</h1>
+    <p class="page-subtitle">统一工作台：系统概览、角色卡、知识库、任务队列、发布网关与审计全链路可视化。</p>
 
-  <div class=\"quick-nav mono\">
-    <a href=\"#section-overview\">系统概览</a>
-    <a href=\"#section-role-cards\">角色卡</a>
-    <a href=\"#section-daily\">趋势</a>
-    <a href=\"#section-jobs\">任务</a>
-    <a href=\"#section-audit\">审计</a>
-  </div>
-
-  <div class=\"toolbar\">
-    <label><input id=\"auto-refresh\" type=\"checkbox\" onchange=\"toggleAutoRefresh()\" /> 自动刷新</label>
-    <input id=\"auto-refresh-seconds\" type=\"number\" min=\"3\" max=\"300\" value=\"15\" onchange=\"onAutoRefreshSecondsChange()\" />
-    <button id=\"full-refresh-btn\" onclick=\"queueFullRefresh()\">立即全量刷新</button>
-    <select id=\"style-profile-select\">
-      <option value=\"auto\">auto</option>
-      <option value=\"empathy\">empathy</option>
-      <option value=\"meme\">meme</option>
-      <option value=\"normal\">normal</option>
-    </select>
-    <button id=\"style-profile-apply-btn\" onclick=\"applyStyleProfile()\">应用风格</button>
-    <button id=\"style-profile-refresh-btn\" onclick=\"refreshStyleProfile()\">读取风格</button>
-    <span id=\"style-profile-current\" class=\"mono\">风格: -</span>
-    <select id=\"role-profile-select\">
-      <option value=\"auto\">auto</option>
-      <option value=\"default\">default</option>
-      <option value=\"comfort\">comfort</option>
-      <option value=\"playful\">playful</option>
-    </select>
-    <button id=\"role-profile-apply-btn\" onclick=\"applyRoleProfile()\">应用角色卡</button>
-    <button id=\"role-profile-refresh-btn\" onclick=\"refreshRoleProfile()\">读取角色卡</button>
-    <span id=\"role-profile-current\" class=\"mono\">角色卡: -</span>
-    <button onclick=\"toggleHelpPanel()\">帮助 (?)</button>
-    <button id=\"prefs-reset-btn\" onclick=\"resetUiPrefs()\">重置偏好</button>
-    <button id=\"prefs-export-btn\" onclick=\"exportUiPrefs()\">导出偏好</button>
-    <button id=\"prefs-import-btn\" onclick=\"triggerImportUiPrefs()\">导入偏好</button>
-    <input id=\"ui-prefs-file\" type=\"file\" accept=\"application/json\" style=\"display:none;\" onchange=\"importUiPrefsFromFile(event)\" />
-    <span id=\"refresh-status\" class=\"mono status-pill status-idle\" onclick=\"showRefreshErrorDetail()\" style=\"cursor:pointer;\" title=\"点击查看详细错误（仅在失败/部分失败时有内容）\">状态: 未刷新</span>
-  </div>
-
-  <div id=\"help-panel\" class=\"help-panel\">
-    <strong>操作说明</strong>
-    <ul>
-      <li><span class=\"mono\">r</span>：全量刷新（输入框聚焦时不触发）</li>
-      <li><span class=\"mono\">?</span>：显示/隐藏本面板</li>
-      <li><span class=\"mono\">Esc</span>：关闭帮助面板/关闭提示框</li>
-      <li>状态标签为“部分失败”时，表示仅部分模块刷新失败，可点击状态查看详情</li>
-      <li>自动刷新开启后会锁定秒数输入框</li>
-      <li>秒数输入框按回车：触发全量刷新（仅自动刷新关闭时）</li>
-      <li>支持偏好导入/导出 JSON，导入时自动做版本兼容迁移</li>
-    </ul>
-    <div style=\"margin-top:8px;\">
-      <div style=\"margin-bottom:6px;\"><strong>当前偏好快照</strong></div>
-      <pre id=\"prefs-snapshot\" class=\"mono\" style=\"background:#f6f6f6; padding:8px; border:1px solid #ddd; overflow:auto;\">{}</pre>
+    <div class="quick-nav mono">
+      <a href="#section-overview">系统概览</a>
+      <a href="#section-role-cards">角色卡</a>
+      <a href="#section-knowledge">知识库</a>
+      <a href="#section-daily">趋势</a>
+      <a href="#section-jobs">任务</a>
+      <a href="#section-gateway">发布网关</a>
+      <a href="#section-audit">审计</a>
     </div>
-    <div style=\"margin-top:8px;\"><button onclick=\"toggleHelpPanel()\">关闭</button></div>
+
+    <div class="toolbar">
+      <label><input id="auto-refresh" type="checkbox" onchange="toggleAutoRefresh()" /> 自动刷新</label>
+      <input id="auto-refresh-seconds" type="number" min="3" max="300" value="15" onchange="onAutoRefreshSecondsChange()" />
+      <button id="full-refresh-btn" onclick="queueFullRefresh()">立即全量刷新</button>
+      <select id="style-profile-select">
+        <option value="auto">auto</option>
+        <option value="empathy">empathy</option>
+        <option value="meme">meme</option>
+        <option value="normal">normal</option>
+      </select>
+      <button id="style-profile-apply-btn" onclick="applyStyleProfile()">应用风格</button>
+      <button id="style-profile-refresh-btn" onclick="refreshStyleProfile()">读取风格</button>
+      <span id="style-profile-current" class="mono">风格: -</span>
+      <select id="role-profile-select">
+        <option value="auto">auto</option>
+        <option value="default">default</option>
+        <option value="comfort">comfort</option>
+        <option value="playful">playful</option>
+      </select>
+      <button id="role-profile-apply-btn" onclick="applyRoleProfile()">应用角色卡</button>
+      <button id="role-profile-refresh-btn" onclick="refreshRoleProfile()">读取角色卡</button>
+      <span id="role-profile-current" class="mono">角色卡: -</span>
+      <button onclick="toggleHelpPanel()">帮助 (?)</button>
+      <button id="prefs-reset-btn" onclick="resetUiPrefs()">重置偏好</button>
+      <button id="prefs-export-btn" onclick="exportUiPrefs()">导出偏好</button>
+      <button id="prefs-import-btn" onclick="triggerImportUiPrefs()">导入偏好</button>
+      <input id="ui-prefs-file" type="file" accept="application/json" style="display:none;" onchange="importUiPrefsFromFile(event)" />
+      <span id="refresh-status" class="mono status-pill status-idle" onclick="showRefreshErrorDetail()" style="cursor:pointer;" title="点击查看详细错误（仅在失败/部分失败时有内容）">状态: 未刷新</span>
+    </div>
+
+    <div id="help-panel" class="help-panel">
+      <strong>操作说明</strong>
+      <ul>
+        <li><span class="mono">r</span>：全量刷新（输入框聚焦时不触发）</li>
+        <li><span class="mono">?</span>：显示/隐藏本面板</li>
+        <li><span class="mono">Esc</span>：关闭帮助面板/关闭提示框</li>
+        <li>状态标签为“部分失败”时，表示仅部分模块刷新失败，可点击状态查看详情</li>
+        <li>自动刷新开启后会锁定秒数输入框</li>
+        <li>秒数输入框按回车：触发全量刷新（仅自动刷新关闭时）</li>
+        <li>支持偏好导入/导出 JSON，导入时自动做版本兼容迁移</li>
+      </ul>
+      <div style="margin-top:8px;">
+        <div style="margin-bottom:6px;"><strong>当前偏好快照</strong></div>
+        <pre id="prefs-snapshot" class="mono" style="background:#0f1a2f; color:#d7e4ff; padding:8px; border:1px solid #2a406d; overflow:auto;">{}</pre>
+      </div>
+      <div style="margin-top:8px;"><button onclick="toggleHelpPanel()">关闭</button></div>
+    </div>
   </div>
+
 
   <h2 id="section-overview" class="section-title">系统概览</h2>
   <div class="cards">
@@ -174,6 +374,32 @@ def admin_page():
     </div>
   </div>
 
+  <h2 id="section-knowledge" class="section-title">知识库管理</h2>
+  <div class="panel">
+    <div class="toolbar">
+      <button id="knowledge-refresh-btn" onclick="refreshKnowledgeEntries()">刷新知识库</button>
+      <input id="knowledge-category" type="text" placeholder="分类，如 safety" />
+      <input id="knowledge-title" type="text" placeholder="标题" />
+      <button id="knowledge-create-btn" onclick="createKnowledgeEntry()">新增知识条目</button>
+    </div>
+    <div class="toolbar" style="align-items:flex-start;">
+      <div style="flex:1; min-width:320px;">
+        <div class="mono" style="margin-bottom:4px;">content</div>
+        <textarea id="knowledge-content" style="height:90px;"></textarea>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>category</th><th>title</th><th>enabled</th><th>content</th><th>updated_at</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="knowledge-entries"></tbody>
+      </table>
+    </div>
+  </div>
+
   <h2 id="section-daily" class="section-title">近 7 天趋势</h2>
   <div class=\"toolbar\">
     <input id=\"daily-days\" type=\"number\" min=\"1\" max=\"60\" value=\"7\" />
@@ -181,17 +407,19 @@ def admin_page():
     <button id=\"daily-refresh-btn\" onclick=\"refreshDailyMetrics()\">刷新趋势</button>
   </div>
 
-  <table>
-    <thead>
-      <tr id="daily-head-full">
-        <th>日期</th><th>总量</th><th>published</th><th>manual_queue</th><th>blocked</th><th>dedupe_skipped</th><th>skipped</th>
-      </tr>
-      <tr id="daily-head-simple" style="display:none;">
-        <th>日期</th><th>published</th><th>manual_queue</th>
-      </tr>
-    </thead>
-    <tbody id=\"daily-metrics\"></tbody>
-  </table>
+  <div class=\"table-wrap\">
+    <table>
+      <thead>
+        <tr id="daily-head-full">
+          <th>日期</th><th>总量</th><th>published</th><th>manual_queue</th><th>blocked</th><th>dedupe_skipped</th><th>skipped</th>
+        </tr>
+        <tr id="daily-head-simple" style="display:none;">
+          <th>日期</th><th>published</th><th>manual_queue</th>
+        </tr>
+      </thead>
+      <tbody id=\"daily-metrics\"></tbody>
+    </table>
+  </div>
 
   <h2 id=\"section-jobs\" class=\"section-title\">任务列表</h2>
   <div class=\"toolbar\">
@@ -211,14 +439,76 @@ def admin_page():
     <button id=\"jobs-export-btn\" onclick=\"exportCsv()\">导出 CSV</button>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th><input id=\"job-check-all\" type=\"checkbox\" onchange=\"toggleAllJobChecks(this.checked)\" title=\"全选/取消全选\" /> 选中</th><th>ID</th><th>状态</th><th>comment_id</th><th>原评论</th><th>回复内容</th><th>风险信息</th><th>操作</th>
-      </tr>
-    </thead>
-    <tbody id=\"jobs\"></tbody>
-  </table>
+  <div class=\"table-wrap\">
+    <table>
+      <thead>
+        <tr>
+          <th><input id=\"job-check-all\" type=\"checkbox\" onchange=\"toggleAllJobChecks(this.checked)\" title=\"全选/取消全选\" /> 选中</th><th>ID</th><th>状态</th><th>comment_id</th><th>原评论</th><th>回复内容</th><th>风险信息</th><th>操作</th>
+        </tr>
+      </thead>
+      <tbody id=\"jobs\"></tbody>
+    </table>
+  </div>
+
+  <h2 id=\"section-single-diagnostics\" class=\"section-title\">单项诊断 / 操作</h2>
+  <div class=\"panel\">
+    <div class=\"toolbar\">
+      <input id=\"comment-detail-id\" type=\"text\" placeholder=\"comment_id\" />
+      <button id=\"comment-detail-query-btn\" onclick=\"queryCommentDetail()\">查询评论详情</button>
+      <button id=\"comment-detail-clear-btn\" onclick=\"clearCommentDetailResult()\">清空</button>
+      <span class=\"mono\">GET /api/comments/{comment_id}</span>
+    </div>
+    <div id=\"comment-detail-result\" class=\"mono\">未查询评论详情</div>
+    <div id=\"comment-detail-meta\" class=\"mono\">上次查询: -</div>
+
+    <div class=\"toolbar\" style=\"margin-top:12px;\">
+      <input id=\"job-detail-id\" type=\"number\" min=\"1\" placeholder=\"job_id\" />
+      <button id=\"job-detail-query-btn\" onclick=\"queryJobDetail()\">查询任务详情</button>
+      <button id=\"job-detail-clear-btn\" onclick=\"clearJobDetailResult()\">清空</button>
+      <span class=\"mono\">GET /api/jobs/{job_id}</span>
+    </div>
+    <div id=\"job-detail-result\" class=\"mono\">未查询任务详情</div>
+    <div id=\"job-detail-meta\" class=\"mono\">上次查询: -</div>
+
+    <div class=\"toolbar\" style=\"margin-top:12px;\">
+      <input id=\"single-retry-job-id\" type=\"number\" min=\"1\" placeholder=\"job_id\" />
+      <label><input id=\"single-retry-force-long\" type=\"checkbox\" /> force_long</label>
+      <label><input id=\"single-retry-auto-reset-force\" type=\"checkbox\" checked /> 成功后重置 force_long</label>
+      <button id=\"single-retry-btn\" onclick=\"retrySingleJob()\">单任务重试</button>
+      <span class=\"mono\">POST /api/jobs/{job_id}/retry</span>
+    </div>
+  </div>
+
+  <h2 id=\"section-gateway\" class=\"section-title\">发布网关日志</h2>
+  <div class=\"panel\">
+    <div class=\"toolbar\" style=\"align-items:flex-start;\">
+      <input id=\"gateway-publish-comment-id\" type=\"text\" placeholder=\"comment_id\" />
+      <input id=\"gateway-publish-source\" type=\"text\" placeholder=\"source (默认 bili-pet-bot)\" />
+      <label><input id=\"gateway-publish-force\" type=\"checkbox\" /> force_publish</label>
+      <button id=\"gateway-publish-btn\" onclick=\"publishGatewayReply()\">手动发布一条</button>
+    </div>
+    <div class=\"toolbar\" style=\"align-items:flex-start;\">
+      <div style=\"flex:1; min-width:320px;\">
+        <div class=\"mono\" style=\"margin-bottom:4px;\">reply_text</div>
+        <textarea id=\"gateway-publish-reply\" style=\"height:90px;\" placeholder=\"输入要发布的回复内容\"></textarea>
+      </div>
+    </div>
+    <div class=\"toolbar\">
+      <input id=\"gateway-comment-id\" type=\"text\" placeholder=\"comment_id (可选)\" />
+      <input id=\"gateway-limit\" type=\"number\" min=\"1\" max=\"200\" value=\"50\" />
+      <button id=\"gateway-refresh-btn\" onclick=\"refreshGatewayLogs()\">刷新网关日志</button>
+    </div>
+    <div class=\"table-wrap\">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th><th>comment_id</th><th>source</th><th>reply_hash</th><th>created_at</th>
+          </tr>
+        </thead>
+        <tbody id=\"gateway-logs\"></tbody>
+      </table>
+    </div>
+  </div>
 
   <h2 id=\"section-audit\" class=\"section-title\">审计日志</h2>
   <div class=\"toolbar\">
@@ -237,16 +527,27 @@ def admin_page():
     <input id=\"audit-limit\" type=\"number\" min=\"1\" max=\"1000\" value=\"100\" />
     <button id=\"audit-refresh-btn\" onclick=\"refreshAuditLogs()\">刷新日志</button>
     <button id=\"audit-export-btn\" onclick=\"exportAuditCsv()\">导出日志 CSV</button>
+    <input id=\"audit-summary-days\" type=\"number\" min=\"1\" max=\"90\" value=\"7\" />
+    <button id=\"audit-summary-refresh-btn\" onclick=\"refreshAuditSummary()\">刷新审计摘要</button>
   </div>
 
-  <table>
-    <thead>
-      <tr>
-        <th>ID</th><th>action</th><th>ok</th><th>target_id</th><th>payload</th><th>created_at</th>
-      </tr>
-    </thead>
-    <tbody id=\"audit-logs\"></tbody>
-  </table>
+  <div class=\"cards\">
+    <div class=\"card\"><div class=\"card-title\">审计总量</div><div id=\"card-audit-total\" class=\"card-value\">-</div></div>
+    <div class=\"card\"><div class=\"card-title\">成功数</div><div id=\"card-audit-ok\" class=\"card-value\">-</div></div>
+    <div class=\"card\"><div class=\"card-title\">失败数</div><div id=\"card-audit-failed\" class=\"card-value\">-</div></div>
+    <div class=\"card\"><div class=\"card-title\">最高频 action</div><div id=\"card-audit-top-action\" class=\"card-value mono\" style=\"font-size:14px;\">-</div></div>
+  </div>
+
+  <div class=\"table-wrap\">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>action</th><th>ok</th><th>target_id</th><th>payload</th><th>created_at</th>
+        </tr>
+      </thead>
+      <tbody id=\"audit-logs\"></tbody>
+    </table>
+  </div>
 
   <div id="toast" class="toast" onclick="hideToast()" onmouseenter="pauseToastAutoHide()" onmouseleave="resumeToastAutoHide()">
     <div id="toast-title" class="toast-title">提示</div>
@@ -279,6 +580,7 @@ let fullRefreshRunning = false;
 let pendingFullRefresh = false;
 let selectedJobIdSet = new Set();
 let singleApproveRunning = false;
+let singleRetryRunning = false;
 let batchApproveRunning = false;
 let batchRetryRunning = false;
 let lastRefreshErrorDetail = '';
@@ -298,6 +600,7 @@ function normalizePrefs(raw) {
     autoRefreshEnabled: !!parsed.autoRefreshEnabled,
     autoRefreshSeconds: getAutoRefreshSeconds(parsed.autoRefreshSeconds),
     dailySimple: !!parsed.dailySimple,
+    singleRetryAutoResetForce: parsed.singleRetryAutoResetForce !== false,
   };
 }
 
@@ -338,6 +641,7 @@ function resetUiPrefs() {
     autoRefreshSecondsInput.disabled = !!defaults.autoRefreshEnabled;
   }
   if (dailySimpleInput) dailySimpleInput.checked = !!defaults.dailySimple;
+  if (singleRetryAutoResetForceInput) singleRetryAutoResetForceInput.checked = defaults.singleRetryAutoResetForce !== false;
   renderPrefsSnapshot(defaults);
 
   queueFullRefresh();
@@ -426,6 +730,17 @@ function setRefreshStatus(text, tone = 'idle') {
 
 function nowLabel() {
   return new Date().toLocaleTimeString();
+}
+
+function markDetailQueryTime(metaEl, prefix = '上次查询') {
+  if (!metaEl) return;
+  metaEl.textContent = `${prefix}: ${nowLabel()}`;
+}
+
+function markDetailQueryError(metaEl, reason) {
+  if (!metaEl) return;
+  const text = String(reason || '请求失败').trim();
+  metaEl.textContent = `上次失败: ${nowLabel()} (${text.slice(0, 120)})`;
 }
 
 function getErrorText(error, fallback = '请求失败') {
@@ -632,8 +947,11 @@ async function runFullRefresh() {
   const steps = [
     { label: 'overview', run: loadOverview },
     { label: 'role_cards', run: loadRoleCards },
+    { label: 'knowledge', run: loadKnowledgeEntries },
+    { label: 'gateway_logs', run: loadGatewayLogs },
     { label: 'daily_metrics', run: loadDailyMetrics },
     { label: 'jobs', run: loadJobs },
+    { label: 'audit_summary', run: loadAuditSummary },
     { label: 'audit_logs', run: loadAuditLogs },
   ];
 
@@ -725,6 +1043,17 @@ function onDailySimpleChange() {
   refreshDailyMetrics();
 }
 
+function onSingleRetryAutoResetForceChange() {
+  if (isGlobalRefreshLocked()) {
+    if (singleRetryAutoResetForceInput) {
+      singleRetryAutoResetForceInput.checked = loadPrefs().singleRetryAutoResetForce !== false;
+    }
+    showBusyToast();
+    return;
+  }
+  savePrefs({ singleRetryAutoResetForce: !!singleRetryAutoResetForceInput?.checked });
+}
+
 function toggleAutoRefresh() {
   if (isGlobalRefreshLocked()) {
     const prefs = loadPrefs();
@@ -771,7 +1100,7 @@ async function loadOverview() {
 }
 
 function isGlobalRefreshLocked() {
-  return fullRefreshRunning || singleApproveRunning || batchApproveRunning || batchRetryRunning;
+  return fullRefreshRunning || singleApproveRunning || singleRetryRunning || batchApproveRunning || batchRetryRunning;
 }
 
 function showBusyToast() {
@@ -904,6 +1233,315 @@ async function loadJobs() {
   updateBatchActionState();
 }
 
+function quickQueryCommentFromResult(commentId) {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+  const value = String(commentId || '').trim();
+  if (!value) return;
+  if (commentDetailIdInput) commentDetailIdInput.value = value;
+  queryCommentDetail();
+}
+
+function quickQueryJobFromResult(jobId) {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+  const value = Number(jobId);
+  if (!Number.isFinite(value) || value <= 0) return;
+  if (jobDetailIdInput) jobDetailIdInput.value = String(value);
+  if (singleRetryJobIdInput) singleRetryJobIdInput.value = String(value);
+  queryJobDetail();
+}
+
+function retryJobFromDetail(jobId) {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+  const value = Number(jobId);
+  if (!Number.isFinite(value) || value <= 0) return;
+  if (singleRetryJobIdInput) singleRetryJobIdInput.value = String(value);
+  if (jobDetailIdInput) jobDetailIdInput.value = String(value);
+  retrySingleJob();
+}
+
+function clearCommentDetailResult() {
+  if (commentDetailResultEl) commentDetailResultEl.textContent = '未查询评论详情';
+  if (commentDetailMetaEl) commentDetailMetaEl.textContent = '上次查询: -';
+  if (commentDetailIdInput) commentDetailIdInput.value = '';
+}
+
+function clearJobDetailResult() {
+  if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+  if (jobDetailMetaEl) jobDetailMetaEl.textContent = '上次查询: -';
+  if (jobDetailIdInput) jobDetailIdInput.value = '';
+}
+
+function renderCommentDetailResult(data) {
+  if (!commentDetailResultEl) return;
+  const comment = data?.comment;
+  if (!comment) {
+    commentDetailResultEl.textContent = '未查询评论详情';
+    return;
+  }
+
+  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  const firstJobId = Number(jobs[0]?.id);
+  if (Number.isFinite(firstJobId) && firstJobId > 0) {
+    if (jobDetailIdInput) jobDetailIdInput.value = String(firstJobId);
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = String(firstJobId);
+  } else {
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+  }
+
+  const jobsHtml = jobs.length
+    ? jobs.map((item) => `
+      <tr>
+        <td class="mono">${escapeHtml(item.id)}</td>
+        <td>${renderStatusBadge(item.status)}</td>
+        <td class="comment-box">${escapeHtml(item.reply_text || '')}</td>
+        <td>
+          <button class="detail-action-btn" onclick="quickQueryJobFromResult(${Number(item.id)})">查询</button>
+          <button class="detail-action-btn" onclick="retryJobFromDetail(${Number(item.id)})">重试</button>
+        </td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="4" class="mono">该评论暂无关联任务</td></tr>';
+
+  commentDetailResultEl.innerHTML = `
+    <div class="mono">comment_id: ${escapeHtml(comment.comment_id || '')}</div>
+    <div class="mono">video_id: ${escapeHtml(comment.video_id || '')}</div>
+    <div class="mono">user_id: ${escapeHtml(comment.user_id || '')}</div>
+    <div class="comment-box">${escapeHtml(comment.content || '')}</div>
+    <div class="table-wrap" style="margin-top:8px;">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>状态</th><th>回复</th><th>操作</th></tr>
+        </thead>
+        <tbody>${jobsHtml}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderJobDetailResult(data) {
+  if (!jobDetailResultEl) return;
+  const item = data?.item;
+  if (!item) {
+    jobDetailResultEl.textContent = '未查询任务详情';
+    return;
+  }
+
+  const jobId = Number(item.id);
+  if (Number.isFinite(jobId) && jobId > 0 && singleRetryJobIdInput) {
+    singleRetryJobIdInput.value = String(jobId);
+  }
+  const commentId = String(item.comment_id || '').trim();
+  if (commentId && commentDetailIdInput) {
+    commentDetailIdInput.value = commentId;
+  }
+
+  jobDetailResultEl.innerHTML = `
+    <div class="mono">
+      job_id: ${escapeHtml(item.id)}
+      <button class="detail-action-btn" onclick="quickQueryJobFromResult(${Number(item.id)})">刷新该任务</button>
+      <button class="detail-action-btn" onclick="retryJobFromDetail(${Number(item.id)})">重试该任务</button>
+    </div>
+    <div>状态: ${renderStatusBadge(item.status)}</div>
+    <div class="mono">
+      comment_id: ${escapeHtml(item.comment_id || '')}
+      <button class="detail-action-btn" onclick="quickQueryCommentFromResult(${JSON.stringify(String(item.comment_id || ''))})">查询该评论</button>
+    </div>
+    <div class="comment-box">原评论: ${escapeHtml(item.comment_content || '')}</div>
+    <div class="comment-box">回复内容: ${escapeHtml(item.reply_text || '')}</div>
+    <div class="mono">risk_flags: ${escapeHtml(JSON.stringify(item.risk_flags || {}))}</div>
+  `;
+}
+
+async function queryCommentDetail(options = {}) {
+  const silent = !!options.silent;
+  const bypassLock = !!options.bypassLock;
+  if (!bypassLock && isGlobalRefreshLocked()) {
+    if (!silent) showBusyToast();
+    return;
+  }
+  const commentId = String(commentDetailIdInput?.value || '').trim();
+  if (!commentId) {
+    const errorText = '请先输入 comment_id';
+    if (!silent) showToast('查询评论失败', errorText, { tone: 'error' });
+    if (commentDetailResultEl) commentDetailResultEl.textContent = '未查询评论详情';
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+    markDetailQueryError(commentDetailMetaEl, errorText);
+    return;
+  }
+
+  setInlineButtonLoading(commentDetailQueryBtn, true, '查询中...');
+  try {
+    const res = await fetch(withApiKey(`/api/comments/${encodeURIComponent(commentId)}`));
+    const data = await readApiPayload(res);
+    if (!res.ok || !data.ok) {
+      const errorText = getErrorText(data, '请求失败');
+      if (!silent) showToast('查询评论失败', errorText, { copyable: true, tone: 'error' });
+      if (commentDetailResultEl) commentDetailResultEl.textContent = '未查询评论详情';
+      if (jobDetailIdInput) jobDetailIdInput.value = '';
+      if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+      markDetailQueryError(commentDetailMetaEl, errorText);
+      return;
+    }
+    renderCommentDetailResult(data);
+    markDetailQueryTime(commentDetailMetaEl);
+    if (!silent) showToast('查询评论成功', `comment_id=${commentId}`, { tone: 'success' });
+  } catch (error) {
+    const errorText = getErrorText(error, '请求失败');
+    if (!silent) showToast('查询评论失败', errorText, { copyable: true, tone: 'error' });
+    if (commentDetailResultEl) commentDetailResultEl.textContent = '未查询评论详情';
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+    markDetailQueryError(commentDetailMetaEl, errorText);
+  } finally {
+    setInlineButtonLoading(commentDetailQueryBtn, false);
+    updateBatchActionState();
+  }
+}
+
+async function queryJobDetail(options = {}) {
+  const silent = !!options.silent;
+  const bypassLock = !!options.bypassLock;
+  if (!bypassLock && isGlobalRefreshLocked()) {
+    if (!silent) showBusyToast();
+    return;
+  }
+  let jobId = Number(jobDetailIdInput?.value);
+  if ((!Number.isFinite(jobId) || jobId <= 0) && Number.isFinite(Number(singleRetryJobIdInput?.value)) && Number(singleRetryJobIdInput?.value) > 0) {
+    jobId = Number(singleRetryJobIdInput?.value);
+    if (jobDetailIdInput) jobDetailIdInput.value = String(jobId);
+  }
+  if (!Number.isFinite(jobId) || jobId <= 0) {
+    const errorText = '请先输入有效的 job_id';
+    if (!silent) showToast('查询任务失败', errorText, { tone: 'error' });
+    if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+    markDetailQueryError(jobDetailMetaEl, errorText);
+    return;
+  }
+
+  setInlineButtonLoading(jobDetailQueryBtn, true, '查询中...');
+  try {
+    const res = await fetch(withApiKey(`/api/jobs/${jobId}`));
+    const data = await readApiPayload(res);
+    if (!res.ok || !data.ok) {
+      const errorText = getErrorText(data, '请求失败');
+      if (!silent) showToast('查询任务失败', errorText, { copyable: true, tone: 'error' });
+      if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+      if (jobDetailIdInput) jobDetailIdInput.value = '';
+      if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+      markDetailQueryError(jobDetailMetaEl, errorText);
+      return;
+    }
+    renderJobDetailResult(data);
+    markDetailQueryTime(jobDetailMetaEl);
+    if (!silent) showToast('查询任务成功', `job_id=${jobId}`, { tone: 'success' });
+  } catch (error) {
+    const errorText = getErrorText(error, '请求失败');
+    if (!silent) showToast('查询任务失败', errorText, { copyable: true, tone: 'error' });
+    if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+    markDetailQueryError(jobDetailMetaEl, errorText);
+  } finally {
+    setInlineButtonLoading(jobDetailQueryBtn, false);
+    updateBatchActionState();
+  }
+}
+
+async function retrySingleJob() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+  let jobId = Number(singleRetryJobIdInput?.value);
+  if ((!Number.isFinite(jobId) || jobId <= 0) && Number.isFinite(Number(jobDetailIdInput?.value)) && Number(jobDetailIdInput?.value) > 0) {
+    jobId = Number(jobDetailIdInput?.value);
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = String(jobId);
+  }
+  if (!Number.isFinite(jobId) || jobId <= 0) {
+    showToast('单任务重试失败', '请先输入有效的 job_id', { tone: 'error' });
+    if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+    if (jobDetailMetaEl) markDetailQueryError(jobDetailMetaEl, '请先输入有效的 job_id');
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+    return;
+  }
+
+  singleRetryRunning = true;
+  updateBatchActionState();
+  setInlineButtonLoading(singleRetryBtn, true, '重试中...');
+  try {
+    const res = await fetch(withApiKey(`/api/jobs/${jobId}/retry`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ force_long: !!singleRetryForceLongInput?.checked }),
+    });
+    const data = await readApiPayload(res);
+    if (!res.ok || !data.ok) {
+      const errorText = getErrorText(data, '请求失败');
+      showToast('单任务重试失败', errorText, { copyable: true, tone: 'error' });
+      if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+      if (jobDetailMetaEl) markDetailQueryError(jobDetailMetaEl, errorText);
+      if (jobDetailIdInput) jobDetailIdInput.value = '';
+      if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+      return;
+    }
+
+    const refreshResult = await refreshAfterAction();
+    if (!refreshResult.ok) {
+      const failureSummary = formatFailureSummary(refreshResult.failures);
+      showToast(
+        '单任务重试完成（部分刷新失败）',
+        failureSummary,
+        { copyable: true, tone: 'error', durationMs: 0 }
+      );
+      if (jobDetailMetaEl) markDetailQueryError(jobDetailMetaEl, failureSummary);
+      return;
+    }
+
+    if (jobDetailIdInput) {
+      jobDetailIdInput.value = String(jobId);
+    }
+    if (singleRetryJobIdInput) {
+      singleRetryJobIdInput.value = String(jobId);
+    }
+    await queryJobDetail({ silent: true, bypassLock: true });
+    const commentId = String(commentDetailIdInput?.value || '').trim();
+    if (commentId) {
+      await queryCommentDetail({ silent: true, bypassLock: true });
+    }
+    if (singleRetryAutoResetForceInput?.checked && singleRetryForceLongInput) {
+      singleRetryForceLongInput.checked = false;
+    }
+
+    showToast('单任务重试完成', `任务 ${jobId} 已重新入队`, { tone: 'success' });
+  } catch (error) {
+    const errorText = getErrorText(error, '请求失败');
+    showToast('单任务重试失败', errorText, { copyable: true, tone: 'error' });
+    if (jobDetailResultEl) jobDetailResultEl.textContent = '未查询任务详情';
+    if (jobDetailMetaEl) markDetailQueryError(jobDetailMetaEl, errorText);
+    if (jobDetailIdInput) jobDetailIdInput.value = '';
+    if (singleRetryJobIdInput) singleRetryJobIdInput.value = '';
+  } finally {
+    singleRetryRunning = false;
+    setInlineButtonLoading(singleRetryBtn, false);
+    updateBatchActionState();
+    if (pendingFullRefresh) { pendingFullRefresh = false; queueFullRefresh(); }
+  }
+}
+
 function getCheckedJobIds() {
   return Array.from(selectedJobIdSet)
     .filter(id => Number.isFinite(id))
@@ -952,6 +1590,15 @@ function updateBatchActionState() {
   (jobsTableBody?.querySelectorAll('textarea[id^="reply-"]') || []).forEach((el) => {
     el.disabled = locked;
   });
+  (knowledgeEntriesBody?.querySelectorAll('.knowledge-disable-btn') || []).forEach((btn) => {
+    btn.disabled = locked;
+  });
+  (commentDetailResultEl?.querySelectorAll('.detail-action-btn') || []).forEach((btn) => {
+    btn.disabled = locked;
+  });
+  (jobDetailResultEl?.querySelectorAll('.detail-action-btn') || []).forEach((btn) => {
+    btn.disabled = locked;
+  });
 
   if (batchApproveBtn) batchApproveBtn.disabled = locked || count === 0;
   if (batchRetryBtn) batchRetryBtn.disabled = locked || count === 0;
@@ -963,8 +1610,8 @@ function updateBatchActionState() {
   if (dailyRefreshBtn) dailyRefreshBtn.disabled = locked;
   if (auditActionInput) auditActionInput.disabled = locked;
   if (auditOkInput) auditOkInput.disabled = locked;
-  if (auditLimitInput) auditLimitInput.disabled = locked;
-  if (auditRefreshBtn) auditRefreshBtn.disabled = locked;
+  if (auditSummaryDaysInput) auditSummaryDaysInput.disabled = locked;
+  if (auditSummaryRefreshBtn) auditSummaryRefreshBtn.disabled = locked;
   if (jobsExportBtn) jobsExportBtn.disabled = locked;
   if (auditExportBtn) auditExportBtn.disabled = locked;
   if (fullRefreshBtn) fullRefreshBtn.disabled = locked;
@@ -980,6 +1627,29 @@ function updateBatchActionState() {
   if (roleCardToneInput) roleCardToneInput.disabled = locked;
   if (roleCardConstraintsInput) roleCardConstraintsInput.disabled = locked;
   if (roleCardsRefreshBtn) roleCardsRefreshBtn.disabled = locked;
+  if (knowledgeRefreshBtn) knowledgeRefreshBtn.disabled = locked;
+  if (knowledgeCategoryInput) knowledgeCategoryInput.disabled = locked;
+  if (knowledgeTitleInput) knowledgeTitleInput.disabled = locked;
+  if (knowledgeContentInput) knowledgeContentInput.disabled = locked;
+  if (knowledgeCreateBtn) knowledgeCreateBtn.disabled = locked;
+  if (gatewayCommentIdInput) gatewayCommentIdInput.disabled = locked;
+  if (gatewayLimitInput) gatewayLimitInput.disabled = locked;
+  if (gatewayRefreshBtn) gatewayRefreshBtn.disabled = locked;
+  if (gatewayPublishCommentIdInput) gatewayPublishCommentIdInput.disabled = locked;
+  if (gatewayPublishSourceInput) gatewayPublishSourceInput.disabled = locked;
+  if (gatewayPublishForceInput) gatewayPublishForceInput.disabled = locked;
+  if (gatewayPublishReplyInput) gatewayPublishReplyInput.disabled = locked;
+  if (gatewayPublishBtn) gatewayPublishBtn.disabled = locked;
+  if (commentDetailIdInput) commentDetailIdInput.disabled = locked;
+  if (commentDetailQueryBtn) commentDetailQueryBtn.disabled = locked;
+  if (commentDetailClearBtn) commentDetailClearBtn.disabled = locked;
+  if (jobDetailIdInput) jobDetailIdInput.disabled = locked;
+  if (jobDetailQueryBtn) jobDetailQueryBtn.disabled = locked;
+  if (jobDetailClearBtn) jobDetailClearBtn.disabled = locked;
+  if (singleRetryJobIdInput) singleRetryJobIdInput.disabled = locked;
+  if (singleRetryForceLongInput) singleRetryForceLongInput.disabled = locked;
+  if (singleRetryAutoResetForceInput) singleRetryAutoResetForceInput.disabled = locked;
+  if (singleRetryBtn) singleRetryBtn.disabled = locked;
   if (roleCardNewBtn) roleCardNewBtn.disabled = locked;
   if (roleCardCloneBtn) roleCardCloneBtn.disabled = locked;
   if (roleCardSaveBtn) roleCardSaveBtn.disabled = locked;
@@ -1018,7 +1688,10 @@ async function refreshAfterAction() {
   const steps = [
     { label: 'jobs', run: loadJobs },
     { label: 'overview', run: loadOverview },
+    { label: 'knowledge', run: loadKnowledgeEntries },
+    { label: 'gateway_logs', run: loadGatewayLogs },
     { label: 'daily_metrics', run: loadDailyMetrics },
+    { label: 'audit_summary', run: loadAuditSummary },
     { label: 'audit_logs', run: loadAuditLogs },
   ];
 
@@ -1210,6 +1883,57 @@ async function refreshAuditLogs() {
   }
 }
 
+function getTopActionLabel(actionCountMap) {
+  const entries = Object.entries(actionCountMap || {});
+  if (!entries.length) return '-';
+  entries.sort((a, b) => Number(b[1] || 0) - Number(a[1] || 0));
+  const [action, count] = entries[0];
+  return `${action} (${safeCount(count)})`;
+}
+
+function renderAuditSummaryCards(summary) {
+  const totals = summary?.totals || {};
+  const byResult = summary?.by_result || {};
+  if (cardAuditTotal) cardAuditTotal.textContent = safeCount(totals.audit_logs);
+  if (cardAuditOk) cardAuditOk.textContent = safeCount(byResult.ok);
+  if (cardAuditFailed) cardAuditFailed.textContent = safeCount(byResult.failed);
+  if (cardAuditTopAction) cardAuditTopAction.textContent = getTopActionLabel(summary?.by_action || {});
+}
+
+async function loadAuditSummary() {
+  const days = getClampedInt(auditSummaryDaysInput?.value, 1, 90, 7);
+  if (auditSummaryDaysInput) auditSummaryDaysInput.value = String(days);
+
+  const action = auditActionInput?.value || '';
+  const ok = auditOkInput?.value || '';
+  const qs = new URLSearchParams({ days: String(days) });
+  if (action) qs.set('action', action);
+  if (ok) qs.set('ok', ok);
+
+  const res = await fetch(withApiKey('/api/audit-logs/summary?' + qs.toString()));
+  const data = await readApiPayload(res);
+  if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载审计摘要失败'));
+
+  renderAuditSummaryCards(data);
+}
+
+async function refreshAuditSummary() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+  setInlineButtonLoading(auditSummaryRefreshBtn, true, '刷新中...');
+  try {
+    await loadAuditSummary();
+    showToast('审计摘要刷新完成', '已更新审计统计卡片', { tone: 'success' });
+  } catch (error) {
+    showToast('审计摘要刷新失败', getErrorText(error, '加载审计摘要失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(auditSummaryRefreshBtn, false);
+    updateBatchActionState();
+  }
+}
+
 async function loadAuditLogs() {
   const action = auditActionInput?.value || '';
   const ok = auditOkInput?.value || '';
@@ -1257,6 +1981,206 @@ function exportAuditCsv() {
 
   const win = window.open(withApiKey('/api/export/audit-logs.csv?' + qs.toString()), '_blank');
   if (!win) showToast('导出提示', '浏览器拦截了新窗口，请允许弹窗后重试');
+}
+
+async function loadKnowledgeEntries() {
+  const res = await fetch(withApiKey('/api/admin/knowledge'));
+  const data = await readApiPayload(res);
+  if (!knowledgeEntriesBody) throw new Error('knowledge_table_not_found');
+  knowledgeEntriesBody.innerHTML = '';
+  if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载知识库失败'));
+
+  for (const item of (data.items || [])) {
+    const tr = document.createElement('tr');
+    const enabled = !!item.enabled;
+    tr.innerHTML = `
+      <td class="mono">${escapeHtml(String(item.id ?? ''))}</td>
+      <td class="mono">${escapeHtml(String(item.category || ''))}</td>
+      <td>${escapeHtml(String(item.title || ''))}</td>
+      <td class="comment-box">${escapeHtml(String(item.content || ''))}</td>
+      <td>${enabled ? '<span class="status-badge status-badge-published">enabled</span>' : '<span class="status-badge status-badge-blocked">disabled</span>'}</td>
+      <td class="mono">${escapeHtml(String(item.updated_at || ''))}</td>
+      <td>${enabled ? `<button class="knowledge-disable-btn" onclick="disableKnowledgeEntry(${Number(item.id)})">禁用</button>` : '-'}</td>
+    `;
+    knowledgeEntriesBody.appendChild(tr);
+  }
+}
+
+async function refreshKnowledgeEntries() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  setInlineButtonLoading(knowledgeRefreshBtn, true, '刷新中...');
+  try {
+    await loadKnowledgeEntries();
+    showToast('知识库刷新完成', '已更新知识条目列表', { tone: 'success' });
+  } catch (error) {
+    showToast('知识库刷新失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(knowledgeRefreshBtn, false);
+    updateBatchActionState();
+  }
+}
+
+async function createKnowledgeEntry() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  const category = String(knowledgeCategoryInput?.value || '').trim();
+  const title = String(knowledgeTitleInput?.value || '').trim();
+  const content = String(knowledgeContentInput?.value || '').trim();
+  if (!category || !title || !content) {
+    showToast('新增知识条目失败', 'category / title / content 均为必填', { tone: 'error' });
+    return;
+  }
+
+  setInlineButtonLoading(knowledgeCreateBtn, true, '新增中...');
+  try {
+    const res = await fetch(withApiKey('/api/admin/knowledge'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, title, content }),
+    });
+    const data = await readApiPayload(res);
+    if (!res.ok || !data.ok) {
+      showToast('新增知识条目失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    await loadKnowledgeEntries();
+    showToast('新增知识条目成功', `ID: ${data.item?.id ?? '-'}`, { tone: 'success' });
+  } catch (error) {
+    showToast('新增知识条目失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(knowledgeCreateBtn, false);
+    updateBatchActionState();
+  }
+}
+
+async function disableKnowledgeEntry(entryId) {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  const id = Number(entryId);
+  if (!Number.isFinite(id) || id <= 0) {
+    showToast('禁用知识条目失败', '无效 entry_id', { tone: 'error' });
+    return;
+  }
+
+  try {
+    const res = await fetch(withApiKey(`/api/admin/knowledge/${id}/disable`), { method: 'POST' });
+    const data = await readApiPayload(res);
+    if (!res.ok || !data.ok) {
+      showToast('禁用知识条目失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    await loadKnowledgeEntries();
+    showToast('知识条目已禁用', `ID: ${id}`, { tone: 'success' });
+  } catch (error) {
+    showToast('禁用知识条目失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  }
+}
+
+async function loadGatewayLogs() {
+  const commentId = String(gatewayCommentIdInput?.value || '').trim();
+  const limit = getClampedInt(gatewayLimitInput?.value, 1, 200, 50);
+  if (gatewayLimitInput) gatewayLimitInput.value = String(limit);
+
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (commentId) qs.set('comment_id', commentId);
+
+  const res = await fetch(withApiKey('/gateway/publish-logs?' + qs.toString()));
+  const data = await readApiPayload(res);
+  if (!gatewayLogsBody) throw new Error('gateway_logs_table_not_found');
+  gatewayLogsBody.innerHTML = '';
+  if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载网关日志失败'));
+
+  for (const item of (data.items || [])) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="mono">${escapeHtml(String(item.id ?? ''))}</td>
+      <td class="mono">${escapeHtml(String(item.comment_id || ''))}</td>
+      <td class="mono">${escapeHtml(String(item.source || ''))}</td>
+      <td class="mono">${escapeHtml(String(item.reply_hash || ''))}</td>
+      <td class="mono">${escapeHtml(String(item.created_at || ''))}</td>
+    `;
+    gatewayLogsBody.appendChild(tr);
+  }
+}
+
+async function refreshGatewayLogs() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  setInlineButtonLoading(gatewayRefreshBtn, true, '刷新中...');
+  try {
+    await loadGatewayLogs();
+    showToast('网关日志刷新完成', '已更新发布网关日志', { tone: 'success' });
+  } catch (error) {
+    showToast('网关日志刷新失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(gatewayRefreshBtn, false);
+    updateBatchActionState();
+  }
+}
+
+async function refreshAfterGatewayPublish() {
+  await loadGatewayLogs();
+  await loadOverview();
+  await loadJobs();
+}
+
+async function publishGatewayReply() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  const commentId = String(gatewayPublishCommentIdInput?.value || '').trim();
+  const replyText = String(gatewayPublishReplyInput?.value || '').trim();
+  const source = String(gatewayPublishSourceInput?.value || '').trim() || 'bili-pet-bot';
+  const forcePublish = !!gatewayPublishForceInput?.checked;
+
+  if (!commentId || !replyText) {
+    showToast('手动发布失败', 'comment_id 与 reply_text 必填', { tone: 'error' });
+    return;
+  }
+
+  setInlineButtonLoading(gatewayPublishBtn, true, '发布中...');
+  try {
+    const res = await fetch(withApiKey('/gateway/publish'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        comment_id: commentId,
+        reply_text: replyText,
+        source,
+        force_publish: forcePublish,
+      }),
+    });
+    const data = await readApiPayload(res);
+    if (!res.ok || !data.ok) {
+      showToast('手动发布失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    await refreshAfterGatewayPublish();
+    showToast('手动发布成功', `comment_id=${commentId}`, { tone: 'success' });
+  } catch (error) {
+    showToast('手动发布失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(gatewayPublishBtn, false);
+    updateBatchActionState();
+  }
 }
 
 function tryParseJsonObject(rawText, fallback = {}) {
@@ -1625,6 +2549,10 @@ const cardComments = document.getElementById('card-comments');
 const cardJobs = document.getElementById('card-jobs');
 const cardPublished = document.getElementById('card-published');
 const cardManual = document.getElementById('card-manual');
+const cardAuditTotal = document.getElementById('card-audit-total');
+const cardAuditOk = document.getElementById('card-audit-ok');
+const cardAuditFailed = document.getElementById('card-audit-failed');
+const cardAuditTopAction = document.getElementById('card-audit-top-action');
 const dailyMetricsBody = document.getElementById('daily-metrics');
 const dailyHeadFull = document.getElementById('daily-head-full');
 const dailyHeadSimple = document.getElementById('daily-head-simple');
@@ -1637,9 +2565,11 @@ const dailyDaysInput = document.getElementById('daily-days');
 const auditActionInput = document.getElementById('audit-action');
 const auditOkInput = document.getElementById('audit-ok');
 const auditLimitInput = document.getElementById('audit-limit');
+const auditSummaryDaysInput = document.getElementById('audit-summary-days');
 const jobsRefreshBtn = document.getElementById('jobs-refresh-btn');
 const dailyRefreshBtn = document.getElementById('daily-refresh-btn');
 const auditRefreshBtn = document.getElementById('audit-refresh-btn');
+const auditSummaryRefreshBtn = document.getElementById('audit-summary-refresh-btn');
 const jobsExportBtn = document.getElementById('jobs-export-btn');
 const auditExportBtn = document.getElementById('audit-export-btn');
 const fullRefreshBtn = document.getElementById('full-refresh-btn');
@@ -1677,9 +2607,38 @@ const roleCardDescriptionInput = document.getElementById('role-card-description'
 const roleCardSystemPromptInput = document.getElementById('role-card-system-prompt');
 const roleCardToneInput = document.getElementById('role-card-tone');
 const roleCardConstraintsInput = document.getElementById('role-card-constraints');
-
+const knowledgeEntriesBody = document.getElementById('knowledge-entries');
+const knowledgeRefreshBtn = document.getElementById('knowledge-refresh-btn');
+const knowledgeCategoryInput = document.getElementById('knowledge-category');
+const knowledgeTitleInput = document.getElementById('knowledge-title');
+const knowledgeContentInput = document.getElementById('knowledge-content');
+const knowledgeCreateBtn = document.getElementById('knowledge-create-btn');
+const gatewayLogsBody = document.getElementById('gateway-logs');
+const gatewayCommentIdInput = document.getElementById('gateway-comment-id');
+const gatewayLimitInput = document.getElementById('gateway-limit');
+const gatewayRefreshBtn = document.getElementById('gateway-refresh-btn');
+const gatewayPublishCommentIdInput = document.getElementById('gateway-publish-comment-id');
+const gatewayPublishSourceInput = document.getElementById('gateway-publish-source');
+const gatewayPublishForceInput = document.getElementById('gateway-publish-force');
+const gatewayPublishReplyInput = document.getElementById('gateway-publish-reply');
+const gatewayPublishBtn = document.getElementById('gateway-publish-btn');
+const commentDetailIdInput = document.getElementById('comment-detail-id');
+const commentDetailQueryBtn = document.getElementById('comment-detail-query-btn');
+const commentDetailClearBtn = document.getElementById('comment-detail-clear-btn');
+const commentDetailResultEl = document.getElementById('comment-detail-result');
+const commentDetailMetaEl = document.getElementById('comment-detail-meta');
+const jobDetailIdInput = document.getElementById('job-detail-id');
+const jobDetailQueryBtn = document.getElementById('job-detail-query-btn');
+const jobDetailClearBtn = document.getElementById('job-detail-clear-btn');
+const jobDetailResultEl = document.getElementById('job-detail-result');
+const jobDetailMetaEl = document.getElementById('job-detail-meta');
+const singleRetryJobIdInput = document.getElementById('single-retry-job-id');
+const singleRetryForceLongInput = document.getElementById('single-retry-force-long');
+const singleRetryAutoResetForceInput = document.getElementById('single-retry-auto-reset-force');
+const singleRetryBtn = document.getElementById('single-retry-btn');
 if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(getAutoRefreshSeconds(prefs.autoRefreshSeconds));
 if (dailySimpleInput && typeof prefs.dailySimple === 'boolean') dailySimpleInput.checked = prefs.dailySimple;
+if (singleRetryAutoResetForceInput) singleRetryAutoResetForceInput.checked = prefs.singleRetryAutoResetForce !== false;
 if (autoRefreshInput && typeof prefs.autoRefreshEnabled === 'boolean') autoRefreshInput.checked = prefs.autoRefreshEnabled;
 if (autoRefreshInput?.checked) toggleAutoRefresh();
 refreshStyleProfile();
@@ -1700,6 +2659,34 @@ if (autoRefreshSecondsInput) {
     if (event.key !== 'Enter') return;
     if (autoRefreshInput?.checked) return;
     queueFullRefresh();
+  });
+}
+
+if (commentDetailIdInput) {
+  commentDetailIdInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    queryCommentDetail();
+  });
+}
+
+if (jobDetailIdInput) {
+  jobDetailIdInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    queryJobDetail();
+  });
+}
+
+if (singleRetryAutoResetForceInput) {
+  singleRetryAutoResetForceInput.addEventListener('change', onSingleRetryAutoResetForceChange);
+}
+
+if (singleRetryJobIdInput) {
+  singleRetryJobIdInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    retrySingleJob();
   });
 }
 
