@@ -160,7 +160,7 @@ curl -sS http://127.0.0.1:8000/health
 
 ### 发布模式
 
-- `PUBLISHER_MODE`（`manual_queue` / `webhook` / `real_publish` / `simulated`）
+- `PUBLISHER_MODE`（`manual_queue` / `simulated` / `webhook` / `real_publish`）
 - `PUBLISHER_TIMEOUT_SECONDS`
 - `PUBLISHER_HMAC_SECRET`
 - `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_WEBHOOK_TOKEN`
@@ -169,6 +169,7 @@ curl -sS http://127.0.0.1:8000/health
 ## 生产建议
 
 - 先 `manual_queue` 灰度，再切 `real_publish`
+- 外部执行端异常时优先切回 `manual_queue`（保持服务可用）
 - 发现异常优先：`KILL_SWITCH=true` 或切回 `manual_queue`
 - 生产务必关闭 mock 回退：`LLM_FALLBACK_TO_MOCK=false`
 

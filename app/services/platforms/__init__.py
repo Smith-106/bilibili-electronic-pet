@@ -1,22 +1,44 @@
+from typing import TypedDict
+
 from app.schemas import PlatformName
 from app.settings import settings
 
 
+class PlatformConfig(TypedDict):
+    enabled_attr: str
+    source_attr: str
+    default_source: str
+
+
+_PLATFORM_CONFIGS: dict[PlatformName, PlatformConfig] = {
+    "bilibili": {
+        "enabled_attr": "platform_bilibili_enabled",
+        "source_attr": "platform_bilibili_publish_source",
+        "default_source": "bilibili-bot",
+    },
+    "douyin": {
+        "enabled_attr": "platform_douyin_enabled",
+        "source_attr": "platform_douyin_publish_source",
+        "default_source": "douyin-bot",
+    },
+    "kuaishou": {
+        "enabled_attr": "platform_kuaishou_enabled",
+        "source_attr": "platform_kuaishou_publish_source",
+        "default_source": "kuaishou-bot",
+    },
+}
+
+
+def get_platform_config(platform: PlatformName) -> PlatformConfig:
+    return _PLATFORM_CONFIGS[platform]
+
+
 def is_platform_enabled(platform: PlatformName) -> bool:
-    if platform == "bilibili":
-        return settings.platform_bilibili_enabled
-    if platform == "douyin":
-        return settings.platform_douyin_enabled
-    if platform == "kuaishou":
-        return settings.platform_kuaishou_enabled
-    return False
+    config = get_platform_config(platform)
+    return bool(getattr(settings, config["enabled_attr"], False))
 
 
 def get_platform_publish_source(platform: PlatformName) -> str:
-    if platform == "bilibili":
-        return settings.platform_bilibili_publish_source or "bilibili-bot"
-    if platform == "douyin":
-        return settings.platform_douyin_publish_source or "douyin-bot"
-    if platform == "kuaishou":
-        return settings.platform_kuaishou_publish_source or "kuaishou-bot"
-    return "bili-pet-bot"
+    config = get_platform_config(platform)
+    value = str(getattr(settings, config["source_attr"], "") or "").strip()
+    return value or config["default_source"]

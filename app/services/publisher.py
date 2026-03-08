@@ -6,7 +6,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 
 from app.schemas import PlatformName
 from app.services.hashing import sign_payload
-from app.services.platforms import get_platform_publish_source
+from app.services.platforms import get_platform_config, get_platform_publish_source
 from app.settings import settings
 
 
@@ -169,6 +169,14 @@ def _get_publisher() -> PublisherAdapter:
     return ManualQueuePublisher()
 
 
+def get_platform_publisher(platform: PlatformName) -> PublisherAdapter:
+    config = get_platform_config(platform)
+    enabled = bool(getattr(settings, config["enabled_attr"], False))
+    if not enabled:
+        return ManualQueuePublisher()
+    return RealPublishPublisher()
+
+
 def publish_reply(
     comment_id: str,
     reply_text: str,
@@ -209,10 +217,19 @@ def publish_platform_reply(
     trace_id: str | None = None,
 ) -> tuple[bool, str, datetime | None]:
     source = get_platform_publish_source(platform)
-    return publish_gateway_reply(
+    publisher = get_platform_publisher(platform)
+    if isinstance(publisher, RealPublishPublisher):
+        return publisher.publish_with_source(
+            comment_id=comment_id,
+            reply_text=reply_text,
+            force_publish=force_publish,
+            source=source,
+            trace_id=trace_id,
+        )
+
+    return publisher.publish(
         comment_id=comment_id,
         reply_text=reply_text,
         force_publish=force_publish,
-        source=source,
         trace_id=trace_id,
     )

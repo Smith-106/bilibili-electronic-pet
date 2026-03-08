@@ -20,7 +20,12 @@ def test_admin_page_returns_html(client):
     assert "card-audit-ok" in response.text
     assert "card-audit-failed" in response.text
     assert "card-audit-top-action" in response.text
-    assert "section-single-diagnostics" in response.text
+    assert "publisher-mode-toolbar" in response.text
+    assert "mode-chip-manual" in response.text
+    assert "mode-chip-simulated" in response.text
+    assert "mode-chip-webhook" in response.text
+    assert "mode-chip-real-publish" in response.text
+    assert "publisher-mode-current" in response.text
     assert "comment-detail-id" in response.text
     assert "comment-detail-query-btn" in response.text
     assert "comment-detail-clear-btn" in response.text

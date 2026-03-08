@@ -1,6 +1,11 @@
 from datetime import datetime
 
-from app.services.publisher import RealPublishPublisher, publish_gateway_reply, publish_platform_reply, publish_reply
+from app.services.publisher import (
+    RealPublishPublisher,
+    publish_gateway_reply,
+    publish_platform_reply,
+    publish_reply,
+)
 from app.settings import settings
 
 
@@ -63,6 +68,7 @@ def test_publish_reply_real_publish_mode_success(monkeypatch):
 
 def test_publish_platform_reply_uses_platform_source(monkeypatch):
     monkeypatch.setattr(settings, "publisher_real_publish_url", "https://publisher.example.com/reply")
+    monkeypatch.setattr(settings, "platform_douyin_enabled", True)
     monkeypatch.setattr(settings, "platform_douyin_publish_source", "douyin-open")
 
     captured: dict[str, dict] = {}
@@ -86,6 +92,23 @@ def test_publish_platform_reply_uses_platform_source(monkeypatch):
     assert isinstance(published_at, datetime)
     assert captured["payload"]["source"] == "douyin-open"
     assert captured["payload"]["trace_id"] == "trace-platform"
+
+
+def test_publish_platform_reply_disabled_platform_falls_back_to_manual_queue(monkeypatch):
+    monkeypatch.setattr(settings, "platform_douyin_enabled", False)
+
+    published, reason, published_at = publish_platform_reply(
+        platform="douyin",
+        comment_id="comment-disabled",
+        reply_text="reply text",
+        trace_id="trace-disabled",
+    )
+
+    assert published is False
+    assert reason == "manual_queue"
+    assert published_at is None
+
+
 
 
 def test_publish_gateway_reply_preserves_source_and_reason(monkeypatch):

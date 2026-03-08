@@ -12,7 +12,7 @@ router = APIRouter(tags=["admin"], dependencies=[Depends(require_api_key)])
 
 @router.get("/admin", response_class=HTMLResponse)
 def admin_page():
-    return """
+    html = """
 <!doctype html>
 <html lang=\"zh-CN\">
 <head>
@@ -220,7 +220,42 @@ def admin_page():
     .status-error { background: rgba(255, 111, 125, 0.2); color: #ffc9cf; border-color: rgba(255, 111, 125, 0.55); }
     .status-partial { background: rgba(248, 184, 78, 0.2); color: #ffe1ab; border-color: rgba(248, 184, 78, 0.55); }
 
+    .mode-chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 3px 10px;
+      border: 1px solid #3c5e9c;
+      background: rgba(91, 140, 255, 0.14);
+      color: #d9e6ff;
+      font-size: 12px;
+      min-height: 28px;
+    }
+
+    .mode-chip-active {
+      border-color: rgba(38, 194, 129, 0.58);
+      background: rgba(38, 194, 129, 0.17);
+      color: #b7f3d6;
+      font-weight: 600;
+    }
+
+    .mode-note {
+      color: #b7c8ee;
+      font-size: 12px;
+    }
+
+    .mode-note code {
+      font-family: var(--mono);
+      font-size: 12px;
+      background: rgba(16, 27, 50, 0.7);
+      border: 1px solid #2d426d;
+      border-radius: 6px;
+      padding: 2px 6px;
+      color: #d9e8ff;
+    }
+
     .table-wrap { overflow-x: auto; border-radius: 12px; }
+
 
     .toast {
       position: fixed;
@@ -271,6 +306,15 @@ def admin_page():
       <a href="#section-jobs">任务</a>
       <a href="#section-gateway">发布网关</a>
       <a href="#section-audit">审计</a>
+    </div>
+
+    <div class="toolbar" id="publisher-mode-toolbar">
+      <span class="mode-chip" id="mode-chip-manual">manual_queue</span>
+      <span class="mode-chip" id="mode-chip-simulated">simulated</span>
+      <span class="mode-chip" id="mode-chip-webhook">webhook</span>
+      <span class="mode-chip" id="mode-chip-real-publish">real_publish</span>
+      <span id="publisher-mode-current" class="mono">当前发布模式: -</span>
+      <span class="mode-note">推荐稳态路径：<code>manual_queue / simulated</code></span>
     </div>
 
     <div class="toolbar">
@@ -589,6 +633,7 @@ let toastHideDeadline = 0;
 const TOAST_HIDE_MS = 4500;
 const PREF_KEY = 'bili_pet_admin_ui_prefs_v1';
 const PREF_VERSION = 1;
+const PUBLISHER_MODE = '__PUBLISHER_MODE__';
 let roleCardItems = [];
 let roleCardCurrentKey = '';
 
@@ -795,6 +840,33 @@ function getClampedInt(value, min, max, fallback) {
 
 function getAutoRefreshSeconds(value) {
   return getClampedInt(value, 3, 300, 15);
+}
+
+function applyPublisherModeStatus(mode) {
+  const normalized = String(mode || '').trim();
+  if (publisherModeCurrentEl) {
+    publisherModeCurrentEl.textContent = `当前发布模式: ${normalized || '-'}`;
+  }
+
+  const chips = [
+    modeChipManual,
+    modeChipSimulated,
+    modeChipWebhook,
+    modeChipRealPublish,
+  ];
+  for (const chip of chips) {
+    chip?.classList.remove('mode-chip-active');
+  }
+
+  if (normalized === 'manual_queue') {
+    modeChipManual?.classList.add('mode-chip-active');
+  } else if (normalized === 'simulated') {
+    modeChipSimulated?.classList.add('mode-chip-active');
+  } else if (normalized === 'webhook') {
+    modeChipWebhook?.classList.add('mode-chip-active');
+  } else if (normalized === 'real_publish') {
+    modeChipRealPublish?.classList.add('mode-chip-active');
+  }
 }
 
 async function readApiPayload(res) {
@@ -2587,6 +2659,11 @@ const prefsExportBtn = document.getElementById('prefs-export-btn');
 const prefsImportBtn = document.getElementById('prefs-import-btn');
 const prefsSnapshotEl = document.getElementById('prefs-snapshot');
 const refreshStatusEl = document.getElementById('refresh-status');
+const modeChipManual = document.getElementById('mode-chip-manual');
+const modeChipSimulated = document.getElementById('mode-chip-simulated');
+const modeChipWebhook = document.getElementById('mode-chip-webhook');
+const modeChipRealPublish = document.getElementById('mode-chip-real-publish');
+const publisherModeCurrentEl = document.getElementById('publisher-mode-current');
 const toastEl = document.getElementById('toast');
 const toastTitleEl = document.getElementById('toast-title');
 const toastContentEl = document.getElementById('toast-content');
@@ -2639,6 +2716,7 @@ const singleRetryBtn = document.getElementById('single-retry-btn');
 if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(getAutoRefreshSeconds(prefs.autoRefreshSeconds));
 if (dailySimpleInput && typeof prefs.dailySimple === 'boolean') dailySimpleInput.checked = prefs.dailySimple;
 if (singleRetryAutoResetForceInput) singleRetryAutoResetForceInput.checked = prefs.singleRetryAutoResetForce !== false;
+applyPublisherModeStatus(PUBLISHER_MODE);
 if (autoRefreshInput && typeof prefs.autoRefreshEnabled === 'boolean') autoRefreshInput.checked = prefs.autoRefreshEnabled;
 if (autoRefreshInput?.checked) toggleAutoRefresh();
 refreshStyleProfile();
@@ -2715,6 +2793,7 @@ if (!autoRefreshInput?.checked) queueFullRefresh();
 </body>
 </html>
 """
+    return html.replace("__PUBLISHER_MODE__", settings.publisher_mode)
 
 
 @router.get("/api/admin/knowledge")
