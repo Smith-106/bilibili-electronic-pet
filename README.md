@@ -76,6 +76,8 @@ pip install -r requirements.txt
 pytest app/tests -q
 ```
 
+> 已在 `pytest.ini` 配置 `pythonpath = .`，无需额外手动设置 `PYTHONPATH`。
+
 ### 3) 启动服务（Docker）
 
 ```bash
@@ -115,6 +117,8 @@ curl -sS http://127.0.0.1:8000/health
 
 - `POST /api/jobs/{job_id}/retry`
 - `POST /api/jobs/{job_id}/approve`
+- `GET /api/comments/{comment_id}`（单评论详情）
+- `GET /api/jobs/{job_id}`（单任务详情）
 - 批量 approve / retry 与列表查询见管理页对应 API
 
 ### 发布网关
@@ -128,6 +132,7 @@ curl -sS http://127.0.0.1:8000/health
 ### 管理页
 
 - `GET /admin`
+- 已覆盖单项诊断能力：评论详情查询、任务详情查询、单任务重试（`force_long` + 成功后自动重置选项）
 
 ## 环境变量（重点）
 
