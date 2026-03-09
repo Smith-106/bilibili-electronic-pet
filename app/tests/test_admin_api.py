@@ -15,6 +15,7 @@ def test_admin_page_returns_html(client):
     assert '/static/admin/admin.js' in response.text
     assert response.text.count('/static/admin/admin.css') == 1
     assert response.text.count('/static/admin/admin.js') == 1
+    assert response.text.count('<script src="/static/admin/admin.js"></script>') == 1
     assert response.text.count('<table aria-label="') == 5
     table_labels = re.findall(r'<table aria-label="([^"]+)"', response.text)
     assert sorted(table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"])
