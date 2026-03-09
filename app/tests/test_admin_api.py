@@ -1,4 +1,6 @@
 from datetime import datetime
+from pathlib import Path
+import re
 
 from app.api import comments as comments_api
 from app.api import gateway as gateway_api
@@ -9,6 +11,15 @@ def test_admin_page_returns_html(client):
     response = client.get("/admin")
     assert response.status_code == 200
     assert "Bili Pet 管理页" in response.text
+    assert '/static/admin/admin.css' in response.text
+    assert '/static/admin/admin.js' in response.text
+    assert response.text.count('/static/admin/admin.css') == 1
+    assert response.text.count('/static/admin/admin.js') == 1
+    assert response.text.count('<table aria-label="') == 5
+    table_labels = re.findall(r'<table aria-label="([^"]+)"', response.text)
+    assert sorted(table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"])
+    assert '<table>' not in response.text
+    assert response.text.count('<th scope="col">') >= 29
     assert "section-knowledge" in response.text
     assert "knowledge-create-btn" in response.text
     assert "section-gateway" in response.text
@@ -38,6 +49,177 @@ def test_admin_page_returns_html(client):
     assert "single-retry-force-long" in response.text
     assert "single-retry-auto-reset-force" in response.text
     assert "single-retry-btn" in response.text
+    assert 'aria-label="应用回复风格配置"' in response.text
+    assert 'aria-label="读取当前回复风格配置"' in response.text
+    assert 'aria-label="应用角色档位配置"' in response.text
+    assert 'aria-label="刷新任务列表"' in response.text
+    assert 'aria-label="查询指定评论详情"' in response.text
+    assert 'aria-label="查询指定任务详情"' in response.text
+    assert 'aria-label="刷新发布网关日志"' in response.text
+    assert 'aria-label="刷新审计日志"' in response.text
+    assert 'aria-label="关闭提示框"' in response.text
+    assert 'aria-label="自动刷新间隔秒数"' in response.text
+    assert 'aria-label="回复风格选择"' in response.text
+    assert 'aria-label="角色档位选择"' in response.text
+    assert 'aria-label="角色卡列表选择"' in response.text
+    assert 'aria-label="角色卡 key"' in response.text
+    assert 'aria-label="角色卡名称"' in response.text
+    assert 'aria-label="角色卡启用状态"' in response.text
+    assert 'aria-label="角色卡描述"' in response.text
+    assert 'aria-label="角色卡系统提示词"' in response.text
+    assert 'aria-label="角色卡语气 JSON"' in response.text
+    assert 'aria-label="角色卡约束 JSON"' in response.text
+    assert 'aria-label="知识库分类"' in response.text
+    assert 'aria-label="知识库标题"' in response.text
+    assert 'aria-label="知识库内容"' in response.text
+    assert 'aria-label="趋势统计天数"' in response.text
+    assert 'aria-label="切换趋势简版视图"' in response.text
+    assert 'aria-label="任务状态筛选"' in response.text
+    assert 'aria-label="任务列表返回条数"' in response.text
+    assert 'aria-label="手动发布 comment_id"' in response.text
+    assert 'aria-label="手动发布来源 source"' in response.text
+    assert 'aria-label="手动发布启用 force_publish"' in response.text
+    assert 'aria-label="手动发布回复内容"' in response.text
+    assert 'aria-label="网关日志筛选 comment_id"' in response.text
+    assert 'aria-label="网关日志返回条数"' in response.text
+    assert 'aria-label="审计操作类型筛选"' in response.text
+    assert 'aria-label="审计结果筛选"' in response.text
+    assert 'aria-label="审计日志返回条数"' in response.text
+    assert 'aria-label="审计摘要统计天数"' in response.text
+    assert 'aria-label="单任务重试启用 force_long"' in response.text
+    assert 'aria-label="单任务重试成功后重置 force_long"' in response.text
+    assert 'role="status"' in response.text
+    assert 'aria-live="polite"' in response.text
+    assert 'aria-label="刷新状态信息，点击查看详情"' in response.text
+    assert 'tabindex="0"' in response.text
+    assert "onkeydown=\"if(event.key==='Enter'||event.key===' '){event.preventDefault();showRefreshErrorDetail();}\"" in response.text
+    assert 'class="hidden"' in response.text
+    assert 'class="mono status-pill status-idle clickable"' in response.text
+    assert 'role="alertdialog"' in response.text
+    assert 'aria-live="assertive"' in response.text
+    assert 'aria-labelledby="toast-title"' in response.text
+    assert 'aria-describedby="toast-content"' in response.text
+    assert 'id="card-comments" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="card-jobs" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="card-published" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="card-manual" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="comment-detail-result" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'id="job-detail-result" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'id="card-audit-total" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="card-audit-ok" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="card-audit-failed" class="card-value" role="status" aria-live="polite"' in response.text
+    assert 'id="publisher-mode-current" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'id="style-profile-current" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'id="role-profile-current" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'id="active-role-card-current" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'id="batch-selected-count" class="mono" role="status" aria-live="polite"' in response.text
+    assert 'aria-label="知识库条目表"' in response.text
+    assert 'aria-label="趋势统计表"' in response.text
+    assert 'aria-label="任务列表数据表"' in response.text
+    assert 'aria-label="发布网关日志表"' in response.text
+    assert 'aria-label="审计日志表"' in response.text
+    assert 'id="daily-head-full"' in response.text
+    assert 'id="daily-head-simple" class="hidden"' in response.text
+    assert '<th scope="col">选择</th><th scope="col">ID</th><th scope="col">状态</th><th scope="col">comment_id</th><th scope="col">评论</th><th scope="col">回复</th><th scope="col">risk_flags</th><th scope="col">操作</th>' in response.text
+    assert '<th scope="col">ID</th><th scope="col">comment_id</th><th scope="col">source</th><th scope="col">reply_hash</th><th scope="col">created_at</th>' in response.text
+    assert '<th scope="col">ID</th><th scope="col">action</th><th scope="col">ok</th><th scope="col">target_id</th><th scope="col">payload</th><th scope="col">created_at</th>' in response.text
+    assert '<th scope="col">日期</th><th scope="col">总量</th><th scope="col">published</th><th scope="col">manual_queue</th><th scope="col">blocked</th><th scope="col">dedupe_skipped</th><th scope="col">skipped</th>' in response.text
+    assert '<th scope="col">日期</th><th scope="col">published</th><th scope="col">manual_queue</th>' in response.text
+    assert 'id="daily-head-simple" class="hidden"' in response.text
+    assert 'id="ui-prefs-file" class="hidden"' in response.text
+    assert 'id="toast-copy" class="toast-btn hidden"' in response.text
+    assert '<th>' not in response.text
+    assert 'style=' not in response.text
+
+
+def test_admin_css_contains_reduced_motion_guard():
+    css_path = Path(__file__).resolve().parents[1] / "static" / "admin" / "admin.css"
+    css_text = css_path.read_text(encoding="utf-8")
+
+    assert "@media (prefers-reduced-motion: reduce)" in css_text
+    assert "transition-duration: 0.01ms !important;" in css_text
+    assert "animation-duration: 0.01ms !important;" in css_text
+    assert "scroll-behavior: auto !important;" in css_text
+
+
+def test_admin_css_contains_utility_classes():
+    css_path = Path(__file__).resolve().parents[1] / "static" / "admin" / "admin.css"
+    css_text = css_path.read_text(encoding="utf-8")
+
+    assert ".hidden { display: none; }" in css_text
+    assert ".clickable { cursor: pointer; }" in css_text
+    assert ".mt-8 { margin-top: 8px; }" in css_text
+    assert ".mb-6 { margin-bottom: 6px; }" in css_text
+    assert ".toolbar-top { align-items: flex-start; }" in css_text
+    assert ".toolbar-mt-12 { margin-top: 12px; }" in css_text
+    assert ".flex-1-280 { flex: 1; min-width: 280px; }" in css_text
+    assert ".flex-2-320 { flex: 2; min-width: 320px; }" in css_text
+    assert ".flex-1-320 { flex: 1; min-width: 320px; }" in css_text
+    assert ".field-label { margin-bottom: 4px; }" in css_text
+    assert ".ta-h-70 { height: 70px; }" in css_text
+    assert ".ta-h-90 { height: 90px; }" in css_text
+    assert ".ta-h-120 { height: 120px; }" in css_text
+    assert ".prefs-snapshot {" in css_text
+    assert ".card-value-small { font-size: 14px; }" in css_text
+    assert "min-height: 44px;" in css_text
+    assert "button:focus-visible {" in css_text
+    assert "box-shadow: var(--focus);" in css_text
+    assert css_text.count(".section-title {") == 1
+
+
+def test_admin_js_has_no_inline_style_templates():
+    js_path = Path(__file__).resolve().parents[1] / "static" / "admin" / "admin.js"
+    js_text = js_path.read_text(encoding="utf-8")
+
+    assert "style=" not in js_text
+    assert "<div class=\"table-wrap mt-8\">" in js_text
+    assert 'aria-label="评论关联任务表"' in js_text
+    assert '<tr><th scope="col">ID</th><th scope="col">状态</th><th scope="col">回复</th><th scope="col">操作</th></tr>' in js_text
+    assert '<th>' not in js_text
+    assert '<table>' not in js_text
+    assert js_text.count('aria-label="评论关联任务表"') == 1
+    assert js_text.count('<th scope="col">') == 4
+    assert '<thead>' in js_text
+
+
+def test_admin_page_template_has_no_inline_style():
+    admin_py_path = Path(__file__).resolve().parents[1] / "api" / "admin.py"
+    admin_py_text = admin_py_path.read_text(encoding="utf-8")
+
+    assert "style=" not in admin_py_text
+    assert "<th scope=\"col\">" in admin_py_text
+    assert "<th>" not in admin_py_text
+    assert "<table>" not in admin_py_text
+    assert admin_py_text.count("<table aria-label=") == 5
+    normalized_admin_template = admin_py_text.replace('\\"', '"')
+    template_table_labels = re.findall(r'<table aria-label="([^"]+)"', normalized_admin_template)
+    assert sorted(template_table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"])
+    for table_label in ("知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"):
+        pattern = rf'aria-label=\\?"{re.escape(table_label)}\\?"'
+        assert len(re.findall(pattern, admin_py_text)) == 1
+    assert admin_py_text.count('/static/admin/admin.css') == 1
+    assert admin_py_text.count('/static/admin/admin.js') == 1
+
+
+
+
+def test_admin_static_assets_exist_and_have_core_markers():
+    static_dir = Path(__file__).resolve().parents[1] / "static" / "admin"
+    css_path = static_dir / "admin.css"
+    js_path = static_dir / "admin.js"
+
+    assert css_path.exists()
+    assert js_path.exists()
+
+    css_text = css_path.read_text(encoding="utf-8")
+    js_text = js_path.read_text(encoding="utf-8")
+
+    assert css_text.strip()
+    assert js_text.strip()
+    assert ".table-wrap" in css_text
+    assert ".status-pill" in css_text
+    assert "function refreshJobs" in js_text
+    assert "function refreshAuditLogs" in js_text
 
 
 def test_admin_knowledge_crud_endpoints(client):
