@@ -382,3 +382,60 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         self.assertGreaterEqual(summary["by_event_type"].get("publish_result", 0), 1)
         self.assertGreaterEqual(summary["rates"]["publish_success_rate"], 1.0)
         self.assertGreaterEqual(summary["latency"]["samples"], 1)
+
+    def test_task_retry_strategy_configured_from_settings(self) -> None:
+        task = jobs.process_comment_event_task
+
+        self.assertEqual(task.max_retries, settings.worker_max_retries)
+        self.assertEqual(task.retry_backoff, settings.worker_retry_backoff)
+        self.assertEqual(task.retry_jitter, settings.worker_retry_jitter)
+        self.assertIn(jobs.RetryableWorkerError, task.autoretry_for)
+        self.assertIn(jobs.NonRetryableWorkerError, task.dont_autoretry_for)
+
+    def test_payload_error_is_non_retryable_and_observable(self) -> None:
+        captured_events: list[tuple[str, dict]] = []
+
+        def fake_record_observability_event(event_type: str, **kwargs) -> None:
+            captured_events.append((event_type, kwargs))
+
+        with patch.object(jobs, "record_observability_event", side_effect=fake_record_observability_event):
+            with self.assertRaises(jobs.NonRetryableWorkerError):
+                jobs.process_comment_event_task.run({"trace_id": "trace-non-retryable"})
+
+        self.assertTrue(
+            any(
+                event_type == "job_failed"
+                and payload.get("status") == "failed_non_retryable"
+                and payload.get("metadata", {}).get("retryable") is False
+                for event_type, payload in captured_events
+            )
+        )
+
+    def test_runtime_error_is_retryable_and_observable(self) -> None:
+        self._insert_comment("comment-retryable-error", content="触发可重试异常")
+        captured_events: list[tuple[str, dict]] = []
+
+        def fake_record_observability_event(event_type: str, **kwargs) -> None:
+            captured_events.append((event_type, kwargs))
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", side_effect=RuntimeError("temporary network fail")),
+            patch.object(jobs, "record_observability_event", side_effect=fake_record_observability_event),
+        ):
+            with self.assertRaises(jobs.RetryableWorkerError):
+                jobs.process_comment_event_task.run(
+                    {
+                        "comment_id": "comment-retryable-error",
+                        "trace_id": "trace-retryable-error",
+                    }
+                )
+
+        self.assertTrue(
+            any(
+                event_type == "job_failed"
+                and payload.get("status") == "failed_retryable"
+                and payload.get("metadata", {}).get("retryable") is True
+                for event_type, payload in captured_events
+            )
+        )

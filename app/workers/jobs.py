@@ -30,14 +30,42 @@ celery_app = Celery(
 logger = logging.getLogger(__name__)
 
 
+class NonRetryableWorkerError(Exception):
+    """输入载荷或上下文不可恢复错误，不应重试。"""
+
+
+class RetryableWorkerError(Exception):
+    """短暂性错误，可通过重试恢复。"""
+
+
+def _build_failure_metadata(exc: Exception, *, retryable: bool) -> dict[str, object]:
+    return {
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "retryable": retryable,
+    }
+
+
 def enqueue_comment_event(event: CommentEvent) -> None:
     process_comment_event_task.delay(event.model_dump())
 
 
-@celery_app.task(name="process_comment_event_task")
-def process_comment_event_task(event_payload: dict):
+@celery_app.task(
+    name="process_comment_event_task",
+    bind=True,
+    autoretry_for=(RetryableWorkerError,),
+    dont_autoretry_for=(NonRetryableWorkerError,),
+    retry_backoff=settings.worker_retry_backoff,
+    retry_jitter=settings.worker_retry_jitter,
+    max_retries=settings.worker_max_retries,
+    retry_kwargs={"max_retries": settings.worker_max_retries},
+)
+def process_comment_event_task(self, event_payload: dict):
     trace_id = ensure_trace_id(event_payload.get("trace_id") if isinstance(event_payload, dict) else None)
-    comment_id = event_payload.get("comment_id") if isinstance(event_payload, dict) else None
+    comment_id = None
+    if isinstance(event_payload, dict):
+        normalized_comment_id = str(event_payload.get("comment_id") or "").strip()
+        comment_id = normalized_comment_id or None
     started_at = time.perf_counter()
 
     def finish_observability(status: str, *, job_id: int | None = None, metadata: dict[str, object] | None = None) -> None:
@@ -62,6 +90,11 @@ def process_comment_event_task(event_payload: dict):
 
     db: Session = SessionLocal()
     try:
+        if not isinstance(event_payload, dict):
+            raise NonRetryableWorkerError("event_payload_must_be_dict")
+        if not comment_id:
+            raise NonRetryableWorkerError("comment_id_missing")
+
         raw_force_long = event_payload.get("force_long", False)
         requested_style_profile = str(event_payload.get("style_profile") or "auto").strip().lower()
         requested_role_profile = str(event_payload.get("role_profile") or "auto").strip().lower()
@@ -322,13 +355,71 @@ def process_comment_event_task(event_payload: dict):
             "published_at": published_at.isoformat() if isinstance(published_at, datetime) else None,
             "trace_id": trace_id,
         }
-    except Exception:
+    except NonRetryableWorkerError as exc:
         db.rollback()
-        finish_observability("failed")
-        logger.exception(
-            "worker_process_failed | %s",
-            build_log_context(trace_id=trace_id, comment_id=comment_id, status="failed"),
+        failure_metadata = _build_failure_metadata(exc, retryable=False)
+        finish_observability("failed_non_retryable", metadata=failure_metadata)
+        record_observability_event(
+            "job_failed",
+            trace_id=trace_id,
+            comment_id=comment_id,
+            status="failed_non_retryable",
+            metadata=failure_metadata,
+        )
+        logger.warning(
+            "worker_process_non_retryable_failure | %s",
+            build_log_context(
+                trace_id=trace_id,
+                comment_id=comment_id,
+                status="failed_non_retryable",
+                error_type=failure_metadata["error_type"],
+                error_message=failure_metadata["error_message"],
+            ),
         )
         raise
+    except RetryableWorkerError as exc:
+        db.rollback()
+        failure_metadata = _build_failure_metadata(exc, retryable=True)
+        finish_observability("failed_retryable", metadata=failure_metadata)
+        record_observability_event(
+            "job_failed",
+            trace_id=trace_id,
+            comment_id=comment_id,
+            status="failed_retryable",
+            metadata=failure_metadata,
+        )
+        logger.exception(
+            "worker_process_retryable_failure | %s",
+            build_log_context(
+                trace_id=trace_id,
+                comment_id=comment_id,
+                status="failed_retryable",
+                error_type=failure_metadata["error_type"],
+                error_message=failure_metadata["error_message"],
+            ),
+        )
+        raise
+    except Exception as exc:
+        db.rollback()
+        failure_metadata = _build_failure_metadata(exc, retryable=True)
+        finish_observability("failed_retryable", metadata=failure_metadata)
+        record_observability_event(
+            "job_failed",
+            trace_id=trace_id,
+            comment_id=comment_id,
+            status="failed_retryable",
+            metadata=failure_metadata,
+        )
+        logger.exception(
+            "worker_process_retryable_failure | %s",
+            build_log_context(
+                trace_id=trace_id,
+                comment_id=comment_id,
+                status="failed_retryable",
+                error_type=failure_metadata["error_type"],
+                error_message=failure_metadata["error_message"],
+            ),
+        )
+        raise RetryableWorkerError(str(exc)) from exc
     finally:
         db.close()

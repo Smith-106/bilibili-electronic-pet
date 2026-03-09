@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     llm_retry_attempts: int = 2
     llm_retry_wait_seconds: int = 1
     llm_fallback_to_mock: bool = True
+    worker_max_retries: int = 3
+    worker_retry_backoff: int = 2
+    worker_retry_jitter: bool = True
 
     publisher_mode: str = "manual_queue"
     publisher_webhook_url: str = ""
@@ -167,6 +170,26 @@ class Settings(BaseSettings):
             raise ValueError("SEARCH_MAX_HITS must be >= 1")
         if n > 20:
             raise ValueError("SEARCH_MAX_HITS must be <= 20")
+        return n
+
+    @field_validator("worker_max_retries")
+    @classmethod
+    def validate_worker_max_retries(cls, value: int) -> int:
+        n = int(value)
+        if n < 0:
+            raise ValueError("WORKER_MAX_RETRIES must be >= 0")
+        if n > 20:
+            raise ValueError("WORKER_MAX_RETRIES must be <= 20")
+        return n
+
+    @field_validator("worker_retry_backoff")
+    @classmethod
+    def validate_worker_retry_backoff(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("WORKER_RETRY_BACKOFF must be >= 1")
+        if n > 60:
+            raise ValueError("WORKER_RETRY_BACKOFF must be <= 60")
         return n
 
     @field_validator("safety_pii_patterns")
