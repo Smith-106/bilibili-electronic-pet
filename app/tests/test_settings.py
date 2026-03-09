@@ -67,7 +67,10 @@ class SettingsSecurityTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             Settings(app_env="development", publisher_mode="invalid")
 
-    def test_platform_publish_sources_are_trimmed(self):
+    def test_pipeline_search_provider_is_allowed(self):
+        settings = Settings(app_env="development", search_provider="pipeline_v1")
+        self.assertEqual(settings.search_provider, "pipeline_v1")
+
         settings = Settings(
             app_env="development",
             platform_bilibili_publish_source="  bilibili-open  ",

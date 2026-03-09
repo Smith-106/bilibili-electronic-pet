@@ -1,16 +1,25 @@
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import ValidationError
 
 from app.schemas import CollectorSource, CommentEvent, PlatformName
+from app.services.platforms import get_platform_config
 
 _REQUIRED_FIELDS = ("comment_id", "video_id", "user_id", "content")
-_SUPPORTED_PLATFORM_SOURCES: dict[PlatformName, CollectorSource] = {
-    "bilibili": "bilibili",
-    "douyin": "douyin",
-    "kuaishou": "kuaishou",
-}
+
+
+class PlatformCollectorAdapter(Protocol):
+    def collect(self, payload: Mapping[str, Any]) -> CommentEvent:
+        ...
+
+
+class SourcePlatformCollector:
+    def __init__(self, source: CollectorSource):
+        self._source = source
+
+    def collect(self, payload: Mapping[str, Any]) -> CommentEvent:
+        return collect_comment_event(payload, source=self._source)
 
 
 def collect_comment_event(
@@ -44,11 +53,30 @@ def collect_official_connector_event(payload: Mapping[str, Any]) -> CommentEvent
     return collect_comment_event(payload, source="official")
 
 
+def get_platform_collector_source(platform: PlatformName) -> CollectorSource:
+    try:
+        config = get_platform_config(platform)
+    except KeyError as exc:
+        raise ValueError(f"unsupported_platform: {platform}") from exc
+    return config["collector_source"]
+
+
+def get_platform_collector(platform: PlatformName) -> PlatformCollectorAdapter:
+    source = get_platform_collector_source(platform)
+    collector = _PLATFORM_COLLECTOR_ADAPTERS.get(platform)
+    if collector is None:
+        collector = SourcePlatformCollector(source)
+        _PLATFORM_COLLECTOR_ADAPTERS[platform] = collector
+    return collector
+
+
+def collect_platform_event_via_config(payload: Mapping[str, Any], platform: PlatformName) -> CommentEvent:
+    collector = get_platform_collector(platform)
+    return collector.collect(payload)
+
+
 def collect_platform_event(payload: Mapping[str, Any], platform: PlatformName) -> CommentEvent:
-    source = _SUPPORTED_PLATFORM_SOURCES.get(platform)
-    if source is None:
-        raise ValueError(f"unsupported_platform: {platform}")
-    return collect_comment_event(payload, source=source)
+    return collect_platform_event_via_config(payload, platform)
 
 
 def _build_comment_event(mapped: dict[str, Any], source: CollectorSource) -> CommentEvent:
@@ -263,6 +291,9 @@ def _format_validation_error(exc: ValidationError) -> str:
         message = str(item.get("msg", "invalid"))
         details.append(f"{location}:{message}")
     return "; ".join(details) if details else "validation_failed"
+
+
+_PLATFORM_COLLECTOR_ADAPTERS: dict[PlatformName, PlatformCollectorAdapter] = {}
 
 
 _SOURCE_MAPPERS: dict[CollectorSource, Callable[[Mapping[str, Any]], dict[str, Any]]] = {

@@ -8,8 +8,8 @@ from app.db import get_db
 from app.models.entities import PublishLog
 from app.schemas import PlatformName, PublishWebhookRequest
 from app.services.hashing import reply_hash, verify_payload_signature
-from app.services.observability import build_log_context, ensure_trace_id
-from app.services.platforms import is_platform_enabled
+from app.services.observability import build_log_context, ensure_trace_id, record_observability_event
+from app.services.platforms import get_platform_publish_source, is_platform_enabled
 from app.services.publisher import publish_gateway_reply, publish_platform_reply
 from app.settings import settings
 
@@ -78,6 +78,13 @@ def _publish_core(
         .first()
     )
     if existing:
+        record_observability_event(
+            "publish_result",
+            trace_id=trace_id,
+            comment_id=payload.comment_id,
+            status="idempotent_replay",
+            metadata={"platform": platform or "gateway"},
+        )
         logger.info(
             "gateway_publish_duplicate | %s",
             build_log_context(
@@ -113,6 +120,13 @@ def _publish_core(
         )
     if not published:
         normalized_reason = _normalize_failed_reason(publish_reason)
+        record_observability_event(
+            "publish_result",
+            trace_id=trace_id,
+            comment_id=payload.comment_id,
+            status="failed",
+            metadata={"reason": normalized_reason, "platform": platform or "gateway"},
+        )
         logger.warning(
             "gateway_publish_failed | %s",
             build_log_context(
@@ -130,16 +144,19 @@ def _publish_core(
         }
 
     source_value = payload.source
-    if platform == "bilibili":
-        source_value = settings.platform_bilibili_publish_source
-    elif platform == "douyin":
-        source_value = settings.platform_douyin_publish_source
-    elif platform == "kuaishou":
-        source_value = settings.platform_kuaishou_publish_source
+    if platform:
+        source_value = get_platform_publish_source(platform)
 
     log = PublishLog(comment_id=payload.comment_id, reply_hash=hashed, source=source_value)
     db.add(log)
     db.commit()
+    record_observability_event(
+        "publish_result",
+        trace_id=trace_id,
+        comment_id=payload.comment_id,
+        status="published",
+        metadata={"reason": publish_reason, "platform": platform or "gateway", "source": source_value},
+    )
     logger.info(
         "gateway_publish_recorded | %s",
         build_log_context(

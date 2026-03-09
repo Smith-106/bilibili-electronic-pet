@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.auth import require_api_key
 from app.db import get_db
 from app.models.entities import KnowledgeEntry, RoleCard
+from app.services.observability import get_observability_summary
 from app.settings import settings
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_api_key)])
@@ -3044,6 +3045,14 @@ def disable_role_card(card_key: str, db: Session = Depends(get_db)):
             "is_active": bool(item.is_active),
             "updated_at": item.updated_at.isoformat() if item.updated_at else None,
         },
+    }
+
+
+@router.get("/api/admin/observability/summary")
+def get_observability_metrics_summary(window_minutes: int = 60):
+    return {
+        "ok": True,
+        "summary": get_observability_summary(window_minutes=window_minutes),
     }
 
 

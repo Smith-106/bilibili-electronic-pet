@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.db import Base
 from app.models.entities import Comment, KnowledgeEntry, ReplyJob, RoleCard
 from app.services.generator import GenerationResult
+from app.services.observability import get_observability_summary, reset_observability_events
 from app.services.search_provider import SearchItem, SearchResult
 from app.settings import settings
 from app.workers import jobs
@@ -16,6 +17,7 @@ from app.workers import jobs
 
 class ProcessCommentSafetyFlowTests(unittest.TestCase):
     def setUp(self) -> None:
+        reset_observability_events()
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(self.engine)
         self.SessionLocal = sessionmaker(bind=self.engine, autoflush=False, autocommit=False)
@@ -327,4 +329,28 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         self.assertEqual(second_call["role_profile"], "comfort")
         self.assertIsNone(second_call["role_card"])
         self.assertEqual(second_call["active_role_card"].get("key"), "active_card")
+
+    def test_observability_summary_records_job_and_publish_metrics(self) -> None:
+        self._insert_comment("comment-observability", content="观测链路测试")
+        published_at = datetime.now(timezone.utc)
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("观测回复")),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(True, "simulated_auto_publish", published_at)),
+        ):
+            result = jobs.process_comment_event_task.run({"comment_id": "comment-observability"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "published")
+
+        summary = get_observability_summary(window_minutes=60)
+        self.assertGreaterEqual(summary["totals"]["events"], 2)
+        self.assertGreaterEqual(summary["by_event_type"].get("job_started", 0), 1)
+        self.assertGreaterEqual(summary["by_event_type"].get("job_finished", 0), 1)
+        self.assertGreaterEqual(summary["by_event_type"].get("publish_result", 0), 1)
+        self.assertGreaterEqual(summary["rates"]["publish_success_rate"], 1.0)
+        self.assertGreaterEqual(summary["latency"]["samples"], 1)
 

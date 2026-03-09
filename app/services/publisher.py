@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from app.schemas import PlatformName
 from app.services.hashing import sign_payload
 from app.services.platforms import get_platform_config, get_platform_publish_source
+from app.services.provider_registry import ProviderRegistry
 from app.settings import settings
 
 
@@ -158,15 +159,19 @@ class RealPublishPublisher:
             return False, f"real_publish_error:{type(exc).__name__}", None
 
 
+_PUBLISHER_REGISTRY = ProviderRegistry[PublisherAdapter](default_provider="manual_queue")
+_PUBLISHER_REGISTRY.register("manual_queue", ManualQueuePublisher())
+_PUBLISHER_REGISTRY.register("simulated", SimulatedPublisher())
+_PUBLISHER_REGISTRY.register("webhook", WebhookPublisher())
+_PUBLISHER_REGISTRY.register("real_publish", RealPublishPublisher())
+
+
 def _get_publisher() -> PublisherAdapter:
     mode = settings.publisher_mode.lower().strip()
-    if mode == "simulated":
-        return SimulatedPublisher()
-    if mode == "webhook":
-        return WebhookPublisher()
-    if mode == "real_publish":
-        return RealPublishPublisher()
-    return ManualQueuePublisher()
+    try:
+        return _PUBLISHER_REGISTRY.resolve(mode)
+    except KeyError:
+        return ManualQueuePublisher()
 
 
 def get_platform_publisher(platform: PlatformName) -> PublisherAdapter:

@@ -1,10 +1,12 @@
 import pytest
 
+from app.services import collector as collector_service
 from app.services.collector import (
     collect_official_connector_event,
     collect_platform_event,
     collect_poller_event,
     collect_webhook_event,
+    get_platform_collector,
 )
 
 
@@ -127,3 +129,56 @@ def test_collect_poller_event_missing_required_fields():
 
     assert "invalid_poller_payload" in str(exc_info.value)
     assert "missing_fields=content" in str(exc_info.value)
+
+
+def test_collect_platform_event_uses_platform_collector_adapter(monkeypatch):
+    calls: list[dict] = []
+    adapter = get_platform_collector("bilibili")
+    original = adapter.collect
+
+    def fake_collect(payload):
+        calls.append(payload)
+        return original(payload)
+
+    monkeypatch.setattr(adapter, "collect", fake_collect)
+
+    event = collect_platform_event(
+        {
+            "rpid": "c-bili-adapter-1",
+            "aid": "v-bili-adapter-1",
+            "mid": 13579,
+            "message": "hello adapter",
+        },
+        "bilibili",
+    )
+
+    assert event.comment_id == "c-bili-adapter-1"
+    assert len(calls) == 1
+    assert calls[0]["rpid"] == "c-bili-adapter-1"
+
+
+def test_get_platform_collector_source_reads_platform_config(monkeypatch):
+    monkeypatch.setattr(
+        collector_service,
+        "get_platform_config",
+        lambda platform: {
+            "enabled_attr": "platform_bilibili_enabled",
+            "source_attr": "platform_bilibili_publish_source",
+            "default_source": "bilibili-bot",
+            "collector_source": "bilibili",
+        },
+    )
+
+    assert collector_service.get_platform_collector_source("bilibili") == "bilibili"
+
+
+def test_get_platform_collector_source_invalid_platform_raises_value_error(monkeypatch):
+    def fake_get_platform_config(platform):
+        raise KeyError(platform)
+
+    monkeypatch.setattr(collector_service, "get_platform_config", fake_get_platform_config)
+
+    with pytest.raises(ValueError) as exc_info:
+        collector_service.get_platform_collector_source("unknown")
+
+    assert str(exc_info.value) == "unsupported_platform: unknown"

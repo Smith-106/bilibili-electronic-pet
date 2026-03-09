@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     _allowed_app_envs: ClassVar[set[str]] = {"development", "test", "staging", "production"}
     _allowed_publisher_modes: ClassVar[set[str]] = {"manual_queue", "simulated", "webhook", "real_publish"}
     _allowed_safety_pii_actions: ClassVar[set[str]] = {"manual_queue", "blocked"}
-    _allowed_search_providers: ClassVar[set[str]] = {"mock", "disabled"}
+    _allowed_search_providers: ClassVar[set[str]] = {"mock", "disabled", "pipeline_v1"}
     _allowed_style_profiles: ClassVar[set[str]] = {"auto", "empathy", "meme", "normal"}
     _allowed_role_profiles: ClassVar[set[str]] = {"auto", "default", "comfort", "playful"}
 

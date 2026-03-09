@@ -11,6 +11,7 @@ from app.services.prompt_config import (
     get_prompt_default_length,
     get_prompt_length_distribution,
 )
+from app.services.provider_registry import ProviderRegistry
 from app.settings import settings
 
 
@@ -412,22 +413,21 @@ class OpenAICompatibleProvider:
 
 
 ProviderFactory = Callable[[], GeneratorProvider]
-_PROVIDER_FACTORIES: dict[str, ProviderFactory] = {
-    "mock": MockProvider,
-    "openai": OpenAICompatibleProvider,
-    "openai_compatible": OpenAICompatibleProvider,
-}
+_PROVIDER_REGISTRY = ProviderRegistry[ProviderFactory](default_provider="mock")
+_PROVIDER_REGISTRY.register("mock", MockProvider)
+_PROVIDER_REGISTRY.register("openai", OpenAICompatibleProvider)
+_PROVIDER_REGISTRY.register("openai_compatible", OpenAICompatibleProvider)
 
 
 def register_generator_provider(name: str, factory: ProviderFactory) -> None:
-    key = name.lower().strip()
-    if key:
-        _PROVIDER_FACTORIES[key] = factory
+    _PROVIDER_REGISTRY.register(name, factory)
 
 
 def _get_provider(provider_name: str) -> GeneratorProvider:
-    key = provider_name.lower().strip()
-    factory = _PROVIDER_FACTORIES.get(key, _PROVIDER_FACTORIES["mock"])
+    try:
+        factory = _PROVIDER_REGISTRY.resolve(provider_name)
+    except KeyError:
+        factory = MockProvider
     return factory()
 
 

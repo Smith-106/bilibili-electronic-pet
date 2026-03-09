@@ -168,6 +168,19 @@ def test_gateway_publish_douyin_route_returns_platform_disabled(gateway_test_cli
     assert response.json()["detail"] == "platform_disabled: douyin"
 
 
+def test_gateway_publish_kuaishou_route_returns_platform_disabled(gateway_test_client, monkeypatch):
+    client, _ = gateway_test_client
+    monkeypatch.setattr(settings, "platform_kuaishou_enabled", False)
+
+    response = client.post(
+        "/gateway/publish/kuaishou",
+        json={"comment_id": "comment-ks-1", "reply_text": "reply text"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "platform_disabled: kuaishou"
+
+
 def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway_test_client, monkeypatch):
     client, testing_session_local = gateway_test_client
     monkeypatch.setattr(settings, "platform_bilibili_enabled", True)
@@ -212,6 +225,68 @@ def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway
         logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-bili-1").all()
         assert len(logs) == 1
         assert logs[0].source == "bilibili-open"
+
+
+def test_gateway_publish_douyin_route_uses_platform_source_fallback(gateway_test_client, monkeypatch):
+    client, testing_session_local = gateway_test_client
+    monkeypatch.setattr(settings, "platform_douyin_enabled", True)
+    monkeypatch.setattr(settings, "platform_douyin_publish_source", "")
+
+    def fake_publish_platform_reply(platform, comment_id, reply_text, force_publish=False, trace_id=None):
+        _ = platform, comment_id, reply_text, force_publish, trace_id
+        return True, "platform_publish_ok", datetime(2026, 3, 7, 2, 30, 0)
+
+    monkeypatch.setattr(gateway_api, "publish_platform_reply", fake_publish_platform_reply)
+
+    response = client.post(
+        "/gateway/publish/douyin",
+        json={
+            "comment_id": "comment-douyin-1",
+            "reply_text": "reply text",
+            "trace_id": "trace-douyin-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["published"] is True
+
+    with testing_session_local() as db:
+        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-douyin-1").all()
+        assert len(logs) == 1
+        assert logs[0].source == "douyin-bot"
+
+
+def test_gateway_publish_kuaishou_route_uses_configured_platform_source(gateway_test_client, monkeypatch):
+    client, testing_session_local = gateway_test_client
+    monkeypatch.setattr(settings, "platform_kuaishou_enabled", True)
+    monkeypatch.setattr(settings, "platform_kuaishou_publish_source", "kuaishou-open")
+
+    def fake_publish_platform_reply(platform, comment_id, reply_text, force_publish=False, trace_id=None):
+        _ = platform, comment_id, reply_text, force_publish, trace_id
+        return True, "platform_publish_ok", datetime(2026, 3, 7, 2, 45, 0)
+
+    monkeypatch.setattr(gateway_api, "publish_platform_reply", fake_publish_platform_reply)
+
+    response = client.post(
+        "/gateway/publish/kuaishou",
+        json={
+            "comment_id": "comment-kuaishou-1",
+            "reply_text": "reply text",
+            "trace_id": "trace-kuaishou-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["published"] is True
+
+    with testing_session_local() as db:
+        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-kuaishou-1").all()
+        assert len(logs) == 1
+        assert logs[0].source == "kuaishou-open"
 
 
 def test_gateway_publish_failure_returns_traceable_reason(gateway_test_client, monkeypatch):

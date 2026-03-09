@@ -163,6 +163,18 @@ def test_admin_role_card_crud_and_activation(client):
     assert missing.status_code == 404
 
 
+def test_admin_observability_summary_endpoint(client):
+    response = client.get("/api/admin/observability/summary?window_minutes=60")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    summary = payload["summary"]
+    assert summary["window_minutes"] == 60
+    assert "totals" in summary
+    assert "rates" in summary
+    assert "latency" in summary
+
+
 def test_admin_gateway_publish_endpoint(client, monkeypatch):
     monkeypatch.setattr(gateway_api.settings, "gateway_token", "")
     monkeypatch.setattr(gateway_api.settings, "gateway_hmac_secret", "")

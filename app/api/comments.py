@@ -20,9 +20,19 @@ from app.schemas import (
     RetryJobRequest,
 )
 from app.settings import settings
-from app.services.collector import collect_official_connector_event, collect_platform_event, collect_poller_event, collect_webhook_event
+from app.services.collector import (
+    collect_official_connector_event,
+    collect_platform_event_via_config,
+    collect_poller_event,
+    collect_webhook_event,
+)
 from app.services.dedupe import remember_reply_phrase
-from app.services.observability import build_log_context, ensure_trace_id, normalize_status_counts
+from app.services.observability import (
+    build_log_context,
+    ensure_trace_id,
+    normalize_status_counts,
+    record_observability_event,
+)
 from app.services.platforms import is_platform_enabled
 from app.services.publisher import publish_reply
 from app.workers.jobs import enqueue_comment_event, process_comment_event_task
@@ -107,6 +117,13 @@ def _ingest_comment_event_core(db: Session, event: CommentEvent, *, source: str)
     event = event.model_copy(update={"trace_id": trace_id})
     existing = db.query(Comment).filter(Comment.comment_id == event.comment_id).first()
     if existing:
+        record_observability_event(
+            "comment_ingested",
+            trace_id=trace_id,
+            comment_id=event.comment_id,
+            status="duplicate_ignored",
+            metadata={"source": source},
+        )
         _log_info(
             "comment_ingest_duplicate",
             trace_id=trace_id,
@@ -126,6 +143,13 @@ def _ingest_comment_event_core(db: Session, event: CommentEvent, *, source: str)
     db.add(comment)
     db.commit()
 
+    record_observability_event(
+        "comment_ingested",
+        trace_id=trace_id,
+        comment_id=event.comment_id,
+        status="queued",
+        metadata={"source": source},
+    )
     enqueue_comment_event(event)
     _log_info(
         "comment_ingest_queued",
@@ -152,7 +176,7 @@ def _normalize_platform_event_payload(raw_payload: dict, platform: PlatformName)
     if not is_platform_enabled(platform):
         raise HTTPException(status_code=403, detail=f"platform_disabled: {platform}")
     try:
-        return collect_platform_event(raw_payload, platform)
+        return collect_platform_event_via_config(raw_payload, platform)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

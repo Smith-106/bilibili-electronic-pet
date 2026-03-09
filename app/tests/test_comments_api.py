@@ -170,6 +170,46 @@ def test_douyin_ingest_returns_platform_disabled_when_switch_off(client_and_stat
     assert not queued_payloads
 
 
+def test_kuaishou_ingest_returns_platform_disabled_when_switch_off(client_and_state, monkeypatch):
+    client, session_local, queued_payloads = client_and_state
+    _ = session_local
+    monkeypatch.setattr(comments_api.settings, "platform_kuaishou_enabled", False)
+
+    response = client.post(
+        "/api/events/comment/kuaishou",
+        json={
+            "comment_id_str": "c-kuaishou-disabled-1",
+            "photo_id": "v-kuaishou-disabled-1",
+            "author_id": "u-kuaishou-disabled-1",
+            "message": "hello kuaishou",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "platform_disabled: kuaishou"
+    assert not queued_payloads
+
+
+def test_bilibili_ingest_returns_platform_disabled_when_switch_off(client_and_state, monkeypatch):
+    client, session_local, queued_payloads = client_and_state
+    _ = session_local
+    monkeypatch.setattr(comments_api.settings, "platform_bilibili_enabled", False)
+
+    response = client.post(
+        "/api/events/comment/bilibili",
+        json={
+            "rpid": "c-bilibili-disabled-1",
+            "aid": "v-bilibili-disabled-1",
+            "mid": "u-bilibili-disabled-1",
+            "message": "hello bilibili",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "platform_disabled: bilibili"
+    assert not queued_payloads
+
+
 def test_bilibili_ingest_uses_platform_route_mapping(client_and_state, monkeypatch):
     client, session_local, queued_payloads = client_and_state
     monkeypatch.setattr(comments_api.settings, "platform_bilibili_enabled", True)
@@ -197,3 +237,65 @@ def test_bilibili_ingest_uses_platform_route_mapping(client_and_state, monkeypat
         record = db.query(Comment).filter(Comment.comment_id == "c-bili-route-1").first()
         assert record is not None
         assert record.video_id == "v-bili-route-1"
+
+
+def test_platform_ingest_routes_through_unified_collector_selector(client_and_state, monkeypatch):
+    client, session_local, queued_payloads = client_and_state
+    _ = session_local
+    monkeypatch.setattr(comments_api.settings, "platform_bilibili_enabled", True)
+
+    calls: list[tuple[str, dict]] = []
+    original = comments_api.collect_platform_event_via_config
+
+    def fake_collect_platform_event_via_config(raw_payload: dict, platform: str):
+        calls.append((platform, raw_payload))
+        return original(raw_payload, platform)
+
+    monkeypatch.setattr(comments_api, "collect_platform_event_via_config", fake_collect_platform_event_via_config)
+
+    response = client.post(
+        "/api/events/comment/bilibili",
+        json={
+            "rpid": "c-bili-selector-1",
+            "aid": "v-bili-selector-1",
+            "mid": 67890,
+            "message": "hello selector",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["comment_id"] == "c-bili-selector-1"
+    assert len(calls) == 1
+    assert calls[0][0] == "bilibili"
+    assert calls[0][1]["rpid"] == "c-bili-selector-1"
+    assert len(queued_payloads) == 1
+
+
+def test_kuaishou_ingest_uses_platform_route_mapping(client_and_state, monkeypatch):
+    client, session_local, queued_payloads = client_and_state
+    monkeypatch.setattr(comments_api.settings, "platform_kuaishou_enabled", True)
+
+    response = client.post(
+        "/api/events/comment/kuaishou",
+        json={
+            "comment_id_str": "c-ks-route-1",
+            "photo_id": "v-ks-route-1",
+            "author_id": "u-ks-route-1",
+            "message": "hello kuaishou route",
+            "root_comment_id": "p-ks-route-1",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["queued"] is True
+    assert payload["comment_id"] == "c-ks-route-1"
+    assert len(queued_payloads) == 1
+    assert queued_payloads[0]["video_id"] == "v-ks-route-1"
+
+    with session_local() as db:
+        record = db.query(Comment).filter(Comment.comment_id == "c-ks-route-1").first()
+        assert record is not None
+        assert record.parent_id == "p-ks-route-1"
