@@ -49,6 +49,7 @@
 │  ├─ services/     # decider / generator / publisher / prompt_config ...
 │  ├─ workers/      # celery tasks
 │  ├─ models/       # ORM entities
+│  ├─ static/admin/ # admin.css / admin.js（管理页静态资源）
 │  ├─ schemas.py
 │  └─ main.py
 ├─ config/
@@ -132,7 +133,11 @@ curl -sS http://127.0.0.1:8000/health
 ### 管理页
 
 - `GET /admin`
+- 管理页前端已工程化为静态资源：
+  - `/static/admin/admin.css`
+  - `/static/admin/admin.js`
 - 已覆盖单项诊断能力：评论详情查询、任务详情查询、单任务重试（`force_long` + 成功后自动重置选项）
+- 已强化可访问性与语义一致性：`aria-label`、`role/aria-live`、表头 `th scope="col"`、`prefers-reduced-motion`
 
 ## 环境变量（重点）
 
@@ -182,7 +187,7 @@ curl -sS http://127.0.0.1:8000/health
 
 执行内容：
 
-1. `cloud-validate`：安装依赖、`pytest app/tests -q`、`docker build`
+1. `cloud-validate`：安装依赖、`pytest app/tests -q`、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
 2. `build-and-push-ghcr`：构建并推送镜像到 `ghcr.io/<owner>/<repo>`（标签：`latest`、`sha-<commit>`）
 
 ## 常见问题
@@ -195,7 +200,15 @@ curl -sS http://127.0.0.1:8000/health
 
 通常是 Docker Desktop 未启动或引擎未就绪。先确认 Docker 正常运行再执行 compose。
 
-### 3) 发布 401 / 签名失败
+### 3) 管理页静态资源 404
+
+优先检查：
+
+- `app/static/admin/admin.css` 与 `app/static/admin/admin.js` 是否存在
+- 访问路径是否为 `/static/admin/admin.css`、`/static/admin/admin.js`
+- `/admin` 页面源码中两条静态资源引用是否各 1 次
+
+### 4) 发布 401 / 签名失败
 
 优先检查：
 
