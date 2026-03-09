@@ -175,6 +175,35 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.length_mode, "long")
 
+    def test_force_long_string_payload_is_normalized_for_observability(self) -> None:
+        self._insert_comment("comment-force-long-string", content="短评")
+        job_started_metadata: list[dict] = []
+
+        def fake_record_observability_event(event_type: str, **kwargs) -> None:
+            if event_type == "job_started":
+                job_started_metadata.append(dict(kwargs.get("metadata") or {}))
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("好的，我们慢慢聊。")),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "record_observability_event", side_effect=fake_record_observability_event),
+        ):
+            result = jobs.process_comment_event_task.run(
+                {
+                    "comment_id": "comment-force-long-string",
+                    "force_long": "false",
+                    "trace_id": "trace-force-long-string",
+                }
+            )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "manual_queue")
+        self.assertEqual(len(job_started_metadata), 1)
+        self.assertEqual(job_started_metadata[0].get("force_long"), False)
+
     def test_knowledge_hit_marks_generation_flags(self) -> None:
         self._insert_comment("comment-knowledge-hit", content="Doro 喜欢欧润吉")
         self.db.add(
@@ -353,4 +382,3 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         self.assertGreaterEqual(summary["by_event_type"].get("publish_result", 0), 1)
         self.assertGreaterEqual(summary["rates"]["publish_success_rate"], 1.0)
         self.assertGreaterEqual(summary["latency"]["samples"], 1)
-

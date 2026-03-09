@@ -62,7 +62,7 @@ def process_comment_event_task(event_payload: dict):
 
     db: Session = SessionLocal()
     try:
-        force_long = event_payload.get("force_long", False)
+        raw_force_long = event_payload.get("force_long", False)
         requested_style_profile = str(event_payload.get("style_profile") or "auto").strip().lower()
         requested_role_profile = str(event_payload.get("role_profile") or "auto").strip().lower()
         requested_role_card_key = str(event_payload.get("role_card_key") or "").strip().lower()
@@ -74,13 +74,6 @@ def process_comment_event_task(event_payload: dict):
             )
             finish_observability("comment_not_found")
             return {"ok": False, "reason": "comment_not_found", "trace_id": trace_id}
-
-        record_observability_event(
-            "job_started",
-            trace_id=trace_id,
-            comment_id=comment.comment_id,
-            metadata={"force_long": bool(force_long)},
-        )
 
         logger.info(
             "worker_process_started | %s",
@@ -94,10 +87,16 @@ def process_comment_event_task(event_payload: dict):
             content=comment.content,
             parent_id=comment.parent_id,
             trace_id=trace_id,
-            force_long=force_long,
+            force_long=raw_force_long,
             style_profile=requested_style_profile,
             role_profile=requested_role_profile,
             role_card_key=requested_role_card_key or None,
+        )
+        record_observability_event(
+            "job_started",
+            trace_id=trace_id,
+            comment_id=comment.comment_id,
+            metadata={"force_long": bool(event.force_long)},
         )
 
         should, style_mode, length_mode = should_reply(event)
