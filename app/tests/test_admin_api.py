@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import re
 
 from app.api import comments as comments_api
 from app.api import gateway as gateway_api
-from app.models.entities import OperationAuditLog
+from app.models.entities import KnowledgeEntry, OperationAuditLog, RoleCard
 
 
 def test_admin_page_returns_html(client):
@@ -583,6 +583,91 @@ def test_admin_export_csv_endpoints(client, task_delay_spy):
     assert audit_csv.status_code == 200
     assert "text/csv" in audit_csv.headers["content-type"]
     assert "action,target_type,target_id" in audit_csv.text
+
+
+def test_jobs_list_pagination_and_stable_sort(client, make_comment, make_job):
+    make_comment(comment_id="jobs-order-c-1", user_id="jobs-order-user")
+    base = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+    older = make_job(comment_id="jobs-order-c-1", status="manual_queue", reply_text="old", created_at=base - timedelta(minutes=2))
+    newer = make_job(comment_id="jobs-order-c-1", status="manual_queue", reply_text="new", created_at=base)
+    same_time_later_id = make_job(comment_id="jobs-order-c-1", status="manual_queue", reply_text="tie", created_at=base)
+
+    response = client.get("/api/jobs?status=manual_queue&limit=2&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert [item["id"] for item in payload["items"]] == [same_time_later_id.id, newer.id]
+
+    paged = client.get("/api/jobs?status=manual_queue&limit=2&offset=2")
+    assert paged.status_code == 200
+    paged_payload = paged.json()
+    assert [item["id"] for item in paged_payload["items"]] == [older.id]
+
+    invalid = client.get("/api/jobs?limit=1001")
+    assert invalid.status_code == 422
+
+
+def test_audit_logs_list_pagination_and_stable_sort(client, db_session):
+    base = datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc)
+    older = OperationAuditLog(action="retry_single", target_type="reply_job", target_id=10, ok=True, payload={"status": "queued"}, created_at=base - timedelta(minutes=1))
+    newer = OperationAuditLog(action="retry_single", target_type="reply_job", target_id=11, ok=True, payload={"status": "queued"}, created_at=base)
+    same_time_later_id = OperationAuditLog(action="retry_single", target_type="reply_job", target_id=12, ok=True, payload={"status": "queued"}, created_at=base)
+    db_session.add_all([older, newer, same_time_later_id])
+    db_session.commit()
+
+    response = client.get("/api/audit-logs?action=retry_single&limit=2&offset=0")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["summary"]["returned"] == 2
+    assert [item["id"] for item in payload["items"]] == [same_time_later_id.id, newer.id]
+
+    paged = client.get("/api/audit-logs?action=retry_single&limit=2&offset=2")
+    assert paged.status_code == 200
+    paged_payload = paged.json()
+    assert [item["id"] for item in paged_payload["items"]] == [older.id]
+
+    invalid = client.get("/api/audit-logs?limit=1001")
+    assert invalid.status_code == 422
+
+
+def test_admin_list_endpoints_apply_pagination_limits(client, db_session):
+    base = datetime(2026, 3, 2, 10, 0, tzinfo=timezone.utc)
+    knowledge_1 = KnowledgeEntry(category="faq", title="k1", content="c1", enabled=True, updated_at=base)
+    knowledge_2 = KnowledgeEntry(category="faq", title="k2", content="c2", enabled=True, updated_at=base + timedelta(minutes=1))
+    role_1 = RoleCard(key="card_1", name="Card 1", description="", system_prompt="", tone={}, constraints={}, enabled=True, is_active=False, created_at=base, updated_at=base)
+    role_2 = RoleCard(
+        key="card_2",
+        name="Card 2",
+        description="",
+        system_prompt="",
+        tone={},
+        constraints={},
+        enabled=True,
+        is_active=True,
+        created_at=base,
+        updated_at=base + timedelta(minutes=1),
+    )
+    db_session.add_all([knowledge_1, knowledge_2, role_1, role_2])
+    db_session.commit()
+
+    knowledge_list = client.get("/api/admin/knowledge?limit=1&offset=0")
+    assert knowledge_list.status_code == 200
+    knowledge_payload = knowledge_list.json()
+    assert len(knowledge_payload["items"]) == 1
+    assert knowledge_payload["items"][0]["title"] == "k2"
+
+    role_list = client.get("/api/admin/role-cards?limit=1&offset=0")
+    assert role_list.status_code == 200
+    role_payload = role_list.json()
+    assert len(role_payload["items"]) == 1
+    assert role_payload["items"][0]["key"] == "card_2"
+    assert role_payload["active_role_card_key"] == "card_2"
+
+    invalid_knowledge = client.get("/api/admin/knowledge?limit=1001")
+    assert invalid_knowledge.status_code == 422
+    invalid_role_cards = client.get("/api/admin/role-cards?limit=1001")
+    assert invalid_role_cards.status_code == 422
 
 
 def test_admin_audit_summary_endpoint(client, make_comment, make_job):

@@ -39,6 +39,8 @@ from app.workers.jobs import enqueue_comment_event, process_comment_event_task
 
 router = APIRouter(prefix="/api", tags=["comments"], dependencies=[Depends(require_api_key)])
 logger = logging.getLogger(__name__)
+LIST_LIMIT_MAX = 1000
+LIST_OFFSET_MAX = 100000
 
 
 def _log_info(event: str, *, trace_id: str, comment_id: str | None = None, job_id: int | None = None, status: str | None = None, **extra):
@@ -528,14 +530,15 @@ def get_job(job_id: int, db: Session = Depends(get_db)):
 @router.get("/jobs")
 def list_jobs(
     status: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=50, ge=1, le=LIST_LIMIT_MAX),
+    offset: int = Query(default=0, ge=0, le=LIST_OFFSET_MAX),
     db: Session = Depends(get_db),
 ):
     query = db.query(ReplyJob)
     if status:
         query = query.filter(ReplyJob.status == status)
 
-    items = query.order_by(ReplyJob.id.desc()).limit(limit).all()
+    items = query.order_by(ReplyJob.created_at.desc(), ReplyJob.id.desc()).offset(offset).limit(limit).all()
     comment_ids = [item.comment_id for item in items]
     comments = db.query(Comment).filter(Comment.comment_id.in_(comment_ids)).all() if comment_ids else []
     content_map = {comment.comment_id: comment.content for comment in comments}
@@ -556,7 +559,7 @@ def export_jobs_csv(
     if status:
         query = query.filter(ReplyJob.status == status)
 
-    items = query.order_by(ReplyJob.id.desc()).limit(limit).all()
+    items = query.order_by(ReplyJob.created_at.desc(), ReplyJob.id.desc()).limit(limit).all()
     comment_ids = [item.comment_id for item in items]
     comments = db.query(Comment).filter(Comment.comment_id.in_(comment_ids)).all() if comment_ids else []
     content_map = {comment.comment_id: comment.content for comment in comments}
@@ -612,7 +615,8 @@ def list_audit_logs(
     target_id: int | None = Query(default=None),
     status: str | None = Query(default=None),
     trace_id: str | None = Query(default=None),
-    limit: int = Query(default=200, ge=1, le=1000),
+    limit: int = Query(default=200, ge=1, le=LIST_LIMIT_MAX),
+    offset: int = Query(default=0, ge=0, le=LIST_OFFSET_MAX),
     db: Session = Depends(get_db),
 ):
     query = db.query(OperationAuditLog)
@@ -628,7 +632,7 @@ def list_audit_logs(
         query = query.filter(OperationAuditLog.payload["trace_id"].as_string() == trace_id)
 
     total = query.count()
-    items = query.order_by(OperationAuditLog.id.desc()).limit(limit).all()
+    items = query.order_by(OperationAuditLog.created_at.desc(), OperationAuditLog.id.desc()).offset(offset).limit(limit).all()
     return {
         "ok": True,
         "summary": {
@@ -673,7 +677,7 @@ def export_audit_logs_csv(
     if trace_id:
         query = query.filter(OperationAuditLog.payload["trace_id"].as_string() == trace_id)
 
-    items = query.order_by(OperationAuditLog.id.desc()).limit(limit).all()
+    items = query.order_by(OperationAuditLog.created_at.desc(), OperationAuditLog.id.desc()).limit(limit).all()
 
     output = io.StringIO()
     writer = csv.writer(output)

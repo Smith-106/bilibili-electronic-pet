@@ -6,3 +6,5 @@
 *.py[cod]
 local.db
 **/local.db
+.env
+frontend/node_modules/

@@ -37,6 +37,10 @@ def get_platform_config(platform: PlatformName) -> PlatformConfig:
     return _PLATFORM_CONFIGS[platform]
 
 
+def get_supported_platforms() -> tuple[PlatformName, ...]:
+    return tuple(_PLATFORM_CONFIGS.keys())
+
+
 def is_platform_enabled(platform: PlatformName) -> bool:
     config = get_platform_config(platform)
     return bool(getattr(settings, config["enabled_attr"], False))

@@ -41,7 +41,6 @@ def session_factory(
 
     monkeypatch.setattr(db_module, "engine", engine)
     monkeypatch.setattr(db_module, "SessionLocal", testing_session_local)
-    monkeypatch.setattr(main_module, "run_migrations", lambda: None)
     monkeypatch.setattr(jobs_module, "SessionLocal", testing_session_local)
 
     def override_get_db() -> Generator[Session, None, None]:

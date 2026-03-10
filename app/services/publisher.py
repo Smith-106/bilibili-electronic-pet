@@ -1,4 +1,6 @@
-from datetime import datetime, timezone
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 import httpx
@@ -19,13 +21,119 @@ class PublisherAdapter(Protocol):
         force_publish: bool = False,
         trace_id: str | None = None,
     ) -> tuple[bool, str, datetime | None]:
-        ...
+        ... 
+
+
+STANDARD_PUBLISH_FAILURE_REASONS = {"timeout", "5xx", "auth", "invalid_response"}
+
+_TIMEOUT_HINTS = ("timeout", "timedout", "readtimeout", "connecttimeout")
+_AUTH_HINTS = ("401", "403", "unauthorized", "forbidden", "token", "signature", "auth")
+
+
+@dataclass
+class _CircuitBreakerState:
+    consecutive_failures: int = 0
+    opened_until: datetime | None = None
+    half_open_probe_in_flight: bool = False
+
+
+_PUBLISH_CIRCUIT_STATE: dict[str, _CircuitBreakerState] = {
+    "webhook": _CircuitBreakerState(),
+    "real_publish": _CircuitBreakerState(),
+}
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def normalize_publish_failure_reason(reason: str | None) -> str:
+    normalized = str(reason or "").strip().lower()
+    if not normalized:
+        return "invalid_response"
+    if normalized in STANDARD_PUBLISH_FAILURE_REASONS:
+        return normalized
+    if any(token in normalized for token in _TIMEOUT_HINTS):
+        return "timeout"
+    if re.search(r"(?<!\d)5\d\d(?!\d)", normalized):
+        return "5xx"
+    if any(token in normalized for token in _AUTH_HINTS):
+        return "auth"
+    return "invalid_response"
+
+
+def _normalize_exception_reason(exc: Exception) -> str:
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, httpx.HTTPStatusError):
+        status_code = int(exc.response.status_code) if exc.response is not None else 0
+        if 500 <= status_code <= 599:
+            return "5xx"
+        if status_code in {401, 403}:
+            return "auth"
+        if status_code == 408:
+            return "timeout"
+        return "invalid_response"
+    if isinstance(exc, httpx.RequestError):
+        return normalize_publish_failure_reason(type(exc).__name__)
+    return "invalid_response"
+
+
+def _is_circuit_enabled() -> bool:
+    return bool(getattr(settings, "publisher_circuit_breaker_enabled", True))
+
+
+def _get_circuit_state(channel: str) -> _CircuitBreakerState:
+    if channel not in _PUBLISH_CIRCUIT_STATE:
+        _PUBLISH_CIRCUIT_STATE[channel] = _CircuitBreakerState()
+    return _PUBLISH_CIRCUIT_STATE[channel]
+
+
+def _check_circuit_before_send(channel: str) -> bool:
+    if not _is_circuit_enabled():
+        return True
+
+    state = _get_circuit_state(channel)
+    now = _utc_now()
+    if state.opened_until and now < state.opened_until:
+        return False
+    if state.opened_until and now >= state.opened_until:
+        if state.half_open_probe_in_flight:
+            return False
+        state.half_open_probe_in_flight = True
+        return True
+    return True
+
+
+def _record_circuit_success(channel: str) -> None:
+    if not _is_circuit_enabled():
+        return
+    state = _get_circuit_state(channel)
+    state.consecutive_failures = 0
+    state.opened_until = None
+    state.half_open_probe_in_flight = False
+
+
+def _record_circuit_failure(channel: str) -> None:
+    if not _is_circuit_enabled():
+        return
+
+    state = _get_circuit_state(channel)
+    threshold = max(1, int(getattr(settings, "publisher_circuit_failure_threshold", 3)))
+    open_seconds = max(1, int(getattr(settings, "publisher_circuit_open_seconds", 30)))
+
+    state.consecutive_failures += 1
+    state.half_open_probe_in_flight = False
+    if state.consecutive_failures >= threshold:
+        state.opened_until = _utc_now() + timedelta(seconds=open_seconds)
 
 
 def _parse_publish_result(data: dict[str, Any], default_reason: str) -> tuple[bool, str]:
     ok = bool(data.get("ok", True))
     published = bool(data.get("published", ok))
     reason = str(data.get("reason", default_reason))
+    if not (ok and published):
+        reason = normalize_publish_failure_reason(reason)
     return ok and published, reason
 
 
@@ -71,7 +179,9 @@ class WebhookPublisher:
         trace_id: str | None = None,
     ) -> tuple[bool, str, datetime | None]:
         if not settings.publisher_webhook_url:
-            return False, "webhook_url_missing", None
+            return False, "invalid_response", None
+        if not _check_circuit_before_send("webhook"):
+            return False, "invalid_response", None
 
         payload = {
             "comment_id": comment_id,
@@ -93,10 +203,13 @@ class WebhookPublisher:
             data = response.json() if response.content else {}
             published, reason = _parse_publish_result(data, "webhook_response")
             if published:
-                return True, reason, datetime.now(timezone.utc)
+                _record_circuit_success("webhook")
+                return True, reason, _utc_now()
+            _record_circuit_failure("webhook")
             return False, reason, None
         except Exception as exc:
-            return False, f"webhook_error:{type(exc).__name__}", None
+            _record_circuit_failure("webhook")
+            return False, _normalize_exception_reason(exc), None
 
 
 class RealPublishPublisher:
@@ -131,7 +244,9 @@ class RealPublishPublisher:
         trace_id: str | None = None,
     ) -> tuple[bool, str, datetime | None]:
         if not settings.publisher_real_publish_url:
-            return False, "real_publish_url_missing", None
+            return False, "invalid_response", None
+        if not _check_circuit_before_send("real_publish"):
+            return False, "invalid_response", None
 
         payload = {
             "comment_id": comment_id,
@@ -153,10 +268,13 @@ class RealPublishPublisher:
             data = response.json() if response.content else {}
             published, reason = _parse_publish_result(data, "real_publish_response")
             if published:
-                return True, reason, datetime.now(timezone.utc)
+                _record_circuit_success("real_publish")
+                return True, reason, _utc_now()
+            _record_circuit_failure("real_publish")
             return False, reason, None
         except Exception as exc:
-            return False, f"real_publish_error:{type(exc).__name__}", None
+            _record_circuit_failure("real_publish")
+            return False, _normalize_exception_reason(exc), None
 
 
 _PUBLISHER_REGISTRY = ProviderRegistry[PublisherAdapter](default_provider="manual_queue")

@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
@@ -63,6 +64,17 @@ class SettingsSecurityTests(unittest.TestCase):
 
         self.assertIn("LLM_API_KEY", str(context.exception))
 
+    def test_openai_provider_without_fallback_requires_api_key_early(self):
+        with self.assertRaises(ValidationError) as context:
+            Settings(
+                app_env="development",
+                llm_provider="openai",
+                llm_fallback_to_mock=False,
+                llm_api_key="",
+            )
+
+        self.assertIn("LLM_API_KEY", str(context.exception))
+
     def test_invalid_publisher_mode_is_rejected(self):
         with self.assertRaises(ValidationError):
             Settings(app_env="development", publisher_mode="invalid")
@@ -82,7 +94,68 @@ class SettingsSecurityTests(unittest.TestCase):
         self.assertEqual(settings.platform_douyin_publish_source, "douyin-open")
         self.assertEqual(settings.platform_kuaishou_publish_source, "kuaishou-open")
 
+    def test_webhook_mode_requires_security_config_early(self):
+        with self.assertRaises(ValidationError) as context:
+            Settings(
+                app_env="development",
+                publisher_mode="webhook",
+                publisher_webhook_url="https://example.com/webhook",
+                publisher_webhook_token="",
+                publisher_hmac_secret="",
+            )
+
+        message = str(context.exception)
+        self.assertIn("PUBLISHER_WEBHOOK_TOKEN", message)
+        self.assertIn("PUBLISHER_HMAC_SECRET", message)
+
+    def test_blank_database_url_fails_early(self):
+        with self.assertRaises(ValidationError) as context:
+            Settings(app_env="development", database_url="   ")
+
+        self.assertIn("DATABASE_URL", str(context.exception))
+
+    def test_startup_summary_is_desensitized(self):
+        api_key = "prod-api-key-should-not-leak"
+        gateway_token = "gateway-token-should-not-leak"
+        gateway_hmac_secret = "gateway-hmac-should-not-leak"
+
+        settings = Settings(
+            app_env="development",
+            api_key=api_key,
+            gateway_token=gateway_token,
+            gateway_hmac_secret=gateway_hmac_secret,
+        )
+
+        summary = settings.build_startup_summary()
+        summary_text = str(summary)
+
+        self.assertIn("api_key_configured", summary_text)
+        self.assertTrue(summary["security"]["api_key_configured"])
+        self.assertNotIn(api_key, summary_text)
+        self.assertNotIn(gateway_token, summary_text)
+        self.assertNotIn(gateway_hmac_secret, summary_text)
+
+    def test_log_startup_summary_is_readable(self):
+        settings = Settings(
+            app_env="development",
+            api_key="api-key-value",
+            gateway_token="gateway-token-value",
+            gateway_hmac_secret="gateway-hmac-value",
+        )
+
+        with patch("app.settings.logger") as mocked_logger:
+            settings.log_startup_summary()
+
+        mocked_logger.info.assert_called_once()
+        message_template, summary_payload = mocked_logger.info.call_args[0]
+        summary_text = str(summary_payload)
+
+        self.assertEqual(message_template, "startup_config_baseline=%s")
+        self.assertIn("app_env", summary_text)
+        self.assertNotIn("api-key-value", summary_text)
+        self.assertNotIn("gateway-token-value", summary_text)
+        self.assertNotIn("gateway-hmac-value", summary_text)
+
 
 if __name__ == "__main__":
     unittest.main()
-

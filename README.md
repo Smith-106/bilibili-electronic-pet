@@ -171,12 +171,66 @@ curl -sS http://127.0.0.1:8000/health
 - `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_WEBHOOK_TOKEN`
 - `PUBLISHER_REAL_PUBLISH_URL` / `PUBLISHER_REAL_PUBLISH_TOKEN`
 
+### 生产最小配置（必填）
+
+当 `APP_ENV=production` 时，以下校验会在启动前触发（与 `app/settings.py` 一致）：
+
+- 基础连接必须非空：`DATABASE_URL`、`CELERY_BROKER_URL`、`CELERY_RESULT_BACKEND`
+- 鉴权密钥必须非空且不能使用占位符值（如 `__SET_XXX__`）：
+  - `API_KEY`
+  - `GATEWAY_TOKEN`
+  - `GATEWAY_HMAC_SECRET`
+- 当 `LLM_PROVIDER` 为 `openai` / `openai_compatible` 时：`LLM_API_KEY` 必填
+- 当 `PUBLISHER_MODE=webhook` 时：`PUBLISHER_WEBHOOK_URL`、`PUBLISHER_WEBHOOK_TOKEN`、`PUBLISHER_HMAC_SECRET` 必填
+- 当 `PUBLISHER_MODE=real_publish` 时：`PUBLISHER_REAL_PUBLISH_URL`、`PUBLISHER_REAL_PUBLISH_TOKEN`、`PUBLISHER_HMAC_SECRET` 必填
+
+生产 `.env` 最小示例（请替换为真实值）：
+
+```env
+APP_ENV=production
+DATABASE_URL=postgresql+psycopg://pet_user:<db_password>@postgres:5432/bili_pet
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/1
+
+API_KEY=<strong-random-api-key>
+GATEWAY_TOKEN=<strong-random-gateway-token>
+GATEWAY_HMAC_SECRET=<strong-random-gateway-hmac-secret>
+
+LLM_PROVIDER=openai_compatible
+LLM_MODEL=gpt-4o-mini
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=<llm-api-key>
+LLM_FALLBACK_TO_MOCK=false
+
+PUBLISHER_MODE=manual_queue
+PUBLISHER_TIMEOUT_SECONDS=15
+PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
+```
+
 ## 生产建议
 
 - 先 `manual_queue` 灰度，再切 `real_publish`
 - 外部执行端异常时优先切回 `manual_queue`（保持服务可用）
 - 发现异常优先：`KILL_SWITCH=true` 或切回 `manual_queue`
 - 生产务必关闭 mock 回退：`LLM_FALLBACK_TO_MOCK=false`
+
+### 生产演练：故障切换与回滚（建议每次发布前执行）
+
+1. **上线前核对**
+   - 确认 `.env` 满足“生产最小配置（必填）”
+   - 运行 `pytest app/tests -q`，确保回归通过
+2. **灰度阶段**
+   - 以 `PUBLISHER_MODE=manual_queue` 启动
+   - 观察 `/health`、`/api/jobs`、`/gateway/publish-logs` 是否正常
+3. **切换到自动发布**
+   - 调整为 `PUBLISHER_MODE=real_publish`（或 `webhook`）并重启服务
+   - 确认发布成功率与审计日志稳定
+4. **故障切换（Failover）**
+   - 外部发布端异常时，立即切回 `PUBLISHER_MODE=manual_queue` 并重启
+   - 必要时设置 `KILL_SWITCH=true` 暂停自动处理
+5. **回滚（Rollback）**
+   - 回退到上一版镜像与上一版 `.env`
+   - 重启后再次检查 `/health` 与关键业务接口
 
 ## CI 状态
 

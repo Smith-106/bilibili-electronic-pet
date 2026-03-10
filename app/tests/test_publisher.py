@@ -1,6 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+import httpx
+import pytest
 
 from app.services.publisher import (
+    _PUBLISH_CIRCUIT_STATE,
     RealPublishPublisher,
     publish_gateway_reply,
     publish_platform_reply,
@@ -16,6 +20,14 @@ class DummyResponse:
 
     def json(self) -> dict:
         return self._payload
+
+
+@pytest.fixture(autouse=True)
+def reset_publish_circuit_state():
+    for state in _PUBLISH_CIRCUIT_STATE.values():
+        state.consecutive_failures = 0
+        state.opened_until = None
+        state.half_open_probe_in_flight = False
 
 
 def test_publish_reply_manual_queue_mode(monkeypatch):
@@ -34,7 +46,7 @@ def test_publish_reply_webhook_mode_keeps_missing_url_behavior(monkeypatch):
     published, reason, published_at = publish_reply("comment-1", "reply text")
 
     assert published is False
-    assert reason == "webhook_url_missing"
+    assert reason == "invalid_response"
     assert published_at is None
 
 
@@ -132,5 +144,93 @@ def test_publish_gateway_reply_preserves_source_and_reason(monkeypatch):
     )
 
     assert published is False
-    assert reason == "remote_declined"
+    assert reason == "invalid_response"
     assert published_at is None
+
+
+def test_publish_reply_real_publish_mode_classifies_timeout(monkeypatch):
+    monkeypatch.setattr(settings, "publisher_mode", "real_publish")
+    monkeypatch.setattr(settings, "publisher_real_publish_url", "https://publisher.example.com/reply")
+    monkeypatch.setattr(settings, "publisher_circuit_breaker_enabled", True)
+    monkeypatch.setattr(settings, "publisher_circuit_failure_threshold", 5)
+    monkeypatch.setattr(settings, "publisher_circuit_open_seconds", 10)
+
+    request = httpx.Request("POST", "https://publisher.example.com/reply")
+
+    def fake_send(self, payload: dict, headers: dict):
+        _ = payload, headers
+        raise httpx.ReadTimeout("timeout", request=request)
+
+    monkeypatch.setattr(RealPublishPublisher, "_send", fake_send)
+
+    published, reason, published_at = publish_reply("comment-timeout", "reply text")
+
+    assert published is False
+    assert reason == "timeout"
+    assert published_at is None
+
+
+def test_publish_reply_real_publish_mode_opens_circuit_after_threshold(monkeypatch):
+    monkeypatch.setattr(settings, "publisher_mode", "real_publish")
+    monkeypatch.setattr(settings, "publisher_real_publish_url", "https://publisher.example.com/reply")
+    monkeypatch.setattr(settings, "publisher_circuit_breaker_enabled", True)
+    monkeypatch.setattr(settings, "publisher_circuit_failure_threshold", 1)
+    monkeypatch.setattr(settings, "publisher_circuit_open_seconds", 30)
+
+    calls = {"count": 0}
+    request = httpx.Request("POST", "https://publisher.example.com/reply")
+
+    def fake_send(self, payload: dict, headers: dict):
+        _ = payload, headers
+        calls["count"] += 1
+        raise httpx.ConnectError("connection failed", request=request)
+
+    monkeypatch.setattr(RealPublishPublisher, "_send", fake_send)
+
+    first_published, first_reason, _ = publish_reply("comment-circuit-1", "reply text")
+    second_published, second_reason, second_published_at = publish_reply("comment-circuit-2", "reply text")
+
+    assert first_published is False
+    assert first_reason == "invalid_response"
+    assert second_published is False
+    assert second_reason == "invalid_response"
+    assert second_published_at is None
+    assert calls["count"] == 1
+
+
+def test_publish_reply_real_publish_mode_recovers_after_open_window(monkeypatch):
+    monkeypatch.setattr(settings, "publisher_mode", "real_publish")
+    monkeypatch.setattr(settings, "publisher_real_publish_url", "https://publisher.example.com/reply")
+    monkeypatch.setattr(settings, "publisher_circuit_breaker_enabled", True)
+    monkeypatch.setattr(settings, "publisher_circuit_failure_threshold", 1)
+    monkeypatch.setattr(settings, "publisher_circuit_open_seconds", 30)
+
+    calls = {"count": 0}
+    request = httpx.Request("POST", "https://publisher.example.com/reply")
+
+    def failing_send(self, payload: dict, headers: dict):
+        _ = payload, headers
+        calls["count"] += 1
+        raise httpx.ConnectError("connection failed", request=request)
+
+    monkeypatch.setattr(RealPublishPublisher, "_send", failing_send)
+    first_published, _, _ = publish_reply("comment-recover-1", "reply text")
+    blocked_published, _, _ = publish_reply("comment-recover-2", "reply text")
+
+    state = _PUBLISH_CIRCUIT_STATE["real_publish"]
+    state.opened_until = datetime.now(timezone.utc) - timedelta(seconds=1)
+
+    def success_send(self, payload: dict, headers: dict):
+        _ = payload, headers
+        calls["count"] += 1
+        return DummyResponse({"ok": True, "published": True, "reason": "publish_ok"})
+
+    monkeypatch.setattr(RealPublishPublisher, "_send", success_send)
+    recovered_published, recovered_reason, recovered_published_at = publish_reply("comment-recover-3", "reply text")
+
+    assert first_published is False
+    assert blocked_published is False
+    assert recovered_published is True
+    assert recovered_reason == "publish_ok"
+    assert isinstance(recovered_published_at, datetime)
+    assert calls["count"] == 2

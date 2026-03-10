@@ -1,7 +1,10 @@
+import logging
 from typing import ClassVar
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -39,6 +42,9 @@ class Settings(BaseSettings):
     publisher_real_publish_token: str = ""
     publisher_timeout_seconds: int = 15
     publisher_hmac_secret: str = ""
+    publisher_circuit_breaker_enabled: bool = True
+    publisher_circuit_failure_threshold: int = 3
+    publisher_circuit_open_seconds: int = 30
 
     gateway_token: str = ""
     gateway_hmac_secret: str = ""
@@ -172,6 +178,26 @@ class Settings(BaseSettings):
             raise ValueError("SEARCH_MAX_HITS must be <= 20")
         return n
 
+    @field_validator("publisher_circuit_failure_threshold")
+    @classmethod
+    def validate_publisher_circuit_failure_threshold(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("PUBLISHER_CIRCUIT_FAILURE_THRESHOLD must be >= 1")
+        if n > 20:
+            raise ValueError("PUBLISHER_CIRCUIT_FAILURE_THRESHOLD must be <= 20")
+        return n
+
+    @field_validator("publisher_circuit_open_seconds")
+    @classmethod
+    def validate_publisher_circuit_open_seconds(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("PUBLISHER_CIRCUIT_OPEN_SECONDS must be >= 1")
+        if n > 600:
+            raise ValueError("PUBLISHER_CIRCUIT_OPEN_SECONDS must be <= 600")
+        return n
+
     @field_validator("worker_max_retries")
     @classmethod
     def validate_worker_max_retries(cls, value: int) -> int:
@@ -240,41 +266,97 @@ class Settings(BaseSettings):
         normalized = value.strip().upper()
         return normalized.startswith("__SET_") and normalized.endswith("__")
 
-    @model_validator(mode="after")
-    def validate_production_security(self):
-        if not self.is_production:
-            return self
+    @staticmethod
+    def has_text(value: str | None) -> bool:
+        return bool(str(value or "").strip())
 
+    def build_startup_summary(self) -> dict[str, object]:
+        return {
+            "app_env": self.app_env,
+            "publisher_mode": self.publisher_mode,
+            "llm_provider": self.llm_provider,
+            "llm_fallback_to_mock": self.llm_fallback_to_mock,
+            "kill_switch": self.kill_switch,
+            "search_provider": self.search_provider,
+            "security": {
+                "api_key_configured": self.has_text(self.api_key),
+                "gateway_token_configured": self.has_text(self.gateway_token),
+                "gateway_hmac_secret_configured": self.has_text(self.gateway_hmac_secret),
+                "publisher_hmac_secret_configured": self.has_text(self.publisher_hmac_secret),
+            },
+            "integrations": {
+                "database_url_configured": self.has_text(self.database_url),
+                "celery_broker_url_configured": self.has_text(self.celery_broker_url),
+                "celery_result_backend_configured": self.has_text(self.celery_result_backend),
+                "llm_api_key_configured": self.has_text(self.llm_api_key),
+                "publisher_webhook_url_configured": self.has_text(self.publisher_webhook_url),
+                "publisher_real_publish_url_configured": self.has_text(self.publisher_real_publish_url),
+            },
+        }
+
+    def log_startup_summary(self) -> None:
+        logger.info("startup_config_baseline=%s", self.build_startup_summary())
+
+    @model_validator(mode="after")
+    def validate_runtime_configuration(self):
         errors: list[str] = []
 
-        def require_secret(field_name: str, env_name: str):
+        def add_error(message: str) -> None:
+            if message not in errors:
+                errors.append(message)
+
+        def require_text(field_name: str, env_name: str):
             value = getattr(self, field_name)
+            if not self.has_text(value):
+                add_error(f"{env_name} 不能为空")
+                return
+
+        def check_secret(field_name: str, env_name: str, *, required: bool = False):
+            value = str(getattr(self, field_name) or "").strip()
             if not value:
-                errors.append(f"{env_name} 不能为空")
+                if required:
+                    add_error(f"{env_name} 不能为空")
                 return
             if self.is_placeholder_secret(value):
-                errors.append(f"{env_name} 不能使用占位符值")
+                add_error(f"{env_name} 不能使用占位符值")
 
-        require_secret("api_key", "API_KEY")
-        require_secret("gateway_token", "GATEWAY_TOKEN")
-        require_secret("gateway_hmac_secret", "GATEWAY_HMAC_SECRET")
+        require_text("database_url", "DATABASE_URL")
+        require_text("celery_broker_url", "CELERY_BROKER_URL")
+        require_text("celery_result_backend", "CELERY_RESULT_BACKEND")
 
-        if self.llm_provider in {"openai", "openai_compatible"}:
-            require_secret("llm_api_key", "LLM_API_KEY")
+        check_secret("api_key", "API_KEY")
+        check_secret("gateway_token", "GATEWAY_TOKEN")
+        check_secret("gateway_hmac_secret", "GATEWAY_HMAC_SECRET")
+        check_secret("llm_api_key", "LLM_API_KEY")
+        check_secret("publisher_webhook_token", "PUBLISHER_WEBHOOK_TOKEN")
+        check_secret("publisher_real_publish_token", "PUBLISHER_REAL_PUBLISH_TOKEN")
+        check_secret("publisher_hmac_secret", "PUBLISHER_HMAC_SECRET")
 
         if self.publisher_mode == "webhook":
-            require_secret("publisher_webhook_url", "PUBLISHER_WEBHOOK_URL")
-            require_secret("publisher_webhook_token", "PUBLISHER_WEBHOOK_TOKEN")
-            require_secret("publisher_hmac_secret", "PUBLISHER_HMAC_SECRET")
+            require_text("publisher_webhook_url", "PUBLISHER_WEBHOOK_URL")
+            check_secret("publisher_webhook_token", "PUBLISHER_WEBHOOK_TOKEN", required=True)
+            check_secret("publisher_hmac_secret", "PUBLISHER_HMAC_SECRET", required=True)
         elif self.publisher_mode == "real_publish":
-            require_secret("publisher_real_publish_url", "PUBLISHER_REAL_PUBLISH_URL")
-            require_secret("publisher_real_publish_token", "PUBLISHER_REAL_PUBLISH_TOKEN")
-            require_secret("publisher_hmac_secret", "PUBLISHER_HMAC_SECRET")
+            require_text("publisher_real_publish_url", "PUBLISHER_REAL_PUBLISH_URL")
+            check_secret("publisher_real_publish_token", "PUBLISHER_REAL_PUBLISH_TOKEN", required=True)
+            check_secret("publisher_hmac_secret", "PUBLISHER_HMAC_SECRET", required=True)
+
+        if self.llm_provider in {"openai", "openai_compatible"} and not self.llm_fallback_to_mock:
+            check_secret("llm_api_key", "LLM_API_KEY", required=True)
+
+        if self.is_production:
+            check_secret("api_key", "API_KEY", required=True)
+            check_secret("gateway_token", "GATEWAY_TOKEN", required=True)
+            check_secret("gateway_hmac_secret", "GATEWAY_HMAC_SECRET", required=True)
+
+            if self.llm_provider in {"openai", "openai_compatible"}:
+                check_secret("llm_api_key", "LLM_API_KEY", required=True)
 
         if errors:
-            raise ValueError("生产环境配置校验失败: " + "；".join(errors))
+            raise ValueError("配置校验失败: " + "；".join(errors))
 
         return self
 
 
 settings = Settings()
+settings.log_startup_summary()

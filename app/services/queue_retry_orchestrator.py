@@ -286,6 +286,62 @@ def collect_task_output_records(
     return records
 
 
+def attach_writeback_evidence(
+    result: Mapping[str, object],
+    *,
+    queue_id: str,
+    solution_id: str,
+) -> dict[str, object]:
+    enriched = dict(result)
+    enriched["queue_id"] = str(queue_id).strip()
+    enriched["solution_id"] = str(solution_id).strip()
+    return enriched
+
+
+class QueueConsistencyError(RuntimeError):
+    def __init__(self, details: Mapping[str, object]):
+        self.details = dict(details)
+        super().__init__(str(self.details.get("message") or "queue_consistency_check_failed"))
+
+
+def validate_queue_consistency(
+    *,
+    active_queue_id: str | None,
+    target_queue_id: str | None,
+    action: str,
+) -> dict[str, str]:
+    active = str(active_queue_id or "").strip()
+    target = str(target_queue_id or "").strip()
+    normalized_action = str(action or "unknown").strip().lower() or "unknown"
+
+    if not target:
+        raise QueueConsistencyError(
+            {
+                "error_type": "queue_id_missing",
+                "action": normalized_action,
+                "message": "target_queue_id_required",
+                "active_queue_id": active,
+                "target_queue_id": target,
+            }
+        )
+
+    if active and active != target:
+        raise QueueConsistencyError(
+            {
+                "error_type": "queue_id_mismatch",
+                "action": normalized_action,
+                "message": "active_queue_id_mismatch",
+                "active_queue_id": active,
+                "target_queue_id": target,
+            }
+        )
+
+    return {
+        "queue_id": target,
+        "action": normalized_action,
+    }
+
+
 def build_retry_round_summary(
     *,
     previous_completed_count: int,
@@ -329,12 +385,91 @@ def orchestrate_retry_round(
 ) -> dict[str, object]:
     retry_plan = build_retry_batches(solutions)
     output_records = collect_task_output_records(solutions)
+
+
+def detect_workspace_conflicts(
+    *,
+    uncommitted_files: Sequence[str],
+    solution_files: Sequence[str],
+) -> dict[str, object]:
+    uncommitted = {str(path).strip() for path in uncommitted_files if str(path).strip()}
+    targets = {str(path).strip() for path in solution_files if str(path).strip()}
+    conflicts = sorted(uncommitted & targets)
     return {
-        "retry_plan": retry_plan,
-        "round_summary": build_retry_round_summary(
-            previous_completed_count=previous_completed_count,
-            current_completed_count=current_completed_count,
-            retry_plan=retry_plan,
-            output_records=output_records,
-        ),
+        "blocking": bool(conflicts),
+        "conflicts": conflicts,
+        "uncommitted_count": len(uncommitted),
+        "solution_file_count": len(targets),
+    }
+
+
+def plan_execution_mode(
+    *,
+    solution_id: str,
+    conflict_report: Mapping[str, object],
+) -> dict[str, object]:
+    blocking = bool(conflict_report.get("blocking"))
+    mode = "isolated" if blocking else "normal"
+    return {
+        "solution_id": str(solution_id).strip(),
+        "mode": mode,
+        "lock_key": f"solution:{str(solution_id).strip()}" if blocking else None,
+        "conflicts": list(conflict_report.get("conflicts", []))
+        if isinstance(conflict_report.get("conflicts"), Sequence)
+        else [],
+    }
+
+
+def evaluate_channel_health(preflight: Mapping[str, object]) -> dict[str, object]:
+    status_code = int(preflight.get("status_code") or 0)
+    host = str(preflight.get("host") or "").strip()
+    channel = str(preflight.get("channel") or "").strip()
+    healthy = 200 <= status_code < 300
+    if healthy:
+        return {
+            "healthy": True,
+            "status_code": status_code,
+            "host": host,
+            "channel": channel,
+        }
+    return {
+        "healthy": False,
+        "status_code": status_code,
+        "host": host,
+        "channel": channel,
+        "error_type": "channel_unavailable",
+    }
+
+
+def select_executor_with_fallback(
+    *,
+    primary_executor: str,
+    fallback_executor: str,
+    consecutive_5xx: int,
+    threshold: int,
+) -> dict[str, object]:
+    use_fallback = int(consecutive_5xx) >= int(threshold)
+    selected = fallback_executor if use_fallback else primary_executor
+    return {
+        "selected_executor": str(selected).strip(),
+        "fallback_triggered": use_fallback,
+        "primary_executor": str(primary_executor).strip(),
+        "fallback_executor": str(fallback_executor).strip(),
+        "consecutive_5xx": int(consecutive_5xx),
+        "threshold": int(threshold),
+    }
+
+
+def build_failure_log_fields(
+    *,
+    error_type: str,
+    channel: str,
+    host: str,
+    attempt: int,
+) -> dict[str, object]:
+    return {
+        "error_type": str(error_type).strip(),
+        "channel": str(channel).strip(),
+        "host": str(host).strip(),
+        "attempt": int(attempt),
     }

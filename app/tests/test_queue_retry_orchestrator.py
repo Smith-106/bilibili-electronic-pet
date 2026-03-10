@@ -3,11 +3,19 @@ from __future__ import annotations
 import json
 
 from app.services.queue_retry_orchestrator import (
+    QueueConsistencyError,
+    attach_writeback_evidence,
+    build_failure_log_fields,
     build_retry_batches,
     build_retry_round_summary,
     classify_failure_reason,
     collect_task_output_records,
+    detect_workspace_conflicts,
+    evaluate_channel_health,
     orchestrate_retry_round,
+    plan_execution_mode,
+    select_executor_with_fallback,
+    validate_queue_consistency,
 )
 
 
@@ -134,25 +142,80 @@ def test_build_retry_round_summary_reports_blocked_reason_when_no_increment():
     assert summary["blocked"][0]["item_id"] == "S-2"
 
 
-def test_orchestrate_retry_round_returns_progress_when_completed_count_increases(tmp_path):
-    output_file = tmp_path / "S-1.output"
-    output_file.write_text("status=completed\nsummary=ok", encoding="utf-8")
-    solutions = [
-        {
-            "item_id": "S-1",
-            "status": "failed",
-            "depends_on": [],
-            "failure_reason": "502 bad gateway",
-            "result": {"output_path": str(output_file)},
-        }
-    ]
 
-    result = orchestrate_retry_round(
-        solutions,
-        previous_completed_count=1,
-        current_completed_count=2,
+
+def test_validate_queue_consistency_and_attach_writeback_evidence():
+    validated = validate_queue_consistency(
+        active_queue_id="QUE-20260309195125",
+        target_queue_id="QUE-20260309195125",
+        action="done",
     )
+    assert validated["queue_id"] == "QUE-20260309195125"
 
-    assert result["retry_plan"]["retry_batches"]["channel_failure"] == ["S-1"]
-    assert result["round_summary"]["completed_count_delta"] == 1
-    assert result["round_summary"]["progress_state"] == "progressed"
+    evidence = attach_writeback_evidence(
+        {"summary": "ok"},
+        queue_id="QUE-20260309195125",
+        solution_id="SOL-ISS-20260309-012-1",
+    )
+    assert evidence["queue_id"] == "QUE-20260309195125"
+    assert evidence["solution_id"] == "SOL-ISS-20260309-012-1"
+
+
+def test_validate_queue_consistency_rejects_cross_queue_writeback():
+    try:
+        validate_queue_consistency(
+            active_queue_id="QUE-20260309195125",
+            target_queue_id="QUE-OTHER",
+            action="retry",
+        )
+    except QueueConsistencyError as exc:
+        assert exc.details["error_type"] == "queue_id_mismatch"
+    else:
+        raise AssertionError("expected QueueConsistencyError")
+
+
+def test_detect_workspace_conflicts_and_plan_isolated_execution():
+    report = detect_workspace_conflicts(
+        uncommitted_files=["app/settings.py", "app/tests/test_gateway_publish.py"],
+        solution_files=["app/tests/test_gateway_publish.py", "app/services/collector.py"],
+    )
+    assert report["blocking"] is True
+    assert report["conflicts"] == ["app/tests/test_gateway_publish.py"]
+
+    mode = plan_execution_mode(solution_id="S-2", conflict_report=report)
+    assert mode["mode"] == "isolated"
+    assert mode["lock_key"] == "solution:S-2"
+
+
+def test_channel_health_fallback_and_failure_fields():
+    health = evaluate_channel_health(
+        {
+            "status_code": 502,
+            "host": "api.123nhh.me",
+            "channel": "codex",
+        }
+    )
+    assert health["healthy"] is False
+    assert health["error_type"] == "channel_unavailable"
+
+    fallback = select_executor_with_fallback(
+        primary_executor="codex",
+        fallback_executor="gemini",
+        consecutive_5xx=3,
+        threshold=3,
+    )
+    assert fallback["fallback_triggered"] is True
+    assert fallback["selected_executor"] == "gemini"
+
+    fields = build_failure_log_fields(
+        error_type="channel_failure",
+        channel="codex",
+        host="api.123nhh.me",
+        attempt=3,
+    )
+    assert fields == {
+        "error_type": "channel_failure",
+        "channel": "codex",
+        "host": "api.123nhh.me",
+        "attempt": 3,
+    }

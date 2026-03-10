@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, DateTime, Integer, JSON, Boolean, UniqueConstraint
+from sqlalchemy import String, Text, DateTime, Integer, JSON, Boolean, UniqueConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -21,6 +21,9 @@ class Comment(Base):
 
 class ReplyJob(Base):
     __tablename__ = "reply_jobs"
+    __table_args__ = (
+        Index("ix_reply_jobs_status_created_at_id", "status", "created_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     comment_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -57,6 +60,10 @@ class PublishLog(Base):
 
 class OperationAuditLog(Base):
     __tablename__ = "operation_audit_logs"
+    __table_args__ = (
+        Index("ix_operation_audit_logs_action_ok_created_at_id", "action", "ok", "created_at", "id"),
+        Index("ix_operation_audit_logs_target_id_created_at_id", "target_id", "created_at", "id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
@@ -64,6 +71,20 @@ class OperationAuditLog(Base):
     target_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     ok: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class ObservabilityEvent(Base):
+    __tablename__ = "observability_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    trace_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    comment_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    job_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    status: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    event_metadata: Mapped[dict] = mapped_column("metadata", JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
 
 
@@ -103,4 +124,3 @@ class RoleCard(Base):
         nullable=False,
         index=True,
     )
-

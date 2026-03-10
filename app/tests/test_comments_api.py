@@ -11,6 +11,8 @@ from app.api import comments as comments_api
 from app.api.comments import router as comments_router
 from app.db import Base, get_db
 from app.models.entities import Comment
+from app.services.collector import has_collector_source_mapper
+from app.services.platforms import get_platform_config, get_platform_publish_source, get_supported_platforms
 from app.settings import settings
 
 
@@ -210,6 +212,22 @@ def test_bilibili_ingest_returns_platform_disabled_when_switch_off(client_and_st
     assert not queued_payloads
 
 
+def test_platform_config_mapping_remains_consistent(monkeypatch):
+    for platform in get_supported_platforms():
+        config = get_platform_config(platform)
+        assert config["collector_source"] == platform
+        assert has_collector_source_mapper(config["collector_source"]) is True
+
+        expected_publish_source = f"{platform}-publish-source"
+        monkeypatch.setattr(comments_api.settings, config["source_attr"], expected_publish_source)
+        assert get_platform_publish_source(platform) == expected_publish_source
+
+        monkeypatch.setattr(comments_api.settings, config["enabled_attr"], False)
+        assert comments_api.is_platform_enabled(platform) is False
+        monkeypatch.setattr(comments_api.settings, config["enabled_attr"], True)
+        assert comments_api.is_platform_enabled(platform) is True
+
+
 def test_bilibili_ingest_uses_platform_route_mapping(client_and_state, monkeypatch):
     client, session_local, queued_payloads = client_and_state
     monkeypatch.setattr(comments_api.settings, "platform_bilibili_enabled", True)
@@ -243,6 +261,8 @@ def test_platform_ingest_routes_through_unified_collector_selector(client_and_st
     client, session_local, queued_payloads = client_and_state
     _ = session_local
     monkeypatch.setattr(comments_api.settings, "platform_bilibili_enabled", True)
+    monkeypatch.setattr(comments_api.settings, "platform_douyin_enabled", True)
+    monkeypatch.setattr(comments_api.settings, "platform_kuaishou_enabled", True)
 
     calls: list[tuple[str, dict]] = []
     original = comments_api.collect_platform_event_via_config
@@ -253,7 +273,7 @@ def test_platform_ingest_routes_through_unified_collector_selector(client_and_st
 
     monkeypatch.setattr(comments_api, "collect_platform_event_via_config", fake_collect_platform_event_via_config)
 
-    response = client.post(
+    bilibili_response = client.post(
         "/api/events/comment/bilibili",
         json={
             "rpid": "c-bili-selector-1",
@@ -262,14 +282,42 @@ def test_platform_ingest_routes_through_unified_collector_selector(client_and_st
             "message": "hello selector",
         },
     )
+    douyin_response = client.post(
+        "/api/events/comment/douyin",
+        json={
+            "item_id": "c-douyin-selector-1",
+            "aweme_id": "v-douyin-selector-1",
+            "sec_uid": "u-douyin-selector-1",
+            "text": "hello douyin selector",
+        },
+    )
+    kuaishou_response = client.post(
+        "/api/events/comment/kuaishou",
+        json={
+            "comment_id_str": "c-kuaishou-selector-1",
+            "photo_id": "v-kuaishou-selector-1",
+            "author_id": "u-kuaishou-selector-1",
+            "message": "hello kuaishou selector",
+        },
+    )
 
-    assert response.status_code == 200
-    assert response.json()["ok"] is True
-    assert response.json()["comment_id"] == "c-bili-selector-1"
-    assert len(calls) == 1
+    assert bilibili_response.status_code == 200
+    assert douyin_response.status_code == 200
+    assert kuaishou_response.status_code == 200
+    assert bilibili_response.json()["ok"] is True
+    assert douyin_response.json()["ok"] is True
+    assert kuaishou_response.json()["ok"] is True
+    assert bilibili_response.json()["comment_id"] == "c-bili-selector-1"
+    assert douyin_response.json()["comment_id"] == "c-douyin-selector-1"
+    assert kuaishou_response.json()["comment_id"] == "c-kuaishou-selector-1"
+    assert len(calls) == 3
     assert calls[0][0] == "bilibili"
+    assert calls[1][0] == "douyin"
+    assert calls[2][0] == "kuaishou"
     assert calls[0][1]["rpid"] == "c-bili-selector-1"
-    assert len(queued_payloads) == 1
+    assert calls[1][1]["item_id"] == "c-douyin-selector-1"
+    assert calls[2][1]["comment_id_str"] == "c-kuaishou-selector-1"
+    assert len(queued_payloads) == 3
 
 
 def test_kuaishou_ingest_uses_platform_route_mapping(client_and_state, monkeypatch):

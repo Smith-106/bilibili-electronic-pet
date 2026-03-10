@@ -1,0 +1,12 @@
+services:
+  migrate:
+    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    pull_policy: always
+
+  api:
+    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    pull_policy: always
+
+  worker:
+    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    pull_policy: always

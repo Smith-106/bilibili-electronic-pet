@@ -10,7 +10,11 @@ from app.schemas import PlatformName, PublishWebhookRequest
 from app.services.hashing import reply_hash, verify_payload_signature
 from app.services.observability import build_log_context, ensure_trace_id, record_observability_event
 from app.services.platforms import get_platform_publish_source, is_platform_enabled
-from app.services.publisher import publish_gateway_reply, publish_platform_reply
+from app.services.publisher import (
+    normalize_publish_failure_reason,
+    publish_gateway_reply,
+    publish_platform_reply,
+)
 from app.settings import settings
 
 router = APIRouter(prefix="/gateway", tags=["gateway"], dependencies=[Depends(require_api_key)])
@@ -18,10 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def _normalize_failed_reason(reason: str) -> str:
-    normalized = (reason or "").strip()
-    if normalized:
-        return normalized
-    return "real_publish_failed:unknown"
+    return normalize_publish_failure_reason(reason)
 
 
 def _publish_core(

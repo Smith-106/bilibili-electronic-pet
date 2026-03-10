@@ -12,6 +12,17 @@ EXPECTED_TABLES = {
     "operation_audit_logs",
     "knowledge_entries",
     "role_cards",
+    "observability_events",
+}
+HEAD_REVISION = "20260311_add_compound_indexes"
+EXPECTED_COMPOUND_INDEXES = {
+    "reply_jobs": {
+        "ix_reply_jobs_status_created_at_id",
+    },
+    "operation_audit_logs": {
+        "ix_operation_audit_logs_action_ok_created_at_id",
+        "ix_operation_audit_logs_target_id_created_at_id",
+    },
 }
 
 
@@ -27,6 +38,14 @@ def _list_tables(database_url: str) -> set[str]:
     engine = create_engine(database_url)
     try:
         return set(inspect(engine).get_table_names())
+    finally:
+        engine.dispose()
+
+
+def _list_indexes(database_url: str, table_name: str) -> set[str]:
+    engine = create_engine(database_url)
+    try:
+        return {item["name"] for item in inspect(engine).get_indexes(table_name)}
     finally:
         engine.dispose()
 
@@ -54,7 +73,7 @@ def test_migration_init_and_upgrade_creates_full_schema(tmp_path: Path):
 
     tables = _list_tables(database_url)
     assert EXPECTED_TABLES.issubset(tables)
-    assert _get_revision(database_url) == "20260307_role_cards"
+    assert _get_revision(database_url) == HEAD_REVISION
 
 
 def test_migration_reapply_is_idempotent(tmp_path: Path):
@@ -66,8 +85,8 @@ def test_migration_reapply_is_idempotent(tmp_path: Path):
     command.upgrade(config, "head")
     second_revision = _get_revision(database_url)
 
-    assert first_revision == "20260307_role_cards"
-    assert second_revision == "20260307_role_cards"
+    assert first_revision == HEAD_REVISION
+    assert second_revision == HEAD_REVISION
     assert EXPECTED_TABLES.issubset(_list_tables(database_url))
 
 
@@ -84,4 +103,15 @@ def test_migration_upgrade_downgrade_roundtrip(tmp_path: Path):
 
     command.upgrade(config, "head")
     assert EXPECTED_TABLES.issubset(_list_tables(database_url))
-    assert _get_revision(database_url) == "20260307_role_cards"
+    assert _get_revision(database_url) == HEAD_REVISION
+
+
+def test_migration_contains_compound_indexes(tmp_path: Path):
+    database_url = f"sqlite:///{tmp_path / 'index-check.sqlite3'}"
+    config = _build_alembic_config(database_url)
+
+    command.upgrade(config, "head")
+
+    for table_name, index_names in EXPECTED_COMPOUND_INDEXES.items():
+        current_indexes = _list_indexes(database_url, table_name)
+        assert index_names.issubset(current_indexes)

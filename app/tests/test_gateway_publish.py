@@ -111,9 +111,11 @@ def test_gateway_publish_success_uses_adapter_reason_and_records_log(gateway_tes
 
     assert response.status_code == 200
     body = response.json()
+    assert set(body) == {"ok", "published", "reason", "comment_id", "published_at", "trace_id"}
     assert body["ok"] is True
     assert body["published"] is True
     assert body["reason"] == "official_publish_ok"
+    assert body["comment_id"] == "comment-3"
     assert body["trace_id"] == "trace-3"
     assert captured == {
         "comment_id": "comment-3",
@@ -149,10 +151,25 @@ def test_gateway_publish_duplicate_replay_skips_adapter(gateway_test_client, mon
 
     assert response.status_code == 200
     body = response.json()
+    assert set(body) == {"ok", "published", "duplicate", "reason", "trace_id"}
     assert body["ok"] is True
     assert body["published"] is False
     assert body["duplicate"] is True
     assert body["reason"] == "idempotent_replay"
+    assert body["trace_id"] == "trace-4"
+
+
+def test_gateway_publish_bilibili_route_returns_platform_disabled(gateway_test_client, monkeypatch):
+    client, _ = gateway_test_client
+    monkeypatch.setattr(settings, "platform_bilibili_enabled", False)
+
+    response = client.post(
+        "/gateway/publish/bilibili",
+        json={"comment_id": "comment-bili-disabled-1", "reply_text": "reply text"},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "platform_disabled: bilibili"
 
 
 def test_gateway_publish_douyin_route_returns_platform_disabled(gateway_test_client, monkeypatch):
@@ -210,9 +227,11 @@ def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway
 
     assert response.status_code == 200
     body = response.json()
+    assert set(body) == {"ok", "published", "reason", "comment_id", "published_at", "trace_id"}
     assert body["ok"] is True
     assert body["published"] is True
     assert body["reason"] == "platform_publish_ok"
+    assert body["comment_id"] == "comment-bili-1"
     assert captured == {
         "platform": "bilibili",
         "comment_id": "comment-bili-1",
@@ -225,6 +244,44 @@ def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway
         logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-bili-1").all()
         assert len(logs) == 1
         assert logs[0].source == "bilibili-open"
+
+
+def test_gateway_publish_bilibili_route_duplicate_replay_keeps_contract(gateway_test_client, monkeypatch):
+    client, testing_session_local = gateway_test_client
+    monkeypatch.setattr(settings, "platform_bilibili_enabled", True)
+
+    with testing_session_local() as db:
+        db.add(
+            PublishLog(
+                comment_id="comment-bili-dup-1",
+                reply_hash=reply_hash("comment-bili-dup-1", "reply text"),
+                source="bilibili-open",
+            )
+        )
+        db.commit()
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("publish_platform_reply should not be called for duplicate payload")
+
+    monkeypatch.setattr(gateway_api, "publish_platform_reply", fail_if_called)
+
+    response = client.post(
+        "/gateway/publish/bilibili",
+        json={
+            "comment_id": "comment-bili-dup-1",
+            "reply_text": "reply text",
+            "trace_id": "trace-bili-dup-1",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"ok", "published", "duplicate", "reason", "trace_id"}
+    assert body["ok"] is True
+    assert body["published"] is False
+    assert body["duplicate"] is True
+    assert body["reason"] == "idempotent_replay"
+    assert body["trace_id"] == "trace-bili-dup-1"
 
 
 def test_gateway_publish_douyin_route_uses_platform_source_fallback(gateway_test_client, monkeypatch):
@@ -307,9 +364,43 @@ def test_gateway_publish_failure_returns_traceable_reason(gateway_test_client, m
     body = response.json()
     assert body["ok"] is False
     assert body["published"] is False
-    assert body["reason"] == "real_publish_error:ReadTimeout"
+    assert body["reason"] == "timeout"
     assert body["trace_id"] == "trace-5"
 
     with testing_session_local() as db:
         logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-5").all()
         assert len(logs) == 0
+
+
+@pytest.mark.parametrize(
+    ("publisher_reason", "expected_reason"),
+    [
+        ("upstream_status_502", "5xx"),
+        ("invalid_signature", "auth"),
+        ("", "invalid_response"),
+    ],
+)
+def test_gateway_publish_failure_reason_is_standardized(
+    gateway_test_client,
+    monkeypatch,
+    publisher_reason,
+    expected_reason,
+):
+    client, _ = gateway_test_client
+
+    def fake_publish_gateway_reply(comment_id, reply_text, force_publish=False, source="bili-pet-bot", trace_id=None):
+        _ = comment_id, reply_text, force_publish, source, trace_id
+        return False, publisher_reason, None
+
+    monkeypatch.setattr(gateway_api, "publish_gateway_reply", fake_publish_gateway_reply)
+
+    response = client.post(
+        "/gateway/publish",
+        json={"comment_id": "comment-failed-standard-1", "reply_text": "reply text"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False
+    assert body["published"] is False
+    assert body["reason"] == expected_reason

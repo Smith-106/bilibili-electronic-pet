@@ -53,6 +53,10 @@ def collect_official_connector_event(payload: Mapping[str, Any]) -> CommentEvent
     return collect_comment_event(payload, source="official")
 
 
+def has_collector_source_mapper(source: CollectorSource) -> bool:
+    return source in _SOURCE_MAPPERS
+
+
 def get_platform_collector_source(platform: PlatformName) -> CollectorSource:
     try:
         config = get_platform_config(platform)
