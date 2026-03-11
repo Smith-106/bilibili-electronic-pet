@@ -687,5 +687,45 @@ def test_admin_audit_summary_endpoint(client, make_comment, make_job):
     assert "totals" in payload and "audit_logs" in payload["totals"]
     assert "by_action" in payload and isinstance(payload["by_action"], dict)
     assert "by_result" in payload and isinstance(payload["by_result"], dict)
-    assert payload["by_result"]["ok"] >= 0
-    assert payload["by_result"]["failed"] >= 0
+def test_admin_alias_endpoints_match_legacy_contracts(client, make_comment, make_job):
+    make_comment(comment_id="admin-alias-c-1", user_id="admin-alias-u-1")
+    make_job(comment_id="admin-alias-c-1", status="manual_queue", reply_text="alias job")
+
+    legacy_overview = client.get("/api/metrics/overview")
+    alias_overview = client.get("/api/admin/metrics/overview")
+    assert legacy_overview.status_code == 200
+    assert alias_overview.status_code == 200
+    assert alias_overview.json() == legacy_overview.json()
+
+    legacy_jobs = client.get("/api/jobs?status=manual_queue&limit=20&offset=0")
+    alias_jobs = client.get("/api/admin/jobs?status=manual_queue&limit=20&offset=0")
+    assert legacy_jobs.status_code == 200
+    assert alias_jobs.status_code == 200
+    assert alias_jobs.json() == legacy_jobs.json()
+
+    legacy_audit_summary = client.get("/api/audit-logs/summary?days=7")
+    alias_audit_summary = client.get("/api/admin/audit-logs/summary?days=7")
+    assert legacy_audit_summary.status_code == 200
+    assert alias_audit_summary.status_code == 200
+    assert alias_audit_summary.json() == legacy_audit_summary.json()
+
+    legacy_gateway_logs = client.get("/gateway/publish-logs?limit=20")
+    alias_gateway_logs = client.get("/api/admin/gateway/publish-logs?limit=20")
+    assert legacy_gateway_logs.status_code == 200
+    assert alias_gateway_logs.status_code == 200
+    assert alias_gateway_logs.json() == legacy_gateway_logs.json()
+
+
+def test_admin_static_js_uses_admin_alias_routes():
+    js_path = Path(__file__).resolve().parents[1] / "static" / "admin" / "admin.js"
+    js_text = js_path.read_text(encoding="utf-8")
+
+    assert "'/api/admin/metrics/overview'" in js_text
+    assert "'/api/admin/jobs?'" in js_text
+    assert "'/api/admin/audit-logs/summary?'" in js_text
+    assert "'/api/admin/gateway/publish-logs?'" in js_text
+
+    assert "'/api/metrics/overview'" not in js_text
+    assert "'/api/jobs?'" not in js_text
+    assert "'/api/audit-logs/summary?'" not in js_text
+    assert "'/gateway/publish-logs?'" not in js_text

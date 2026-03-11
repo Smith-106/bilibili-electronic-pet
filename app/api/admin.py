@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
+from app.api import comments as comments_api
+from app.api import gateway as gateway_api
 from app.api.auth import require_api_key
 from app.db import get_db
 from app.models.entities import KnowledgeEntry, RoleCard
@@ -606,6 +608,40 @@ def get_observability_metrics_summary(window_minutes: int = 60):
         "ok": True,
         "summary": get_observability_summary(window_minutes=window_minutes),
     }
+
+
+@router.get("/api/admin/metrics/overview")
+def admin_metrics_overview(db: Session = Depends(get_db)):
+    return comments_api.metrics_overview(db=db)
+
+
+@router.get("/api/admin/jobs")
+def admin_list_jobs(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=comments_api.LIST_LIMIT_MAX),
+    offset: int = Query(default=0, ge=0, le=comments_api.LIST_OFFSET_MAX),
+    db: Session = Depends(get_db),
+):
+    return comments_api.list_jobs(status=status, limit=limit, offset=offset, db=db)
+
+
+@router.get("/api/admin/audit-logs/summary")
+def admin_audit_logs_summary(
+    days: int = Query(default=7, ge=1, le=90),
+    action: str | None = Query(default=None),
+    ok: bool | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    return comments_api.summarize_audit_logs(days=days, action=action, ok=ok, db=db)
+
+
+@router.get("/api/admin/gateway/publish-logs")
+def admin_gateway_publish_logs(
+    comment_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    return gateway_api.list_publish_logs(comment_id=comment_id, limit=limit, db=db)
 
 
 @router.post("/api/admin/role-cards/{card_key}/activate")

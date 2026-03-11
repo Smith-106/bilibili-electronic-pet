@@ -1,18 +1,18 @@
 import { requestJson } from './client.js';
 
-export function createAdminApi() {
+export function createAdminDashboardApi() {
   return {
     getOverview() {
-      return requestJson('/api/metrics/overview');
+      return requestJson('/api/admin/metrics/overview');
     },
     getJobs() {
-      return requestJson('/api/jobs?limit=20');
+      return requestJson('/api/admin/jobs?limit=20');
     },
     getGatewayLogs() {
-      return requestJson('/gateway/publish-logs?limit=20');
+      return requestJson('/api/admin/gateway/publish-logs?limit=20');
     },
     getAuditSummary(days = 7) {
-      return requestJson(`/api/audit-logs/summary?days=${encodeURIComponent(String(days))}`);
+      return requestJson(`/api/admin/audit-logs/summary?days=${encodeURIComponent(String(days))}`);
     },
   };
 }

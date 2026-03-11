@@ -549,7 +549,7 @@ function toggleAutoRefresh() {
 }
 
 async function loadOverview() {
-  const res = await fetch(withApiKey('/api/metrics/overview'));
+  const res = await fetch(withApiKey('/api/admin/metrics/overview'));
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载概览失败'));
 
@@ -656,7 +656,7 @@ async function loadJobs() {
   if (jobsLimitInput) jobsLimitInput.value = String(limit);
   const qs = new URLSearchParams({ limit: String(limit) });
   if (status) qs.set('status', status);
-  const res = await fetch(withApiKey('/api/jobs?' + qs.toString()));
+  const res = await fetch(withApiKey('/api/admin/jobs?' + qs.toString()));
   const data = await readApiPayload(res);
   if (!jobsTableBody) throw new Error('jobs_table_not_found');
   jobsTableBody.innerHTML = '';
@@ -1377,7 +1377,7 @@ async function loadAuditSummary() {
   if (action) qs.set('action', action);
   if (ok) qs.set('ok', ok);
 
-  const res = await fetch(withApiKey('/api/audit-logs/summary?' + qs.toString()));
+  const res = await fetch(withApiKey('/api/admin/audit-logs/summary?' + qs.toString()));
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载审计摘要失败'));
 
@@ -1563,7 +1563,7 @@ async function loadGatewayLogs() {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (commentId) qs.set('comment_id', commentId);
 
-  const res = await fetch(withApiKey('/gateway/publish-logs?' + qs.toString()));
+  const res = await fetch(withApiKey('/api/admin/gateway/publish-logs?' + qs.toString()));
   const data = await readApiPayload(res);
   if (!gatewayLogsBody) throw new Error('gateway_logs_table_not_found');
   gatewayLogsBody.innerHTML = '';

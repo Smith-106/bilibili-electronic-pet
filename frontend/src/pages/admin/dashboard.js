@@ -1,9 +1,9 @@
-import { createAdminApi } from '../../api/admin.js';
+import { createAdminDashboardApi } from '../../api/admin.js';
 
 export async function renderAdminDashboard(container) {
   if (!container) return;
-  const api = createAdminApi();
-  container.innerHTML = '<h2>Admin API Snapshot</h2><pre id="admin-dashboard-json">loading...</pre>';
+  const api = createAdminDashboardApi();
+  container.innerHTML = '<h2>Admin Dashboard Data Snapshot</h2><pre id="admin-dashboard-json">loading...</pre>';
   const output = container.querySelector('#admin-dashboard-json');
 
   try {
