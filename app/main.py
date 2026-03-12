@@ -6,9 +6,14 @@ from fastapi.staticfiles import StaticFiles
 from app.api.admin import router as admin_router
 from app.api.comments import router as comments_router
 from app.api.gateway import router as gateway_router
+from app.settings import settings
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # 配置 B站 评论轮询定时任务
+    if settings.bilibili_enabled and settings.bilibili_poll_enabled:
+        from app.workers.jobs import schedule_bilibili_polling
+        schedule_bilibili_polling()
     yield
 
 
