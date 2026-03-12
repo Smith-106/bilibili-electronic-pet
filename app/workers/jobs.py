@@ -423,3 +423,38 @@ def process_comment_event_task(self, event_payload: dict):
         raise RetryableWorkerError(str(exc)) from exc
     finally:
         db.close()
+
+
+# ==================== Bilibili Polling Tasks ====================
+
+@celery_app.task(
+    name="poll_bilibili_comments_task",
+    bind=True,
+)
+def poll_bilibili_comments_task(self) -> dict:
+    """定时轮询 B站视频评论"""
+    from app.services.bilibili_poller import poll_bilibili_comments_task as _poll
+
+    logger.info("bilibili_poll_task_started")
+    result = _poll()
+    logger.info(f"bilibili_poll_task_completed | result={result}")
+    return result
+
+
+def schedule_bilibili_polling() -> None:
+    """配置 B站评论轮询定时任务"""
+    if not (settings.bilibili_enabled and settings.bilibili_poll_enabled):
+        logger.info("bilibili_polling_not_configured")
+        return
+
+    interval_seconds = max(60, settings.bilibili_poll_interval_seconds)
+
+    celery_app.conf.beat_schedule = {
+        **getattr(celery_app.conf, "beat_schedule", {}),
+        "poll-bilibili-comments": {
+            "task": "poll_bilibili_comments_task",
+            "schedule": interval_seconds,
+        },
+    }
+
+    logger.info(f"bilibili_polling_scheduled | interval_seconds={interval_seconds}")

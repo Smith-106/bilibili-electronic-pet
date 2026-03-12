@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -6,9 +8,12 @@ from app.api import comments as comments_api
 from app.api import gateway as gateway_api
 from app.api.auth import require_api_key
 from app.db import get_db
-from app.models.entities import KnowledgeEntry, RoleCard
+from app.models.entities import KnowledgeEntry, RoleCard, BilibiliVideo, BilibiliCredential
 from app.services.observability import get_observability_summary
 from app.settings import settings
+
+# BVID 格式验证正则表达式
+BVID_PATTERN = re.compile(r"^BV[a-zA-Z0-9]{10}$")
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_api_key)])
 ADMIN_LIST_LIMIT_MAX = 1000
@@ -27,6 +32,21 @@ def admin_page():
     <link rel="stylesheet" href="/static/admin/admin.css" />
 </head>
 <body>
+  <div class="admin-layout">
+    <aside class="side-nav mono" aria-label="管理导航">
+      <div class="side-nav-title">Admin Navigation</div>
+      <a href="#section-overview">系统概览</a>
+      <a href="#section-role-cards">角色卡</a>
+      <a href="#section-knowledge">知识库</a>
+      <a href="#section-bilibili">B站集成</a>
+      <a href="#section-daily">趋势</a>
+      <a href="#section-jobs">任务</a>
+      <a href="#section-single-diagnostics">诊断</a>
+      <a href="#section-gateway">发布网关</a>
+      <a href="#section-audit">审计</a>
+    </aside>
+
+    <main class="admin-main">
   <div class="shell">
     <h1>Bili Pet 管理页</h1>
     <p class="page-subtitle">统一工作台：系统概览、角色卡、知识库、任务队列、发布网关与审计全链路可视化。</p>
@@ -35,6 +55,7 @@ def admin_page():
       <a href="#section-overview">系统概览</a>
       <a href="#section-role-cards">角色卡</a>
       <a href="#section-knowledge">知识库</a>
+      <a href="#section-bilibili">B站集成</a>
       <a href="#section-daily">趋势</a>
       <a href="#section-jobs">任务</a>
       <a href="#section-gateway">发布网关</a>
@@ -53,15 +74,15 @@ def admin_page():
     <div class="toolbar">
       <label><input id="auto-refresh" type="checkbox" onchange="toggleAutoRefresh()" /> 自动刷新</label>
       <input id="auto-refresh-seconds" type="number" min="3" max="300" value="15" onchange="onAutoRefreshSecondsChange()" aria-label="自动刷新间隔秒数" />
-      <button id="full-refresh-btn" onclick="queueFullRefresh()" aria-label="立即全量刷新面板数据">立即全量刷新</button>
+      <button class="btn-primary" id="full-refresh-btn" onclick="queueFullRefresh()" aria-label="立即全量刷新面板数据">立即全量刷新</button>
       <select id="style-profile-select" aria-label="回复风格选择">
         <option value="auto">auto</option>
         <option value="empathy">empathy</option>
         <option value="meme">meme</option>
         <option value="normal">normal</option>
       </select>
-      <button id="style-profile-apply-btn" onclick="applyStyleProfile()" aria-label="应用回复风格配置">应用风格</button>
-      <button id="style-profile-refresh-btn" onclick="refreshStyleProfile()" aria-label="读取当前回复风格配置">读取风格</button>
+      <button class="btn-accent" id="style-profile-apply-btn" onclick="applyStyleProfile()" aria-label="应用回复风格配置">应用风格</button>
+      <button class="btn-ghost" id="style-profile-refresh-btn" onclick="refreshStyleProfile()" aria-label="读取当前回复风格配置">读取风格</button>
       <span id="style-profile-current" class="mono" role="status" aria-live="polite">风格: -</span>
       <select id="role-profile-select" aria-label="角色档位选择">
         <option value="auto">auto</option>
@@ -69,12 +90,12 @@ def admin_page():
         <option value="comfort">comfort</option>
         <option value="playful">playful</option>
       </select>
-      <button id="role-profile-apply-btn" onclick="applyRoleProfile()" aria-label="应用角色档位配置">应用角色卡</button>
-      <button id="role-profile-refresh-btn" onclick="refreshRoleProfile()" aria-label="读取当前角色档位配置">读取角色卡</button>
+      <button class="btn-accent" id="role-profile-apply-btn" onclick="applyRoleProfile()" aria-label="应用角色档位配置">应用角色卡</button>
+      <button class="btn-ghost" id="role-profile-refresh-btn" onclick="refreshRoleProfile()" aria-label="读取当前角色档位配置">读取角色卡</button>
       <span id="role-profile-current" class="mono" role="status" aria-live="polite">角色卡: -</span>
       <button onclick="toggleHelpPanel()" aria-label="显示或隐藏帮助面板">帮助 (?)</button>
-      <button id="prefs-reset-btn" onclick="resetUiPrefs()" aria-label="重置页面偏好设置">重置偏好</button>
-      <button id="prefs-export-btn" onclick="exportUiPrefs()" aria-label="导出页面偏好配置">导出偏好</button>
+      <button class="btn-ghost" id="prefs-reset-btn" onclick="resetUiPrefs()" aria-label="重置页面偏好设置">重置偏好</button>
+      <button class="btn-ghost" id="prefs-export-btn" onclick="exportUiPrefs()" aria-label="导出页面偏好配置">导出偏好</button>
       <button id="prefs-import-btn" onclick="triggerImportUiPrefs()" aria-label="导入页面偏好配置">导入偏好</button>
       <input id="ui-prefs-file" class="hidden" type="file" accept="application/json" onchange="importUiPrefsFromFile(event)" />
       <span id="refresh-status" class="mono status-pill status-idle clickable" onclick="showRefreshErrorDetail()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showRefreshErrorDetail();}" tabindex="0" title="点击查看详细错误（仅在失败/部分失败时有内容）" role="status" aria-live="polite" aria-label="刷新状态信息，点击查看详情">状态: 未刷新</span>
@@ -173,6 +194,62 @@ def admin_page():
           </tr>
         </thead>
         <tbody id="knowledge-entries"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2 id="section-bilibili" class="section-title">B站集成</h2>
+  <div class="panel">
+    <div class="toolbar">
+      <button id="bilibili-status-refresh-btn" onclick="refreshBilibiliStatus()" aria-label="刷新B站状态">刷新状态</button>
+      <button id="bilibili-poll-btn" onclick="triggerBilibiliPoll()" aria-label="手动触发评论轮询">手动轮询</button>
+      <span id="bilibili-status-indicator" class="mono status-pill status-idle" role="status" aria-live="polite">状态: 未加载</span>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="card-title">集成状态</div><div id="card-bilibili-enabled" class="card-value" role="status" aria-live="polite">-</div></div>
+      <div class="card"><div class="card-title">评论轮询</div><div id="card-bilibili-poll" class="card-value" role="status" aria-live="polite">-</div></div>
+      <div class="card"><div class="card-title">真实发布</div><div id="card-bilibili-publish" class="card-value" role="status" aria-live="polite">-</div></div>
+      <div class="card"><div class="card-title">监控视频数</div><div id="card-bilibili-videos" class="card-value" role="status" aria-live="polite">-</div></div>
+    </div>
+
+    <h3 class="subsection-title">视频监控列表</h3>
+    <div class="toolbar">
+      <input id="bilibili-video-bvid" type="text" placeholder="BV号 (如: BV1xx411c7mD)" aria-label="视频BV号" />
+      <label><input id="bilibili-video-poll-enabled" type="checkbox" checked aria-label="启用轮询" /> 启用轮询</label>
+      <button id="bilibili-video-add-btn" onclick="addBilibiliVideo()" aria-label="添加视频到监控">添加视频</button>
+      <button id="bilibili-videos-refresh-btn" onclick="refreshBilibiliVideos()" aria-label="刷新视频列表">刷新列表</button>
+    </div>
+    <div class="table-wrap">
+      <table aria-label="B站视频监控列表">
+        <thead>
+          <tr>
+            <th scope="col">ID</th><th scope="col">BV号</th><th scope="col">标题</th><th scope="col">轮询</th><th scope="col">最后轮询</th><th scope="col">最后rpid</th><th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody id="bilibili-videos"></tbody>
+      </table>
+    </div>
+
+    <h3 class="subsection-title">凭证管理</h3>
+    <div class="toolbar">
+      <input id="credential-name" type="text" placeholder="凭证名称" aria-label="凭证名称" />
+      <input id="credential-sessdata" type="password" placeholder="SESSDATA" aria-label="SESSDATA" />
+      <input id="credential-bili-jct" type="password" placeholder="bili_jct" aria-label="bili_jct" />
+      <input id="credential-buvid3" type="text" placeholder="buvid3" aria-label="buvid3" />
+      <input id="credential-buvid4" type="text" placeholder="buvid4 (可选)" aria-label="buvid4" />
+      <input id="credential-expires" type="date" aria-label="过期日期" />
+      <button id="credential-add-btn" onclick="addBilibiliCredential()" aria-label="添加凭证">添加凭证</button>
+      <button id="credentials-refresh-btn" onclick="refreshBilibiliCredentials()" aria-label="刷新凭证列表">刷新列表</button>
+    </div>
+    <div class="table-wrap">
+      <table aria-label="B站凭证列表">
+        <thead>
+          <tr>
+            <th scope="col">ID</th><th scope="col">名称</th><th scope="col">激活</th><th scope="col">SESSDATA</th><th scope="col">buvid3</th><th scope="col">过期时间</th><th scope="col">最后使用</th><th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody id="bilibili-credentials"></tbody>
       </table>
     </div>
   </div>
@@ -335,6 +412,9 @@ def admin_page():
     </div>
   </div>
 
+    </main>
+  </div>
+
 <script>window.__PUBLISHER_MODE__ = "__PUBLISHER_MODE__";</script>
 <script src="/static/admin/admin.js"></script>
 </body>
@@ -368,9 +448,9 @@ def list_knowledge_entries(
 
 @router.post("/api/admin/knowledge")
 def create_knowledge_entry(payload: dict, db: Session = Depends(get_db)):
-    category = str(payload.get("category") or "").strip()
-    title = str(payload.get("title") or "").strip()
-    content = str(payload.get("content") or "").strip()
+    category = str(payload.get("category") or "").strip()[:64]  # Limit length
+    title = str(payload.get("title") or "").strip()[:128]  # Limit length
+    content = str(payload.get("content") or "").strip()[:65535]  # Text field limit
 
     if not category:
         raise HTTPException(status_code=400, detail="category_required")
@@ -487,10 +567,10 @@ def list_role_cards(
 
 @router.post("/api/admin/role-cards")
 def create_role_card(payload: dict, db: Session = Depends(get_db)):
-    key = str(payload.get("key") or "").strip().lower()
-    name = str(payload.get("name") or "").strip()
-    description = str(payload.get("description") or "").strip()
-    system_prompt = str(payload.get("system_prompt") or "").strip()
+    key = str(payload.get("key") or "").strip().lower()[:64]  # Limit to DB column size
+    name = str(payload.get("name") or "").strip()[:128]  # Limit to DB column size
+    description = str(payload.get("description") or "").strip()[:65535]  # Text field limit
+    system_prompt = str(payload.get("system_prompt") or "").strip()[:65535]  # Text field limit
     tone = payload.get("tone") if isinstance(payload.get("tone"), dict) else {}
     constraints = payload.get("constraints") if isinstance(payload.get("constraints"), dict) else {}
     enabled = bool(payload.get("enabled", True))
@@ -537,20 +617,20 @@ def create_role_card(payload: dict, db: Session = Depends(get_db)):
 
 @router.post("/api/admin/role-cards/{card_key}")
 def update_role_card(card_key: str, payload: dict, db: Session = Depends(get_db)):
-    normalized_key = str(card_key or "").strip().lower()
+    normalized_key = str(card_key or "").strip().lower()[:64]  # Limit length
     item = db.query(RoleCard).filter(RoleCard.key == normalized_key).first()
     if not item:
         raise HTTPException(status_code=404, detail="role_card_not_found")
 
     if "name" in payload:
-        name = str(payload.get("name") or "").strip()
+        name = str(payload.get("name") or "").strip()[:128]  # Limit to DB column size
         if not name:
             raise HTTPException(status_code=400, detail="role_card_name_required")
         item.name = name
     if "description" in payload:
-        item.description = str(payload.get("description") or "").strip()
+        item.description = str(payload.get("description") or "").strip()[:65535]  # Text field limit
     if "system_prompt" in payload:
-        item.system_prompt = str(payload.get("system_prompt") or "").strip()
+        item.system_prompt = str(payload.get("system_prompt") or "").strip()[:65535]  # Text field limit
     if "tone" in payload:
         item.tone = payload.get("tone") if isinstance(payload.get("tone"), dict) else {}
     if "constraints" in payload:
@@ -658,3 +738,292 @@ def activate_role_card(card_key: str, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(item)
     return {"ok": True, "active_role_card_key": item.key}
+
+
+# ==================== Bilibili Integration Admin API ====================
+
+
+@router.get("/api/admin/bilibili/status")
+def get_bilibili_status(db: Session = Depends(get_db)):
+    """获取 B站集成状态"""
+    credential = db.query(BilibiliCredential).filter(BilibiliCredential.is_active.is_(True)).first()
+    videos = db.query(BilibiliVideo).filter(BilibiliVideo.poll_enabled.is_(True)).count()
+
+    return {
+        "ok": True,
+        "config": {
+            "enabled": settings.bilibili_enabled,
+            "poll_enabled": settings.bilibili_poll_enabled,
+            "publish_enabled": settings.bilibili_publish_enabled,
+            "poll_interval_seconds": settings.bilibili_poll_interval_seconds,
+            "rate_limit_per_minute": settings.bilibili_rate_limit_per_minute,
+        },
+        "credential": {
+            "id": credential.id if credential else None,
+            "name": credential.name if credential else None,
+            "is_active": credential.is_active if credential else False,
+            "expires_at": credential.expires_at.isoformat() if credential and credential.expires_at else None,
+            "last_used_at": credential.last_used_at.isoformat() if credential and credential.last_used_at else None,
+        } if credential else None,
+        "videos": {
+            "poll_enabled_count": videos,
+        },
+    }
+
+
+@router.get("/api/admin/bilibili/videos")
+def list_bilibili_videos(
+    poll_enabled: bool | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    """获取 B站视频列表"""
+    query = db.query(BilibiliVideo)
+    if poll_enabled is not None:
+        query = query.filter(BilibiliVideo.poll_enabled == poll_enabled)
+
+    items = query.order_by(BilibiliVideo.updated_at.desc()).offset(offset).limit(limit).all()
+    total = query.count()
+
+    return {
+        "ok": True,
+        "total": total,
+        "items": [
+            {
+                "id": item.id,
+                "bvid": item.bvid,
+                "aid": item.aid,
+                "title": item.title,
+                "owner_mid": item.owner_mid,
+                "poll_enabled": item.poll_enabled,
+                "last_polled_at": item.last_polled_at.isoformat() if item.last_polled_at else None,
+                "last_rpid": item.last_rpid,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+            }
+            for item in items
+        ],
+    }
+
+
+@router.post("/api/admin/bilibili/videos")
+def add_bilibili_video(payload: dict, db: Session = Depends(get_db)):
+    """添加视频到监控列表"""
+    from app.services.bilibili_client import BilibiliClient
+
+    bvid = str(payload.get("bvid") or "").strip()[:20]  # Limit to DB column size
+    poll_enabled = bool(payload.get("poll_enabled", True))
+
+    if not bvid:
+        raise HTTPException(status_code=400, detail="bvid_required")
+
+    # 验证 BVID 格式 (BV + 10位字母数字)
+    if not BVID_PATTERN.match(bvid):
+        raise HTTPException(status_code=400, detail="invalid_bvid_format")
+
+    # 检查是否已存在
+    existing = db.query(BilibiliVideo).filter(BilibiliVideo.bvid == bvid).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="video_already_exists")
+
+    # 同步视频信息
+    client = BilibiliClient(db)
+    video = client.sync_video_info(bvid, poll_enabled=poll_enabled)
+
+    if not video:
+        raise HTTPException(status_code=400, detail="video_info_fetch_failed")
+
+    return {
+        "ok": True,
+        "item": {
+            "id": video.id,
+            "bvid": video.bvid,
+            "aid": video.aid,
+            "title": video.title,
+            "owner_mid": video.owner_mid,
+            "poll_enabled": video.poll_enabled,
+            "last_rpid": video.last_rpid,
+        },
+    }
+
+
+@router.post("/api/admin/bilibili/videos/{video_id}/toggle-poll")
+def toggle_bilibili_video_poll(video_id: int, payload: dict, db: Session = Depends(get_db)):
+    """启用/禁用视频评论轮询"""
+    video = db.query(BilibiliVideo).filter(BilibiliVideo.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="video_not_found")
+
+    poll_enabled = bool(payload.get("poll_enabled", not video.poll_enabled))
+    video.poll_enabled = poll_enabled
+    db.commit()
+    db.refresh(video)
+
+    return {
+        "ok": True,
+        "item": {
+            "id": video.id,
+            "bvid": video.bvid,
+            "poll_enabled": video.poll_enabled,
+        },
+    }
+
+
+@router.delete("/api/admin/bilibili/videos/{video_id}")
+def delete_bilibili_video(video_id: int, db: Session = Depends(get_db)):
+    """删除视频监控"""
+    video = db.query(BilibiliVideo).filter(BilibiliVideo.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="video_not_found")
+
+    db.delete(video)
+    db.commit()
+
+    return {"ok": True, "deleted_id": video_id}
+
+
+@router.post("/api/admin/bilibili/videos/{video_id}/sync")
+def sync_bilibili_video_info(video_id: int, db: Session = Depends(get_db)):
+    """同步视频信息"""
+    from app.services.bilibili_client import BilibiliClient
+
+    video = db.query(BilibiliVideo).filter(BilibiliVideo.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="video_not_found")
+
+    client = BilibiliClient(db)
+    updated = client.sync_video_info(video.bvid, poll_enabled=video.poll_enabled)
+
+    if not updated:
+        raise HTTPException(status_code=400, detail="video_info_fetch_failed")
+
+    return {
+        "ok": True,
+        "item": {
+            "id": updated.id,
+            "bvid": updated.bvid,
+            "aid": updated.aid,
+            "title": updated.title,
+            "owner_mid": updated.owner_mid,
+        },
+    }
+
+
+@router.post("/api/admin/bilibili/poll")
+def trigger_bilibili_poll(db: Session = Depends(get_db)):
+    """手动触发评论轮询"""
+    from app.services.bilibili_poller import BilibiliPoller
+
+    poller = BilibiliPoller(db)
+    result = poller.poll_all_videos()
+
+    return {"ok": True, "result": result}
+
+
+@router.get("/api/admin/bilibili/credentials")
+def list_bilibili_credentials(db: Session = Depends(get_db)):
+    """获取 B站凭证列表"""
+    items = db.query(BilibiliCredential).order_by(BilibiliCredential.updated_at.desc()).all()
+
+    return {
+        "ok": True,
+        "items": [
+            {
+                "id": item.id,
+                "name": item.name,
+                "is_active": item.is_active,
+                "has_sessdata": bool(item.sessdata),
+                "has_bili_jct": bool(item.bili_jct),
+                "buvid3": item.buvid3[:8] + "..." if item.buvid3 and len(item.buvid3) > 8 else item.buvid3,
+                "expires_at": item.expires_at.isoformat() if item.expires_at else None,
+                "last_used_at": item.last_used_at.isoformat() if item.last_used_at else None,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+            }
+            for item in items
+        ],
+    }
+
+
+@router.post("/api/admin/bilibili/credentials")
+def create_bilibili_credential(payload: dict, db: Session = Depends(get_db)):
+    """创建 B站凭证"""
+    from app.services.bilibili_client import CredentialEncryption
+
+    name = str(payload.get("name") or "").strip()[:64]  # Limit to DB column size
+    sessdata = str(payload.get("sessdata") or "").strip()
+    bili_jct = str(payload.get("bili_jct") or "").strip()[:128]  # Limit to DB column size
+    buvid3 = str(payload.get("buvid3") or "").strip()[:128]  # Limit to DB column size
+    buvid4 = str(payload.get("buvid4") or "").strip()[:128]  # Limit to DB column size
+    expires_at = payload.get("expires_at")
+
+    if not name:
+        raise HTTPException(status_code=400, detail="name_required")
+    if not sessdata:
+        raise HTTPException(status_code=400, detail="sessdata_required")
+    if not bili_jct:
+        raise HTTPException(status_code=400, detail="bili_jct_required")
+    if not buvid3:
+        raise HTTPException(status_code=400, detail="buvid3_required")
+
+    # 加密存储
+    encryption = CredentialEncryption(settings.bilibili_cookie_encryption_key)
+    encrypted_sessdata = encryption.encrypt(sessdata)
+    encrypted_bili_jct = encryption.encrypt(bili_jct)
+
+    # 如果是第一个凭证，自动激活
+    existing_count = db.query(BilibiliCredential).count()
+    is_active = existing_count == 0
+
+    credential = BilibiliCredential(
+        name=name,
+        sessdata=encrypted_sessdata,
+        bili_jct=encrypted_bili_jct,
+        buvid3=buvid3,
+        buvid4=buvid4 or None,
+        is_active=is_active,
+        expires_at=expires_at if expires_at else None,
+    )
+    db.add(credential)
+    db.commit()
+    db.refresh(credential)
+
+    return {
+        "ok": True,
+        "item": {
+            "id": credential.id,
+            "name": credential.name,
+            "is_active": credential.is_active,
+            "expires_at": credential.expires_at.isoformat() if credential.expires_at else None,
+        },
+    }
+
+
+@router.post("/api/admin/bilibili/credentials/{credential_id}/activate")
+def activate_bilibili_credential(credential_id: int, db: Session = Depends(get_db)):
+    """激活凭证"""
+    credential = db.query(BilibiliCredential).filter(BilibiliCredential.id == credential_id).first()
+    if not credential:
+        raise HTTPException(status_code=404, detail="credential_not_found")
+
+    # 停用其他凭证
+    db.query(BilibiliCredential).update({BilibiliCredential.is_active: False})
+    credential.is_active = True
+    db.commit()
+    db.refresh(credential)
+
+    return {"ok": True, "active_credential_id": credential.id}
+
+
+@router.delete("/api/admin/bilibili/credentials/{credential_id}")
+def delete_bilibili_credential(credential_id: int, db: Session = Depends(get_db)):
+    """删除凭证"""
+    credential = db.query(BilibiliCredential).filter(BilibiliCredential.id == credential_id).first()
+    if not credential:
+        raise HTTPException(status_code=404, detail="credential_not_found")
+
+    db.delete(credential)
+    db.commit()
+
+    return {"ok": True, "deleted_id": credential_id}

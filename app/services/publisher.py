@@ -1,9 +1,12 @@
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 import httpx
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from app.schemas import PlatformName
@@ -11,6 +14,8 @@ from app.services.hashing import sign_payload
 from app.services.platforms import get_platform_config, get_platform_publish_source
 from app.services.provider_registry import ProviderRegistry
 from app.settings import settings
+
+logger = logging.getLogger(__name__)
 
 
 class PublisherAdapter(Protocol):
@@ -284,7 +289,76 @@ _PUBLISHER_REGISTRY.register("webhook", WebhookPublisher())
 _PUBLISHER_REGISTRY.register("real_publish", RealPublishPublisher())
 
 
+# Bilibili publisher session management
+_BILIBILI_PUBLISHER_DB: Session | None = None
+_BILIBILI_PUBLISHER_INSTANCE: PublisherAdapter | None = None
+
+
+def _get_bilibili_publisher() -> PublisherAdapter | None:
+    """获取 B站发布器（如果启用）
+
+    注意：使用单例模式管理数据库会话，避免连接泄漏
+    """
+    global _BILIBILI_PUBLISHER_DB, _BILIBILI_PUBLISHER_INSTANCE
+
+    if not (settings.bilibili_enabled and settings.bilibili_publish_enabled):
+        return None
+
+    # 如果已有实例且数据库会话有效，直接返回
+    if _BILIBILI_PUBLISHER_INSTANCE is not None and _BILIBILI_PUBLISHER_DB is not None:
+        try:
+            # 检查会话是否有效
+            _BILIBILI_PUBLISHER_DB.execute(text("SELECT 1"))
+            return _BILIBILI_PUBLISHER_INSTANCE
+        except Exception:
+            # 会话无效，重新创建
+            _BILIBILI_PUBLISHER_INSTANCE = None
+            if _BILIBILI_PUBLISHER_DB:
+                try:
+                    _BILIBILI_PUBLISHER_DB.close()
+                except Exception:
+                    pass
+                _BILIBILI_PUBLISHER_DB = None
+
+    try:
+        from app.services.bilibili_publisher import BilibiliPublisherAdapter
+        from app.db import SessionLocal
+
+        _BILIBILI_PUBLISHER_DB = SessionLocal()
+        _BILIBILI_PUBLISHER_INSTANCE = BilibiliPublisherAdapter(_BILIBILI_PUBLISHER_DB)
+        return _BILIBILI_PUBLISHER_INSTANCE
+    except ImportError:
+        logger.warning("bilibili_publisher_not_available")
+        return None
+    except Exception as e:
+        logger.error(f"bilibili_publisher_init_failed | error={e}")
+        return None
+
+
+def close_bilibili_publisher() -> None:
+    """关闭 B站发布器及其数据库连接
+
+    应在应用关闭时调用
+    """
+    global _BILIBILI_PUBLISHER_DB, _BILIBILI_PUBLISHER_INSTANCE
+
+    if _BILIBILI_PUBLISHER_DB is not None:
+        try:
+            _BILIBILI_PUBLISHER_DB.close()
+        except Exception:
+            pass
+        _BILIBILI_PUBLISHER_DB = None
+
+    _BILIBILI_PUBLISHER_INSTANCE = None
+
+
 def _get_publisher() -> PublisherAdapter:
+    # 如果启用了 B站真实发布，优先使用
+    if settings.bilibili_enabled and settings.bilibili_publish_enabled:
+        bilibili_publisher = _get_bilibili_publisher()
+        if bilibili_publisher:
+            return bilibili_publisher
+
     mode = settings.publisher_mode.lower().strip()
     try:
         return _PUBLISHER_REGISTRY.resolve(mode)

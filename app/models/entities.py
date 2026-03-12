@@ -124,3 +124,52 @@ class RoleCard(Base):
         nullable=False,
         index=True,
     )
+
+
+class BilibiliCredential(Base):
+    """B站 API 凭证存储"""
+    __tablename__ = "bilibili_credentials"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    sessdata: Mapped[str] = mapped_column(Text, nullable=False)  # 加密存储
+    bili_jct: Mapped[str] = mapped_column(String(128), nullable=False)  # 加密存储
+    buvid3: Mapped[str] = mapped_column(String(128), nullable=False)
+    buvid4: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
+
+
+class BilibiliVideo(Base):
+    """B站视频监控配置"""
+    __tablename__ = "bilibili_videos"
+    __table_args__ = (
+        UniqueConstraint("bvid", name="uq_bilibili_videos_bvid"),
+        Index("ix_bilibili_videos_poll_enabled_last_polled", "poll_enabled", "last_polled_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    bvid: Mapped[str] = mapped_column(String(20), nullable=False)
+    aid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    title: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    owner_mid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    poll_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    last_rpid: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )

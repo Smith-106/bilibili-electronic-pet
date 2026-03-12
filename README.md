@@ -5,10 +5,12 @@
 ## 功能概览
 
 - 评论事件接入（webhook / poller / official / 多平台入口）
+- **B站主动轮询** - 自动拉取B站视频评论并生成回复
+- **B站真实发布** - 自动将回复发布到B站
 - 自动生成回复（风格 + 长度 + 角色卡优先级）
 - 安全策略（关键词、PII、人工审核队列）
 - 发布网关（Bearer + HMAC 校验、幂等去重）
-- 管理后台（任务列表、批量 approve/retry、趋势、审计、角色卡工作台）
+- 管理后台（任务列表、批量 approve/retry、趋势、审计、角色卡工作台、**B站集成管理**）
 - 云端 CI（GitHub Actions：`pytest` + `docker build`）
 - 云端镜像发布（GitHub Container Registry / GHCR）
 
@@ -139,6 +141,20 @@ curl -sS http://127.0.0.1:8000/health
 - 已覆盖单项诊断能力：评论详情查询、任务详情查询、单任务重试（`force_long` + 成功后自动重置选项）
 - 已强化可访问性与语义一致性：`aria-label`、`role/aria-live`、表头 `th scope="col"`、`prefers-reduced-motion`
 
+### B站集成 API
+
+- `GET /api/admin/bilibili/status` - 获取集成状态
+- `GET /api/admin/bilibili/videos` - 获取视频监控列表
+- `POST /api/admin/bilibili/videos` - 添加视频到监控
+- `POST /api/admin/bilibili/videos/{id}/toggle-poll` - 启用/禁用视频轮询
+- `DELETE /api/admin/bilibili/videos/{id}` - 删除视频监控
+- `POST /api/admin/bilibili/videos/{id}/sync` - 同步视频信息
+- `POST /api/admin/bilibili/poll` - 手动触发评论轮询
+- `GET /api/admin/bilibili/credentials` - 获取凭证列表
+- `POST /api/admin/bilibili/credentials` - 创建凭证
+- `POST /api/admin/bilibili/credentials/{id}/activate` - 激活凭证
+- `DELETE /api/admin/bilibili/credentials/{id}` - 删除凭证
+
 ## 环境变量（重点）
 
 ### 基础运行
@@ -170,6 +186,16 @@ curl -sS http://127.0.0.1:8000/health
 - `PUBLISHER_HMAC_SECRET`
 - `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_WEBHOOK_TOKEN`
 - `PUBLISHER_REAL_PUBLISH_URL` / `PUBLISHER_REAL_PUBLISH_TOKEN`
+
+### B站集成
+
+- `BILIBILI_ENABLED`（是否启用B站集成，默认 `false`）
+- `BILIBILI_POLL_ENABLED`（是否启用评论轮询，默认 `false`）
+- `BILIBILI_PUBLISH_ENABLED`（是否启用真实发布，默认 `false`）
+- `BILIBILI_POLL_INTERVAL_SECONDS`（轮询间隔秒数，默认 `300`）
+- `BILIBILI_RATE_LIMIT_PER_MINUTE`（API 请求频率限制，默认 `30`）
+- `BILIBILI_CREDENTIAL_ID`（使用的凭证 ID，默认 `1`）
+- `BILIBILI_COOKIE_ENCRYPTION_KEY`（凭证加密密钥，32字节以上字符串）
 
 ### 生产最小配置（必填）
 

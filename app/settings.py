@@ -83,6 +83,19 @@ class Settings(BaseSettings):
     platform_douyin_publish_source: str = "douyin-bot"
     platform_kuaishou_publish_source: str = "kuaishou-bot"
 
+    # Bilibili API Integration
+    bilibili_enabled: bool = False
+    bilibili_poll_enabled: bool = False
+    bilibili_poll_interval_seconds: int = 300
+    bilibili_publish_enabled: bool = False
+    bilibili_credential_id: int = 1
+    bilibili_rate_limit_per_minute: int = 30
+    bilibili_sessdata: str = ""
+    bilibili_bili_jct: str = ""
+    bilibili_buvid3: str = ""
+    bilibili_buvid4: str = ""
+    bilibili_cookie_encryption_key: str = ""
+
     @field_validator("app_env")
     @classmethod
     def validate_app_env(cls, value: str) -> str:
@@ -218,6 +231,26 @@ class Settings(BaseSettings):
             raise ValueError("WORKER_RETRY_BACKOFF must be <= 60")
         return n
 
+    @field_validator("bilibili_poll_interval_seconds")
+    @classmethod
+    def validate_bilibili_poll_interval_seconds(cls, value: int) -> int:
+        n = int(value)
+        if n < 60:
+            raise ValueError("BILIBILI_POLL_INTERVAL_SECONDS must be >= 60")
+        if n > 3600:
+            raise ValueError("BILIBILI_POLL_INTERVAL_SECONDS must be <= 3600")
+        return n
+
+    @field_validator("bilibili_rate_limit_per_minute")
+    @classmethod
+    def validate_bilibili_rate_limit_per_minute(cls, value: int) -> int:
+        n = int(value)
+        if n < 1:
+            raise ValueError("BILIBILI_RATE_LIMIT_PER_MINUTE must be >= 1")
+        if n > 60:
+            raise ValueError("BILIBILI_RATE_LIMIT_PER_MINUTE must be <= 60")
+        return n
+
     @field_validator("safety_pii_patterns")
     @classmethod
     def normalize_safety_pii_patterns(cls, value: dict[str, str]) -> dict[str, str]:
@@ -249,6 +282,11 @@ class Settings(BaseSettings):
         "platform_bilibili_publish_source",
         "platform_douyin_publish_source",
         "platform_kuaishou_publish_source",
+        "bilibili_sessdata",
+        "bilibili_bili_jct",
+        "bilibili_buvid3",
+        "bilibili_buvid4",
+        "bilibili_cookie_encryption_key",
         mode="before",
     )
     @classmethod
@@ -291,6 +329,14 @@ class Settings(BaseSettings):
                 "llm_api_key_configured": self.has_text(self.llm_api_key),
                 "publisher_webhook_url_configured": self.has_text(self.publisher_webhook_url),
                 "publisher_real_publish_url_configured": self.has_text(self.publisher_real_publish_url),
+            },
+            "bilibili": {
+                "enabled": self.bilibili_enabled,
+                "poll_enabled": self.bilibili_poll_enabled,
+                "publish_enabled": self.bilibili_publish_enabled,
+                "poll_interval_seconds": self.bilibili_poll_interval_seconds,
+                "rate_limit_per_minute": self.bilibili_rate_limit_per_minute,
+                "credential_configured": self.has_text(self.bilibili_sessdata),
             },
         }
 

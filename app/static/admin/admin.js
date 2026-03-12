@@ -204,6 +204,24 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function formatIsoDateTime(isoString) {
+  if (!isoString) return '-';
+  try {
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    return date.toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  } catch {
+    return isoString;
+  }
+}
+
 function renderStatusBadge(status) {
   const value = String(status || 'unknown');
   let cls = 'status-badge status-badge-neutral';
@@ -415,6 +433,7 @@ async function runFullRefresh() {
     { label: 'overview', run: loadOverview },
     { label: 'role_cards', run: loadRoleCards },
     { label: 'knowledge', run: loadKnowledgeEntries },
+    { label: 'bilibili', run: refreshBilibiliAll },
     { label: 'gateway_logs', run: loadGatewayLogs },
     { label: 'daily_metrics', run: loadDailyMetrics },
     { label: 'jobs', run: loadJobs },
@@ -2005,6 +2024,74 @@ async function refreshRoleProfile() {
 
 window.addEventListener('beforeunload', stopAutoRefresh);
 
+const sideNavLinks = Array.from(document.querySelectorAll('.side-nav a[href^="#section-"]'));
+const sideNavSectionMap = new Map();
+let sideNavObserver = null;
+
+function setActiveSideNavLink(activeId) {
+  const normalized = String(activeId || '').trim();
+  for (const link of sideNavLinks) {
+    const targetId = String(link.getAttribute('href') || '').replace('#', '');
+    const isActive = targetId === normalized;
+    link.classList.toggle('side-nav-link-active', isActive);
+    link.setAttribute('aria-current', isActive ? 'location' : 'false');
+  }
+}
+
+function initSideNavHighlight() {
+  if (!sideNavLinks.length) return;
+
+  for (const link of sideNavLinks) {
+    const hash = String(link.getAttribute('href') || '').trim();
+    if (!hash.startsWith('#')) continue;
+    const section = document.querySelector(hash);
+    if (section) {
+      sideNavSectionMap.set(hash.slice(1), section);
+    }
+
+    link.addEventListener('click', () => {
+      const targetId = hash.slice(1);
+      if (targetId) setActiveSideNavLink(targetId);
+    });
+  }
+
+  const initialHashId = window.location.hash && window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : '';
+  if (initialHashId && sideNavSectionMap.has(initialHashId)) {
+    setActiveSideNavLink(initialHashId);
+  } else {
+    setActiveSideNavLink(sideNavSectionMap.keys().next().value || '');
+  }
+
+  if ('IntersectionObserver' in window) {
+    sideNavObserver = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible || !visible.target?.id) return;
+      setActiveSideNavLink(visible.target.id);
+    }, {
+      root: null,
+      rootMargin: '-35% 0px -50% 0px',
+      threshold: [0.2, 0.4, 0.6],
+    });
+
+    for (const section of sideNavSectionMap.values()) {
+      sideNavObserver.observe(section);
+    }
+  }
+
+  window.addEventListener('hashchange', () => {
+    const id = window.location.hash && window.location.hash.startsWith('#')
+      ? window.location.hash.slice(1)
+      : '';
+    if (id && sideNavSectionMap.has(id)) {
+      setActiveSideNavLink(id);
+    }
+  });
+}
+
 const prefs = loadPrefs();
 const autoRefreshInput = document.getElementById('auto-refresh');
 const autoRefreshSecondsInput = document.getElementById('auto-refresh-seconds');
@@ -2112,11 +2199,13 @@ if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(getAutoRefre
 if (dailySimpleInput && typeof prefs.dailySimple === 'boolean') dailySimpleInput.checked = prefs.dailySimple;
 if (singleRetryAutoResetForceInput) singleRetryAutoResetForceInput.checked = prefs.singleRetryAutoResetForce !== false;
 applyPublisherModeStatus(PUBLISHER_MODE);
+initSideNavHighlight();
 if (autoRefreshInput && typeof prefs.autoRefreshEnabled === 'boolean') autoRefreshInput.checked = prefs.autoRefreshEnabled;
 if (autoRefreshInput?.checked) toggleAutoRefresh();
 refreshStyleProfile();
 refreshRoleProfile();
 refreshRoleCards();
+initBilibiliSection();
 renderPrefsSnapshot(prefs);
 updateBatchActionState();
 
@@ -2161,6 +2250,484 @@ if (singleRetryJobIdInput) {
     event.preventDefault();
     retrySingleJob();
   });
+}
+
+// ==================== Bilibili Integration ====================
+
+let bilibiliStatusData = null;
+let bilibiliVideosData = [];
+let bilibiliCredentialsData = [];
+
+// DOM Elements for Bilibili
+const bilibiliStatusRefreshBtn = document.getElementById('bilibili-status-refresh-btn');
+const bilibiliPollBtn = document.getElementById('bilibili-poll-btn');
+const bilibiliStatusIndicator = document.getElementById('bilibili-status-indicator');
+const cardBilibiliEnabled = document.getElementById('card-bilibili-enabled');
+const cardBilibiliPoll = document.getElementById('card-bilibili-poll');
+const cardBilibiliPublish = document.getElementById('card-bilibili-publish');
+const cardBilibiliVideos = document.getElementById('card-bilibili-videos');
+const bilibiliVideosBody = document.getElementById('bilibili-videos');
+const bilibiliCredentialsBody = document.getElementById('bilibili-credentials');
+const bilibiliVideoBvidInput = document.getElementById('bilibili-video-bvid');
+const bilibiliVideoPollEnabledInput = document.getElementById('bilibili-video-poll-enabled');
+const bilibiliVideoAddBtn = document.getElementById('bilibili-video-add-btn');
+const bilibiliVideosRefreshBtn = document.getElementById('bilibili-videos-refresh-btn');
+const credentialNameInput = document.getElementById('credential-name');
+const credentialSessdataInput = document.getElementById('credential-sessdata');
+const credentialBiliJctInput = document.getElementById('credential-bili-jct');
+const credentialBuvid3Input = document.getElementById('credential-buvid3');
+const credentialBuvid4Input = document.getElementById('credential-buvid4');
+const credentialExpiresInput = document.getElementById('credential-expires');
+const credentialAddBtn = document.getElementById('credential-add-btn');
+const credentialsRefreshBtn = document.getElementById('credentials-refresh-btn');
+
+async function refreshBilibiliStatus() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  setInlineButtonLoading(bilibiliStatusRefreshBtn, true, '刷新中...');
+  updateBilibiliStatusIndicator('loading', '加载中...');
+
+  try {
+    const res = await fetch(withApiKey('/api/admin/bilibili/status'));
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('B站状态获取失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      updateBilibiliStatusIndicator('error', '获取失败');
+      return;
+    }
+
+    bilibiliStatusData = data;
+    renderBilibiliStatus(data);
+    updateBilibiliStatusIndicator('ok', '已加载');
+  } catch (error) {
+    showToast('B站状态获取失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+    updateBilibiliStatusIndicator('error', '请求失败');
+  } finally {
+    setInlineButtonLoading(bilibiliStatusRefreshBtn, false);
+  }
+}
+
+function renderBilibiliStatus(data) {
+  const config = data.config || {};
+  const videos = data.videos || {};
+
+  if (cardBilibiliEnabled) {
+    const enabled = config.enabled ? '已启用' : '未启用';
+    cardBilibiliEnabled.textContent = enabled;
+    cardBilibiliEnabled.className = 'card-value ' + (config.enabled ? 'status-ok' : 'status-warning');
+  }
+
+  if (cardBilibiliPoll) {
+    const pollEnabled = config.poll_enabled ? '已启用' : '未启用';
+    cardBilibiliPoll.textContent = pollEnabled + (config.poll_enabled ? ` (${config.poll_interval_seconds}s)` : '');
+    cardBilibiliPoll.className = 'card-value ' + (config.poll_enabled ? 'status-ok' : 'status-warning');
+  }
+
+  if (cardBilibiliPublish) {
+    const publishEnabled = config.publish_enabled ? '已启用' : '未启用';
+    cardBilibiliPublish.textContent = publishEnabled;
+    cardBilibiliPublish.className = 'card-value ' + (config.publish_enabled ? 'status-ok' : 'status-warning');
+  }
+
+  if (cardBilibiliVideos) {
+    cardBilibiliVideos.textContent = String(videos.poll_enabled_count || 0);
+  }
+}
+
+function updateBilibiliStatusIndicator(status, text) {
+  if (!bilibiliStatusIndicator) return;
+  bilibiliStatusIndicator.textContent = `状态: ${text}`;
+  bilibiliStatusIndicator.className = 'mono status-pill';
+  if (status === 'ok') {
+    bilibiliStatusIndicator.classList.add('status-ok');
+  } else if (status === 'error') {
+    bilibiliStatusIndicator.classList.add('status-error');
+  } else if (status === 'loading') {
+    bilibiliStatusIndicator.classList.add('status-loading');
+  } else {
+    bilibiliStatusIndicator.classList.add('status-idle');
+  }
+}
+
+async function refreshBilibiliVideos() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  setInlineButtonLoading(bilibiliVideosRefreshBtn, true, '刷新中...');
+
+  try {
+    const res = await fetch(withApiKey('/api/admin/bilibili/videos'));
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('视频列表获取失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    bilibiliVideosData = data.items || [];
+    renderBilibiliVideos(bilibiliVideosData);
+  } catch (error) {
+    showToast('视频列表获取失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(bilibiliVideosRefreshBtn, false);
+  }
+}
+
+function renderBilibiliVideos(items) {
+  if (!bilibiliVideosBody) return;
+
+  if (!items || items.length === 0) {
+    bilibiliVideosBody.innerHTML = '<tr><td colspan="7" class="text-center">暂无监控视频</td></tr>';
+    return;
+  }
+
+  bilibiliVideosBody.innerHTML = items.map(item => `
+    <tr>
+      <td>${escapeHtml(item.id)}</td>
+      <td class="mono">${escapeHtml(item.bvid)}</td>
+      <td>${escapeHtml(item.title || '-')}</td>
+      <td>
+        <span class="status-pill ${item.poll_enabled ? 'status-ok' : 'status-warning'}">
+          ${item.poll_enabled ? '启用' : '禁用'}
+        </span>
+      </td>
+      <td>${item.last_polled_at ? formatIsoDateTime(item.last_polled_at) : '-'}</td>
+      <td>${item.last_rpid || 0}</td>
+      <td>
+        <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${item.id}, ${!item.poll_enabled})">
+          ${item.poll_enabled ? '禁用' : '启用'}
+        </button>
+        <button class="btn-ghost btn-sm" onclick="syncBilibiliVideo(${item.id})">同步</button>
+        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliVideo(${item.id})">删除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function addBilibiliVideo() {
+  const bvid = (bilibiliVideoBvidInput?.value || '').trim();
+  const pollEnabled = bilibiliVideoPollEnabledInput?.checked !== false;
+
+  if (!bvid) {
+    showToast('添加失败', '请输入 BV 号', { tone: 'warning' });
+    return;
+  }
+
+  // BVID 格式验证
+  if (!/^BV[a-zA-Z0-9]{10}$/.test(bvid)) {
+    showToast('添加失败', 'BV 号格式无效 (应为 BV + 10位字母数字)', { tone: 'warning' });
+    return;
+  }
+
+  setInlineButtonLoading(bilibiliVideoAddBtn, true, '添加中...');
+
+  try {
+    const res = await fetch(withApiKey('/api/admin/bilibili/videos'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bvid, poll_enabled: pollEnabled }),
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('添加失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('添加成功', `视频 ${bvid} 已添加`, { tone: 'success' });
+    if (bilibiliVideoBvidInput) bilibiliVideoBvidInput.value = '';
+    refreshBilibiliVideos();
+    refreshBilibiliStatus();
+  } catch (error) {
+    showToast('添加失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(bilibiliVideoAddBtn, false);
+  }
+}
+
+async function toggleBilibiliVideoPoll(videoId, enable) {
+  try {
+    const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}/toggle-poll`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ poll_enabled: enable }),
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('操作失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('操作成功', enable ? '已启用轮询' : '已禁用轮询', { tone: 'success' });
+    refreshBilibiliVideos();
+    refreshBilibiliStatus();
+  } catch (error) {
+    showToast('操作失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  }
+}
+
+async function syncBilibiliVideo(videoId) {
+  try {
+    const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}/sync`), {
+      method: 'POST',
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('同步失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('同步成功', '视频信息已更新', { tone: 'success' });
+    refreshBilibiliVideos();
+  } catch (error) {
+    showToast('同步失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  }
+}
+
+async function deleteBilibiliVideo(videoId) {
+  if (!confirm('确定要删除此视频监控吗？')) return;
+
+  try {
+    const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}`), {
+      method: 'DELETE',
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('删除失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('删除成功', '视频监控已删除', { tone: 'success' });
+    refreshBilibiliVideos();
+    refreshBilibiliStatus();
+  } catch (error) {
+    showToast('删除失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  }
+}
+
+async function triggerBilibiliPoll() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  setInlineButtonLoading(bilibiliPollBtn, true, '轮询中...');
+
+  try {
+    const res = await fetch(withApiKey('/api/admin/bilibili/poll'), {
+      method: 'POST',
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('轮询失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    const result = data.result || {};
+    const videos = result.videos || 0;
+    const comments = result.comments || 0;
+    const injected = result.events_injected || 0;
+
+    showToast(
+      '轮询完成',
+      `扫描 ${videos} 个视频，发现 ${comments} 条评论，注入 ${injected} 条`,
+      { tone: 'success', copyable: true }
+    );
+
+    refreshBilibiliVideos();
+  } catch (error) {
+    showToast('轮询失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(bilibiliPollBtn, false);
+  }
+}
+
+async function refreshBilibiliCredentials() {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+
+  setInlineButtonLoading(credentialsRefreshBtn, true, '刷新中...');
+
+  try {
+    const res = await fetch(withApiKey('/api/admin/bilibili/credentials'));
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('凭证列表获取失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    bilibiliCredentialsData = data.items || [];
+    renderBilibiliCredentials(bilibiliCredentialsData);
+  } catch (error) {
+    showToast('凭证列表获取失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(credentialsRefreshBtn, false);
+  }
+}
+
+function renderBilibiliCredentials(items) {
+  if (!bilibiliCredentialsBody) return;
+
+  if (!items || items.length === 0) {
+    bilibiliCredentialsBody.innerHTML = '<tr><td colspan="8" class="text-center">暂无凭证</td></tr>';
+    return;
+  }
+
+  bilibiliCredentialsBody.innerHTML = items.map(item => `
+    <tr>
+      <td>${escapeHtml(item.id)}</td>
+      <td>${escapeHtml(item.name)}</td>
+      <td>
+        <span class="status-pill ${item.is_active ? 'status-ok' : 'status-warning'}">
+          ${item.is_active ? '激活' : '未激活'}
+        </span>
+      </td>
+      <td class="mono">${item.has_sessdata ? '***已设置***' : '-'}</td>
+      <td class="mono">${escapeHtml(item.buvid3 || '-')}</td>
+      <td>${item.expires_at ? formatIsoDateTime(item.expires_at) : '-'}</td>
+      <td>${item.last_used_at ? formatIsoDateTime(item.last_used_at) : '-'}</td>
+      <td>
+        <button class="btn-ghost btn-sm" onclick="activateBilibiliCredential(${item.id})" ${item.is_active ? 'disabled' : ''}>
+          激活
+        </button>
+        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliCredential(${item.id})">删除</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function addBilibiliCredential() {
+  const name = (credentialNameInput?.value || '').trim();
+  const sessdata = (credentialSessdataInput?.value || '').trim();
+  const biliJct = (credentialBiliJctInput?.value || '').trim();
+  const buvid3 = (credentialBuvid3Input?.value || '').trim();
+  const buvid4 = (credentialBuvid4Input?.value || '').trim();
+  const expiresAt = credentialExpiresInput?.value || null;
+
+  if (!name) {
+    showToast('添加失败', '请输入凭证名称', { tone: 'warning' });
+    return;
+  }
+  if (!sessdata) {
+    showToast('添加失败', '请输入 SESSDATA', { tone: 'warning' });
+    return;
+  }
+  if (!biliJct) {
+    showToast('添加失败', '请输入 bili_jct', { tone: 'warning' });
+    return;
+  }
+  if (!buvid3) {
+    showToast('添加失败', '请输入 buvid3', { tone: 'warning' });
+    return;
+  }
+
+  setInlineButtonLoading(credentialAddBtn, true, '添加中...');
+
+  try {
+    const payload = {
+      name,
+      sessdata,
+      bili_jct: biliJct,
+      buvid3,
+    };
+    if (buvid4) payload.buvid4 = buvid4;
+    if (expiresAt) payload.expires_at = expiresAt;
+
+    const res = await fetch(withApiKey('/api/admin/bilibili/credentials'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('添加失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('添加成功', '凭证已创建', { tone: 'success' });
+
+    // 清空表单
+    if (credentialNameInput) credentialNameInput.value = '';
+    if (credentialSessdataInput) credentialSessdataInput.value = '';
+    if (credentialBiliJctInput) credentialBiliJctInput.value = '';
+    if (credentialBuvid3Input) credentialBuvid3Input.value = '';
+    if (credentialBuvid4Input) credentialBuvid4Input.value = '';
+    if (credentialExpiresInput) credentialExpiresInput.value = '';
+
+    refreshBilibiliCredentials();
+  } catch (error) {
+    showToast('添加失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    setInlineButtonLoading(credentialAddBtn, false);
+  }
+}
+
+async function activateBilibiliCredential(credentialId) {
+  try {
+    const res = await fetch(withApiKey(`/api/admin/bilibili/credentials/${credentialId}/activate`), {
+      method: 'POST',
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('激活失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('激活成功', '凭证已激活', { tone: 'success' });
+    refreshBilibiliCredentials();
+  } catch (error) {
+    showToast('激活失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  }
+}
+
+async function deleteBilibiliCredential(credentialId) {
+  if (!confirm('确定要删除此凭证吗？')) return;
+
+  try {
+    const res = await fetch(withApiKey(`/api/admin/bilibili/credentials/${credentialId}`), {
+      method: 'DELETE',
+    });
+    const data = await readApiPayload(res);
+
+    if (!res.ok || !data.ok) {
+      showToast('删除失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
+      return;
+    }
+
+    showToast('删除成功', '凭证已删除', { tone: 'success' });
+    refreshBilibiliCredentials();
+  } catch (error) {
+    showToast('删除失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  }
+}
+
+// Initialize Bilibili section
+function initBilibiliSection() {
+  refreshBilibiliStatus();
+  refreshBilibiliVideos();
+  refreshBilibiliCredentials();
+}
+
+// Register Bilibili refresh for full refresh
+function refreshBilibiliAll() {
+  refreshBilibiliStatus();
+  refreshBilibiliVideos();
+  refreshBilibiliCredentials();
 }
 
 document.addEventListener('keydown', (event) => {
