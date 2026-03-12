@@ -16,9 +16,9 @@ def test_admin_page_returns_html(client):
     assert response.text.count('/static/admin/admin.css') == 1
     assert response.text.count('/static/admin/admin.js') == 1
     assert response.text.count('<script src="/static/admin/admin.js"></script>') == 1
-    assert response.text.count('<table aria-label="') == 5
+    assert response.text.count('<table aria-label="') == 7
     table_labels = re.findall(r'<table aria-label="([^"]+)"', response.text)
-    assert sorted(table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"])
+    assert sorted(table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表", "B站视频监控列表", "B站凭证列表"])
     assert '<table>' not in response.text
     assert response.text.count('<th scope="col">') >= 29
     assert "section-knowledge" in response.text
@@ -191,11 +191,11 @@ def test_admin_page_template_has_no_inline_style():
     assert "<th scope=\"col\">" in admin_py_text
     assert "<th>" not in admin_py_text
     assert "<table>" not in admin_py_text
-    assert admin_py_text.count("<table aria-label=") == 5
+    assert admin_py_text.count("<table aria-label=") == 7
     normalized_admin_template = admin_py_text.replace('\\"', '"')
     template_table_labels = re.findall(r'<table aria-label="([^"]+)"', normalized_admin_template)
-    assert sorted(template_table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"])
-    for table_label in ("知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表"):
+    assert sorted(template_table_labels) == sorted(["知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表", "B站视频监控列表", "B站凭证列表"])
+    for table_label in ("知识库条目表", "趋势统计表", "任务列表数据表", "发布网关日志表", "审计日志表", "B站视频监控列表", "B站凭证列表"):
         pattern = rf'aria-label=\\?"{re.escape(table_label)}\\?"'
         assert len(re.findall(pattern, admin_py_text)) == 1
     assert admin_py_text.count('/static/admin/admin.css') == 1

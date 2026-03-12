@@ -13,8 +13,10 @@ EXPECTED_TABLES = {
     "knowledge_entries",
     "role_cards",
     "observability_events",
+    "bilibili_credentials",
+    "bilibili_videos",
 }
-HEAD_REVISION = "20260311_add_compound_indexes"
+HEAD_REVISION = "20260312_bilibili_integration"
 EXPECTED_COMPOUND_INDEXES = {
     "reply_jobs": {
         "ix_reply_jobs_status_created_at_id",
@@ -22,6 +24,9 @@ EXPECTED_COMPOUND_INDEXES = {
     "operation_audit_logs": {
         "ix_operation_audit_logs_action_ok_created_at_id",
         "ix_operation_audit_logs_target_id_created_at_id",
+    },
+    "bilibili_videos": {
+        "ix_bilibili_videos_poll_enabled_last_polled",
     },
 }
 
