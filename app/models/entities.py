@@ -8,9 +8,14 @@ from app.db import Base
 
 class Comment(Base):
     __tablename__ = "comments"
-    __table_args__ = (UniqueConstraint("comment_id", name="uq_comments_comment_id"),)
+    __table_args__ = (
+        UniqueConstraint("canonical_comment_id", name="uq_comments_canonical_comment_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False, default="bilibili", index=True)
+    canonical_comment_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True, index=True)
+
     comment_id: Mapped[str] = mapped_column(String(64), nullable=False)
     video_id: Mapped[str] = mapped_column(String(64), nullable=False)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -49,12 +54,20 @@ class UserState(Base):
 
 class PublishLog(Base):
     __tablename__ = "publish_logs"
-    __table_args__ = (UniqueConstraint("comment_id", "reply_hash", name="uq_publish_logs_comment_reply"),)
+    __table_args__ = (
+        UniqueConstraint("canonical_comment_id", "reply_hash", name="uq_publish_logs_canonical_reply"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False, default="bilibili", index=True)
+    canonical_comment_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+
     comment_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     reply_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     source: Mapped[str] = mapped_column(String(64), default="bili-pet-bot")
+    status: Mapped[str] = mapped_column(String(16), default="published")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    failure_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 

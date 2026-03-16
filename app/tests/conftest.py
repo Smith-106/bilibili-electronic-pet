@@ -101,8 +101,11 @@ def make_comment(db_session: Session) -> Callable[..., Comment]:
         user_id: str = "user-1",
         content: str = "这是一条评论",
         parent_id: str | None = None,
+        platform: str = "bilibili",
     ) -> Comment:
         item = Comment(
+            platform=platform,
+            canonical_comment_id=f"{platform}:{comment_id}",
             comment_id=comment_id,
             video_id=video_id,
             user_id=user_id,

@@ -80,7 +80,7 @@ def test_webhook_ingest_creates_comment_and_enqueue_job(client_and_state):
     assert queued_payloads[0]["trace_id"] == payload["trace_id"]
 
     with session_local() as db:
-        record = db.query(Comment).filter(Comment.comment_id == "c-webhook-1").first()
+        record = db.query(Comment).filter(Comment.canonical_comment_id == "bilibili:c-webhook-1").first()
         assert record is not None
         assert record.video_id == "v-1"
 
@@ -111,7 +111,7 @@ def test_poller_ingest_creates_comment_and_enqueue_job(client_and_state):
     assert queued_payloads[0]["trace_id"] == payload["trace_id"]
 
     with session_local() as db:
-        record = db.query(Comment).filter(Comment.comment_id == "c-poller-1").first()
+        record = db.query(Comment).filter(Comment.canonical_comment_id == "bilibili:c-poller-1").first()
         assert record is not None
         assert record.parent_id == "p-2"
 
@@ -148,7 +148,7 @@ def test_duplicate_comment_id_is_ignored_across_sources(client_and_state):
     assert len(queued_payloads) == 1
 
     with session_local() as db:
-        count = db.query(Comment).filter(Comment.comment_id == "c-dup-1").count()
+        count = db.query(Comment).filter(Comment.canonical_comment_id == "bilibili:c-dup-1").count()
         assert count == 1
 
 
@@ -252,7 +252,7 @@ def test_bilibili_ingest_uses_platform_route_mapping(client_and_state, monkeypat
     assert queued_payloads[0]["user_id"] == "12345"
 
     with session_local() as db:
-        record = db.query(Comment).filter(Comment.comment_id == "c-bili-route-1").first()
+        record = db.query(Comment).filter(Comment.canonical_comment_id == "bilibili:c-bili-route-1").first()
         assert record is not None
         assert record.video_id == "v-bili-route-1"
 
@@ -344,6 +344,6 @@ def test_kuaishou_ingest_uses_platform_route_mapping(client_and_state, monkeypat
     assert queued_payloads[0]["video_id"] == "v-ks-route-1"
 
     with session_local() as db:
-        record = db.query(Comment).filter(Comment.comment_id == "c-ks-route-1").first()
+        record = db.query(Comment).filter(Comment.canonical_comment_id == "kuaishou:c-ks-route-1").first()
         assert record is not None
         assert record.parent_id == "p-ks-route-1"

@@ -129,6 +129,9 @@ def test_gateway_publish_success_uses_adapter_reason_and_records_log(gateway_tes
         logs = db.query(PublishLog).all()
         assert len(logs) == 1
         assert logs[0].comment_id == "comment-3"
+        assert logs[0].canonical_comment_id == "bilibili:comment-3"
+        assert logs[0].platform == "bilibili"
+        assert logs[0].status == "published"
         assert logs[0].reply_hash == reply_hash("comment-3", "reply text")
 
 
@@ -136,7 +139,7 @@ def test_gateway_publish_duplicate_replay_skips_adapter(gateway_test_client, mon
     client, testing_session_local = gateway_test_client
 
     with testing_session_local() as db:
-        db.add(PublishLog(comment_id="comment-4", reply_hash=reply_hash("comment-4", "reply text"), source="gateway"))
+        db.add(PublishLog(platform="bilibili", canonical_comment_id="bilibili:comment-4", comment_id="comment-4", reply_hash=reply_hash("comment-4", "reply text"), source="gateway", status="published"))
         db.commit()
 
     def fail_if_called(*args, **kwargs):
@@ -241,7 +244,7 @@ def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway
     }
 
     with testing_session_local() as db:
-        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-bili-1").all()
+        logs = db.query(PublishLog).filter(PublishLog.canonical_comment_id == "bilibili:comment-bili-1").all()
         assert len(logs) == 1
         assert logs[0].source == "bilibili-open"
 
@@ -251,13 +254,7 @@ def test_gateway_publish_bilibili_route_duplicate_replay_keeps_contract(gateway_
     monkeypatch.setattr(settings, "platform_bilibili_enabled", True)
 
     with testing_session_local() as db:
-        db.add(
-            PublishLog(
-                comment_id="comment-bili-dup-1",
-                reply_hash=reply_hash("comment-bili-dup-1", "reply text"),
-                source="bilibili-open",
-            )
-        )
+        db.add(PublishLog(platform="bilibili", canonical_comment_id="bilibili:comment-bili-dup-1", comment_id="comment-bili-dup-1", reply_hash=reply_hash("comment-bili-dup-1", "reply text"), source="bilibili-open", status="published"))
         db.commit()
 
     def fail_if_called(*args, **kwargs):
@@ -310,7 +307,7 @@ def test_gateway_publish_douyin_route_uses_platform_source_fallback(gateway_test
     assert body["published"] is True
 
     with testing_session_local() as db:
-        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-douyin-1").all()
+        logs = db.query(PublishLog).filter(PublishLog.canonical_comment_id == "douyin:comment-douyin-1").all()
         assert len(logs) == 1
         assert logs[0].source == "douyin-bot"
 
@@ -341,7 +338,7 @@ def test_gateway_publish_kuaishou_route_uses_configured_platform_source(gateway_
     assert body["published"] is True
 
     with testing_session_local() as db:
-        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-kuaishou-1").all()
+        logs = db.query(PublishLog).filter(PublishLog.canonical_comment_id == "kuaishou:comment-kuaishou-1").all()
         assert len(logs) == 1
         assert logs[0].source == "kuaishou-open"
 
@@ -368,8 +365,10 @@ def test_gateway_publish_failure_returns_traceable_reason(gateway_test_client, m
     assert body["trace_id"] == "trace-5"
 
     with testing_session_local() as db:
-        logs = db.query(PublishLog).filter(PublishLog.comment_id == "comment-5").all()
-        assert len(logs) == 0
+        logs = db.query(PublishLog).filter(PublishLog.canonical_comment_id == "bilibili:comment-5").all()
+        assert len(logs) == 1
+        assert logs[0].status == "failed"
+        assert logs[0].failure_reason == "timeout"
 
 
 @pytest.mark.parametrize(

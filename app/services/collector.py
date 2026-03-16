@@ -76,7 +76,8 @@ def get_platform_collector(platform: PlatformName) -> PlatformCollectorAdapter:
 
 def collect_platform_event_via_config(payload: Mapping[str, Any], platform: PlatformName) -> CommentEvent:
     collector = get_platform_collector(platform)
-    return collector.collect(payload)
+    event = collector.collect(payload)
+    return event.model_copy(update={"platform": platform})
 
 
 def collect_platform_event(payload: Mapping[str, Any], platform: PlatformName) -> CommentEvent:

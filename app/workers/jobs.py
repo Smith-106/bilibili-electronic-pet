@@ -99,7 +99,9 @@ def process_comment_event_task(self, event_payload: dict):
         requested_style_profile = str(event_payload.get("style_profile") or "auto").strip().lower()
         requested_role_profile = str(event_payload.get("role_profile") or "auto").strip().lower()
         requested_role_card_key = str(event_payload.get("role_card_key") or "").strip().lower()
-        comment = db.query(Comment).filter(Comment.comment_id == comment_id).first()
+        platform = str(event_payload.get("platform") or "bilibili").strip().lower() or "bilibili"
+        canonical_comment_id = f"{platform}:{comment_id}"
+        comment = db.query(Comment).filter(Comment.canonical_comment_id == canonical_comment_id).first()
         if not comment:
             logger.warning(
                 "worker_comment_not_found | %s",
@@ -119,6 +121,7 @@ def process_comment_event_task(self, event_payload: dict):
             user_id=comment.user_id,
             content=comment.content,
             parent_id=comment.parent_id,
+            platform=platform,
             trace_id=trace_id,
             force_long=raw_force_long,
             style_profile=requested_style_profile,

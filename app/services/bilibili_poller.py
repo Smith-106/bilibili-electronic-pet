@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import SessionLocal
@@ -230,19 +231,13 @@ class BilibiliPoller:
         2. 存入数据库
         3. 触发处理任务
         """
-        # 检查是否已存在
-        existing = (
-            self.db.query(Comment)
-            .filter(Comment.comment_id == event.comment_id)
-            .first()
-        )
+        platform = str(getattr(event, "platform", None) or "bilibili").strip().lower() or "bilibili"
+        canonical_comment_id = f"{platform}:{event.comment_id}"
 
-        if existing:
-            logger.debug(f"bilibili_poll_comment_exists | comment_id={event.comment_id}")
-            return False
-
-        # 存入数据库
+        # 存入数据库（insert-first），并发重复时由唯一约束兜底
         comment = Comment(
+            platform=platform,
+            canonical_comment_id=canonical_comment_id,
             comment_id=event.comment_id,
             video_id=event.video_id,
             user_id=event.user_id,
@@ -250,12 +245,17 @@ class BilibiliPoller:
             parent_id=event.parent_id,
         )
         self.db.add(comment)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            logger.debug(f"bilibili_poll_comment_exists | comment_id={event.comment_id}")
+            return False
 
         # 触发处理任务
         from app.workers.jobs import enqueue_comment_event
 
-        enqueue_comment_event(event)
+        enqueue_comment_event(event.model_copy(update={"platform": platform}))
 
         logger.info(
             f"bilibili_poll_comment_injected | comment_id={event.comment_id} "

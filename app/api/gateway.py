@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_api_key
@@ -72,19 +73,34 @@ def _publish_core(
             )
             raise HTTPException(status_code=401, detail="invalid_signature")
 
+    resolved_platform: str = platform or "bilibili"
+    canonical_comment_id = f"{resolved_platform}:{payload.comment_id}"
     hashed = reply_hash(payload.comment_id, payload.reply_text)
-    existing = (
-        db.query(PublishLog)
-        .filter(PublishLog.comment_id == payload.comment_id, PublishLog.reply_hash == hashed)
-        .first()
+
+    reserved = PublishLog(
+        platform=resolved_platform,
+        canonical_comment_id=canonical_comment_id,
+        comment_id=payload.comment_id,
+        reply_hash=hashed,
+        source=payload.source,
+        status="reserved",
     )
-    if existing:
+    db.add(reserved)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = (
+            db.query(PublishLog)
+            .filter(PublishLog.canonical_comment_id == canonical_comment_id, PublishLog.reply_hash == hashed)
+            .first()
+        )
         record_observability_event(
             "publish_result",
             trace_id=trace_id,
             comment_id=payload.comment_id,
             status="idempotent_replay",
-            metadata={"platform": platform or "gateway"},
+            metadata={"platform": resolved_platform},
         )
         logger.info(
             "gateway_publish_duplicate | %s",
@@ -92,7 +108,7 @@ def _publish_core(
                 trace_id=trace_id,
                 comment_id=payload.comment_id,
                 status="idempotent_replay",
-                publish_log_id=existing.id,
+                publish_log_id=existing.id if existing else None,
             ),
         )
         return {
@@ -103,6 +119,7 @@ def _publish_core(
             "trace_id": trace_id,
         }
 
+    # publishing happens after reservation commit to avoid holding locks across network
     if platform:
         published, publish_reason, published_at = publish_platform_reply(
             platform=platform,
@@ -119,14 +136,18 @@ def _publish_core(
             source=payload.source,
             trace_id=trace_id,
         )
+
     if not published:
         normalized_reason = _normalize_failed_reason(publish_reason)
+        reserved.status = "failed"
+        reserved.failure_reason = normalized_reason
+        db.commit()
         record_observability_event(
             "publish_result",
             trace_id=trace_id,
             comment_id=payload.comment_id,
             status="failed",
-            metadata={"reason": normalized_reason, "platform": platform or "gateway"},
+            metadata={"reason": normalized_reason, "platform": resolved_platform},
         )
         logger.warning(
             "gateway_publish_failed | %s",
@@ -134,6 +155,7 @@ def _publish_core(
                 trace_id=trace_id,
                 comment_id=payload.comment_id,
                 status=normalized_reason,
+                publish_log_id=reserved.id,
             ),
         )
         return {
@@ -148,15 +170,17 @@ def _publish_core(
     if platform:
         source_value = get_platform_publish_source(platform)
 
-    log = PublishLog(comment_id=payload.comment_id, reply_hash=hashed, source=source_value)
-    db.add(log)
+    reserved.status = "published"
+    reserved.source = source_value
+    reserved.published_at = published_at if published_at else None
+    reserved.failure_reason = None
     db.commit()
     record_observability_event(
         "publish_result",
         trace_id=trace_id,
         comment_id=payload.comment_id,
         status="published",
-        metadata={"reason": publish_reason, "platform": platform or "gateway", "source": source_value},
+        metadata={"reason": publish_reason, "platform": resolved_platform, "source": source_value},
     )
     logger.info(
         "gateway_publish_recorded | %s",
@@ -164,7 +188,7 @@ def _publish_core(
             trace_id=trace_id,
             comment_id=payload.comment_id,
             status=publish_reason,
-            publish_log_id=log.id,
+            publish_log_id=reserved.id,
         ),
     )
 

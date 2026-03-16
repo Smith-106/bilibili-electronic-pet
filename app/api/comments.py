@@ -6,6 +6,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.auth import require_api_key
@@ -117,14 +118,30 @@ def _write_audit_log(
 def _ingest_comment_event_core(db: Session, event: CommentEvent, *, source: str) -> dict:
     trace_id = ensure_trace_id(event.trace_id)
     event = event.model_copy(update={"trace_id": trace_id})
-    existing = db.query(Comment).filter(Comment.comment_id == event.comment_id).first()
-    if existing:
+
+    platform: str = str(getattr(event, "platform", None) or "bilibili")
+    canonical_comment_id = f"{platform}:{event.comment_id}"
+
+    comment = Comment(
+        platform=platform,
+        canonical_comment_id=canonical_comment_id,
+        comment_id=event.comment_id,
+        video_id=event.video_id,
+        user_id=event.user_id,
+        content=event.content,
+        parent_id=event.parent_id,
+    )
+    db.add(comment)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
         record_observability_event(
             "comment_ingested",
             trace_id=trace_id,
             comment_id=event.comment_id,
             status="duplicate_ignored",
-            metadata={"source": source},
+            metadata={"source": source, "platform": platform},
         )
         _log_info(
             "comment_ingest_duplicate",
@@ -135,24 +152,14 @@ def _ingest_comment_event_core(db: Session, event: CommentEvent, *, source: str)
         )
         return {"ok": True, "message": "duplicate_ignored", "comment_id": event.comment_id, "trace_id": trace_id}
 
-    comment = Comment(
-        comment_id=event.comment_id,
-        video_id=event.video_id,
-        user_id=event.user_id,
-        content=event.content,
-        parent_id=event.parent_id,
-    )
-    db.add(comment)
-    db.commit()
-
     record_observability_event(
         "comment_ingested",
         trace_id=trace_id,
         comment_id=event.comment_id,
         status="queued",
-        metadata={"source": source},
+        metadata={"source": source, "platform": platform},
     )
-    enqueue_comment_event(event)
+    enqueue_comment_event(event.model_copy(update={"platform": platform}))
     _log_info(
         "comment_ingest_queued",
         trace_id=trace_id,
@@ -193,7 +200,7 @@ def _approve_job_core(
     if job.status not in {"manual_queue", "blocked", "dedupe_skipped"}:
         raise HTTPException(status_code=400, detail=f"job_status_not_approvable: {job.status}")
 
-    comment = db.query(Comment).filter(Comment.comment_id == job.comment_id).first()
+    comment = db.query(Comment).filter(Comment.canonical_comment_id == f"bilibili:{job.comment_id}").first()
     if not comment:
         raise HTTPException(status_code=404, detail="comment_not_found")
 

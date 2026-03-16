@@ -51,8 +51,11 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         settings.safety_max_reply_chars = self._settings_snapshot["safety_max_reply_chars"]
 
     def _insert_comment(self, comment_id: str, content: str = "普通评论内容") -> None:
+        platform = "bilibili"
         self.db.add(
             Comment(
+                platform=platform,
+                canonical_comment_id=f"{platform}:{comment_id}",
                 comment_id=comment_id,
                 video_id="video-1",
                 user_id="user-1",

@@ -18,6 +18,7 @@ class CommentEvent(BaseModel):
     user_id: str = Field(min_length=1, max_length=64)
     content: str = Field(min_length=1)
     parent_id: str | None = None
+    platform: PlatformName | None = None
     trace_id: str | None = Field(default=None, min_length=1, max_length=64)
     force_long: bool = False
     style_profile: StyleProfile = "auto"

@@ -16,7 +16,7 @@ EXPECTED_TABLES = {
     "bilibili_credentials",
     "bilibili_videos",
 }
-HEAD_REVISION = "20260312_bilibili_integration"
+HEAD_REVISION = "20260317_canonical_comment_id"
 EXPECTED_COMPOUND_INDEXES = {
     "reply_jobs": {
         "ix_reply_jobs_status_created_at_id",
