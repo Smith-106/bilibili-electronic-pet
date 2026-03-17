@@ -43,9 +43,8 @@ class TestBilibiliPollerInit:
         assert isinstance(result, dict)
 
 
-
-
-    def test_bilibili_publisher_duplicate_does_not_call_external_api(self, db_session: Session, monkeypatch):
+class TestBilibiliPublisher:
+    def test_duplicate_does_not_call_external_api(self, db_session: Session, monkeypatch):
         from app.models.entities import PublishLog
         from app.services.bilibili_publisher import BilibiliPublisher
         from app.services.hashing import reply_hash
