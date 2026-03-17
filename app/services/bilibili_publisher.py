@@ -194,7 +194,7 @@ class BilibiliPublisherAdapter:
 
         if force_publish:
             # 强幂等要求：不允许通过 force_publish 绕过 reserve-first；需要真正强制发布应走 gateway
-            force_publish = False
+            return False, "force_publish_ignored", None
 
         success, reason, published_at, _ = self.publisher.publish_reply(
             comment_id=comment_id,
