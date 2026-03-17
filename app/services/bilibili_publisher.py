@@ -205,3 +205,35 @@ class BilibiliPublisherAdapter:
         )
 
         return success, reason, published_at
+
+    def publish_with_result(
+        self,
+        comment_id: str,
+        reply_text: str,
+        *,
+        force_publish: bool = False,
+        trace_id: str | None = None,
+        **kwargs: Any,
+    ) -> tuple[bool, str, datetime | None, dict[str, object]]:
+        video_bvid = kwargs.get("video_bvid")
+        oid = kwargs.get("oid")
+
+        if not self.publisher.is_enabled():
+            return False, "disabled", None, {}
+
+        if force_publish:
+            return False, "force_publish_ignored", None, {}
+
+        success, reason, published_at, new_rpid = self.publisher.publish_reply(
+            comment_id=comment_id,
+            reply_text=reply_text,
+            video_bvid=video_bvid,
+            oid=oid,
+            trace_id=trace_id,
+        )
+
+        result: dict[str, object] = {}
+        if new_rpid is not None:
+            result["new_rpid"] = int(new_rpid)
+
+        return success, reason, published_at, result

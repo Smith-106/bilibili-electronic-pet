@@ -389,6 +389,30 @@ def publish_reply(
     )
 
 
+def publish_reply_with_result(
+    comment_id: str,
+    reply_text: str,
+    force_publish: bool = False,
+    trace_id: str | None = None,
+) -> tuple[bool, str, datetime | None, dict[str, object]]:
+    publisher = _get_publisher()
+    if hasattr(publisher, "publish_with_result"):
+        return publisher.publish_with_result(
+            comment_id=comment_id,
+            reply_text=reply_text,
+            force_publish=force_publish,
+            trace_id=trace_id,
+        )
+
+    ok, reason, published_at = publisher.publish(
+        comment_id=comment_id,
+        reply_text=reply_text,
+        force_publish=force_publish,
+        trace_id=trace_id,
+    )
+    return ok, reason, published_at, {}
+
+
 def publish_gateway_reply(
     comment_id: str,
     reply_text: str,

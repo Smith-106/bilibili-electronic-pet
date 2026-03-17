@@ -16,7 +16,7 @@ from app.services.observability import (
     ensure_trace_id,
     record_observability_event,
 )
-from app.services.publisher import publish_reply
+from app.services.publisher import publish_reply_with_result
 from app.services.safety import safety_check
 from app.services.search_provider import build_search_context, search_web
 from app.settings import settings
@@ -306,15 +306,37 @@ def process_comment_event_task(self, event_payload: dict):
             )
             return {"ok": True, "status": safety_action, "risk_flags": risk_flags, "trace_id": trace_id}
 
-        published, publish_reason, published_at = publish_reply(comment.comment_id, reply_text, trace_id=trace_id)
+        published, publish_reason, published_at, publish_result = publish_reply_with_result(
+            comment.comment_id,
+            reply_text,
+            trace_id=trace_id,
+        )
+        publish_metadata: dict[str, object] = {"reason": publish_reason}
+        new_rpid_value = None
+        if isinstance(publish_result, dict):
+            new_rpid_candidate = publish_result.get("new_rpid")
+            if publish_reason != "idempotent_replay":
+                new_rpid_value = new_rpid_candidate
+        if new_rpid_value is not None:
+            publish_metadata["new_rpid"] = new_rpid_value
+
         record_observability_event(
             "publish_result",
             trace_id=trace_id,
             comment_id=comment.comment_id,
             status="published" if published else "failed",
-            metadata={"reason": publish_reason},
+            metadata=publish_metadata,
         )
         status = "published" if published else "manual_queue"
+
+        job_risk_flags: dict[str, object] = {
+            **generation_flags,
+            "publish_reason": publish_reason,
+            "gateway_reason": publish_reason,
+            "gateway_duplicate": publish_reason == "idempotent_replay",
+        }
+        if new_rpid_value is not None:
+            job_risk_flags["new_rpid"] = new_rpid_value
 
         job = ReplyJob(
             comment_id=comment.comment_id,
@@ -323,12 +345,7 @@ def process_comment_event_task(self, event_payload: dict):
             style_mode=style_mode,
             length_mode=length_mode,
             reply_text=reply_text,
-            risk_flags={
-                **generation_flags,
-                "publish_reason": publish_reason,
-                "gateway_reason": publish_reason,
-                "gateway_duplicate": publish_reason == "idempotent_replay",
-            },
+            risk_flags=job_risk_flags,
             attempts=1,
             published_at=published_at if published_at else None,
         )

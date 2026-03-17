@@ -77,7 +77,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("联系我 13800138000")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply") as publish_mock,
+            patch.object(jobs, "publish_reply_with_result") as publish_mock,
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-pii"})
 
@@ -100,7 +100,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("你再这样我真要你去死了。")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply") as publish_mock,
+            patch.object(jobs, "publish_reply_with_result") as publish_mock,
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-blocked"})
 
@@ -124,7 +124,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("谢谢你呀，今天也要开心！")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(True, "simulated_auto_publish", published_at)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(True, "simulated_auto_publish", published_at, {"new_rpid": 123})),
             patch.object(jobs, "remember_reply_phrase") as remember_mock,
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-ok"})
@@ -138,6 +138,33 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         self.assertEqual(item.status, "published")
         self.assertEqual(item.risk_flags.get("publish_reason"), "simulated_auto_publish")
         self.assertEqual(item.risk_flags.get("gateway_duplicate"), False)
+        self.assertEqual(item.risk_flags.get("new_rpid"), 123)
+
+    def test_publisher_idempotent_replay_does_not_set_new_rpid(self) -> None:
+        self._insert_comment("comment-replay")
+        published_at = datetime.now(timezone.utc)
+
+        with (
+            patch.object(jobs, "SessionLocal", return_value=self.db),
+            patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("收到，我来回复~")),
+            patch.object(jobs, "is_recent_duplicate", return_value=False),
+            patch.object(
+                jobs,
+                "publish_reply_with_result",
+                return_value=(False, "idempotent_replay", published_at, {"new_rpid": 999}),
+            ),
+        ):
+            result = jobs.process_comment_event_task.run({"comment_id": "comment-replay"})
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["status"], "manual_queue")
+
+        item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-replay").order_by(ReplyJob.id.desc()).first()
+        self.assertIsNotNone(item)
+        self.assertEqual(item.status, "manual_queue")
+        self.assertEqual(item.risk_flags.get("gateway_duplicate"), True)
+        self.assertIsNone(item.risk_flags.get("new_rpid"))
 
     def test_force_long_payload_passed_to_decider_and_job(self) -> None:
         self._insert_comment("comment-force-long", content="短评")
@@ -154,7 +181,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", side_effect=fake_should_reply),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("好的，我们慢慢聊。")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)) as publish_mock,
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})) as publish_mock,
         ):
             result = jobs.process_comment_event_task.run(
                 {
@@ -191,7 +218,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("好的，我们慢慢聊。")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
             patch.object(jobs, "record_observability_event", side_effect=fake_record_observability_event),
         ):
             result = jobs.process_comment_event_task.run(
@@ -224,7 +251,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("收到，欧润吉~")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-knowledge-hit"})
 
@@ -243,7 +270,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "search_knowledge", side_effect=RuntimeError("knowledge down")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("继续主流程")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-knowledge-error"})
 
@@ -276,7 +303,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             ),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("收到热点信息")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-search-hit"})
 
@@ -325,7 +352,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", side_effect=fake_generate),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
         ):
             jobs.process_comment_event_task.run(
                 {
@@ -348,7 +375,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", side_effect=fake_generate),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(False, "manual_queue", None)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
         ):
             jobs.process_comment_event_task.run(
                 {
@@ -371,7 +398,7 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
             patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("观测回复")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply", return_value=(True, "simulated_auto_publish", published_at)),
+            patch.object(jobs, "publish_reply_with_result", return_value=(True, "simulated_auto_publish", published_at, {"new_rpid": 123})),
         ):
             result = jobs.process_comment_event_task.run({"comment_id": "comment-observability"})
 
