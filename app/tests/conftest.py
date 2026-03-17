@@ -135,6 +135,7 @@ def make_job(db_session: Session) -> Callable[..., ReplyJob]:
     ) -> ReplyJob:
         item = ReplyJob(
             comment_id=comment_id,
+            canonical_comment_id=f"bilibili:{comment_id}",
             status=status,
             length_mode=length_mode,
             style_mode=style_mode,

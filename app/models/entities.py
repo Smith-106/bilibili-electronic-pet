@@ -32,6 +32,7 @@ class ReplyJob(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     comment_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    canonical_comment_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="queued", index=True)
     length_mode: Mapped[str] = mapped_column(String(16), default="medium")
     style_mode: Mapped[str] = mapped_column(String(32), default="doro")

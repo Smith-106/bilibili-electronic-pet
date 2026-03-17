@@ -244,6 +244,7 @@ def process_comment_event_task(self, event_payload: dict):
         if is_recent_duplicate(db, comment.user_id, reply_text):
             job = ReplyJob(
                 comment_id=comment.comment_id,
+                canonical_comment_id=comment.canonical_comment_id,
                 status="dedupe_skipped",
                 style_mode=style_mode,
                 length_mode=length_mode,
@@ -277,6 +278,7 @@ def process_comment_event_task(self, event_payload: dict):
         if safety_action in {"blocked", "manual_queue"}:
             job = ReplyJob(
                 comment_id=comment.comment_id,
+                canonical_comment_id=comment.canonical_comment_id,
                 status=safety_action,
                 style_mode=style_mode,
                 length_mode=length_mode,
@@ -316,6 +318,7 @@ def process_comment_event_task(self, event_payload: dict):
 
         job = ReplyJob(
             comment_id=comment.comment_id,
+            canonical_comment_id=comment.canonical_comment_id,
             status=status,
             style_mode=style_mode,
             length_mode=length_mode,

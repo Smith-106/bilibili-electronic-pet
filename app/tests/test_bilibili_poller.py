@@ -43,10 +43,50 @@ class TestBilibiliPollerInit:
         assert isinstance(result, dict)
 
 
-class TestBilibiliPublisher:
-    """Tests for BilibiliPublisher."""
 
-    def test_publisher_initialization(self, db_session: Session):
+
+    def test_bilibili_publisher_duplicate_does_not_call_external_api(self, db_session: Session, monkeypatch):
+        from app.models.entities import PublishLog
         from app.services.bilibili_publisher import BilibiliPublisher
+        from app.services.hashing import reply_hash
+        from app.settings import settings
+
+        monkeypatch.setattr(settings, "bilibili_enabled", True)
+        monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+
+        comment_id = "comment-bili-dup-1"
+        reply_text = "reply text"
+        canonical_comment_id = f"bilibili:{comment_id}"
+
+        db_session.add(
+            PublishLog(
+                platform="bilibili",
+                canonical_comment_id=canonical_comment_id,
+                comment_id=comment_id,
+                reply_hash=reply_hash(comment_id, reply_text),
+                source="bilibili-api",
+                status="published",
+            )
+        )
+        db_session.commit()
+
+        def fail_if_called(*args, **kwargs):
+            raise AssertionError("reply_comment should not be called for duplicate payload")
+
+        from app.services import bilibili_client as bilibili_client_module
+
+        monkeypatch.setattr(bilibili_client_module.BilibiliClient, "reply_comment", fail_if_called)
+
         publisher = BilibiliPublisher(db_session)
-        assert publisher.db == db_session
+        ok, reason, published_at, new_rpid = publisher.publish_reply(
+            comment_id=comment_id,
+            reply_text=reply_text,
+            video_bvid="BV1xx411c7mD",
+            oid=123456,
+            trace_id="trace-bili-dup-1",
+        )
+
+        assert ok is False
+        assert reason == "duplicate"
+        assert published_at is None
+        assert new_rpid is None

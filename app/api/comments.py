@@ -72,6 +72,7 @@ def _job_to_dict(item: ReplyJob, comment_content: str | None = None) -> dict:
     return {
         "id": item.id,
         "comment_id": item.comment_id,
+        "canonical_comment_id": item.canonical_comment_id,
         "status": item.status,
         "length_mode": item.length_mode,
         "style_mode": item.style_mode,
@@ -200,7 +201,8 @@ def _approve_job_core(
     if job.status not in {"manual_queue", "blocked", "dedupe_skipped"}:
         raise HTTPException(status_code=400, detail=f"job_status_not_approvable: {job.status}")
 
-    comment = db.query(Comment).filter(Comment.canonical_comment_id == f"bilibili:{job.comment_id}").first()
+    comment_key = job.canonical_comment_id or f"bilibili:{job.comment_id}"
+    comment = db.query(Comment).filter(Comment.canonical_comment_id == comment_key).first()
     if not comment:
         raise HTTPException(status_code=404, detail="comment_not_found")
 
@@ -294,9 +296,11 @@ def retry_job(job_id: int, payload: RetryJobRequest, db: Session = Depends(get_d
         _log_warning("job_retry_failed", trace_id=trace_id, job_id=job_id, status="job_not_found")
         raise HTTPException(status_code=404, detail="job_not_found")
 
+    platform = (job.canonical_comment_id or "bilibili:").split(":", 1)[0] or "bilibili"
     process_comment_event_task.delay(
         {
             "comment_id": job.comment_id,
+            "platform": platform,
             "force_long": payload.force_long,
             "style_profile": payload.style_profile,
             "role_profile": payload.role_profile,
@@ -460,9 +464,11 @@ def retry_jobs_batch(payload: BatchRetryJobsRequest, db: Session = Depends(get_d
             _log_warning("job_retry_batch_item_failed", trace_id=trace_id, job_id=job_id, status="job_not_found")
             continue
 
+        platform = (job.canonical_comment_id or "bilibili:").split(":", 1)[0] or "bilibili"
         process_comment_event_task.delay(
             {
                 "comment_id": job.comment_id,
+                "platform": platform,
                 "force_long": payload.force_long,
                 "role_profile": settings.role_profile_default,
                 "trace_id": trace_id,
