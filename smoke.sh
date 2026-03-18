@@ -77,10 +77,10 @@ fi
 check_contains "admin page has css" "${BASE_URL}/admin?api_key=${API_KEY}" "/static/admin/admin.css"
 check_contains "admin page has js" "${BASE_URL}/admin?api_key=${API_KEY}" "/static/admin/admin.js"
 
-check_json_ok_true "admin metrics overview" "${BASE_URL}/api/admin/metrics/overview"
+check_json_ok_true "admin metrics overview" "${BASE_URL}/api/admin/overview"
 check_json_ok_true "admin jobs" "${BASE_URL}/api/admin/jobs?limit=5&offset=0"
-check_json_ok_true "admin audit summary" "${BASE_URL}/api/admin/audit-logs/summary?days=7"
-check_json_ok_true "admin gateway logs" "${BASE_URL}/api/admin/gateway/publish-logs?limit=5"
+check_json_ok_true "admin audit summary" "${BASE_URL}/api/admin/audit/summary?days=7"
+check_json_ok_true "admin gateway logs" "${BASE_URL}/api/admin/gateway/logs?limit=5"
 
 check_json_ok_true "legacy metrics overview" "${BASE_URL}/api/metrics/overview"
 check_json_ok_true "legacy jobs" "${BASE_URL}/api/jobs?limit=5"

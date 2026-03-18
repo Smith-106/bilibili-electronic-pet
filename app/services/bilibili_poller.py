@@ -68,6 +68,9 @@ class BilibiliPoller:
                 video.aid = aid
                 self.db.commit()
             else:
+                video.last_poll_status = "error"
+                video.last_poll_error = "no_aid"
+                self.db.commit()
                 logger.warning(f"bilibili_poll_no_aid | bvid={video.bvid}")
                 return []
 
@@ -80,6 +83,9 @@ class BilibiliPoller:
             # 带重试的评论获取
             comments = self._get_comments_with_retry(video.aid, page, retry_attempts)
             if comments is None:
+                video.last_poll_status = "error"
+                video.last_poll_error = "retry_exhausted"
+                self.db.commit()
                 # 重试耗尽，跳过此页
                 break
 
@@ -109,6 +115,15 @@ class BilibiliPoller:
         if all_comments:
             max_rpid = max(c.rpid for c in all_comments)
             self.client.update_video_last_polled(video, max_rpid)
+            video.last_poll_status = "ok"
+            video.last_poll_error = None
+            self.db.commit()
+        else:
+            # 若已标记为 error（例如 retry_exhausted），不要覆盖为 no_new
+            if video.last_poll_status != "error":
+                video.last_poll_status = "no_new"
+                video.last_poll_error = None
+                self.db.commit()
 
         # 转换为 CommentEvent
         events = []
@@ -141,7 +156,7 @@ class BilibiliPoller:
 
         for attempt in range(max_attempts):
             try:
-                return self.client.get_comments(oid, page=page)
+                return self.client.get_comments(oid, page=page, strict=True)
             except Exception as e:
                 last_error = e
                 logger.warning(
@@ -325,6 +340,8 @@ class BilibiliPoller:
                     "title": v.title,
                     "poll_enabled": v.poll_enabled,
                     "last_polled_at": v.last_polled_at.isoformat() if v.last_polled_at else None,
+                    "last_poll_status": v.last_poll_status,
+                    "last_poll_error": v.last_poll_error,
                     "last_rpid": v.last_rpid,
                 }
                 for v in videos

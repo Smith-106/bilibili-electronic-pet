@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.entities import BilibiliVideo, PublishLog
 from app.services.hashing import reply_hash
+from app.services.publisher import normalize_publish_failure_reason
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -108,12 +109,13 @@ class BilibiliPublisher:
 
             if not success:
                 reserved.status = "failed"
-                reserved.failure_reason = "invalid_response"
+                failure_reason = normalize_publish_failure_reason(reason)
+                reserved.failure_reason = failure_reason
                 self.db.commit()
                 logger.error(
                     f"bilibili_publish_failed | comment_id={comment_id} oid={oid} reason={reason} trace_id={trace_id}"
                 )
-                return False, "invalid_response", None, None
+                return False, failure_reason, None, None
 
             published_at = datetime.now(timezone.utc)
             reserved.status = "published"
@@ -129,12 +131,13 @@ class BilibiliPublisher:
         except Exception as e:
             error_msg = str(e)
             reserved.status = "failed"
-            reserved.failure_reason = "invalid_response"
+            failure_reason = normalize_publish_failure_reason(error_msg)
+            reserved.failure_reason = failure_reason
             self.db.commit()
             logger.error(
                 f"bilibili_publish_error | comment_id={comment_id} oid={oid} error={error_msg} trace_id={trace_id}"
             )
-            return False, "invalid_response", None, None
+            return False, failure_reason, None, None
 
 
 def publish_bilibili_reply(

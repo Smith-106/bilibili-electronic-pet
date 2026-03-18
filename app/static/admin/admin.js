@@ -568,7 +568,7 @@ function toggleAutoRefresh() {
 }
 
 async function loadOverview() {
-  const res = await fetch(withApiKey('/api/admin/metrics/overview'));
+  const res = await fetch(withApiKey('/api/admin/overview'));
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载概览失败'));
 
@@ -1396,7 +1396,7 @@ async function loadAuditSummary() {
   if (action) qs.set('action', action);
   if (ok) qs.set('ok', ok);
 
-  const res = await fetch(withApiKey('/api/admin/audit-logs/summary?' + qs.toString()));
+  const res = await fetch(withApiKey('/api/admin/audit/summary?' + qs.toString()));
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载审计摘要失败'));
 
@@ -1582,7 +1582,7 @@ async function loadGatewayLogs() {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (commentId) qs.set('comment_id', commentId);
 
-  const res = await fetch(withApiKey('/api/admin/gateway/publish-logs?' + qs.toString()));
+  const res = await fetch(withApiKey('/api/admin/gateway/logs?' + qs.toString()));
   const data = await readApiPayload(res);
   if (!gatewayLogsBody) throw new Error('gateway_logs_table_not_found');
   gatewayLogsBody.innerHTML = '';
@@ -2383,7 +2383,7 @@ function renderBilibiliVideos(items) {
   if (!bilibiliVideosBody) return;
 
   if (!items || items.length === 0) {
-    bilibiliVideosBody.innerHTML = '<tr><td colspan="7" class="text-center">暂无监控视频</td></tr>';
+    bilibiliVideosBody.innerHTML = '<tr><td colspan="8" class="text-center">暂无监控视频</td></tr>';
     return;
   }
 
@@ -2398,6 +2398,11 @@ function renderBilibiliVideos(items) {
         </span>
       </td>
       <td>${item.last_polled_at ? formatIsoDateTime(item.last_polled_at) : '-'}</td>
+      <td>
+        <span class="status-pill ${item.last_poll_status === 'ok' ? 'status-ok' : item.last_poll_status === 'error' ? 'status-error' : 'status-idle'}" title="${escapeHtml(item.last_poll_error || '')}">
+          ${escapeHtml(item.last_poll_status || 'unknown')}
+        </span>
+      </td>
       <td>${item.last_rpid || 0}</td>
       <td>
         <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${item.id}, ${!item.poll_enabled})">

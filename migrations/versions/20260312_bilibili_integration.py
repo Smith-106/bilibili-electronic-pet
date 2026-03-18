@@ -46,6 +46,8 @@ def upgrade() -> None:
         sa.Column("owner_mid", sa.Integer(), nullable=True),
         sa.Column("poll_enabled", sa.Boolean(), nullable=False, server_default="0"),
         sa.Column("last_polled_at", sa.DateTime(), nullable=True),
+        sa.Column("last_poll_status", sa.String(length=16), nullable=True),
+        sa.Column("last_poll_error", sa.String(length=512), nullable=True),
         sa.Column("last_rpid", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),

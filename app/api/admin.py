@@ -224,7 +224,7 @@ def admin_page():
       <table aria-label="B站视频监控列表">
         <thead>
           <tr>
-            <th scope="col">ID</th><th scope="col">BV号</th><th scope="col">标题</th><th scope="col">轮询</th><th scope="col">最后轮询</th><th scope="col">最后rpid</th><th scope="col">操作</th>
+            <th scope="col">ID</th><th scope="col">BV号</th><th scope="col">标题</th><th scope="col">轮询</th><th scope="col">最后轮询</th><th scope="col">轮询状态</th><th scope="col">最后rpid</th><th scope="col">操作</th>
           </tr>
         </thead>
         <tbody id="bilibili-videos"></tbody>
@@ -690,6 +690,7 @@ def get_observability_metrics_summary(window_minutes: int = 60):
     }
 
 
+@router.get("/api/admin/overview")
 @router.get("/api/admin/metrics/overview")
 def admin_metrics_overview(db: Session = Depends(get_db)):
     return comments_api.metrics_overview(db=db)
@@ -705,6 +706,7 @@ def admin_list_jobs(
     return comments_api.list_jobs(status=status, limit=limit, offset=offset, db=db)
 
 
+@router.get("/api/admin/audit/summary")
 @router.get("/api/admin/audit-logs/summary")
 def admin_audit_logs_summary(
     days: int = Query(default=7, ge=1, le=90),
@@ -715,6 +717,7 @@ def admin_audit_logs_summary(
     return comments_api.summarize_audit_logs(days=days, action=action, ok=ok, db=db)
 
 
+@router.get("/api/admin/gateway/logs")
 @router.get("/api/admin/gateway/publish-logs")
 def admin_gateway_publish_logs(
     comment_id: str | None = Query(default=None),
@@ -798,6 +801,8 @@ def list_bilibili_videos(
                 "owner_mid": item.owner_mid,
                 "poll_enabled": item.poll_enabled,
                 "last_polled_at": item.last_polled_at.isoformat() if item.last_polled_at else None,
+                "last_poll_status": item.last_poll_status,
+                "last_poll_error": item.last_poll_error,
                 "last_rpid": item.last_rpid,
                 "created_at": item.created_at.isoformat() if item.created_at else None,
                 "updated_at": item.updated_at.isoformat() if item.updated_at else None,

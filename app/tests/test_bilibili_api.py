@@ -77,6 +77,8 @@ class TestBilibiliVideosAPI:
             title="Test Video",
             owner_mid=789012,
             poll_enabled=True,
+            last_poll_status="error",
+            last_poll_error="retry_exhausted",
         )
         db_session.add(video)
         db_session.commit()
@@ -87,6 +89,8 @@ class TestBilibiliVideosAPI:
         assert data["total"] == 1
         assert len(data["items"]) == 1
         assert data["items"][0]["bvid"] == "BV1xx411c7mD"
+        assert data["items"][0]["last_poll_status"] == "error"
+        assert data["items"][0]["last_poll_error"] == "retry_exhausted"
 
     def test_delete_video_not_found(self, client: TestClient):
         response = client.delete("/api/admin/bilibili/videos/99999")

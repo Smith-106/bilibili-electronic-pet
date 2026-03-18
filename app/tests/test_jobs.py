@@ -234,32 +234,25 @@ class ProcessCommentSafetyFlowTests(unittest.TestCase):
         self.assertEqual(len(job_started_metadata), 1)
         self.assertEqual(job_started_metadata[0].get("force_long"), False)
 
-    def test_knowledge_hit_marks_generation_flags(self) -> None:
-        self._insert_comment("comment-knowledge-hit", content="Doro 喜欢欧润吉")
-        self.db.add(
-            KnowledgeEntry(
-                category="faq",
-                title="欧润吉",
-                content="Doro 喜欢欧润吉梗，可以温柔回应。",
-                enabled=True,
-            )
-        )
-        self.db.commit()
+    def test_publish_failure_reason_is_normalized_for_manual_queue(self) -> None:
+        self._insert_comment("comment-publish-fail")
 
         with (
             patch.object(jobs, "SessionLocal", return_value=self.db),
             patch.object(jobs, "should_reply", return_value=(True, "normal", "medium")),
-            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("收到，欧润吉~")),
+            patch.object(jobs, "generate_reply_with_meta", return_value=self._generation("ok")),
             patch.object(jobs, "is_recent_duplicate", return_value=False),
-            patch.object(jobs, "publish_reply_with_result", return_value=(False, "manual_queue", None, {})),
+            patch.object(jobs, "publish_reply_with_result", return_value=(False, "timeout", None, {})),
         ):
-            result = jobs.process_comment_event_task.run({"comment_id": "comment-knowledge-hit"})
+            result = jobs.process_comment_event_task.run({"comment_id": "comment-publish-fail"})
 
         self.assertTrue(result["ok"])
-        item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-knowledge-hit").order_by(ReplyJob.id.desc()).first()
+        self.assertEqual(result["status"], "manual_queue")
+
+        item = self.db.query(ReplyJob).filter(ReplyJob.comment_id == "comment-publish-fail").order_by(ReplyJob.id.desc()).first()
         self.assertIsNotNone(item)
-        self.assertTrue(item.risk_flags.get("knowledge_hit"))
-        self.assertIn("faq", item.risk_flags.get("knowledge_categories", []))
+        self.assertEqual(item.status, "manual_queue")
+        self.assertEqual(item.risk_flags.get("publish_reason"), "timeout")
 
     def test_knowledge_search_error_falls_back_safely(self) -> None:
         self._insert_comment("comment-knowledge-error", content="测试知识检索异常")

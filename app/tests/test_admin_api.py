@@ -693,9 +693,13 @@ def test_admin_alias_endpoints_match_legacy_contracts(client, make_comment, make
 
     legacy_overview = client.get("/api/metrics/overview")
     alias_overview = client.get("/api/admin/metrics/overview")
+    short_overview = client.get("/api/admin/overview")
     assert legacy_overview.status_code == 200
     assert alias_overview.status_code == 200
+    assert short_overview.status_code == 200
     assert alias_overview.json() == legacy_overview.json()
+    assert short_overview.json() == legacy_overview.json()
+    assert short_overview.json() == alias_overview.json()
 
     legacy_jobs = client.get("/api/jobs?status=manual_queue&limit=20&offset=0")
     alias_jobs = client.get("/api/admin/jobs?status=manual_queue&limit=20&offset=0")
@@ -703,27 +707,63 @@ def test_admin_alias_endpoints_match_legacy_contracts(client, make_comment, make
     assert alias_jobs.status_code == 200
     assert alias_jobs.json() == legacy_jobs.json()
 
+    legacy_jobs_offset = client.get("/api/jobs?status=manual_queue&limit=1&offset=1")
+    alias_jobs_offset = client.get("/api/admin/jobs?status=manual_queue&limit=1&offset=1")
+    assert legacy_jobs_offset.status_code == 200
+    assert alias_jobs_offset.status_code == 200
+    assert alias_jobs_offset.json() == legacy_jobs_offset.json()
+
     legacy_audit_summary = client.get("/api/audit-logs/summary?days=7")
     alias_audit_summary = client.get("/api/admin/audit-logs/summary?days=7")
+    short_audit_summary = client.get("/api/admin/audit/summary?days=7")
     assert legacy_audit_summary.status_code == 200
     assert alias_audit_summary.status_code == 200
+    assert short_audit_summary.status_code == 200
     assert alias_audit_summary.json() == legacy_audit_summary.json()
+    assert short_audit_summary.json() == legacy_audit_summary.json()
+    assert short_audit_summary.json() == alias_audit_summary.json()
+
+    legacy_audit_filtered = client.get("/api/audit-logs/summary?days=7&action=admin_refresh&ok=true")
+    alias_audit_filtered = client.get("/api/admin/audit-logs/summary?days=7&action=admin_refresh&ok=true")
+    short_audit_filtered = client.get("/api/admin/audit/summary?days=7&action=admin_refresh&ok=true")
+    assert legacy_audit_filtered.status_code == 200
+    assert alias_audit_filtered.status_code == 200
+    assert short_audit_filtered.status_code == 200
+    assert alias_audit_filtered.json() == legacy_audit_filtered.json()
+    assert short_audit_filtered.json() == legacy_audit_filtered.json()
+    assert short_audit_filtered.json() == alias_audit_filtered.json()
 
     legacy_gateway_logs = client.get("/gateway/publish-logs?limit=20")
     alias_gateway_logs = client.get("/api/admin/gateway/publish-logs?limit=20")
+    short_gateway_logs = client.get("/api/admin/gateway/logs?limit=20")
     assert legacy_gateway_logs.status_code == 200
     assert alias_gateway_logs.status_code == 200
+    assert short_gateway_logs.status_code == 200
     assert alias_gateway_logs.json() == legacy_gateway_logs.json()
+    assert short_gateway_logs.json() == legacy_gateway_logs.json()
+    assert short_gateway_logs.json() == alias_gateway_logs.json()
+
+    legacy_gateway_filtered = client.get("/gateway/publish-logs?comment_id=admin-alias-c-1&limit=5")
+    alias_gateway_filtered = client.get("/api/admin/gateway/publish-logs?comment_id=admin-alias-c-1&limit=5")
+    short_gateway_filtered = client.get("/api/admin/gateway/logs?comment_id=admin-alias-c-1&limit=5")
+    assert legacy_gateway_filtered.status_code == 200
+    assert alias_gateway_filtered.status_code == 200
+    assert short_gateway_filtered.status_code == 200
+    assert alias_gateway_filtered.json() == legacy_gateway_filtered.json()
+    assert short_gateway_filtered.json() == legacy_gateway_filtered.json()
+    assert short_gateway_filtered.json() == alias_gateway_filtered.json()
 
 
 def test_admin_static_js_uses_admin_alias_routes():
     js_path = Path(__file__).resolve().parents[1] / "static" / "admin" / "admin.js"
     js_text = js_path.read_text(encoding="utf-8")
 
-    assert "'/api/admin/metrics/overview'" in js_text
+    assert "'/api/admin/overview'" in js_text
     assert "'/api/admin/jobs?'" in js_text
-    assert "'/api/admin/audit-logs/summary?'" in js_text
-    assert "'/api/admin/gateway/publish-logs?'" in js_text
+    assert "'/api/admin/audit/summary?'" in js_text
+    assert "'/api/admin/gateway/logs?'" in js_text
+    assert "last_poll_status" in js_text
+    assert "last_poll_error" in js_text
 
     assert "'/api/metrics/overview'" not in js_text
     assert "'/api/jobs?'" not in js_text

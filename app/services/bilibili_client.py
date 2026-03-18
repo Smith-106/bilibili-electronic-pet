@@ -330,13 +330,14 @@ class BilibiliClient:
 
     # ==================== 评论相关 API ====================
 
-    def get_comments(self, oid: int, page: int = 1, sort: int = 0) -> list[BilibiliComment]:
+    def get_comments(self, oid: int, page: int = 1, sort: int = 0, *, strict: bool = False) -> list[BilibiliComment]:
         """获取视频评论
 
         Args:
             oid: 视频的 aid
             page: 页码
             sort: 排序方式 (0: 按时间, 1: 按热度)
+            strict: 为 True 时，异常会直接抛出（用于 poller 重试）；为 False 时返回空列表（兼容旧行为）
         """
         self._check_api_available()
         self._wait_for_rate_limit()
@@ -370,15 +371,18 @@ class BilibiliClient:
             return comments
         except Exception as e:
             logger.error(f"bilibili_get_comments_error | oid={oid} page={page} error={e}")
+            if strict:
+                raise
             return []
 
-    def get_sub_comments(self, oid: int, root_rpid: int, page: int = 1) -> list[BilibiliComment]:
+    def get_sub_comments(self, oid: int, root_rpid: int, page: int = 1, *, strict: bool = False) -> list[BilibiliComment]:
         """获取子评论（回复）
 
         Args:
             oid: 视频的 aid
             root_rpid: 根评论 ID
             page: 页码
+            strict: 为 True 时，异常会直接抛出；为 False 时返回空列表
         """
         self._check_api_available()
         self._wait_for_rate_limit()
@@ -412,6 +416,8 @@ class BilibiliClient:
             return comments
         except Exception as e:
             logger.error(f"bilibili_get_sub_comments_error | oid={oid} root={root_rpid} error={e}")
+            if strict:
+                raise
             return []
 
     def reply_comment(self, oid: int, rpid: int, message: str) -> tuple[bool, str, int | None]:
@@ -477,7 +483,7 @@ class BilibiliClient:
 
     # ==================== 收到的回复通知 ====================
 
-    def get_received_replies(self, page: int = 1) -> list[dict[str, Any]]:
+    def get_received_replies(self, page: int = 1, *, strict: bool = False) -> list[dict[str, Any]]:
         """获取收到的回复通知"""
         self._check_api_available()
 
@@ -499,6 +505,8 @@ class BilibiliClient:
             return data.get("items", []) if data else []
         except Exception as e:
             logger.error(f"bilibili_get_received_replies_error | error={e}")
+            if strict:
+                raise
             return []
 
     # ==================== 视频管理 ====================

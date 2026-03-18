@@ -178,6 +178,8 @@ class BilibiliVideo(Base):
     owner_mid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     poll_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
     last_polled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    last_poll_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_poll_error: Mapped[str | None] = mapped_column(String(512), nullable=True)
     last_rpid: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
