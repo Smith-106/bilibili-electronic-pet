@@ -82,7 +82,8 @@ class BilibiliPublisher:
         except IntegrityError:
             self.db.rollback()
             logger.info(f"bilibili_publish_duplicate | comment_id={comment_id} trace_id={trace_id}")
-            return False, "duplicate", None, None
+            # Return canonical duplicate reason for consistency with gateway publisher
+            return False, "idempotent_replay", None, None
 
         try:
             from app.services.bilibili_client import BilibiliClient
@@ -195,9 +196,8 @@ class BilibiliPublisherAdapter:
         if not self.publisher.is_enabled():
             return False, "disabled", None
 
-        if force_publish:
-            # 强幂等要求：不允许通过 force_publish 绕过 reserve-first；需要真正强制发布应走 gateway
-            return False, "force_publish_ignored", None
+        # force_publish is accepted for approval flow compatibility
+        # BilibiliPublisher.publish_reply() provides reserve-first idempotency via IntegrityError
 
         success, reason, published_at, _ = self.publisher.publish_reply(
             comment_id=comment_id,
@@ -224,8 +224,8 @@ class BilibiliPublisherAdapter:
         if not self.publisher.is_enabled():
             return False, "disabled", None, {}
 
-        if force_publish:
-            return False, "force_publish_ignored", None, {}
+        # force_publish is accepted for approval flow compatibility
+        # BilibiliPublisher.publish_reply() provides reserve-first idempotency via IntegrityError
 
         success, reason, published_at, new_rpid = self.publisher.publish_reply(
             comment_id=comment_id,
@@ -236,7 +236,8 @@ class BilibiliPublisherAdapter:
         )
 
         result: dict[str, object] = {}
-        if new_rpid is not None:
+        # Only include new_rpid for successful publishes, not duplicate replays
+        if new_rpid is not None and success:
             result["new_rpid"] = int(new_rpid)
 
         return success, reason, published_at, result

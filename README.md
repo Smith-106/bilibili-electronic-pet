@@ -87,16 +87,39 @@ pytest app/tests -q
 docker compose up -d --build
 ```
 
+服务启动后，API 默认监听 `http://127.0.0.1:18000`（可通过 `API_PORT` 环境变量覆盖）。
+
 ### 4) 健康检查
 
 ```bash
-curl -sS http://127.0.0.1:8000/health
+curl -sS http://127.0.0.1:18000/health
 ```
 
 期望：
 
 ```json
 {"ok": true}
+```
+
+**完整部署验证（推荐）：**
+
+```bash
+# 使用 smoke 脚本进行完整健康检查（需要设置 API_KEY）
+API_KEY=your-api-key-here bash smoke.sh
+
+# 或仅检查基础健康
+curl -sS http://127.0.0.1:18000/readiness
+```
+
+**自定义端口：**
+
+如果需要使用其他端口，可通过环境变量覆盖：
+
+```bash
+API_PORT=8080 docker compose up -d --build
+# 服务将监听 http://127.0.0.1:8080
+# 验证时使用：
+curl -sS http://127.0.0.1:8080/health
 ```
 
 ## 主要接口
@@ -181,7 +204,25 @@ curl -sS http://127.0.0.1:8000/health
 
 ### 发布模式
 
-- `PUBLISHER_MODE`（`manual_queue` / `simulated` / `webhook` / `real_publish`）
+**Publisher 选择优先级**（从高到低）：
+
+1. **Native Bilibili 发布**（当 `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时）
+   - 此配置优先级最高，会覆盖 `PUBLISHER_MODE` 设置
+   - 适用于直接集成 B 站官方 API 的场景
+
+2. **PUBLISHER_MODE 配置**（`manual_queue` / `simulated` / `webhook` / `real_publish`）
+   - 当 native Bilibili 未启用时生效
+   - `manual_queue`：人工审核队列（默认）
+   - `simulated`：模拟发布（测试用）
+   - `webhook`：通过 webhook 调用外部发布服务
+   - `real_publish`：调用真实发布端点
+
+3. **ManualQueuePublisher 回退**（当 `PUBLISHER_MODE` 配置值不被识别时）
+
+**配置冲突警告**：当同时启用 native Bilibili 发布和 `webhook`/`real_publish` 模式时，启动时会记录警告日志，native Bilibili 将实际生效。
+
+**相关配置**：
+- `PUBLISHER_MODE`（默认 `manual_queue`）
 - `PUBLISHER_TIMEOUT_SECONDS`
 - `PUBLISHER_HMAC_SECRET`
 - `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_WEBHOOK_TOKEN`
@@ -192,6 +233,7 @@ curl -sS http://127.0.0.1:8000/health
 - `BILIBILI_ENABLED`（是否启用B站集成，默认 `false`）
 - `BILIBILI_POLL_ENABLED`（是否启用评论轮询，默认 `false`）
 - `BILIBILI_PUBLISH_ENABLED`（是否启用真实发布，默认 `false`）
+  - **注意**：当设置为 `true` 且 `BILIBILI_ENABLED=true` 时，将覆盖 `PUBLISHER_MODE` 设置
 - `BILIBILI_POLL_INTERVAL_SECONDS`（轮询间隔秒数，默认 `300`）
 - `BILIBILI_RATE_LIMIT_PER_MINUTE`（API 请求频率限制，默认 `30`）
 - `BILIBILI_CREDENTIAL_ID`（使用的凭证 ID，默认 `1`）
@@ -242,21 +284,47 @@ PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
 
 ### 生产演练：故障切换与回滚（建议每次发布前执行）
 
+**生产验证流程**（按顺序执行）：
+
 1. **上线前核对**
-   - 确认 `.env` 满足“生产最小配置（必填）”
+   - 确认 `.env` 满足”生产最小配置（必填）”
    - 运行 `pytest app/tests -q`，确保回归通过
-2. **灰度阶段**
+   - 执行 `bash smoke.sh` 验证基础健康检查
+
+2. **依赖验证**
+   - 检查 `/readiness` 确认 DB/Redis 连接正常
+   - 检查 `/api/admin/bilibili/status` 确认配置状态
+   - 验证 `diagnostics.ready` 为 `true` 或理解具体阻塞原因
+
+3. **灰度阶段**
    - 以 `PUBLISHER_MODE=manual_queue` 启动
-   - 观察 `/health`、`/api/jobs`、`/gateway/publish-logs` 是否正常
-3. **切换到自动发布**
+   - 观察 `/health`、`/readiness`、`/api/jobs`、`/gateway/publish-logs` 是否正常
+   - 确认 Bilibili 集成状态（若启用）：
+     ```bash
+     curl -sS -H “x-api-key: ${API_KEY}” http://127.0.0.1:18000/api/admin/bilibili/status | jq .
+     ```
+
+4. **切换到自动发布**
    - 调整为 `PUBLISHER_MODE=real_publish`（或 `webhook`）并重启服务
+   - **注意**：若启用 native Bilibili 发布（`BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true`），将覆盖 `PUBLISHER_MODE` 设置
    - 确认发布成功率与审计日志稳定
-4. **故障切换（Failover）**
+
+5. **故障切换（Failover）**
    - 外部发布端异常时，立即切回 `PUBLISHER_MODE=manual_queue` 并重启
    - 必要时设置 `KILL_SWITCH=true` 暂停自动处理
-5. **回滚（Rollback）**
+   - 验证 `/api/admin/bilibili/status` 的 `diagnostics` 字段识别问题类型
+
+6. **回滚（Rollback）**
    - 回退到上一版镜像与上一版 `.env`
-   - 重启后再次检查 `/health` 与关键业务接口
+   - 重启后再次检查 `/health`、`/readiness` 与关键业务接口
+
+**诊断说明**：
+
+`/api/admin/bilibili/status` 返回的 `diagnostics` 字段包含：
+- `config_error`: 配置缺失或错误（如 `bilibili_enabled=false`）
+- `auth_error`: 凭证缺失、过期或验证失败
+- `dependency_error`: 发布器初始化失败或外部依赖不可用
+- `ready`: 所有检查通过，可安全启用真实发布
 
 ## CI 状态
 

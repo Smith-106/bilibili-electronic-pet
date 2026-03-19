@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:18000}"
 API_KEY="${API_KEY:-}"
 
 pass() { echo "[PASS] $1"; }
@@ -60,6 +60,20 @@ check_contains() {
   pass "${name}"
 }
 
+check_readiness() {
+  local name="$1"
+  local url="$2"
+  local body
+  body="$(curl -sS "$url")"
+  python - <<'PY' "$body" >/dev/null 2>&1 || exit 1
+import json, sys
+payload = json.loads(sys.argv[1])
+assert payload.get("ready") is True
+PY
+  [[ $? -eq 0 ]] || fail "${name} -> ready != true (${url})"
+  pass "${name}"
+}
+
 echo "== Smoke check start =="
 echo "BASE_URL=${BASE_URL}"
 
@@ -72,6 +86,39 @@ if [[ -z "$API_KEY" ]]; then
   check_http_one_of "admin page reachable (no auth assertion)" "${BASE_URL}/admin" "200,401"
   echo "== SMOKE PARTIAL PASS (degraded mode) =="
   exit 0
+fi
+
+check_readiness "readiness" "${BASE_URL}/readiness"
+
+# Optional strict verification (production-like checks)
+# Set STRICT_SMOKE=true to enable comprehensive dependency and config checks
+if [[ "${STRICT_SMOKE}" == "true" ]]; then
+  echo "== STRICT MODE: Production-like verification =="
+
+  # Check Bilibili integration status if enabled
+  if [[ -n "$API_KEY" ]]; then
+    check_json_ok_true "bilibili integration status" "${BASE_URL}/api/admin/bilibili/status"
+
+    # Verify diagnostics readiness
+    body="$(curl -sS -H "x-api-key: ${API_KEY}" "${BASE_URL}/api/admin/bilibili/status")"
+    diagnostics=$(python - <<'PY' "$body" 2>/dev/null
+import json, sys
+try:
+    payload = json.loads(sys.argv[1])
+    diag = payload.get("diagnostics", {})
+    print("ready" if diag.get("ready") else "not_ready")
+except:
+    print("error")
+PY
+    )
+    if [[ "$diagnostics" == "ready" ]]; then
+      pass "bilibili publish readiness"
+    else
+      warn "bilibili publish not ready (check diagnostics for details)"
+    fi
+  fi
+
+  echo "== STRICT MODE COMPLETE =="
 fi
 
 check_contains "admin page has css" "${BASE_URL}/admin?api_key=${API_KEY}" "/static/admin/admin.css"

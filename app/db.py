@@ -65,3 +65,14 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def check_database_connection() -> dict[str, bool | str]:
+    """Check database connectivity for readiness probe."""
+    try:
+        from sqlalchemy import text
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        return {"connected": True}
+    except Exception as e:
+        return {"connected": False, "error": str(e)}

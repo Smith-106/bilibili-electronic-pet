@@ -343,6 +343,35 @@ class Settings(BaseSettings):
     def log_startup_summary(self) -> None:
         logger.info("startup_config_baseline=%s", self.build_startup_summary())
 
+        # Warn about publisher_mode vs native Bilibili override
+        if self.bilibili_enabled and self.bilibili_publish_enabled:
+            if self.publisher_mode in {"webhook", "real_publish"}:
+                logger.warning(
+                    "publisher configuration override: native bilibili publishing is enabled "
+                    "(bilibili_enabled=True, bilibili_publish_enabled=True) which takes precedence "
+                    "over publisher_mode=%s. The webhook/real_publish configuration will be ignored.",
+                    self.publisher_mode
+                )
+
+    def build_readiness_summary(self) -> dict[str, object]:
+        """Build a readiness summary for deployment verification."""
+        return {
+            "config": {
+                "database_url_set": self.has_text(self.database_url),
+                "celery_broker_url_set": self.has_text(self.celery_broker_url),
+                "celery_result_backend_set": self.has_text(self.celery_result_backend),
+                "api_key_set": self.has_text(self.api_key),
+                "llm_provider": self.llm_provider,
+                "llm_fallback_to_mock": self.llm_fallback_to_mock,
+            },
+            "publish": {
+                "mode": self.publisher_mode,
+                "bilibili_enabled": self.bilibili_enabled,
+                "bilibili_publish_enabled": self.bilibili_publish_enabled,
+            },
+            "kill_switch": self.kill_switch,
+        }
+
     @model_validator(mode="after")
     def validate_runtime_configuration(self):
         errors: list[str] = []
