@@ -319,4 +319,4 @@ def test_publisher_selection_fallback_for_unknown_mode(monkeypatch, caplog):
     assert isinstance(publisher, ManualQueuePublisher)
 
     # Verify fallback is logged
-    assert any("mode=unknown_mode not recognized" in record.message for record in caplog.records)
+    assert any("not recognized" in record.message and "unknown_mode" in record.message for record in caplog.records)

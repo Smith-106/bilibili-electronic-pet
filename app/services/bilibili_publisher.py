@@ -196,9 +196,8 @@ class BilibiliPublisherAdapter:
         if not self.publisher.is_enabled():
             return False, "disabled", None
 
-        if force_publish:
-            # 强幂等要求：不允许通过 force_publish 绕过 reserve-first；需要真正强制发布应走 gateway
-            return False, "force_publish_ignored", None
+        # force_publish is accepted for approval flow compatibility
+        # BilibiliPublisher.publish_reply() provides reserve-first idempotency via IntegrityError
 
         success, reason, published_at, _ = self.publisher.publish_reply(
             comment_id=comment_id,
@@ -225,8 +224,8 @@ class BilibiliPublisherAdapter:
         if not self.publisher.is_enabled():
             return False, "disabled", None, {}
 
-        if force_publish:
-            return False, "force_publish_ignored", None, {}
+        # force_publish is accepted for approval flow compatibility
+        # BilibiliPublisher.publish_reply() provides reserve-first idempotency via IntegrityError
 
         success, reason, published_at, new_rpid = self.publisher.publish_reply(
             comment_id=comment_id,
