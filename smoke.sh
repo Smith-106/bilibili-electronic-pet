@@ -60,6 +60,20 @@ check_contains() {
   pass "${name}"
 }
 
+check_readiness() {
+  local name="$1"
+  local url="$2"
+  local body
+  body="$(curl -sS "$url")"
+  python - <<'PY' "$body" >/dev/null 2>&1 || exit 1
+import json, sys
+payload = json.loads(sys.argv[1])
+assert payload.get("ready") is True
+PY
+  [[ $? -eq 0 ]] || fail "${name} -> ready != true (${url})"
+  pass "${name}"
+}
+
 echo "== Smoke check start =="
 echo "BASE_URL=${BASE_URL}"
 
@@ -73,6 +87,8 @@ if [[ -z "$API_KEY" ]]; then
   echo "== SMOKE PARTIAL PASS (degraded mode) =="
   exit 0
 fi
+
+check_readiness "readiness" "${BASE_URL}/readiness"
 
 check_contains "admin page has css" "${BASE_URL}/admin?api_key=${API_KEY}" "/static/admin/admin.css"
 check_contains "admin page has js" "${BASE_URL}/admin?api_key=${API_KEY}" "/static/admin/admin.js"
