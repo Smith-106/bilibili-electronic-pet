@@ -353,16 +353,41 @@ def close_bilibili_publisher() -> None:
 
 
 def _get_publisher() -> PublisherAdapter:
-    # 如果启用了 B站真实发布，优先使用
+    """
+    Resolve the active publisher adapter based on configuration precedence.
+
+    Precedence Rule (highest to lowest priority):
+    1. Native Bilibili publisher (if bilibili_enabled=True AND bilibili_publish_enabled=True)
+    2. Configured publisher_mode (manual_queue, simulated, webhook, real_publish)
+    3. ManualQueuePublisher fallback (for unsupported publisher_mode values)
+
+    Note: When native Bilibili publishing is enabled, it ALWAYS takes precedence over
+    publisher_mode. This is intentional design: native platform integration is preferred
+    when available. Configure with care when using webhook or real_publish modes.
+    """
+    # Priority 1: Native Bilibili publisher (highest priority)
     if settings.bilibili_enabled and settings.bilibili_publish_enabled:
         bilibili_publisher = _get_bilibili_publisher()
         if bilibili_publisher:
+            logger.info(
+                "publisher selection: native_bilibili (bilibili_enabled=True, bilibili_publish_enabled=True, "
+                "publisher_mode=%s overridden)",
+                settings.publisher_mode
+            )
             return bilibili_publisher
 
+    # Priority 2: Configured publisher_mode
     mode = settings.publisher_mode.lower().strip()
     try:
-        return _PUBLISHER_REGISTRY.resolve(mode)
+        publisher = _PUBLISHER_REGISTRY.resolve(mode)
+        logger.info("publisher selection: %s (mode=%s)", publisher.__class__.__name__, mode)
+        return publisher
     except KeyError:
+        # Priority 3: ManualQueuePublisher fallback (lowest priority)
+        logger.warning(
+            "publisher selection: manual_queue (mode=%s not recognized, falling back)",
+            mode
+        )
         return ManualQueuePublisher()
 
 

@@ -204,7 +204,25 @@ curl -sS http://127.0.0.1:8080/health
 
 ### 发布模式
 
-- `PUBLISHER_MODE`（`manual_queue` / `simulated` / `webhook` / `real_publish`）
+**Publisher 选择优先级**（从高到低）：
+
+1. **Native Bilibili 发布**（当 `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时）
+   - 此配置优先级最高，会覆盖 `PUBLISHER_MODE` 设置
+   - 适用于直接集成 B 站官方 API 的场景
+
+2. **PUBLISHER_MODE 配置**（`manual_queue` / `simulated` / `webhook` / `real_publish`）
+   - 当 native Bilibili 未启用时生效
+   - `manual_queue`：人工审核队列（默认）
+   - `simulated`：模拟发布（测试用）
+   - `webhook`：通过 webhook 调用外部发布服务
+   - `real_publish`：调用真实发布端点
+
+3. **ManualQueuePublisher 回退**（当 `PUBLISHER_MODE` 配置值不被识别时）
+
+**配置冲突警告**：当同时启用 native Bilibili 发布和 `webhook`/`real_publish` 模式时，启动时会记录警告日志，native Bilibili 将实际生效。
+
+**相关配置**：
+- `PUBLISHER_MODE`（默认 `manual_queue`）
 - `PUBLISHER_TIMEOUT_SECONDS`
 - `PUBLISHER_HMAC_SECRET`
 - `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_WEBHOOK_TOKEN`
@@ -215,6 +233,7 @@ curl -sS http://127.0.0.1:8080/health
 - `BILIBILI_ENABLED`（是否启用B站集成，默认 `false`）
 - `BILIBILI_POLL_ENABLED`（是否启用评论轮询，默认 `false`）
 - `BILIBILI_PUBLISH_ENABLED`（是否启用真实发布，默认 `false`）
+  - **注意**：当设置为 `true` 且 `BILIBILI_ENABLED=true` 时，将覆盖 `PUBLISHER_MODE` 设置
 - `BILIBILI_POLL_INTERVAL_SECONDS`（轮询间隔秒数，默认 `300`）
 - `BILIBILI_RATE_LIMIT_PER_MINUTE`（API 请求频率限制，默认 `30`）
 - `BILIBILI_CREDENTIAL_ID`（使用的凭证 ID，默认 `1`）

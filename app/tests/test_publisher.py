@@ -5,7 +5,10 @@ import pytest
 
 from app.services.publisher import (
     _PUBLISH_CIRCUIT_STATE,
+    _get_publisher,
+    ManualQueuePublisher,
     RealPublishPublisher,
+    WebhookPublisher,
     publish_gateway_reply,
     publish_platform_reply,
     publish_reply,
@@ -234,3 +237,86 @@ def test_publish_reply_real_publish_mode_recovers_after_open_window(monkeypatch)
     assert recovered_reason == "publish_ok"
     assert isinstance(recovered_published_at, datetime)
     assert calls["count"] == 2
+
+
+def test_publisher_selection_manual_queue_with_bilibili_disabled(monkeypatch):
+    """Test manual_queue mode when Bilibili is disabled."""
+    monkeypatch.setattr(settings, "publisher_mode", "manual_queue")
+    monkeypatch.setattr(settings, "bilibili_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
+
+    publisher = _get_publisher()
+    assert isinstance(publisher, ManualQueuePublisher)
+
+
+def test_publisher_selection_native_bilibili_overrides_webhook_mode(monkeypatch, caplog):
+    """Test native Bilibili publisher takes precedence over webhook mode."""
+    import logging
+    caplog.set_level(logging.INFO)
+
+    monkeypatch.setattr(settings, "publisher_mode", "webhook")
+    monkeypatch.setattr(settings, "bilibili_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_sessdata", "test-sessdata")
+    monkeypatch.setattr(settings, "bilibili_bili_jct", "test-bili-jct")
+    monkeypatch.setattr(settings, "bilibili_buvid3", "test-buvid3")
+    monkeypatch.setattr(settings, "bilibili_buvid4", "test-buvid4")
+    monkeypatch.setattr(settings, "bilibili_cookie_encryption_key", "test-key-32-bytes-long-enough")
+
+    from app.services.bilibili_publisher import BilibiliPublisherAdapter
+    publisher = _get_publisher()
+    assert isinstance(publisher, BilibiliPublisherAdapter)
+
+    # Verify override is logged
+    assert any("publisher_mode=webhook overridden" in record.message for record in caplog.records)
+
+
+def test_publisher_selection_native_bilibili_overrides_real_publish_mode(monkeypatch, caplog):
+    """Test native Bilibili publisher takes precedence over real_publish mode."""
+    import logging
+    caplog.set_level(logging.INFO)
+
+    monkeypatch.setattr(settings, "publisher_mode", "real_publish")
+    monkeypatch.setattr(settings, "bilibili_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_sessdata", "test-sessdata")
+    monkeypatch.setattr(settings, "bilibili_bili_jct", "test-bili-jct")
+    monkeypatch.setattr(settings, "bilibili_buvid3", "test-buvid3")
+    monkeypatch.setattr(settings, "bilibili_buvid4", "test-buvid4")
+    monkeypatch.setattr(settings, "bilibili_cookie_encryption_key", "test-key-32-bytes-long-enough")
+
+    from app.services.bilibili_publisher import BilibiliPublisherAdapter
+    publisher = _get_publisher()
+    assert isinstance(publisher, BilibiliPublisherAdapter)
+
+    # Verify override is logged
+    assert any("publisher_mode=real_publish overridden" in record.message for record in caplog.records)
+
+
+def test_publisher_selection_webhook_mode_without_bilibili(monkeypatch):
+    """Test webhook mode is used when Bilibili is not enabled."""
+    monkeypatch.setattr(settings, "publisher_mode", "webhook")
+    monkeypatch.setattr(settings, "bilibili_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
+    monkeypatch.setattr(settings, "publisher_webhook_url", "https://webhook.example.com")
+    monkeypatch.setattr(settings, "publisher_webhook_token", "test-token")
+    monkeypatch.setattr(settings, "publisher_hmac_secret", "test-hmac")
+
+    publisher = _get_publisher()
+    assert isinstance(publisher, WebhookPublisher)
+
+
+def test_publisher_selection_fallback_for_unknown_mode(monkeypatch, caplog):
+    """Test fallback to ManualQueuePublisher for unknown publisher_mode."""
+    import logging
+    caplog.set_level(logging.WARNING)
+
+    monkeypatch.setattr(settings, "publisher_mode", "unknown_mode")
+    monkeypatch.setattr(settings, "bilibili_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
+
+    publisher = _get_publisher()
+    assert isinstance(publisher, ManualQueuePublisher)
+
+    # Verify fallback is logged
+    assert any("mode=unknown_mode not recognized" in record.message for record in caplog.records)
