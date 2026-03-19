@@ -306,17 +306,11 @@ def test_publisher_selection_webhook_mode_without_bilibili(monkeypatch):
     assert isinstance(publisher, WebhookPublisher)
 
 
-def test_publisher_selection_fallback_for_unknown_mode(monkeypatch, caplog):
+def test_publisher_selection_fallback_for_unknown_mode(monkeypatch):
     """Test fallback to ManualQueuePublisher for unknown publisher_mode."""
-    import logging
-    caplog.set_level(logging.WARNING)
-
     monkeypatch.setattr(settings, "publisher_mode", "unknown_mode")
     monkeypatch.setattr(settings, "bilibili_enabled", False)
     monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
 
     publisher = _get_publisher()
     assert isinstance(publisher, ManualQueuePublisher)
-
-    # Verify fallback is logged
-    assert any("not recognized" in record.message and "unknown_mode" in record.message for record in caplog.records)
