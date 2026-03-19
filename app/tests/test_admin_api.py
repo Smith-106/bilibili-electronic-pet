@@ -5,6 +5,7 @@ import re
 from app.api import comments as comments_api
 from app.api import gateway as gateway_api
 from app.models.entities import KnowledgeEntry, OperationAuditLog, RoleCard
+from app.settings import settings
 
 
 def test_admin_page_returns_html(client):
