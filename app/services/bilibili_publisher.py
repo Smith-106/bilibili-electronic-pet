@@ -82,7 +82,8 @@ class BilibiliPublisher:
         except IntegrityError:
             self.db.rollback()
             logger.info(f"bilibili_publish_duplicate | comment_id={comment_id} trace_id={trace_id}")
-            return False, "duplicate", None, None
+            # Return canonical duplicate reason for consistency with gateway publisher
+            return False, "idempotent_replay", None, None
 
         try:
             from app.services.bilibili_client import BilibiliClient
@@ -236,7 +237,8 @@ class BilibiliPublisherAdapter:
         )
 
         result: dict[str, object] = {}
-        if new_rpid is not None:
+        # Only include new_rpid for successful publishes, not duplicate replays
+        if new_rpid is not None and success:
             result["new_rpid"] = int(new_rpid)
 
         return success, reason, published_at, result

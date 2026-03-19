@@ -170,6 +170,9 @@ class TestBilibiliPublisher:
         )
 
         assert ok is False
-        assert reason == "duplicate"
+        # Canonical duplicate reason for consistency with gateway publisher
+        assert reason == "idempotent_replay"
         assert published_at is None
+        # Duplicate replay should not include new_rpid
+        assert new_rpid is None
         assert new_rpid is None
