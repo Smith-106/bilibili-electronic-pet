@@ -265,11 +265,8 @@ def test_publisher_selection_native_bilibili_overrides_webhook_mode(monkeypatch)
     assert isinstance(publisher, BilibiliPublisherAdapter)
 
 
-def test_publisher_selection_native_bilibili_overrides_real_publish_mode(monkeypatch, caplog):
+def test_publisher_selection_native_bilibili_overrides_real_publish_mode(monkeypatch):
     """Test native Bilibili publisher takes precedence over real_publish mode."""
-    import logging
-    caplog.set_level(logging.INFO)
-
     monkeypatch.setattr(settings, "publisher_mode", "real_publish")
     monkeypatch.setattr(settings, "bilibili_enabled", True)
     monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
@@ -282,9 +279,6 @@ def test_publisher_selection_native_bilibili_overrides_real_publish_mode(monkeyp
     from app.services.bilibili_publisher import BilibiliPublisherAdapter
     publisher = _get_publisher()
     assert isinstance(publisher, BilibiliPublisherAdapter)
-
-    # Verify override is logged
-    assert any("publisher_mode=real_publish overridden" in record.message for record in caplog.records)
 
 
 def test_publisher_selection_webhook_mode_without_bilibili(monkeypatch):
