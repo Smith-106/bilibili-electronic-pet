@@ -87,16 +87,39 @@ pytest app/tests -q
 docker compose up -d --build
 ```
 
+服务启动后，API 默认监听 `http://127.0.0.1:18000`（可通过 `API_PORT` 环境变量覆盖）。
+
 ### 4) 健康检查
 
 ```bash
-curl -sS http://127.0.0.1:8000/health
+curl -sS http://127.0.0.1:18000/health
 ```
 
 期望：
 
 ```json
 {"ok": true}
+```
+
+**完整部署验证（推荐）：**
+
+```bash
+# 使用 smoke 脚本进行完整健康检查（需要设置 API_KEY）
+API_KEY=your-api-key-here bash smoke.sh
+
+# 或仅检查基础健康
+curl -sS http://127.0.0.1:18000/readiness
+```
+
+**自定义端口：**
+
+如果需要使用其他端口，可通过环境变量覆盖：
+
+```bash
+API_PORT=8080 docker compose up -d --build
+# 服务将监听 http://127.0.0.1:8080
+# 验证时使用：
+curl -sS http://127.0.0.1:8080/health
 ```
 
 ## 主要接口
