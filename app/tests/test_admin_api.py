@@ -769,3 +769,48 @@ def test_admin_static_js_uses_admin_alias_routes():
     assert "'/api/jobs?'" not in js_text
     assert "'/api/audit-logs/summary?'" not in js_text
     assert "'/gateway/publish-logs?'" not in js_text
+
+
+def test_bilibili_status_returns_diagnostics_structure(client, monkeypatch):
+    """Test Bilibili status endpoint returns diagnostics structure."""
+    monkeypatch.setattr(settings, "bilibili_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+
+    response = client.get("/api/admin/bilibili/status")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert "diagnostics" in data
+    assert "config_error" in data["diagnostics"]
+    assert "auth_error" in data["diagnostics"]
+    assert "dependency_error" in data["diagnostics"]
+    assert "ready" in data["diagnostics"]
+
+
+def test_bilibili_diagnostics_detects_config_error(client, monkeypatch):
+    """Test diagnostics detects configuration errors."""
+    monkeypatch.setattr(settings, "bilibili_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
+
+    response = client.get("/api/admin/bilibili/status")
+    data = response.json()
+
+    assert data["diagnostics"]["config_error"] is not None
+    assert "bilibili_enabled is false" in data["diagnostics"]["config_error"]
+    assert data["diagnostics"]["ready"] is False
+
+
+def test_bilibili_diagnostics_detects_auth_error(client, monkeypatch, db_session):
+    """Test diagnostics detects authentication errors."""
+    from app.models.entities import BilibiliCredential
+
+    monkeypatch.setattr(settings, "bilibili_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+
+    # No active credential
+    response = client.get("/api/admin/bilibili/status")
+    data = response.json()
+
+    assert data["diagnostics"]["auth_error"] is not None
+    assert "no active credential" in data["diagnostics"]["auth_error"]
+    assert data["diagnostics"]["ready"] is False

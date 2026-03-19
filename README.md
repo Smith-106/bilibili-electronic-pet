@@ -284,21 +284,47 @@ PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
 
 ### 生产演练：故障切换与回滚（建议每次发布前执行）
 
+**生产验证流程**（按顺序执行）：
+
 1. **上线前核对**
-   - 确认 `.env` 满足“生产最小配置（必填）”
+   - 确认 `.env` 满足”生产最小配置（必填）”
    - 运行 `pytest app/tests -q`，确保回归通过
-2. **灰度阶段**
+   - 执行 `bash smoke.sh` 验证基础健康检查
+
+2. **依赖验证**
+   - 检查 `/readiness` 确认 DB/Redis 连接正常
+   - 检查 `/api/admin/bilibili/status` 确认配置状态
+   - 验证 `diagnostics.ready` 为 `true` 或理解具体阻塞原因
+
+3. **灰度阶段**
    - 以 `PUBLISHER_MODE=manual_queue` 启动
-   - 观察 `/health`、`/api/jobs`、`/gateway/publish-logs` 是否正常
-3. **切换到自动发布**
+   - 观察 `/health`、`/readiness`、`/api/jobs`、`/gateway/publish-logs` 是否正常
+   - 确认 Bilibili 集成状态（若启用）：
+     ```bash
+     curl -sS -H “x-api-key: ${API_KEY}” http://127.0.0.1:18000/api/admin/bilibili/status | jq .
+     ```
+
+4. **切换到自动发布**
    - 调整为 `PUBLISHER_MODE=real_publish`（或 `webhook`）并重启服务
+   - **注意**：若启用 native Bilibili 发布（`BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true`），将覆盖 `PUBLISHER_MODE` 设置
    - 确认发布成功率与审计日志稳定
-4. **故障切换（Failover）**
+
+5. **故障切换（Failover）**
    - 外部发布端异常时，立即切回 `PUBLISHER_MODE=manual_queue` 并重启
    - 必要时设置 `KILL_SWITCH=true` 暂停自动处理
-5. **回滚（Rollback）**
+   - 验证 `/api/admin/bilibili/status` 的 `diagnostics` 字段识别问题类型
+
+6. **回滚（Rollback）**
    - 回退到上一版镜像与上一版 `.env`
-   - 重启后再次检查 `/health` 与关键业务接口
+   - 重启后再次检查 `/health`、`/readiness` 与关键业务接口
+
+**诊断说明**：
+
+`/api/admin/bilibili/status` 返回的 `diagnostics` 字段包含：
+- `config_error`: 配置缺失或错误（如 `bilibili_enabled=false`）
+- `auth_error`: 凭证缺失、过期或验证失败
+- `dependency_error`: 发布器初始化失败或外部依赖不可用
+- `ready`: 所有检查通过，可安全启用真实发布
 
 ## CI 状态
 

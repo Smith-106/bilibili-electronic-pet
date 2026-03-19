@@ -748,9 +748,68 @@ def activate_role_card(card_key: str, db: Session = Depends(get_db)):
 
 @router.get("/api/admin/bilibili/status")
 def get_bilibili_status(db: Session = Depends(get_db)):
-    """获取 B站集成状态"""
+    """获取 B站集成状态和发布诊断"""
+    from app.services.bilibili_client import BilibiliClient
+    from app.services.bilibili_publisher import BilibiliPublisher
+
     credential = db.query(BilibiliCredential).filter(BilibiliCredential.is_active.is_(True)).first()
     videos = db.query(BilibiliVideo).filter(BilibiliVideo.poll_enabled.is_(True)).count()
+
+    # Diagnostic readiness checks
+    diagnostics = {
+        "config_error": None,
+        "auth_error": None,
+        "dependency_error": None,
+        "ready": False,
+    }
+
+    # Check configuration
+    config_errors = []
+    if not settings.bilibili_enabled:
+        config_errors.append("bilibili_enabled is false")
+    if not settings.bilibili_publish_enabled:
+        config_errors.append("bilibili_publish_enabled is false")
+
+    if config_errors:
+        diagnostics["config_error"] = "; ".join(config_errors)
+        diagnostics["ready"] = False
+    else:
+        # Check credentials
+        auth_errors = []
+        if not credential:
+            auth_errors.append("no active credential")
+        else:
+            try:
+                client = BilibiliClient(db)
+                cred = client.get_credential()
+                if not cred:
+                    auth_errors.append("credential not available")
+                else:
+                    is_expiring, remaining_days = client.check_credential_expiration()
+                    if is_expiring:
+                        auth_errors.append(f"credential expiring in {remaining_days} days")
+            except Exception as e:
+                auth_errors.append(f"credential check failed: {str(e)}")
+
+        if auth_errors:
+            diagnostics["auth_error"] = "; ".join(auth_errors)
+            diagnostics["ready"] = False
+        else:
+            # Check dependency (Bilibili API availability)
+            dependency_errors = []
+            try:
+                # Non-destructive check: verify publisher can be initialized
+                publisher = BilibiliPublisher(db)
+                if not publisher.is_enabled():
+                    dependency_errors.append("publisher not enabled")
+            except Exception as e:
+                dependency_errors.append(f"publisher initialization failed: {str(e)}")
+
+            if dependency_errors:
+                diagnostics["dependency_error"] = "; ".join(dependency_errors)
+                diagnostics["ready"] = False
+            else:
+                diagnostics["ready"] = True
 
     return {
         "ok": True,
@@ -771,6 +830,7 @@ def get_bilibili_status(db: Session = Depends(get_db)):
         "videos": {
             "poll_enabled_count": videos,
         },
+        "diagnostics": diagnostics,
     }
 
 
