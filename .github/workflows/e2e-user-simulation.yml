@@ -3,9 +3,9 @@ name: e2e-user-simulation
 on:
  workflow_dispatch:
  push:
- branches: ["main"]
+ branches: ["master"]
  pull_request:
- branches: ["main"]
+ branches: ["master"]
 
 jobs:
  e2e-test:
@@ -96,7 +96,3 @@ jobs:
  if: always()
  run: |
  pkill -f "uvicorn app.main:app" || true
-
- # Create the E2E test file
- - name: Create E2E test directory
- run: mkdir -p app/tests
