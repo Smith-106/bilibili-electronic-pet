@@ -35,7 +35,7 @@ from app.services.observability import (
     record_observability_event,
 )
 from app.services.platforms import is_platform_enabled
-from app.services.publisher import publish_reply
+from app.services.publisher import publish_reply_with_result
 from app.workers.jobs import enqueue_comment_event, process_comment_event_task
 
 router = APIRouter(prefix="/api", tags=["comments"], dependencies=[Depends(require_api_key)])
@@ -210,14 +210,22 @@ def _approve_job_core(
     if not reply_text:
         raise HTTPException(status_code=400, detail="empty_reply_text")
 
-    published, publish_reason, published_at = publish_reply(
+    published, publish_reason, published_at, publish_result = publish_reply_with_result(
         job.comment_id,
         reply_text,
         force_publish=True,
         trace_id=trace_id,
+        video_bvid=comment.video_id,
     )
     if not published:
         raise HTTPException(status_code=500, detail=f"approve_publish_failed: {publish_reason}")
+
+    publish_duplicate = publish_reason in {"idempotent_replay", "duplicate"}
+    new_rpid_value = None
+    if isinstance(publish_result, dict):
+        new_rpid_candidate = publish_result.get("new_rpid")
+        if not publish_duplicate:
+            new_rpid_value = new_rpid_candidate
 
     job.status = "published"
     job.reply_text = reply_text
@@ -226,7 +234,8 @@ def _approve_job_core(
         "approved": True,
         "publish_reason": publish_reason,
         "gateway_reason": publish_reason,
-        "gateway_duplicate": publish_reason == "idempotent_replay",
+        "gateway_duplicate": publish_duplicate,
+        **({"new_rpid": int(new_rpid_value)} if new_rpid_value is not None else {}),
     }
     job.published_at = published_at
     job.attempts = (job.attempts or 0) + 1

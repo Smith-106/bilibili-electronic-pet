@@ -404,6 +404,7 @@ def publish_reply(
     reply_text: str,
     force_publish: bool = False,
     trace_id: str | None = None,
+    **kwargs: object,
 ) -> tuple[bool, str, datetime | None]:
     publisher = _get_publisher()
     return publisher.publish(
@@ -411,6 +412,7 @@ def publish_reply(
         reply_text=reply_text,
         force_publish=force_publish,
         trace_id=trace_id,
+        **kwargs,
     )
 
 
@@ -419,6 +421,7 @@ def publish_reply_with_result(
     reply_text: str,
     force_publish: bool = False,
     trace_id: str | None = None,
+    **kwargs: object,
 ) -> tuple[bool, str, datetime | None, dict[str, object]]:
     publisher = _get_publisher()
     if hasattr(publisher, "publish_with_result"):
@@ -427,6 +430,7 @@ def publish_reply_with_result(
             reply_text=reply_text,
             force_publish=force_publish,
             trace_id=trace_id,
+            **kwargs,
         )
 
     ok, reason, published_at = publisher.publish(
@@ -434,6 +438,7 @@ def publish_reply_with_result(
         reply_text=reply_text,
         force_publish=force_publish,
         trace_id=trace_id,
+        **kwargs,
     )
     return ok, reason, published_at, {}
 

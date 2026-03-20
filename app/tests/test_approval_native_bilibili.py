@@ -258,3 +258,79 @@ class TestApprovalNativeBilibiliIntegration:
         assert reason == "published"
         assert published_at is not None
         mock_reply.assert_called_once()
+
+    def test_approve_job_core_resolves_video_bvid_from_comment(
+        self, db_session: Session, setup_data, monkeypatch
+    ):
+        """Test the real approval entry path resolves video_bvid from the stored comment."""
+        monkeypatch.setattr(settings, "bilibili_enabled", True)
+        monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+
+        original_publish_reply = BilibiliPublisher.publish_reply
+        captured: dict[str, object] = {}
+
+        def publish_reply_with_default_oid(self, comment_id, reply_text, video_bvid=None, oid=None, trace_id=None):
+            captured["comment_id"] = comment_id
+            captured["reply_text"] = reply_text
+            captured["video_bvid"] = video_bvid
+            captured["trace_id"] = trace_id
+            resolved_oid = oid if oid is not None else setup_data["video"].aid
+            return original_publish_reply(
+                self,
+                comment_id=comment_id,
+                reply_text=reply_text,
+                video_bvid=video_bvid,
+                oid=resolved_oid,
+                trace_id=trace_id,
+            )
+
+        monkeypatch.setattr(BilibiliPublisher, "publish_reply", publish_reply_with_default_oid)
+
+        with patch(
+            "app.services.bilibili_client.BilibiliClient.reply_comment"
+        ) as mock_reply:
+            mock_reply.return_value = (True, "success", 1001)
+
+            with patch(
+                "app.services.bilibili_client.BilibiliClient.get_credential"
+            ) as mock_cred:
+                mock_cred.return_value = setup_data["credential"]
+
+                with patch(
+                    "app.services.bilibili_client.BilibiliClient.check_credential_expiration"
+                ) as mock_exp:
+                    mock_exp.return_value = (False, 999)
+
+                    result = _approve_job_core(
+                        db=db_session,
+                        job=setup_data["job"],
+                        trace_id="approve-core-trace",
+                    )
+
+        assert result["ok"] is True
+        assert result["job_id"] == setup_data["job"].id
+        assert result["status"] == "published"
+        assert result["published_at"]
+        assert result["trace_id"] == "approve-core-trace"
+
+        db_session.refresh(setup_data["job"])
+        assert setup_data["job"].status == "published"
+        assert setup_data["job"].published_at is not None
+        assert setup_data["job"].attempts == 1
+        assert setup_data["job"].risk_flags["approved"] is True
+        assert setup_data["job"].risk_flags["publish_reason"] == "published"
+        assert setup_data["job"].risk_flags["gateway_reason"] == "published"
+        assert setup_data["job"].risk_flags["gateway_duplicate"] is False
+        assert setup_data["job"].risk_flags["new_rpid"] == 1001
+
+        assert captured == {
+            "comment_id": "100",
+            "reply_text": "test reply",
+            "video_bvid": "BV1xx411c7mD",
+            "trace_id": "approve-core-trace",
+        }
+        mock_reply.assert_called_once_with(
+            oid=setup_data["video"].aid,
+            rpid=100,
+            message="test reply",
+        )

@@ -4,7 +4,8 @@ import re
 
 from app.api import comments as comments_api
 from app.api import gateway as gateway_api
-from app.models.entities import KnowledgeEntry, OperationAuditLog, RoleCard
+from app.models.entities import KnowledgeEntry, OperationAuditLog, PublishLog, RoleCard
+from app.services.hashing import reply_hash
 from app.settings import settings
 
 
@@ -412,11 +413,12 @@ def test_batch_approve_and_retry_endpoints(client, make_comment, make_job, db_se
     published_at = datetime(2026, 3, 1, 10, 0, 0)
     monkeypatch.setattr(
         comments_api,
-        "publish_reply",
-        lambda comment_id, reply_text, force_publish=False, trace_id=None: (
+        "publish_reply_with_result",
+        lambda comment_id, reply_text, force_publish=False, trace_id=None, **kwargs: (
             True,
             "approved_simulated_publish",
             published_at,
+            {},
         ),
     )
 
@@ -459,6 +461,171 @@ def test_batch_approve_and_retry_endpoints(client, make_comment, make_job, db_se
 
 
 
+def _configure_native_approval_path(monkeypatch, *, default_oid: int = 123456) -> tuple[dict[str, int], object]:
+    from app.services import publisher as publisher_service
+    from app.services.bilibili_publisher import BilibiliPublisher
+    from app.settings import settings
+
+    publisher_service.close_bilibili_publisher()
+    monkeypatch.setattr(settings, "bilibili_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+
+    native_selection = {"calls": 0}
+    original_get_bilibili_publisher = publisher_service._get_bilibili_publisher
+
+    def tracked_get_bilibili_publisher():
+        native_selection["calls"] += 1
+        return original_get_bilibili_publisher()
+
+    monkeypatch.setattr(publisher_service, "_get_bilibili_publisher", tracked_get_bilibili_publisher)
+
+    original_publish_reply = BilibiliPublisher.publish_reply
+
+    def publish_reply_with_default_oid(self, comment_id, reply_text, video_bvid=None, oid=None, trace_id=None):
+        resolved_oid = oid if oid is not None else default_oid
+        return original_publish_reply(
+            self,
+            comment_id=comment_id,
+            reply_text=reply_text,
+            video_bvid=video_bvid,
+            oid=resolved_oid,
+            trace_id=trace_id,
+        )
+
+    monkeypatch.setattr(BilibiliPublisher, "publish_reply", publish_reply_with_default_oid)
+    return native_selection, publisher_service
+
+
+
+def _stub_bilibili_client(monkeypatch, *, reply_result: tuple[bool, str, int | None], captured: dict[str, object] | None = None):
+    from app.services import bilibili_client as bilibili_client_module
+
+    monkeypatch.setattr(bilibili_client_module.BilibiliClient, "get_credential", lambda self: object())
+    monkeypatch.setattr(bilibili_client_module.BilibiliClient, "check_credential_expiration", lambda self: (False, 30))
+
+    def fake_reply_comment(self, oid: int, rpid: int, message: str):
+        if captured is not None:
+            captured["oid"] = oid
+            captured["rpid"] = rpid
+            captured["message"] = message
+        return reply_result
+
+    monkeypatch.setattr(bilibili_client_module.BilibiliClient, "reply_comment", fake_reply_comment)
+
+
+
+def test_approve_single_endpoint_native_success_persists_publish_metadata(client, make_comment, make_job, db_session, monkeypatch):
+    native_selection, publisher_service = _configure_native_approval_path(monkeypatch)
+    make_comment(comment_id="900001", video_id="BV1xx411c7mD", user_id="admin-approve-u-1")
+    job = make_job(comment_id="900001", status="manual_queue", reply_text="待审批回复")
+
+    captured: dict[str, object] = {}
+    _stub_bilibili_client(monkeypatch, reply_result=(True, "published", 9527), captured=captured)
+
+    try:
+        response = client.post(f"/api/jobs/{job.id}/approve", json={})
+    finally:
+        publisher_service.close_bilibili_publisher()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["job_id"] == job.id
+    assert payload["status"] == "published"
+    assert payload["published_at"]
+    assert isinstance(payload["trace_id"], str) and payload["trace_id"]
+
+    db_session.refresh(job)
+    assert job.status == "published"
+    assert job.published_at is not None
+    assert job.attempts == 1
+    assert job.risk_flags["approved"] is True
+    assert job.risk_flags["publish_reason"] == "published"
+    assert job.risk_flags["gateway_reason"] == "published"
+    assert job.risk_flags["gateway_duplicate"] is False
+    assert job.risk_flags["new_rpid"] == 9527
+
+    assert native_selection["calls"] >= 1
+    assert captured == {
+        "oid": 123456,
+        "rpid": 900001,
+        "message": "待审批回复",
+    }
+
+
+
+def test_approve_single_endpoint_native_failure_keeps_job_not_published(client, make_comment, make_job, db_session, monkeypatch):
+    native_selection, publisher_service = _configure_native_approval_path(monkeypatch)
+    make_comment(comment_id="900002", video_id="BV1xx411c7mD", user_id="admin-approve-u-2")
+    job = make_job(comment_id="900002", status="blocked", reply_text="失败审批回复", attempts=2)
+
+    _stub_bilibili_client(monkeypatch, reply_result=(False, "auth token expired", None))
+
+    try:
+        response = client.post(f"/api/jobs/{job.id}/approve", json={})
+    finally:
+        publisher_service.close_bilibili_publisher()
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "approve_publish_failed: auth"
+
+    db_session.refresh(job)
+    assert job.status == "blocked"
+    assert job.published_at is None
+    assert job.attempts == 2
+    assert native_selection["calls"] >= 1
+
+    publish_log = (
+        db_session.query(PublishLog)
+        .filter(PublishLog.canonical_comment_id == "bilibili:900002")
+        .order_by(PublishLog.id.desc())
+        .first()
+    )
+    assert publish_log is not None
+    assert publish_log.status == "failed"
+    assert publish_log.failure_reason == "auth"
+
+
+
+def test_approve_single_endpoint_native_duplicate_failure_is_deterministic(client, make_comment, make_job, db_session, monkeypatch):
+    native_selection, publisher_service = _configure_native_approval_path(monkeypatch)
+    make_comment(comment_id="900003", video_id="BV1xx411c7mD", user_id="admin-approve-u-3")
+    job = make_job(comment_id="900003", status="dedupe_skipped", reply_text="重复审批回复")
+
+    db_session.add(
+        PublishLog(
+            platform="bilibili",
+            canonical_comment_id="bilibili:900003",
+            comment_id="900003",
+            reply_hash=reply_hash("900003", "重复审批回复"),
+            source="bilibili-api",
+            status="published",
+        )
+    )
+    db_session.commit()
+
+    def fail_if_called(*args, **kwargs):
+        _ = args, kwargs
+        raise AssertionError("reply_comment should not be called for duplicate approval payload")
+
+    from app.services import bilibili_client as bilibili_client_module
+
+    monkeypatch.setattr(bilibili_client_module.BilibiliClient, "reply_comment", fail_if_called)
+
+    try:
+        response = client.post(f"/api/jobs/{job.id}/approve", json={})
+    finally:
+        publisher_service.close_bilibili_publisher()
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "approve_publish_failed: idempotent_replay"
+
+    db_session.refresh(job)
+    assert job.status == "dedupe_skipped"
+    assert job.published_at is None
+    assert job.attempts == 0
+    assert native_selection["calls"] >= 1
+    assert db_session.query(PublishLog).filter(PublishLog.canonical_comment_id == "bilibili:900003").count() == 1
 
 
 
