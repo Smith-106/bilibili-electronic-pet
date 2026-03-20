@@ -104,16 +104,29 @@ class RateLimiter:
         return max(0.0, wait)
 
 
+class CredentialEncryptionError(Exception):
+    """Raised when credential encryption prerequisites are not met."""
+    pass
+
+
 class CredentialEncryption:
-    """凭证加密工具 - 使用 Fernet 对称加密"""
+    """凭证加密工具 - 使用 Fernet 对称加密
+
+    生产环境强制使用 cryptography 库进行安全加密。
+    当加密前置条件不满足时立即失败，不回退到弱加密方案。
+    """
 
     def __init__(self, key: str):
-        # 使用 cryptography 库进行安全加密
+        if not key:
+            raise CredentialEncryptionError(
+                "BILIBILI_COOKIE_ENCRYPTION_KEY is required for credential encryption. "
+                "Set the environment variable or settings.bilibili_cookie_encryption_key."
+            )
         self._key = key
         self._fernet: Any = None
 
     def _get_fernet(self) -> Any:
-        """延迟初始化 Fernet 实例"""
+        """获取 Fernet 实例，延迟初始化"""
         if self._fernet is not None:
             return self._fernet
 
@@ -132,53 +145,44 @@ class CredentialEncryption:
             key_bytes = base64.urlsafe_b64encode(kdf.derive(self._key.encode()))
             self._fernet = Fernet(key_bytes)
             return self._fernet
-        except ImportError:
-            # 回退到简单的 XOR 加密（不推荐用于生产环境）
-            logger.warning("cryptography library not available, falling back to XOR encryption")
-            return None
+        except ImportError as e:
+            raise CredentialEncryptionError(
+                "cryptography library is required for secure credential encryption. "
+                "Install with: pip install cryptography"
+            ) from e
 
     def encrypt(self, plaintext: str) -> str:
-        """加密敏感数据"""
+        """加密敏感数据
+
+        Raises:
+            CredentialEncryptionError: 当加密前置条件不满足时
+        """
         if not plaintext:
             return ""
 
         fernet = self._get_fernet()
-        if fernet is not None:
-            # 使用 Fernet 加密
-            encrypted = fernet.encrypt(plaintext.encode())
-            return base64.urlsafe_b64encode(encrypted).decode()
-        else:
-            # 回退到 XOR + Base64（仅用于开发/测试环境）
-            key_bytes = self._key.encode() if self._key else b"default_key_change_me"
-            plaintext_bytes = plaintext.encode()
-            encrypted = bytes([p ^ key_bytes[i % len(key_bytes)] for i, p in enumerate(plaintext_bytes)])
-            return base64.b64encode(encrypted).decode()
+        encrypted = fernet.encrypt(plaintext.encode())
+        return base64.urlsafe_b64encode(encrypted).decode()
 
     def decrypt(self, ciphertext: str) -> str:
-        """解密敏感数据"""
+        """解密敏感数据
+
+        Raises:
+            CredentialEncryptionError: 当解密失败时
+        """
         if not ciphertext:
             return ""
 
         fernet = self._get_fernet()
-        if fernet is not None:
-            try:
-                # 尝试 Fernet 解密
-                encrypted = base64.urlsafe_b64decode(ciphertext.encode())
-                decrypted = fernet.decrypt(encrypted)
-                return decrypted.decode()
-            except Exception:
-                # 可能是旧的 XOR 加密数据，尝试回退解密
-                pass
-
-        # 回退到 XOR 解密
         try:
-            key_bytes = self._key.encode() if self._key else b"default_key_change_me"
-            encrypted = base64.b64decode(ciphertext.encode())
-            decrypted = bytes([e ^ key_bytes[i % len(key_bytes)] for i, e in enumerate(encrypted)])
+            encrypted = base64.urlsafe_b64decode(ciphertext.encode())
+            decrypted = fernet.decrypt(encrypted)
             return decrypted.decode()
-        except Exception:
-            # 解密失败，返回原文（可能是未加密的旧数据）
-            return ciphertext
+        except Exception as e:
+            raise CredentialEncryptionError(
+                f"Failed to decrypt credential data. The data may be corrupted or "
+                f"encrypted with a different key: {e}"
+            ) from e
 
 
 class BilibiliClient:

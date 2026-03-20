@@ -65,6 +65,38 @@ class TestCredentialEncryption:
         except Exception:
             assert False, "Encrypted value is not valid base64"
 
+    def test_init_fails_with_empty_key(self):
+        """CredentialEncryption should fail-fast when key is empty."""
+        from app.services.bilibili_client import CredentialEncryptionError
+        with pytest.raises(CredentialEncryptionError) as exc_info:
+            CredentialEncryption("")
+        assert "BILIBILI_COOKIE_ENCRYPTION_KEY" in str(exc_info.value)
+
+    def test_init_fails_with_none_key(self):
+        """CredentialEncryption should fail-fast when key is None."""
+        from app.services.bilibili_client import CredentialEncryptionError
+        with pytest.raises(CredentialEncryptionError) as exc_info:
+            CredentialEncryption(None)
+        assert "BILIBILI_COOKIE_ENCRYPTION_KEY" in str(exc_info.value)
+
+    def test_decrypt_fails_with_invalid_ciphertext(self):
+        """Decrypt should fail-fast with invalid ciphertext, not return original."""
+        from app.services.bilibili_client import CredentialEncryptionError
+        encryption = CredentialEncryption("test-secret-key-32-bytes-long!!")
+        with pytest.raises(CredentialEncryptionError) as exc_info:
+            encryption.decrypt("not-valid-encrypted-data")
+        assert "decrypt" in str(exc_info.value).lower()
+
+    def test_encrypt_empty_string_returns_empty(self):
+        """Encrypt should handle empty string gracefully."""
+        encryption = CredentialEncryption("test-secret-key-32-bytes-long!!")
+        assert encryption.encrypt("") == ""
+
+    def test_decrypt_empty_string_returns_empty(self):
+        """Decrypt should handle empty string gracefully."""
+        encryption = CredentialEncryption("test-secret-key-32-bytes-long!!")
+        assert encryption.decrypt("") == ""
+
 
 class TestBilibiliComment:
     """Tests for BilibiliComment dataclass."""
