@@ -107,6 +107,10 @@ curl -sS http://127.0.0.1:18000/health
 # 使用 smoke 脚本进行完整健康检查（需要设置 API_KEY）
 API_KEY=your-api-key-here bash smoke.sh
 
+# 非默认端口、host 网络或远程环境可一行覆盖目标地址
+BASE_URL=http://127.0.0.1:8080 API_KEY=your-api-key-here bash smoke.sh
+BASE_URL=http://your-host:18000 API_KEY=your-api-key-here bash smoke.sh
+
 # 或仅检查基础健康
 curl -sS http://127.0.0.1:18000/readiness
 ```
@@ -118,8 +122,9 @@ curl -sS http://127.0.0.1:18000/readiness
 ```bash
 API_PORT=8080 docker compose up -d --build
 # 服务将监听 http://127.0.0.1:8080
-# 验证时使用：
+# 验证时使用同一地址：
 curl -sS http://127.0.0.1:8080/health
+BASE_URL=http://127.0.0.1:8080 API_KEY=your-api-key-here bash smoke.sh
 ```
 
 ## 主要接口
@@ -331,12 +336,29 @@ PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
 仓库已配置工作流：
 
 - `.github/workflows/cloud-validate.yml`
+- `.github/workflows/e2e-user-simulation.yml`
 - `.github/workflows/build-and-push-ghcr.yml`
 
-执行内容：
+执行内容（按触发路径）：
 
-1. `cloud-validate`：安装依赖、`pytest app/tests -q`、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
-2. `build-and-push-ghcr`：构建并推送镜像到 `ghcr.io/<owner>/<repo>`（标签：`latest`、`sha-<commit>`）
+1. `cloud-validate`（PR 门禁，`pull_request`）：安装依赖后执行 `alembic upgrade head`、后端回归用例（`test_admin_api` / `test_comments_api` / `test_gateway_publish`）、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
+2. `cloud-validate`（release-only，`push` 到 `main` 或 `workflow_dispatch`）：执行 `python -m pytest app/tests -q` 全量回归
+3. `e2e-user-simulation`：执行模拟用户流 E2E；在默认分支/手动触发路径追加 `PRE_RELEASE_REAL_CHAIN=true STRICT_SMOKE=true bash smoke.sh` 真实链路合同校验
+4. `build-and-push-ghcr`：
+   - 非默认分支：仅推送预览镜像标签 `sha-<commit>`
+   - 默认分支/手动触发：先执行真实链路 smoke 合同校验，再推送 `latest` 与 `sha-<commit>`
+
+预发布真实链路门禁依赖以下 GitHub Secrets：
+
+- `PRE_RELEASE_SMOKE_BASE_URL`：预发布环境地址（需可访问 `/api/admin/bilibili/status`）
+- `PRE_RELEASE_SMOKE_API_KEY`：预发布环境 API Key
+
+推荐顺序（与镜像发布/部署类 issue 并行时）：
+
+1. 先在 PR 中通过 `cloud-validate` 的 PR 门禁
+2. 合并到 `main` 后等待 release-only 全量回归完成
+3. 确认 `PRE_RELEASE_SMOKE_BASE_URL` / `PRE_RELEASE_SMOKE_API_KEY` 已配置并通过真实链路 smoke 合同校验
+4. 最后执行 `build-and-push-ghcr` 推送发布镜像
 
 ## 常见问题
 

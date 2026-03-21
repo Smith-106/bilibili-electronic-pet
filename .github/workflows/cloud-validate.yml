@@ -7,8 +7,8 @@ on:
   pull_request:
 
 jobs:
-  quick-gate:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref != 'refs/heads/main')
+  pr-merge-gate:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
@@ -31,7 +31,7 @@ jobs:
           DATABASE_URL: sqlite:///${{ github.workspace }}/ci-migration.sqlite3
         run: alembic upgrade head
 
-      - name: Run quick critical tests
+      - name: Run backend regression tests
         env:
           PYTHONPATH: .
           BILIBILI_COOKIE_ENCRYPTION_KEY: test-ci-encryption-key-32-bytes!
@@ -40,7 +40,21 @@ jobs:
           pytest app/tests/test_comments_api.py -q
           pytest app/tests/test_gateway_publish.py -q
 
-  full-gate:
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Build frontend assets
+        run: npm --prefix frontend run build
+
+      - name: Build Docker image
+        run: docker build -t bilibili-electronic-pet:ci .
+
+  release-only-gate:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
 
@@ -59,27 +73,8 @@ jobs:
           pip install -r requirements.txt
           python -m pip install pytest
 
-      - name: Migration smoke check
-        env:
-          DATABASE_URL: sqlite:///${{ github.workspace }}/ci-migration.sqlite3
-        run: alembic upgrade head
-
-      - name: Run full test suite
+      - name: Run release-only full test suite
         env:
           PYTHONPATH: .
           BILIBILI_COOKIE_ENCRYPTION_KEY: test-ci-encryption-key-32-bytes!
         run: python -m pytest app/tests -q
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install frontend dependencies
-        run: npm --prefix frontend ci
-
-      - name: Build frontend assets
-        run: npm --prefix frontend run build
-
-      - name: Build Docker image
-        run: docker build -t bilibili-electronic-pet:ci .
