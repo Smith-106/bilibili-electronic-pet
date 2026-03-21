@@ -56,6 +56,8 @@ class TestHealthEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert "ready" in data
+        assert "foundation_ready" in data
+        assert "delivery_ready" in data
 
 
 class TestCommentEventIngestion:
@@ -122,6 +124,8 @@ class TestBilibiliIntegration:
         assert response.status_code == 200
         data = response.json()
         assert data.get("ok") is True
+        assert "diagnostics" in data
+        assert "checks" in data["diagnostics"]
 
     def test_user_lists_bilibili_videos(self, api_client):
         """User views monitored B站 videos."""

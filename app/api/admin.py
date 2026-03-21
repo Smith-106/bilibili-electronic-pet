@@ -746,43 +746,61 @@ def activate_role_card(card_key: str, db: Session = Depends(get_db)):
 # ==================== Bilibili Integration Admin API ====================
 
 
-@router.get("/api/admin/bilibili/status")
-def get_bilibili_status(db: Session = Depends(get_db)):
-    """获取 B站集成状态和发布诊断"""
+def _join_diagnostic_errors(errors: list[str]) -> str | None:
+    if not errors:
+        return None
+    return "; ".join(errors)
+
+
+def _resolve_effective_publish_mode() -> str:
+    if settings.bilibili_enabled and settings.bilibili_publish_enabled:
+        return "native_bilibili"
+    return settings.publisher_mode.strip().lower()
+
+
+def build_bilibili_diagnostics(
+    db: Session,
+    credential: BilibiliCredential | None = None,
+) -> dict[str, object]:
+    """构建 B站诊断信息，兼容旧字段并提供结构化检查。"""
     from app.services.bilibili_client import BilibiliClient
     from app.services.bilibili_publisher import BilibiliPublisher
 
-    credential = db.query(BilibiliCredential).filter(BilibiliCredential.is_active.is_(True)).first()
-    videos = db.query(BilibiliVideo).filter(BilibiliVideo.poll_enabled.is_(True)).count()
+    active_credential = credential
+    if active_credential is None:
+        active_credential = (
+            db.query(BilibiliCredential)
+            .filter(BilibiliCredential.is_active.is_(True))
+            .first()
+        )
 
-    # Diagnostic readiness checks
-    diagnostics = {
-        "config_error": None,
-        "auth_error": None,
-        "dependency_error": None,
-        "ready": False,
-    }
+    credential_complete = bool(
+        active_credential
+        and active_credential.sessdata
+        and active_credential.bili_jct
+        and active_credential.buvid3
+    )
 
-    # Check configuration
-    config_errors = []
+    raw_publish_mode = settings.publisher_mode.strip().lower()
+    effective_publish_mode = _resolve_effective_publish_mode()
+
+    config_errors: list[str] = []
     if not settings.bilibili_enabled:
         config_errors.append("bilibili_enabled is false")
     if not settings.bilibili_publish_enabled:
         config_errors.append("bilibili_publish_enabled is false")
 
-    if config_errors:
-        diagnostics["config_error"] = "; ".join(config_errors)
-        diagnostics["ready"] = False
-    else:
-        # Check credentials
-        auth_errors = []
-        if not credential:
+    auth_errors: list[str] = []
+    if not config_errors:
+        if not active_credential:
             auth_errors.append("no active credential")
+        elif not credential_complete:
+            auth_errors.append("credential fields incomplete")
         else:
             try:
                 client = BilibiliClient(db)
-                cred = client.get_credential()
-                if not cred:
+                resolved_credential = client.get_credential()
+                if not resolved_credential:
                     auth_errors.append("credential not available")
                 else:
                     is_expiring, remaining_days = client.check_credential_expiration()
@@ -791,25 +809,109 @@ def get_bilibili_status(db: Session = Depends(get_db)):
             except Exception as e:
                 auth_errors.append(f"credential check failed: {str(e)}")
 
-        if auth_errors:
-            diagnostics["auth_error"] = "; ".join(auth_errors)
-            diagnostics["ready"] = False
-        else:
-            # Check dependency (Bilibili API availability)
-            dependency_errors = []
-            try:
-                # Non-destructive check: verify publisher can be initialized
-                publisher = BilibiliPublisher(db)
-                if not publisher.is_enabled():
-                    dependency_errors.append("publisher not enabled")
-            except Exception as e:
-                dependency_errors.append(f"publisher initialization failed: {str(e)}")
+    dependency_errors: list[str] = []
+    if not config_errors and not auth_errors:
+        try:
+            publisher = BilibiliPublisher(db)
+            if not publisher.is_enabled():
+                dependency_errors.append("publisher not enabled")
+        except Exception as e:
+            dependency_errors.append(f"publisher initialization failed: {str(e)}")
 
-            if dependency_errors:
-                diagnostics["dependency_error"] = "; ".join(dependency_errors)
-                diagnostics["ready"] = False
-            else:
-                diagnostics["ready"] = True
+    publisher_mode_errors: list[str] = []
+    if effective_publish_mode == "webhook":
+        if not settings.has_text(settings.publisher_webhook_url):
+            publisher_mode_errors.append("publisher_webhook_url not configured")
+        if not settings.has_text(settings.publisher_webhook_token):
+            publisher_mode_errors.append("publisher_webhook_token not configured")
+    elif effective_publish_mode == "real_publish":
+        if not settings.has_text(settings.publisher_real_publish_url):
+            publisher_mode_errors.append("publisher_real_publish_url not configured")
+        if not settings.has_text(settings.publisher_real_publish_token):
+            publisher_mode_errors.append("publisher_real_publish_token not configured")
+    elif effective_publish_mode not in {"manual_queue", "simulated", "native_bilibili"}:
+        publisher_mode_errors.append(f"unsupported publish mode: {effective_publish_mode}")
+
+    native_publish_ready = (
+        effective_publish_mode == "native_bilibili"
+        and not config_errors
+        and not auth_errors
+        and not dependency_errors
+    )
+    configured_publish_ready = (
+        effective_publish_mode != "native_bilibili"
+        and not publisher_mode_errors
+    )
+    polling_worker_ready = settings.bilibili_enabled and settings.bilibili_poll_enabled
+    worker_or_publish_ready = native_publish_ready or configured_publish_ready or polling_worker_ready
+
+    worker_or_publish_errors = list(publisher_mode_errors)
+    if not worker_or_publish_ready:
+        worker_or_publish_errors.append("no worker or publish path ready")
+
+    checks: dict[str, dict[str, object]] = {
+        "config": {
+            "ready": not config_errors,
+            "errors": config_errors,
+        },
+        "auth": {
+            "ready": not config_errors and not auth_errors,
+            "errors": auth_errors,
+        },
+        "dependency": {
+            "ready": not config_errors and not auth_errors and not dependency_errors,
+            "errors": dependency_errors,
+        },
+        "worker_or_publish": {
+            "ready": worker_or_publish_ready,
+            "errors": worker_or_publish_errors,
+        },
+    }
+
+    blocking_reasons: list[str] = []
+    for category, result in checks.items():
+        errors = result.get("errors") if isinstance(result, dict) else []
+        if not isinstance(errors, list):
+            continue
+        for error in errors:
+            blocking_reasons.append(f"{category}:{error}")
+
+    ready = (
+        bool(checks["config"]["ready"])
+        and bool(checks["auth"]["ready"])
+        and bool(checks["dependency"]["ready"])
+        and bool(checks["worker_or_publish"]["ready"])
+    )
+
+    return {
+        # Backward-compatible fields
+        "config_error": _join_diagnostic_errors(config_errors),
+        "auth_error": _join_diagnostic_errors(auth_errors),
+        "dependency_error": _join_diagnostic_errors(dependency_errors),
+        "ready": ready,
+        # Structured diagnostics
+        "checks": checks,
+        "blocking_reasons": blocking_reasons,
+        "effective_publish_mode": effective_publish_mode,
+        "signals": {
+            "raw_publish_mode": raw_publish_mode,
+            "effective_publish_mode": effective_publish_mode,
+            "native_publish_enabled": settings.bilibili_enabled and settings.bilibili_publish_enabled,
+            "polling_worker_enabled": polling_worker_ready,
+            "credential_present": active_credential is not None,
+            "credential_complete": credential_complete,
+            "publish_mode_config_ready": not publisher_mode_errors,
+        },
+        "worker_or_publish_error": _join_diagnostic_errors(worker_or_publish_errors),
+    }
+
+
+@router.get("/api/admin/bilibili/status")
+def get_bilibili_status(db: Session = Depends(get_db)):
+    """获取 B站集成状态和发布诊断"""
+    credential = db.query(BilibiliCredential).filter(BilibiliCredential.is_active.is_(True)).first()
+    videos = db.query(BilibiliVideo).filter(BilibiliVideo.poll_enabled.is_(True)).count()
+    diagnostics = build_bilibili_diagnostics(db=db, credential=credential)
 
     return {
         "ok": True,

@@ -469,6 +469,7 @@ def _configure_native_approval_path(monkeypatch, *, default_oid: int = 123456) -
     publisher_service.close_bilibili_publisher()
     monkeypatch.setattr(settings, "bilibili_enabled", True)
     monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
+    monkeypatch.setattr(settings, "bilibili_cookie_encryption_key", "test-admin-bilibili-key")
 
     native_selection = {"calls": 0}
     original_get_bilibili_publisher = publisher_service._get_bilibili_publisher
@@ -953,6 +954,14 @@ def test_bilibili_status_returns_diagnostics_structure(client, monkeypatch):
     assert "auth_error" in data["diagnostics"]
     assert "dependency_error" in data["diagnostics"]
     assert "ready" in data["diagnostics"]
+    assert "checks" in data["diagnostics"]
+    assert "blocking_reasons" in data["diagnostics"]
+    assert "signals" in data["diagnostics"]
+    assert "effective_publish_mode" in data["diagnostics"]
+    assert "worker_or_publish_error" in data["diagnostics"]
+    assert set(data["diagnostics"]["checks"].keys()) == {"config", "auth", "dependency", "worker_or_publish"}
+    assert isinstance(data["diagnostics"]["blocking_reasons"], list)
+    assert isinstance(data["diagnostics"]["signals"], dict)
 
 
 def test_bilibili_diagnostics_detects_config_error(client, monkeypatch):
@@ -966,12 +975,13 @@ def test_bilibili_diagnostics_detects_config_error(client, monkeypatch):
     assert data["diagnostics"]["config_error"] is not None
     assert "bilibili_enabled is false" in data["diagnostics"]["config_error"]
     assert data["diagnostics"]["ready"] is False
+    assert data["diagnostics"]["checks"]["config"]["ready"] is False
+    assert "bilibili_enabled is false" in data["diagnostics"]["checks"]["config"]["errors"]
+    assert any(reason.startswith("config:") for reason in data["diagnostics"]["blocking_reasons"])
 
 
-def test_bilibili_diagnostics_detects_auth_error(client, monkeypatch, db_session):
+def test_bilibili_diagnostics_detects_auth_error(client, monkeypatch):
     """Test diagnostics detects authentication errors."""
-    from app.models.entities import BilibiliCredential
-
     monkeypatch.setattr(settings, "bilibili_enabled", True)
     monkeypatch.setattr(settings, "bilibili_publish_enabled", True)
 
@@ -982,3 +992,27 @@ def test_bilibili_diagnostics_detects_auth_error(client, monkeypatch, db_session
     assert data["diagnostics"]["auth_error"] is not None
     assert "no active credential" in data["diagnostics"]["auth_error"]
     assert data["diagnostics"]["ready"] is False
+    assert data["diagnostics"]["checks"]["auth"]["ready"] is False
+    assert "no active credential" in data["diagnostics"]["checks"]["auth"]["errors"]
+    assert any(reason.startswith("auth:") for reason in data["diagnostics"]["blocking_reasons"])
+    assert data["diagnostics"]["signals"]["credential_present"] is False
+
+
+def test_bilibili_diagnostics_exposes_worker_or_publish_signals(client, monkeypatch):
+    monkeypatch.setattr(settings, "bilibili_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
+    monkeypatch.setattr(settings, "publisher_mode", "webhook")
+    monkeypatch.setattr(settings, "publisher_webhook_url", "")
+    monkeypatch.setattr(settings, "publisher_webhook_token", "")
+
+    response = client.get("/api/admin/bilibili/status")
+    assert response.status_code == 200
+    data = response.json()
+
+    diagnostics = data["diagnostics"]
+    assert diagnostics["effective_publish_mode"] == "webhook"
+    assert diagnostics["signals"]["raw_publish_mode"] == "webhook"
+    assert diagnostics["signals"]["effective_publish_mode"] == "webhook"
+    assert diagnostics["checks"]["worker_or_publish"]["ready"] is False
+    assert "publisher_webhook_url not configured" in diagnostics["checks"]["worker_or_publish"]["errors"]
+    assert "publisher_webhook_token not configured" in diagnostics["checks"]["worker_or_publish"]["errors"]
