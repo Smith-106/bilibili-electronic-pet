@@ -333,10 +333,17 @@ PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
 - `.github/workflows/cloud-validate.yml`
 - `.github/workflows/build-and-push-ghcr.yml`
 
-执行内容：
+执行内容（按触发路径）：
 
-1. `cloud-validate`：安装依赖、`pytest app/tests -q`、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
-2. `build-and-push-ghcr`：构建并推送镜像到 `ghcr.io/<owner>/<repo>`（标签：`latest`、`sha-<commit>`）
+1. `cloud-validate`（PR 门禁，`pull_request`）：安装依赖后执行 `alembic upgrade head`、后端回归用例（`test_admin_api` / `test_comments_api` / `test_gateway_publish`）、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
+2. `cloud-validate`（release-only，`push` 到 `main` 或 `workflow_dispatch`）：执行 `python -m pytest app/tests -q` 全量回归
+3. `build-and-push-ghcr`：构建并推送镜像到 `ghcr.io/<owner>/<repo>`（标签：`latest`、`sha-<commit>`）
+
+推荐顺序（与镜像发布/部署类 issue 并行时）：
+
+1. 先在 PR 中通过 `cloud-validate` 的 PR 门禁
+2. 合并到 `main` 后等待 release-only 全量回归完成
+3. 最后再执行 `build-and-push-ghcr` 推送镜像
 
 ## 常见问题
 
