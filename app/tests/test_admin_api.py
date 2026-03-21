@@ -956,10 +956,22 @@ def test_bilibili_status_returns_diagnostics_structure(client, monkeypatch):
     assert "ready" in data["diagnostics"]
     assert "checks" in data["diagnostics"]
     assert "blocking_reasons" in data["diagnostics"]
+    assert "release_gates" in data["diagnostics"]
     assert "signals" in data["diagnostics"]
     assert "effective_publish_mode" in data["diagnostics"]
     assert "worker_or_publish_error" in data["diagnostics"]
     assert set(data["diagnostics"]["checks"].keys()) == {"config", "auth", "dependency", "worker_or_publish"}
+    assert set(data["diagnostics"]["release_gates"].keys()) == {
+        "pre_release_real_chain_ready",
+        "real_auth_ready",
+        "dependency_ready",
+        "worker_or_publish_ready",
+        "native_publish_enabled",
+        "credential_present",
+        "credential_complete",
+        "effective_publish_mode",
+        "blocking_reasons",
+    }
     assert isinstance(data["diagnostics"]["blocking_reasons"], list)
     assert isinstance(data["diagnostics"]["signals"], dict)
 
@@ -1013,6 +1025,8 @@ def test_bilibili_diagnostics_exposes_worker_or_publish_signals(client, monkeypa
     assert diagnostics["effective_publish_mode"] == "webhook"
     assert diagnostics["signals"]["raw_publish_mode"] == "webhook"
     assert diagnostics["signals"]["effective_publish_mode"] == "webhook"
+    assert diagnostics["release_gates"]["effective_publish_mode"] == "webhook"
+    assert diagnostics["release_gates"]["pre_release_real_chain_ready"] is False
     assert diagnostics["checks"]["worker_or_publish"]["ready"] is False
     assert "publisher_webhook_url not configured" in diagnostics["checks"]["worker_or_publish"]["errors"]
     assert "publisher_webhook_token not configured" in diagnostics["checks"]["worker_or_publish"]["errors"]

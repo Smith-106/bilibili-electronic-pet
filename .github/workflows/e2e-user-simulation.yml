@@ -87,3 +87,35 @@ jobs:
         if: always()
         run: |
           pkill -f "uvicorn app.main:app" || true
+
+  pre-release-real-chain-smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) }}
+    needs: [e2e-test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate real-chain smoke secrets
+        env:
+          PRE_RELEASE_SMOKE_BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
+          PRE_RELEASE_SMOKE_API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+        run: |
+          if [[ -z "${PRE_RELEASE_SMOKE_BASE_URL}" ]]; then
+            echo "::error::Missing PRE_RELEASE_SMOKE_BASE_URL secret for release pre-check."
+            exit 1
+          fi
+          if [[ -z "${PRE_RELEASE_SMOKE_API_KEY}" ]]; then
+            echo "::error::Missing PRE_RELEASE_SMOKE_API_KEY secret for release pre-check."
+            exit 1
+          fi
+
+      - name: Run pre-release real-chain smoke contract
+        env:
+          BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
+          API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+          STRICT_SMOKE: "true"
+          PRE_RELEASE_REAL_CHAIN: "true"
+        run: bash smoke.sh

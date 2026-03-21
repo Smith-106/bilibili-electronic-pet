@@ -882,6 +882,25 @@ def build_bilibili_diagnostics(
         and bool(checks["dependency"]["ready"])
         and bool(checks["worker_or_publish"]["ready"])
     )
+    native_publish_enabled = settings.bilibili_enabled and settings.bilibili_publish_enabled
+    pre_release_real_chain_ready = (
+        ready
+        and native_publish_enabled
+        and effective_publish_mode == "native_bilibili"
+        and active_credential is not None
+        and credential_complete
+    )
+    release_gates = {
+        "pre_release_real_chain_ready": pre_release_real_chain_ready,
+        "real_auth_ready": bool(checks["auth"]["ready"]),
+        "dependency_ready": bool(checks["dependency"]["ready"]),
+        "worker_or_publish_ready": bool(checks["worker_or_publish"]["ready"]),
+        "native_publish_enabled": native_publish_enabled,
+        "credential_present": active_credential is not None,
+        "credential_complete": credential_complete,
+        "effective_publish_mode": effective_publish_mode,
+        "blocking_reasons": blocking_reasons,
+    }
 
     return {
         # Backward-compatible fields
@@ -892,11 +911,12 @@ def build_bilibili_diagnostics(
         # Structured diagnostics
         "checks": checks,
         "blocking_reasons": blocking_reasons,
+        "release_gates": release_gates,
         "effective_publish_mode": effective_publish_mode,
         "signals": {
             "raw_publish_mode": raw_publish_mode,
             "effective_publish_mode": effective_publish_mode,
-            "native_publish_enabled": settings.bilibili_enabled and settings.bilibili_publish_enabled,
+            "native_publish_enabled": native_publish_enabled,
             "polling_worker_enabled": polling_worker_ready,
             "credential_present": active_credential is not None,
             "credential_complete": credential_complete,
