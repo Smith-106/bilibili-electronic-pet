@@ -14,6 +14,7 @@ import base64
 import hashlib
 import logging
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
@@ -79,13 +80,18 @@ class RateLimiter:
     def __init__(self, max_calls: int, period_seconds: int = 60):
         self.max_calls = max_calls
         self.period_seconds = period_seconds
-        self.calls: list[float] = []
+        # This limiter runs before every Bilibili API call, so expired entries
+        # need O(1) eviction instead of rebuilding the full list each time.
+        self.calls: deque[float] = deque()
+
+    def _prune_expired_calls(self, now: float) -> None:
+        while self.calls and now - self.calls[0] >= self.period_seconds:
+            self.calls.popleft()
 
     def acquire(self) -> bool:
         """尝试获取调用许可"""
         now = time.time()
-        # 清理过期的调用记录
-        self.calls = [c for c in self.calls if now - c < self.period_seconds]
+        self._prune_expired_calls(now)
 
         if len(self.calls) >= self.max_calls:
             return False
@@ -95,12 +101,12 @@ class RateLimiter:
 
     def wait_time(self) -> float:
         """计算需要等待的时间"""
+        now = time.time()
+        self._prune_expired_calls(now)
         if not self.calls:
             return 0.0
 
-        now = time.time()
-        oldest = min(self.calls)
-        wait = self.period_seconds - (now - oldest)
+        wait = self.period_seconds - (now - self.calls[0])
         return max(0.0, wait)
 
 

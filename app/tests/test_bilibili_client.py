@@ -35,6 +35,20 @@ class TestRateLimiter:
         limiter = RateLimiter(max_calls=10, period_seconds=60)
         assert limiter.wait_time() == 0.0
 
+    def test_rate_limiter_reuses_window_after_expiration(self):
+        limiter = RateLimiter(max_calls=2, period_seconds=60)
+        with patch("app.services.bilibili_client.time.time", side_effect=[0.0, 1.0, 61.0]):
+            assert limiter.acquire() is True
+            assert limiter.acquire() is True
+            assert limiter.acquire() is True
+
+    def test_rate_limiter_wait_time_prunes_expired_calls(self):
+        limiter = RateLimiter(max_calls=1, period_seconds=60)
+        with patch("app.services.bilibili_client.time.time", side_effect=[0.0, 61.0]):
+            assert limiter.acquire() is True
+            assert limiter.wait_time() == 0.0
+        assert list(limiter.calls) == []
+
 
 class TestCredentialEncryption:
     """Tests for CredentialEncryption."""
