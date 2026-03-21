@@ -1,6 +1,6 @@
 """add reply_jobs canonical_comment_id
 
-Revision ID: 20260317_reply_jobs_canonical_comment_id
+Revision ID: 20260317_rj_canonical_cid
 Revises: 20260317_canonical_comment_id
 Create Date: 2026-03-17
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "20260317_reply_jobs_canonical_comment_id"
+revision: str = "20260317_rj_canonical_cid"
 down_revision: Union[str, None] = "20260317_canonical_comment_id"
 branch_labels: Union[str, None] = None
 depends_on: Union[str, None] = None
