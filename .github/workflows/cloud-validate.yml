@@ -34,6 +34,7 @@ jobs:
       - name: Run quick critical tests
         env:
           PYTHONPATH: .
+          BILIBILI_COOKIE_ENCRYPTION_KEY: test-ci-encryption-key-32-bytes!
         run: |
           pytest app/tests/test_admin_api.py -q
           pytest app/tests/test_comments_api.py -q
@@ -66,6 +67,7 @@ jobs:
       - name: Run full test suite
         env:
           PYTHONPATH: .
+          BILIBILI_COOKIE_ENCRYPTION_KEY: test-ci-encryption-key-32-bytes!
         run: python -m pytest app/tests -q
 
       - name: Setup Node
