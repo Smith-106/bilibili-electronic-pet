@@ -22,7 +22,11 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test_e2e.sqlite3")
 @pytest.fixture(scope="module")
 def db_session():
     """Create test database session."""
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    # Only add check_same_thread for SQLite
+    if DATABASE_URL.startswith("sqlite"):
+        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+    else:
+        engine = create_engine(DATABASE_URL)
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(bind=engine)
     db = TestingSessionLocal()
