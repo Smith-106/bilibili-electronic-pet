@@ -48,7 +48,6 @@ jobs:
         run: |
           sleep 5
           pg_isready -h localhost -p 5432
-          redis-cli -h localhost ping
 
       - name: Run database migrations
         env:
