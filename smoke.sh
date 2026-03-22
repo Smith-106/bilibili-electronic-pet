@@ -43,7 +43,7 @@ check_json_ok_true() {
   local url="$2"
   local body
   body="$(curl -sS -H "x-api-key: ${API_KEY}" "$url")"
-  python - <<'PY' "$body" >/dev/null 2>&1 || exit 1
+  python3 - <<'PY' "$body" >/dev/null 2>&1 || exit 1
 import json, sys
 payload = json.loads(sys.argv[1])
 assert payload.get("ok") is True
@@ -67,7 +67,7 @@ check_readiness() {
   local url="$2"
   local body
   body="$(curl -sS "$url")"
-  python - <<'PY' "$body" >/dev/null 2>&1 || exit 1
+  python3 - <<'PY' "$body" >/dev/null 2>&1 || exit 1
 import json, sys
 payload = json.loads(sys.argv[1])
 assert payload.get("ready") is True
@@ -83,7 +83,7 @@ check_bilibili_diagnostics_ready() {
   local details
   body="$(curl -sS -H "x-api-key: ${API_KEY}" "$url")"
   details="$(
-    python - "$body" <<'PY' 2>&1
+    python3 - "$body" <<'PY' 2>&1
 import json
 import sys
 
@@ -92,9 +92,19 @@ diagnostics = payload.get("diagnostics")
 if not isinstance(diagnostics, dict):
     raise SystemExit("missing diagnostics")
 
-if diagnostics.get("ready") is True:
-    print("diagnostics.ready=true")
-    raise SystemExit(0)
+effective_publish_mode = str(diagnostics.get("effective_publish_mode") or "").strip()
+release_gates = diagnostics.get("release_gates")
+
+if effective_publish_mode == "native_bilibili":
+    if diagnostics.get("ready") is True:
+        print("diagnostics.ready=true")
+        raise SystemExit(0)
+elif effective_publish_mode in {"webhook", "real_publish"}:
+    if isinstance(release_gates, dict) and release_gates.get("worker_or_publish_ready") is True:
+        print("release_gates.worker_or_publish_ready=true")
+        raise SystemExit(0)
+else:
+    raise SystemExit(f"effective_publish_mode={effective_publish_mode or 'unknown'} is not delivery-capable")
 
 blocking = diagnostics.get("blocking_reasons")
 if isinstance(blocking, list) and blocking:
@@ -113,7 +123,7 @@ check_release_gates_for_real_chain() {
   local details
   body="$(curl -sS -H "x-api-key: ${API_KEY}" "$url")"
   details="$(
-    python - "$body" <<'PY' 2>&1
+    python3 - "$body" <<'PY' 2>&1
 import json
 import sys
 

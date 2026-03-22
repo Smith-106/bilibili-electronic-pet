@@ -3,9 +3,8 @@ name: e2e-strict-business-acceptance
 on:
   workflow_dispatch:
   push:
-    branches: ["master"]
+    branches: ["**"]
   pull_request:
-    branches: ["master"]
 
 jobs:
   strict-business-acceptance:

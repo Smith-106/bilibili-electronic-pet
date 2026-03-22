@@ -83,6 +83,29 @@ def readiness():
                 "blocking_reasons": [f"dependency:{str(e)}"],
             }
 
+    checks = bilibili_diagnostics.get("checks")
+    checks = checks if isinstance(checks, dict) else {}
+    worker_or_publish_check = checks.get("worker_or_publish")
+    worker_or_publish_check = worker_or_publish_check if isinstance(worker_or_publish_check, dict) else {}
+    worker_or_publish_errors = worker_or_publish_check.get("errors")
+    worker_or_publish_errors = worker_or_publish_errors if isinstance(worker_or_publish_errors, list) else []
+    release_gates = bilibili_diagnostics.get("release_gates")
+    release_gates = release_gates if isinstance(release_gates, dict) else {}
+    effective_publish_mode = str(
+        bilibili_diagnostics.get("effective_publish_mode") or settings.publisher_mode.strip().lower()
+    ).strip().lower()
+    native_publish_mode = effective_publish_mode == "native_bilibili"
+    external_publish_mode = effective_publish_mode in {"webhook", "real_publish"}
+    delivery_capable_publish_mode = native_publish_mode or external_publish_mode
+    # Native diagnostics surface Bilibili-specific config/auth issues, but those
+    # should not block deployments that intentionally deliver via webhook/real_publish.
+    worker_or_publish_ready = bool(
+        release_gates.get("worker_or_publish_ready", worker_or_publish_check.get("ready", False))
+    )
+    delivery_path_ready = bool(bilibili_diagnostics.get("ready", False)) if native_publish_mode else (
+        worker_or_publish_ready if external_publish_mode else False
+    )
+
     polling_requested = settings.bilibili_enabled and settings.bilibili_poll_enabled
     delivery_signals = {
         "kill_switch_enabled": settings.kill_switch,
@@ -90,10 +113,11 @@ def readiness():
         "poll_interval_seconds": settings.bilibili_poll_interval_seconds,
         "worker_schedule_configured": polling_requested and settings.bilibili_poll_interval_seconds >= 60,
         "bilibili_diagnostics_ready": bool(bilibili_diagnostics.get("ready", False)),
+        "delivery_path_ready": delivery_path_ready,
+        "delivery_capable_publish_mode": delivery_capable_publish_mode,
+        "worker_or_publish_ready": worker_or_publish_ready,
         "raw_publish_mode": settings.publisher_mode.strip().lower(),
-        "effective_publish_mode": str(
-            bilibili_diagnostics.get("effective_publish_mode") or settings.publisher_mode.strip().lower()
-        ),
+        "effective_publish_mode": effective_publish_mode,
     }
 
     delivery_blockers = list(foundation_blockers)
@@ -102,12 +126,22 @@ def readiness():
     if polling_requested and not redis_status.get("connected", False):
         add_blocker(delivery_blockers, "worker:redis_unavailable_for_polling")
 
-    diagnostics_blockers = bilibili_diagnostics.get("blocking_reasons")
-    if isinstance(diagnostics_blockers, list):
-        for reason in diagnostics_blockers:
-            add_blocker(delivery_blockers, f"bilibili:{reason}")
+    if native_publish_mode:
+        diagnostics_blockers = bilibili_diagnostics.get("blocking_reasons")
+        if isinstance(diagnostics_blockers, list):
+            for reason in diagnostics_blockers:
+                add_blocker(delivery_blockers, f"bilibili:{reason}")
+    elif external_publish_mode:
+        if not worker_or_publish_ready:
+            for reason in worker_or_publish_errors:
+                add_blocker(delivery_blockers, f"bilibili:worker_or_publish:{reason}")
+    else:
+        add_blocker(
+            delivery_blockers,
+            f"bilibili:publish_mode_not_delivery_capable:{effective_publish_mode or 'unknown'}",
+        )
 
-    if not bilibili_diagnostics.get("ready", False):
+    if not delivery_path_ready:
         add_blocker(delivery_blockers, "bilibili:delivery_diagnostics_not_ready")
 
     delivery_ready = not delivery_blockers

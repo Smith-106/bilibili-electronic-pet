@@ -110,3 +110,94 @@ def test_readiness_includes_bilibili_delivery_blockers(client, monkeypatch):
     assert data["foundation_ready"] is True
     assert data["delivery_ready"] is False
     assert "bilibili:auth:no active credential" in data["delivery_blockers"]
+
+
+def test_readiness_allows_external_publish_modes_without_native_bilibili(client, monkeypatch):
+    import redis
+    from unittest.mock import Mock
+    import app.main
+
+    monkeypatch.setattr(app.main, "check_database_connection", lambda: {"connected": True})
+
+    def mock_from_url_ok(*args, **kwargs):
+        _ = args, kwargs
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        return mock_client
+
+    monkeypatch.setattr(redis, "from_url", mock_from_url_ok)
+    monkeypatch.setattr(
+        app.main,
+        "build_bilibili_diagnostics",
+        lambda db: {
+            "ready": False,
+            "blocking_reasons": [
+                "config:bilibili_enabled is false",
+                "config:bilibili_publish_enabled is false",
+            ],
+            "effective_publish_mode": "webhook",
+            "checks": {
+                "worker_or_publish": {
+                    "ready": True,
+                    "errors": [],
+                }
+            },
+            "release_gates": {
+                "worker_or_publish_ready": True,
+            },
+            "signals": {},
+        },
+    )
+
+    response = client.get("/readiness")
+    data = response.json()
+
+    assert data["ready"] is True
+    assert data["foundation_ready"] is True
+    assert data["delivery_ready"] is True
+    assert "bilibili:delivery_diagnostics_not_ready" not in data["delivery_blockers"]
+    assert not any(reason.startswith("bilibili:config:") for reason in data["delivery_blockers"])
+
+
+def test_readiness_keeps_simulated_publish_mode_blocked(client, monkeypatch):
+    import redis
+    from unittest.mock import Mock
+    import app.main
+
+    monkeypatch.setattr(app.main, "check_database_connection", lambda: {"connected": True})
+
+    def mock_from_url_ok(*args, **kwargs):
+        _ = args, kwargs
+        mock_client = Mock()
+        mock_client.ping.return_value = True
+        return mock_client
+
+    monkeypatch.setattr(redis, "from_url", mock_from_url_ok)
+    monkeypatch.setattr(
+        app.main,
+        "build_bilibili_diagnostics",
+        lambda db: {
+            "ready": False,
+            "blocking_reasons": [],
+            "effective_publish_mode": "simulated",
+            "checks": {
+                "worker_or_publish": {
+                    "ready": True,
+                    "errors": [],
+                }
+            },
+            "release_gates": {
+                "worker_or_publish_ready": True,
+            },
+            "signals": {},
+        },
+    )
+
+    response = client.get("/readiness")
+    data = response.json()
+
+    assert data["ready"] is True
+    assert data["foundation_ready"] is True
+    assert data["delivery_ready"] is False
+    assert "bilibili:publish_mode_not_delivery_capable:simulated" in data["delivery_blockers"]
+    assert "bilibili:delivery_diagnostics_not_ready" in data["delivery_blockers"]
