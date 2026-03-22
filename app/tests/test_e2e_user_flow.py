@@ -64,7 +64,7 @@ class TestHealthEndpoints:
         assert data.get("delivery_ready") is False
         assert data.get("ready") == data.get("foundation_ready")
         assert "bilibili:delivery_diagnostics_not_ready" in data.get("delivery_blockers", [])
-        assert any(reason.startswith("bilibili:config:") for reason in data.get("delivery_blockers", []))
+        assert "bilibili:publish_mode_not_delivery_capable:simulated" in data.get("delivery_blockers", [])
         diagnostics = data.get("bilibili_diagnostics", {})
         assert diagnostics.get("ready") is False
         assert diagnostics.get("release_gates", {}).get("pre_release_real_chain_ready") is False
