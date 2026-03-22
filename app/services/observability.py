@@ -124,6 +124,10 @@ def _persist_event_to_db(event: Mapping[str, object]) -> None:
         return
 
 
+def _rows_to_status_counts(rows: list[tuple[str | None, int]]) -> dict[str | None, int]:
+    return {status: int(count or 0) for status, count in rows}
+
+
 def _get_observability_summary_from_db(*, window_minutes: int, threshold: datetime) -> dict[str, object] | None:
     try:
         with SessionLocal() as db:
@@ -139,15 +143,20 @@ def _get_observability_summary_from_db(*, window_minutes: int, threshold: dateti
             )
             by_event_type = {str(event_type): int(count) for event_type, count in by_event_type_rows}
 
-            job_finished_query = (
-                db.query(ObservabilityEvent)
+            # This summary endpoint is polled by the admin UI, so keep status
+            # rollups grouped to avoid repeated count scans over the same window.
+            job_status_rows = (
+                db.query(ObservabilityEvent.status, func.count(ObservabilityEvent.id))
                 .filter(
                     ObservabilityEvent.created_at >= threshold,
                     ObservabilityEvent.event_type == "job_finished",
                 )
+                .group_by(ObservabilityEvent.status)
+                .all()
             )
-            job_total = job_finished_query.count()
-            manual_queue_count = job_finished_query.filter(ObservabilityEvent.status == "manual_queue").count()
+            job_status_counts = _rows_to_status_counts(job_status_rows)
+            job_total = sum(job_status_counts.values())
+            manual_queue_count = job_status_counts.get("manual_queue", 0)
 
             latency_rows = (
                 db.query(ObservabilityEvent.duration_ms)
@@ -162,15 +171,18 @@ def _get_observability_summary_from_db(*, window_minutes: int, threshold: dateti
             latencies = [int(duration_ms) for (duration_ms,) in latency_rows if duration_ms is not None]
             avg_latency_ms = round(sum(latencies) / len(latencies), 2) if latencies else 0.0
 
-            publish_result_query = (
-                db.query(ObservabilityEvent)
+            publish_status_rows = (
+                db.query(ObservabilityEvent.status, func.count(ObservabilityEvent.id))
                 .filter(
                     ObservabilityEvent.created_at >= threshold,
                     ObservabilityEvent.event_type == "publish_result",
                 )
+                .group_by(ObservabilityEvent.status)
+                .all()
             )
-            publish_total = publish_result_query.count()
-            publish_success = publish_result_query.filter(ObservabilityEvent.status == "published").count()
+            publish_status_counts = _rows_to_status_counts(publish_status_rows)
+            publish_total = sum(publish_status_counts.values())
+            publish_success = publish_status_counts.get("published", 0)
     except SQLAlchemyError:
         return None
 

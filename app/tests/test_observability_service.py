@@ -75,3 +75,55 @@ def test_observability_summary_falls_back_to_memory_when_db_fails(monkeypatch):
     assert summary["totals"]["jobs"] == 1
     assert summary["rates"]["manual_queue_ratio"] == 1.0
     assert summary["latency"]["avg_job_duration_ms"] == 12.0
+
+
+def test_observability_summary_db_status_rollups_stay_correct(monkeypatch):
+    engine, session_local = _build_session_factory()
+    monkeypatch.setattr(observability, "SessionLocal", session_local)
+    observability.reset_observability_events()
+
+    created_at = datetime.now(timezone.utc)
+    observability.record_observability_event(
+        "job_finished",
+        trace_id="trace-db-rollups",
+        comment_id="comment-job-published",
+        status="published",
+        duration_ms=10,
+        created_at=created_at,
+    )
+    observability.record_observability_event(
+        "job_finished",
+        trace_id="trace-db-rollups",
+        comment_id="comment-job-manual",
+        status="manual_queue",
+        duration_ms=20,
+        created_at=created_at,
+    )
+    observability.record_observability_event(
+        "publish_result",
+        trace_id="trace-db-rollups",
+        comment_id="comment-publish-success",
+        status="published",
+        created_at=created_at,
+    )
+    observability.record_observability_event(
+        "publish_result",
+        trace_id="trace-db-rollups",
+        comment_id="comment-publish-failed",
+        status="timeout",
+        created_at=created_at,
+    )
+
+    observability.reset_observability_events()
+    summary = observability.get_observability_summary(window_minutes=60)
+
+    assert summary["totals"]["events"] == 4
+    assert summary["totals"]["jobs"] == 2
+    assert summary["totals"]["publish_results"] == 2
+    assert summary["by_event_type"]["job_finished"] == 2
+    assert summary["by_event_type"]["publish_result"] == 2
+    assert summary["rates"]["manual_queue_ratio"] == 0.5
+    assert summary["rates"]["publish_success_rate"] == 0.5
+    assert summary["latency"]["samples"] == 2
+    assert summary["latency"]["avg_job_duration_ms"] == 15.0
+    engine.dispose()
