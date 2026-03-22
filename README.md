@@ -79,7 +79,7 @@ pip install -r requirements.txt
 pytest app/tests -q --ignore=app/tests/test_e2e_user_flow.py
 ```
 
-> 已在 `pytest.ini` 配置 `pythonpath = .`，无需额外手动设置 `PYTHONPATH`。`test_e2e_user_flow.py` 依赖已启动的服务实例，建议在应用启动后单独运行。
+> 已在 `pytest.ini` 配置 `pythonpath = .`，无需额外手动设置 `PYTHONPATH`。`test_e2e_user_flow.py` 现支持双模式：设置 `BASE_URL` 时对已启动实例做严格验收；未设置时会在测试进程内自举应用与测试数据库，可直接单独运行。
 
 ### 3) 启动服务（Docker）
 

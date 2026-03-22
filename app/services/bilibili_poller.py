@@ -114,7 +114,9 @@ class BilibiliPoller:
         # 更新最后轮询时间和 rpid
         if all_comments:
             max_rpid = max(c.rpid for c in all_comments)
-            self.client.update_video_last_polled(video, max_rpid)
+            # Batch the success-path status fields into one transaction so each
+            # healthy poll only pays for a single database commit.
+            self.client.update_video_last_polled(video, max_rpid, commit=False)
             video.last_poll_status = "ok"
             video.last_poll_error = None
             self.db.commit()

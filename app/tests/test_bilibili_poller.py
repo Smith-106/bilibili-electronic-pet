@@ -96,6 +96,63 @@ class TestBilibiliPollerRetryAndStatus:
         assert video.last_poll_status == "ok"
         assert video.last_poll_error is None
 
+    def test_poll_video_comments_success_commits_once(self, db_session: Session, monkeypatch):
+        from app.models.entities import BilibiliVideo
+        from app.services.bilibili_client import BilibiliComment
+        from app.services.bilibili_poller import BilibiliPoller
+
+        video = BilibiliVideo(
+            bvid="BV1xx411c7mD",
+            aid=123456,
+            title="Test Video",
+            owner_mid=789012,
+            poll_enabled=True,
+            last_rpid=0,
+        )
+        db_session.add(video)
+        db_session.commit()
+
+        def get_comments_once(self, oid: int, page: int = 1, sort: int = 0, *, strict: bool = False):
+            if page > 1:
+                return []
+            return [
+                BilibiliComment(
+                    rpid=100,
+                    oid=oid,
+                    mid=200,
+                    content="hello",
+                    parent_rpid=None,
+                    ctime=0,
+                    like_count=0,
+                    member_name="u",
+                    member_avatar="",
+                )
+            ]
+
+        from app.services import bilibili_client as bilibili_client_module
+
+        monkeypatch.setattr(bilibili_client_module.BilibiliClient, "get_comments", get_comments_once)
+
+        original_commit = db_session.commit
+        commit_calls = 0
+
+        def counting_commit():
+            nonlocal commit_calls
+            commit_calls += 1
+            return original_commit()
+
+        monkeypatch.setattr(db_session, "commit", counting_commit)
+
+        poller = BilibiliPoller(db_session)
+        events = poller.poll_video_comments(video)
+
+        assert len(events) == 1
+        assert commit_calls == 1
+
+        db_session.refresh(video)
+        assert video.last_rpid == 100
+        assert video.last_poll_status == "ok"
+
     def test_poll_video_comments_retry_exhausted_sets_error(self, db_session: Session, monkeypatch):
         from app.models.entities import BilibiliVideo
         from app.services.bilibili_poller import BilibiliPoller

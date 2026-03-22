@@ -20,6 +20,7 @@ from app.settings import settings
 @pytest.fixture(autouse=True)
 def reset_settings() -> Generator[None, None, None]:
     snapshot = settings.model_dump()
+    settings.bilibili_cookie_encryption_key = "test-key-32-bytes-long-enough"
     yield
     for key, value in snapshot.items():
         setattr(settings, key, value)

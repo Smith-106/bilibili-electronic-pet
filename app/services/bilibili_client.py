@@ -560,8 +560,15 @@ class BilibiliClient:
             .all()
         )
 
-    def update_video_last_polled(self, video: BilibiliVideo, last_rpid: int) -> None:
+    def update_video_last_polled(
+        self,
+        video: BilibiliVideo,
+        last_rpid: int,
+        *,
+        commit: bool = True,
+    ) -> None:
         """更新视频最后轮询信息"""
         video.last_polled_at = datetime.now(timezone.utc)
         video.last_rpid = last_rpid
-        self.db.commit()
+        if commit:
+            self.db.commit()

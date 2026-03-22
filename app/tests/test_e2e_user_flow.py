@@ -1,47 +1,174 @@
-"""End-to-End user simulation tests.
+"""End-to-end user simulation tests.
 
-Tests the complete user flow from comment ingestion to reply generation and publishing.
+This module prefers a real deployed service when ``BASE_URL`` is provided.
+When it is not, the tests bootstrap the FastAPI app locally so the business
+contract can still be verified without manual service startup.
 """
+from __future__ import annotations
+
 import os
 import uuid
-import pytest
+from collections.abc import Generator
+from pathlib import Path
+from typing import Any
+
 import httpx
+import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
-from app.db import Base
-from app.models.entities import ReplyJob, Comment
+import app.db as db_module
+import app.main as main_module
+import app.services.observability as observability_module
+import app.workers.jobs as jobs_module
+from app.api import comments as comments_api
+from app.db import Base, get_db
+from app.models.entities import Comment, ReplyJob
+from app.settings import settings
 
 
-# Test configuration
-BASE_URL = os.getenv("BASE_URL", "http://localhost:18000")
+RAW_BASE_URL = os.getenv("BASE_URL", "").strip()
+USE_EXTERNAL_SERVER = bool(RAW_BASE_URL)
+BASE_URL = RAW_BASE_URL or "http://testserver"
 API_KEY = os.getenv("API_KEY", "test-api-key-e2e")
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./test_e2e.sqlite3")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 
 
 def _unique_case_value(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+class _HealthyRedisClient:
+    def ping(self) -> bool:
+        return True
+
+    def close(self) -> None:
+        return None
+
+
 @pytest.fixture(scope="module")
-def db_session():
-    """Create test database session."""
-    # Only add check_same_thread for SQLite
-    if DATABASE_URL.startswith("sqlite"):
-        engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-    else:
-        engine = create_engine(DATABASE_URL)
+def e2e_context(tmp_path_factory: pytest.TempPathFactory) -> Generator[dict[str, Any], None, None]:
+    if USE_EXTERNAL_SERVER:
+        if not DATABASE_URL:
+            raise RuntimeError("DATABASE_URL is required when BASE_URL is provided for external E2E mode.")
+
+        if DATABASE_URL.startswith("sqlite"):
+            engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+        else:
+            engine = create_engine(DATABASE_URL)
+
+        testing_session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+        Base.metadata.create_all(bind=engine)
+        try:
+            yield {
+                "mode": "external",
+                "session_factory": testing_session_local,
+            }
+        finally:
+            engine.dispose()
+        return
+
+    db_path = Path(tmp_path_factory.mktemp("e2e")) / "test_e2e.sqlite3"
+    database_url = f"sqlite:///{db_path}"
+    engine = create_engine(
+        database_url,
+        connect_args={"check_same_thread": False},
+        future=True,
+    )
+    testing_session_local = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(bind=engine)
-    db = TestingSessionLocal()
-    yield db
-    db.close()
+
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(settings, "app_env", "test")
+    monkeypatch.setattr(settings, "database_url", database_url)
+    monkeypatch.setattr(settings, "celery_broker_url", "redis://localhost:6379/0")
+    monkeypatch.setattr(settings, "celery_result_backend", "redis://localhost:6379/1")
+    monkeypatch.setattr(settings, "api_key", API_KEY)
+    monkeypatch.setattr(settings, "gateway_token", "")
+    monkeypatch.setattr(settings, "gateway_hmac_secret", "")
+    monkeypatch.setattr(settings, "bilibili_cookie_encryption_key", "test-encryption-key-32-bytes!!")
+    monkeypatch.setattr(settings, "bilibili_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_publish_enabled", False)
+    monkeypatch.setattr(settings, "bilibili_poll_enabled", False)
+    monkeypatch.setattr(settings, "publisher_mode", "simulated")
+    monkeypatch.setattr(settings, "llm_provider", "mock")
+    monkeypatch.setattr(settings, "kill_switch", False)
+
+    monkeypatch.setattr(db_module, "engine", engine)
+    monkeypatch.setattr(db_module, "SessionLocal", testing_session_local)
+    monkeypatch.setattr(main_module, "SessionLocal", testing_session_local)
+    monkeypatch.setattr(jobs_module, "SessionLocal", testing_session_local)
+    monkeypatch.setattr(observability_module, "SessionLocal", testing_session_local)
+
+    def override_get_db() -> Generator[Session, None, None]:
+        db = testing_session_local()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    queued_payloads: list[dict[str, Any]] = []
+
+    def fake_enqueue_comment_event(event) -> None:
+        queued_payloads.append(event.model_dump())
+
+    def fake_delay(payload: dict[str, Any]) -> dict[str, str]:
+        queued_payloads.append(payload)
+        return {"task_id": "fake-task-id"}
+
+    import redis
+
+    monkeypatch.setattr(redis, "from_url", lambda *args, **kwargs: _HealthyRedisClient())
+    monkeypatch.setattr(comments_api, "enqueue_comment_event", fake_enqueue_comment_event)
+    monkeypatch.setattr(comments_api.process_comment_event_task, "delay", fake_delay)
+
+    main_module.app.dependency_overrides[get_db] = override_get_db
+
+    try:
+        yield {
+            "mode": "inprocess",
+            "session_factory": testing_session_local,
+            "queued_payloads": queued_payloads,
+        }
+    finally:
+        main_module.app.dependency_overrides.pop(get_db, None)
+        Base.metadata.drop_all(bind=engine)
+        engine.dispose()
+        monkeypatch.undo()
 
 
 @pytest.fixture
-def api_client():
-    """HTTP client with API key."""
-    return httpx.Client(base_url=BASE_URL, headers={"x-api-key": API_KEY}, timeout=30.0)
+def db_session(e2e_context: dict[str, Any]) -> Generator[Session, None, None]:
+    session_factory: sessionmaker[Session] = e2e_context["session_factory"]
+    db = session_factory()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def api_client(e2e_context: dict[str, Any]) -> Generator[httpx.Client | TestClient, None, None]:
+    if e2e_context["mode"] == "external":
+        with httpx.Client(base_url=BASE_URL, headers={"x-api-key": API_KEY}, timeout=30.0) as client:
+            yield client
+        return
+
+    with TestClient(main_module.app) as client:
+        client.headers.update({"x-api-key": API_KEY})
+        yield client
+
+
+@pytest.fixture
+def anonymous_client(e2e_context: dict[str, Any]) -> Generator[httpx.Client | TestClient, None, None]:
+    if e2e_context["mode"] == "external":
+        with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
+            yield client
+        return
+
+    with TestClient(main_module.app) as client:
+        yield client
 
 
 class TestHealthEndpoints:
@@ -275,9 +402,8 @@ class TestErrorHandling:
         assert response.status_code == 404
         assert response.json().get("detail") == "job_not_found"
 
-    def test_user_accesses_protected_endpoint_without_key(self):
+    def test_user_accesses_protected_endpoint_without_key(self, anonymous_client):
         """User tries to access protected endpoint without API key."""
-        with httpx.Client(base_url=BASE_URL, timeout=30.0) as client:
-            response = client.get("/api/admin/jobs")
+        response = anonymous_client.get("/api/admin/jobs")
         assert response.status_code == 401
         assert response.json().get("detail") == "unauthorized"
