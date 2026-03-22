@@ -73,8 +73,8 @@ jobs:
           pip install -r requirements.txt
           python -m pip install pytest
 
-      - name: Run release-only full test suite
+      - name: Run release-only backend suite
         env:
           PYTHONPATH: .
           BILIBILI_COOKIE_ENCRYPTION_KEY: test-ci-encryption-key-32-bytes!
-        run: python -m pytest app/tests -q
+        run: python -m pytest app/tests -q --ignore=app/tests/test_e2e_user_flow.py

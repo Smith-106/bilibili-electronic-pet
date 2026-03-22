@@ -76,10 +76,10 @@ pip install -r requirements.txt
 ### 2) 运行测试
 
 ```bash
-pytest app/tests -q
+pytest app/tests -q --ignore=app/tests/test_e2e_user_flow.py
 ```
 
-> 已在 `pytest.ini` 配置 `pythonpath = .`，无需额外手动设置 `PYTHONPATH`。
+> 已在 `pytest.ini` 配置 `pythonpath = .`，无需额外手动设置 `PYTHONPATH`。`test_e2e_user_flow.py` 依赖已启动的服务实例，建议在应用启动后单独运行。
 
 ### 3) 启动服务（Docker）
 
@@ -342,7 +342,7 @@ PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
 执行内容（按触发路径）：
 
 1. `cloud-validate`（PR 门禁，`pull_request`）：安装依赖后执行 `alembic upgrade head`、后端回归用例（`test_admin_api` / `test_comments_api` / `test_gateway_publish`）、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
-2. `cloud-validate`（release-only，`push` 到 `main` 或 `workflow_dispatch`）：执行 `python -m pytest app/tests -q` 全量回归
+2. `cloud-validate`（release-only，默认分支 `push` 或 `workflow_dispatch`）：执行 `python -m pytest app/tests -q --ignore=app/tests/test_e2e_user_flow.py` 后端回归；E2E 由独立 `e2e-user-simulation` 工作流覆盖
 3. `e2e-user-simulation`：执行模拟用户流 E2E；在默认分支/手动触发路径追加 `PRE_RELEASE_REAL_CHAIN=true STRICT_SMOKE=true bash smoke.sh` 真实链路合同校验
 4. `build-and-push-ghcr`：
    - 非默认分支：仅推送预览镜像标签 `sha-<commit>`
