@@ -6,6 +6,11 @@ on:
     branches: ["**"]
   pull_request:
 
+env:
+  GIT_CONFIG_COUNT: 1
+  GIT_CONFIG_KEY_0: advice.defaultBranchName
+  GIT_CONFIG_VALUE_0: "false"
+
 jobs:
   pr-merge-gate:
     if: github.event_name == 'pull_request'
