@@ -9,3 +9,7 @@
 ## 2026-03-22 - [Observability Summary Re-Scans]
 **Learning:** The admin observability summary was re-counting the same filtered event window per status branch, so one dashboard refresh fanned out into avoidable repeated aggregate scans.
 **Action:** For dashboard summaries over the same time window, group once by status and derive totals in Python before reaching for caching or larger architectural changes.
+
+## 2026-03-24 - [httpx.Client Per-Request Anti-Pattern]
+**Learning:** `httpx.Client` was created and destroyed per-request in three hot paths (LLM generator, WebhookPublisher, RealPublishPublisher). Each instantiation spins up a fresh connection pool—no HTTP keep-alive, no TLS session reuse. The pattern was systematically replicated across modules.
+**Action:** When adding HTTP-calling code, always check whether a persistent client can be reused. Use lazy `_get_client()` with `is_closed` guard. Publisher singletons naturally keep the client alive for the process lifetime.

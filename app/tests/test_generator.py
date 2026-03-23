@@ -219,15 +219,7 @@ def test_openai_provider_timeout_retries_and_fallback(monkeypatch):
     attempts = {"count": 0}
 
     class TimeoutClient:
-        def __init__(self, *args, **kwargs):
-            _ = args, kwargs
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            _ = exc_type, exc, tb
-            return False
+        is_closed = False
 
         def post(self, *args, **kwargs):
             _ = args, kwargs
@@ -238,7 +230,9 @@ def test_openai_provider_timeout_retries_and_fallback(monkeypatch):
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "llm_retry_attempts", 2)
     monkeypatch.setattr(settings, "llm_retry_wait_seconds", 0)
-    monkeypatch.setattr(generator.httpx, "Client", TimeoutClient)
+    monkeypatch.setattr(
+        generator.OpenAICompatibleProvider, "_get_client", lambda self: TimeoutClient()
+    )
 
     result = generator.generate_reply_with_meta("压力好大", "empathy", "medium")
 
@@ -257,15 +251,7 @@ def test_openai_provider_success_returns_reply(monkeypatch):
             return {"choices": [{"message": {"content": "  成功回复  "}}]}
 
     class SuccessClient:
-        def __init__(self, *args, **kwargs):
-            _ = args, kwargs
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            _ = exc_type, exc, tb
-            return False
+        is_closed = False
 
         def post(self, *args, **kwargs):
             _ = args, kwargs
@@ -275,7 +261,9 @@ def test_openai_provider_success_returns_reply(monkeypatch):
     monkeypatch.setattr(settings, "llm_api_key", "test-key")
     monkeypatch.setattr(settings, "llm_retry_attempts", 1)
     monkeypatch.setattr(settings, "llm_retry_wait_seconds", 0)
-    monkeypatch.setattr(generator.httpx, "Client", SuccessClient)
+    monkeypatch.setattr(
+        generator.OpenAICompatibleProvider, "_get_client", lambda self: SuccessClient()
+    )
 
     result = generator.generate_reply_with_meta("你好", "normal", "medium")
 

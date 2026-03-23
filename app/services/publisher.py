@@ -169,12 +169,23 @@ class SimulatedPublisher:
 
 
 class WebhookPublisher:
+    # ⚡ Perf: Reuse a single httpx.Client across requests to benefit from
+    # HTTP keep-alive and connection pooling, avoiding per-request TCP/TLS
+    # handshake overhead.
+    def __init__(self) -> None:
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=settings.publisher_timeout_seconds)
+        return self._client
+
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     def _send(self, payload: dict, headers: dict) -> httpx.Response:
-        with httpx.Client(timeout=settings.publisher_timeout_seconds) as client:
-            response = client.post(settings.publisher_webhook_url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response
+        client = self._get_client()
+        response = client.post(settings.publisher_webhook_url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response
 
     def publish(
         self,
@@ -218,12 +229,23 @@ class WebhookPublisher:
 
 
 class RealPublishPublisher:
+    # ⚡ Perf: Reuse a single httpx.Client across requests to benefit from
+    # HTTP keep-alive and connection pooling, avoiding per-request TCP/TLS
+    # handshake overhead.
+    def __init__(self) -> None:
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=settings.publisher_timeout_seconds)
+        return self._client
+
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
     def _send(self, payload: dict, headers: dict) -> httpx.Response:
-        with httpx.Client(timeout=settings.publisher_timeout_seconds) as client:
-            response = client.post(settings.publisher_real_publish_url, json=payload, headers=headers)
-            response.raise_for_status()
-            return response
+        client = self._get_client()
+        response = client.post(settings.publisher_real_publish_url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response
 
     def publish(
         self,

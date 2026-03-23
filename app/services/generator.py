@@ -316,6 +316,17 @@ class OpenAICompatibleProvider:
     name = "openai_compatible"
     _retryable_exceptions = (httpx.TimeoutException, httpx.RequestError, httpx.HTTPStatusError)
 
+    # ⚡ Perf: Reuse a single httpx.Client across requests to benefit from
+    # HTTP keep-alive and connection pooling, avoiding per-request TCP/TLS
+    # handshake overhead (~50-200ms saved per HTTPS call).
+    def __init__(self) -> None:
+        self._client: httpx.Client | None = None
+
+    def _get_client(self) -> httpx.Client:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.Client(timeout=settings.llm_timeout_seconds)
+        return self._client
+
     def _chat_completions(self, payload: dict, headers: dict) -> dict:
         retrying = Retrying(
             stop=stop_after_attempt(max(1, settings.llm_retry_attempts)),
@@ -326,10 +337,10 @@ class OpenAICompatibleProvider:
 
         for attempt in retrying:
             with attempt:
-                with httpx.Client(timeout=settings.llm_timeout_seconds) as client:
-                    response = client.post(f"{settings.llm_base_url}/chat/completions", json=payload, headers=headers)
-                    response.raise_for_status()
-                    return response.json()
+                client = self._get_client()
+                response = client.post(f"{settings.llm_base_url}/chat/completions", json=payload, headers=headers)
+                response.raise_for_status()
+                return response.json()
 
         raise RuntimeError("chat completion retry exhausted")
 
