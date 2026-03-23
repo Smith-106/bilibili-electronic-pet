@@ -356,9 +356,9 @@ def admin_page():
     </div>
     <div class=\"toolbar toolbar-top\">
       <div class=\"flex-1-320\">
-        <div class=\"mono field-label\" style=\"display: flex; justify-content: space-between;\">
+        <div class=\"mono field-label field-label-inline\">
           <span>reply_text</span>
-          <span id=\"gateway-reply-char-count\" style=\"font-size: 11px; opacity: 0.8;\">0 / 1000</span>
+          <span id=\"gateway-reply-char-count\" class=\"char-count-muted\">0 / 1000</span>
         </div>
         <textarea id=\"gateway-publish-reply\" class=\"ta-h-90\" placeholder=\"输入要发布的回复内容\" aria-label=\"手动发布回复内容\" maxlength=\"1000\"></textarea>
       </div>
