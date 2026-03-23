@@ -370,6 +370,15 @@
     .flex-2-320 { flex: 2; min-width: 320px; }
     .flex-1-320 { flex: 1; min-width: 320px; }
     .field-label { margin-bottom: 4px; }
+    .field-label-inline { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .char-count-muted { font-size: 11px; opacity: 0.8; }
+    .timestamp-help { cursor: help; border-bottom: 1px dotted var(--muted); }
+    .id-cell { display: flex; align-items: center; gap: 4px; }
+    .btn-copy-inline { min-height: 24px; padding: 2px 6px; font-size: 10px; flex-shrink: 0; }
+    .risk-flag-list { display: flex; flex-wrap: wrap; gap: 4px; }
+    .risk-flag { font-size: 10px; padding: 1px 4px; border-radius: 4px; }
+    .risk-flag-high { background: rgba(255, 116, 132, 0.15); color: #ff9da9; border: 1px solid rgba(255, 116, 132, 0.3); }
+    .risk-flag-neutral { background: rgba(167, 183, 218, 0.1); color: #a7b7da; border: 1px solid rgba(167, 183, 218, 0.2); }
     .ta-h-70 { height: 70px; }
     .ta-h-90 { height: 90px; }
     .ta-h-120 { height: 120px; }

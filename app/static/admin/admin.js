@@ -247,7 +247,7 @@ function timeAgo(isoString) {
 
 function renderTimestamp(isoString) {
   if (!isoString) return '-';
-  return `<span title="${formatIsoDateTime(isoString)}" style="cursor: help; border-bottom: 1px dotted var(--muted);">${timeAgo(isoString)}</span>`;
+  return `<span title="${formatIsoDateTime(isoString)}" class="timestamp-help">${timeAgo(isoString)}</span>`;
 }
 
 function renderStatusBadge(status) {
@@ -452,9 +452,9 @@ async function copyText(text, label = '内容', btn = null) {
 function renderIdCell(id, label = 'ID') {
   const safeId = escapeHtml(String(id));
   return `
-    <div style="display: flex; align-items: center; gap: 4px;">
+    <div class="id-cell">
       <span class="mono">${safeId}</span>
-      <button class="btn-ghost btn-sm" style="min-height: 24px; padding: 2px 6px; font-size: 10px; flex-shrink: 0;" onclick="copyText('${safeId}', '${label}', this)" title="复制 ${label}">Copy</button>
+      <button class="btn-ghost btn-sm btn-copy-inline" onclick="copyText('${safeId}', '${label}', this)" title="复制 ${label}">Copy</button>
     </div>
   `;
 }
@@ -1160,14 +1160,13 @@ function renderRiskFlags(flags) {
   if (!flags || typeof flags !== 'object') return '-';
   const entries = Object.entries(flags);
   if (!entries.length) return '-';
-  
-  return `<div style="display: flex; flex-wrap: wrap; gap: 4px;">
+
+  return `<div class="risk-flag-list">
     ${entries.map(([key, val]) => {
-      const isRed = val === true || (typeof val === 'number' && val > 0.5);
-      const style = isRed 
-        ? 'background: rgba(255, 116, 132, 0.15); color: #ff9da9; border: 1px solid rgba(255, 116, 132, 0.3);'
-        : 'background: rgba(167, 183, 218, 0.1); color: #a7b7da; border: 1px solid rgba(167, 183, 218, 0.2);';
-      return `<span class="mono" style="font-size: 10px; padding: 1px 4px; border-radius: 4px; ${style}">${escapeHtml(key)}</span>`;
+      const cls = val === true || (typeof val === 'number' && val > 0.5)
+        ? 'risk-flag risk-flag-high'
+        : 'risk-flag risk-flag-neutral';
+      return `<span class="mono ${cls}">${escapeHtml(key)}</span>`;
     }).join('')}
   </div>`;
 }
