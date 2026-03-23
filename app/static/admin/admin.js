@@ -71,6 +71,8 @@ function resetUiPrefs() {
     showBusyToast();
     return;
   }
+  if (!confirm('确定要重置所有页面偏好设置吗？(包括自动刷新频率、简版视图等)')) return;
+
   stopAutoRefresh();
   localStorage.removeItem(PREF_KEY);
 
@@ -222,6 +224,32 @@ function formatIsoDateTime(isoString) {
   }
 }
 
+function timeAgo(isoString) {
+  if (!isoString) return '-';
+  try {
+    const date = new Date(isoString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    if (isNaN(seconds)) return isoString;
+    if (seconds < 5) return '刚刚';
+    if (seconds < 60) return `${seconds}秒前`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}分钟前`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}小时前`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}天前`;
+    return date.toLocaleDateString('zh-CN');
+  } catch {
+    return isoString;
+  }
+}
+
+function renderTimestamp(isoString) {
+  if (!isoString) return '-';
+  return `<span title="${formatIsoDateTime(isoString)}" style="cursor: help; border-bottom: 1px dotted var(--muted);">${timeAgo(isoString)}</span>`;
+}
+
 function renderStatusBadge(status) {
   const value = String(status || 'unknown');
   let cls = 'status-badge status-badge-neutral';
@@ -232,7 +260,31 @@ function renderStatusBadge(status) {
   } else if (value === 'blocked') {
     cls = 'status-badge status-badge-blocked';
   }
-  return `<span class="${cls}">${escapeHtml(value)}</span>`;
+  return `<span class="${cls} clickable" onclick="filterJobsByStatus('${escapeHtml(value)}')" title="点击筛选 ${escapeHtml(value)} 状态">${escapeHtml(value)}</span>`;
+}
+
+function filterJobsByStatus(status) {
+  if (isGlobalRefreshLocked()) {
+    showBusyToast();
+    return;
+  }
+  if (!jobsStatusInput) return;
+  
+  // Find valid option
+  const options = Array.from(jobsStatusInput.options).map(o => o.value);
+  if (options.includes(status)) {
+    jobsStatusInput.value = status;
+  } else if (['manual_queue', 'blocked', 'dedupe_skipped'].includes(status)) {
+    // These often go together in the mind but the filter is specific
+    jobsStatusInput.value = status;
+  } else {
+    return;
+  }
+  
+  refreshJobs();
+  // Scroll up to Jobs section to see results if needed
+  const section = document.getElementById('section-jobs');
+  if (section) section.scrollIntoView({ behavior: 'smooth' });
 }
 
 function safeCount(value) {
@@ -356,6 +408,57 @@ function resumeToastAutoHide() {
   window.__toastTimer = setTimeout(hideToast, remaining);
 }
 
+async function copyText(text, label = '内容', btn = null) {
+  if (!text) return;
+  
+  const originalText = btn ? btn.textContent : null;
+  const showFeedback = () => {
+    if (btn) {
+      btn.textContent = 'Copied!';
+      btn.classList.add('btn-accent');
+      setTimeout(() => {
+        btn.textContent = originalText;
+        btn.classList.remove('btn-accent');
+      }, 1200);
+    }
+  };
+
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(String(text));
+      showToast('复制成功', `${label}已复制到剪贴板`, { tone: 'success' });
+      showFeedback();
+      return;
+    }
+  } catch (error) {}
+  
+  const area = document.createElement('textarea');
+  area.value = String(text);
+  area.style.position = 'fixed';
+  area.style.left = '-9999px';
+  document.body.appendChild(area);
+  area.focus();
+  area.select();
+  const ok = document.execCommand('copy');
+  document.body.removeChild(area);
+  if (ok) {
+    showToast('复制成功', `${label}已复制到剪贴板`, { tone: 'success' });
+    showFeedback();
+  } else {
+    showToast('复制失败', '浏览器不支持复制');
+  }
+}
+
+function renderIdCell(id, label = 'ID') {
+  const safeId = escapeHtml(String(id));
+  return `
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <span class="mono">${safeId}</span>
+      <button class="btn-ghost btn-sm" style="min-height: 24px; padding: 2px 6px; font-size: 10px; flex-shrink: 0;" onclick="copyText('${safeId}', '${label}', this)" title="复制 ${label}">Copy</button>
+    </div>
+  `;
+}
+
 async function copyToastContent(event) {
   event.stopPropagation();
   const text = String(window.__toastCopyContent || '');
@@ -433,7 +536,9 @@ async function runFullRefresh() {
     { label: 'overview', run: loadOverview },
     { label: 'role_cards', run: loadRoleCards },
     { label: 'knowledge', run: loadKnowledgeEntries },
-    { label: 'bilibili', run: refreshBilibiliAll },
+    { label: 'b站状态', run: refreshBilibiliStatus },
+    { label: 'b站视频', run: refreshBilibiliVideos },
+    { label: 'b站凭证', run: refreshBilibiliCredentials },
     { label: 'gateway_logs', run: loadGatewayLogs },
     { label: 'daily_metrics', run: loadDailyMetrics },
     { label: 'jobs', run: loadJobs },
@@ -692,7 +797,13 @@ async function loadJobs() {
 
   const visibleJobIds = new Set();
   const locked = isGlobalRefreshLocked();
-  for (const item of (data.items || [])) {
+  const items = data.items || [];
+
+  if (items.length === 0) {
+    jobsTableBody.innerHTML = '<tr><td colspan="8" class="text-center">暂无任务数据</td></tr>';
+  }
+
+  for (const item of items) {
     const jobId = Number(item.id);
     if (!Number.isFinite(jobId)) continue;
     visibleJobIds.add(jobId);
@@ -700,12 +811,12 @@ async function loadJobs() {
     const allow = canApprove(item.status);
     tr.innerHTML = `
       <td><input type=\"checkbox\" class=\"job-check\" value=\"${jobId}\" ${selectedJobIdSet.has(jobId) ? 'checked' : ''}></td>
-      <td class=\"mono\">${jobId}</td>
+      <td>${renderIdCell(jobId, '任务ID')}</td>
       <td>${renderStatusBadge(item.status)}</td>
-      <td class=\"mono\">${escapeHtml(item.comment_id)}</td>
+      <td>${renderIdCell(item.comment_id, '评论ID')}</td>
       <td class=\"comment-box\">${escapeHtml(item.comment_content)}</td>
       <td><textarea id=\"reply-${jobId}\" ${locked ? 'disabled' : ''}>${escapeHtml(item.reply_text)}</textarea></td>
-      <td class=\"mono\">${escapeHtml(JSON.stringify(item.risk_flags || {}))}</td>
+      <td>${renderRiskFlags(item.risk_flags)}</td>
       <td>${allow ? `<button class=\"approve-btn\" onclick=\"approveJob(${jobId}, this)\" ${locked ? 'disabled' : ''}>Approve</button>` : '-'}</td>
     `;
     jobsTableBody.appendChild(tr);
@@ -1045,14 +1156,48 @@ function toggleAllJobChecks(checked) {
   updateBatchActionState();
 }
 
+function renderRiskFlags(flags) {
+  if (!flags || typeof flags !== 'object') return '-';
+  const entries = Object.entries(flags);
+  if (!entries.length) return '-';
+  
+  return `<div style="display: flex; flex-wrap: wrap; gap: 4px;">
+    ${entries.map(([key, val]) => {
+      const isRed = val === true || (typeof val === 'number' && val > 0.5);
+      const style = isRed 
+        ? 'background: rgba(255, 116, 132, 0.15); color: #ff9da9; border: 1px solid rgba(255, 116, 132, 0.3);'
+        : 'background: rgba(167, 183, 218, 0.1); color: #a7b7da; border: 1px solid rgba(167, 183, 218, 0.2);';
+      return `<span class="mono" style="font-size: 10px; padding: 1px 4px; border-radius: 4px; ${style}">${escapeHtml(key)}</span>`;
+    }).join('')}
+  </div>`;
+}
+
+let lastCheckedJobIndex = -1;
+
 function onJobCheckChanged(event) {
+  const target = event?.target;
+  if (!target) return;
+
   if (isGlobalRefreshLocked()) {
-    const target = event?.target;
-    const id = Number(target?.value);
-    if (target && Number.isFinite(id)) target.checked = selectedJobIdSet.has(id);
+    const id = Number(target.value);
+    if (Number.isFinite(id)) target.checked = selectedJobIdSet.has(id);
     showBusyToast();
     return;
   }
+
+  const allChecks = Array.from(jobsTableBody?.querySelectorAll('.job-check') || []);
+  const currentIndex = allChecks.indexOf(target);
+
+  if (event.shiftKey && lastCheckedJobIndex !== -1 && currentIndex !== -1) {
+    const start = Math.min(lastCheckedJobIndex, currentIndex);
+    const end = Math.max(lastCheckedJobIndex, currentIndex);
+    const checked = target.checked;
+    for (let i = start; i <= end; i++) {
+      allChecks[i].checked = checked;
+    }
+  }
+
+  lastCheckedJobIndex = currentIndex;
   updateBatchActionState();
 }
 
@@ -1421,31 +1566,28 @@ async function refreshAuditSummary() {
 }
 
 async function loadAuditLogs() {
-  const action = auditActionInput?.value || '';
-  const ok = auditOkInput?.value || '';
-  const limit = getClampedInt(auditLimitInput?.value, 1, 1000, 100);
-  if (auditLimitInput) auditLimitInput.value = String(limit);
-
-  const qs = new URLSearchParams({ limit: String(limit) });
-  if (action) qs.set('action', action);
-  if (ok) qs.set('ok', ok);
-
-  const res = await fetch(withApiKey('/api/audit-logs?' + qs.toString()));
-  const data = await readApiPayload(res);
   if (!auditLogsBody) throw new Error('audit_logs_table_not_found');
-  auditLogsBody.innerHTML = '';
+  auditLogsBody.innerHTML = '<tr><td colspan="6" class="text-center">⌛ 正在加载审计日志...</td></tr>';
+
+  const action = auditActionInput?.value || '';
 
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载审计日志失败'));
 
-  for (const item of (data.items || [])) {
+  const items = data.items || [];
+  if (items.length === 0) {
+    auditLogsBody.innerHTML = '<tr><td colspan="6" class="text-center">暂无审计日志</td></tr>';
+    return;
+  }
+
+  for (const item of items) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class=\"mono\">${escapeHtml(item.id)}</td>
+      <td>${renderIdCell(item.id, '日志ID')}</td>
       <td class=\"mono\">${escapeHtml(item.action)}</td>
       <td>${escapeHtml(item.ok)}</td>
-      <td class=\"mono\">${escapeHtml(item.target_id)}</td>
+      <td>${renderIdCell(item.target_id, '目标ID')}</td>
       <td class=\"mono\">${escapeHtml(JSON.stringify(item.payload || {}))}</td>
-      <td class=\"mono\">${escapeHtml(item.created_at)}</td>
+      <td class=\"mono\">${renderTimestamp(item.created_at)}</td>
     `;
     auditLogsBody.appendChild(tr);
   }
@@ -1476,11 +1618,17 @@ async function loadKnowledgeEntries() {
   knowledgeEntriesBody.innerHTML = '';
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载知识库失败'));
 
-  for (const item of (data.items || [])) {
+  const items = data.items || [];
+  if (items.length === 0) {
+    knowledgeEntriesBody.innerHTML = '<tr><td colspan="7" class="text-center">暂无知识条目</td></tr>';
+    return;
+  }
+
+  for (const item of items) {
     const tr = document.createElement('tr');
     const enabled = !!item.enabled;
     tr.innerHTML = `
-      <td class="mono">${escapeHtml(String(item.id ?? ''))}</td>
+      <td>${renderIdCell(item.id, '知识条目ID')}</td>
       <td class="mono">${escapeHtml(String(item.category || ''))}</td>
       <td>${escapeHtml(String(item.title || ''))}</td>
       <td class="comment-box">${escapeHtml(String(item.content || ''))}</td>
@@ -1539,6 +1687,11 @@ async function createKnowledgeEntry() {
 
     await loadKnowledgeEntries();
     showToast('新增知识条目成功', `ID: ${data.item?.id ?? '-'}`, { tone: 'success' });
+    
+    // Clear inputs
+    if (knowledgeCategoryInput) knowledgeCategoryInput.value = '';
+    if (knowledgeTitleInput) knowledgeTitleInput.value = '';
+    if (knowledgeContentInput) knowledgeContentInput.value = '';
   } catch (error) {
     showToast('新增知识条目失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
   } finally {
@@ -1558,6 +1711,8 @@ async function disableKnowledgeEntry(entryId) {
     showToast('禁用知识条目失败', '无效 entry_id', { tone: 'error' });
     return;
   }
+
+  if (!confirm(`确定要禁用知识条目 ID: ${id} 吗？`)) return;
 
   try {
     const res = await fetch(withApiKey(`/api/admin/knowledge/${id}/disable`), { method: 'POST' });
@@ -1591,11 +1746,11 @@ async function loadGatewayLogs() {
   for (const item of (data.items || [])) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="mono">${escapeHtml(String(item.id ?? ''))}</td>
-      <td class="mono">${escapeHtml(String(item.comment_id || ''))}</td>
+      <td>${renderIdCell(item.id, '网关日志ID')}</td>
+      <td>${renderIdCell(item.comment_id, '评论ID')}</td>
       <td class="mono">${escapeHtml(String(item.source || ''))}</td>
       <td class="mono">${escapeHtml(String(item.reply_hash || ''))}</td>
-      <td class="mono">${escapeHtml(String(item.created_at || ''))}</td>
+      <td class="mono">${renderTimestamp(item.created_at)}</td>
     `;
     gatewayLogsBody.appendChild(tr);
   }
@@ -1641,6 +1796,8 @@ async function publishGatewayReply() {
     return;
   }
 
+  if (!confirm(`确定要手动发布此回复吗？\n评论 ID: ${commentId}\n回复内容: ${replyText.slice(0, 50)}${replyText.length > 50 ? '...' : ''}`)) return;
+
   setInlineButtonLoading(gatewayPublishBtn, true, '发布中...');
   try {
     const res = await fetch(withApiKey('/gateway/publish'), {
@@ -1685,6 +1842,32 @@ function roleCardByKey(key) {
   return roleCardItems.find(item => String(item.key || '').toLowerCase() === normalized) || null;
 }
 
+let lastSavedRoleCardState = null;
+
+function getRoleCardEditorState() {
+  return JSON.stringify({
+    key: String(roleCardKeyInput?.value || '').trim(),
+    name: String(roleCardNameInput?.value || '').trim(),
+    description: String(roleCardDescriptionInput?.value || '').trim(),
+    system_prompt: String(roleCardSystemPromptInput?.value || '').trim(),
+    tone: String(roleCardToneInput?.value || '').trim(),
+    constraints: String(roleCardConstraintsInput?.value || '').trim(),
+    enabled: !!roleCardEnabledInput?.checked,
+  });
+}
+
+function isRoleCardDirty() {
+  if (lastSavedRoleCardState === null) return false;
+  return getRoleCardEditorState() !== lastSavedRoleCardState;
+}
+
+function checkRoleCardUnsavedChanges() {
+  if (isRoleCardDirty()) {
+    return confirm('当前角色卡有未保存的更改，确定要放弃这些更改吗？');
+  }
+  return true;
+}
+
 function renderRoleCardEditor(item) {
   roleCardCurrentKey = String(item?.key || '').trim().toLowerCase();
   if (roleCardSelect) roleCardSelect.value = roleCardCurrentKey;
@@ -1695,6 +1878,16 @@ function renderRoleCardEditor(item) {
   if (roleCardToneInput) roleCardToneInput.value = JSON.stringify(item?.tone || {}, null, 2);
   if (roleCardConstraintsInput) roleCardConstraintsInput.value = JSON.stringify(item?.constraints || {}, null, 2);
   if (roleCardEnabledInput) roleCardEnabledInput.checked = !!item?.enabled;
+
+  // Clear validation errors
+  ['role-card-tone-error', 'role-card-constraints-error'].forEach(id => {
+    const err = document.getElementById(id);
+    if (err) err.classList.add('hidden');
+  });
+  if (roleCardToneInput) roleCardToneInput.style.borderColor = '';
+  if (roleCardConstraintsInput) roleCardConstraintsInput.style.borderColor = '';
+
+  lastSavedRoleCardState = getRoleCardEditorState();
 }
 
 function renderRoleCardOptions(activeKey = '') {
@@ -1772,6 +1965,8 @@ function newRoleCardDraft() {
     showBusyToast();
     return;
   }
+  if (!checkRoleCardUnsavedChanges()) return;
+
   roleCardCurrentKey = '';
   if (roleCardSelect) roleCardSelect.value = '';
   if (roleCardKeyInput) roleCardKeyInput.value = '';
@@ -1804,6 +1999,33 @@ function cloneRoleCard() {
   roleCardCurrentKey = '';
   if (roleCardSelect) roleCardSelect.value = '';
 }
+function validateRoleCardJson(textareaId, errorElId) {
+  const ta = document.getElementById(textareaId);
+  const err = document.getElementById(errorElId);
+  if (!ta || !err) return true;
+
+  const val = (ta.value || '').trim();
+  if (!val) {
+    err.classList.add('hidden');
+    ta.style.borderColor = '';
+    return true;
+  }
+
+  try {
+    const parsed = JSON.parse(val);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      err.classList.add('hidden');
+      ta.style.borderColor = '';
+      return true;
+    }
+    throw new Error('Must be a JSON object {}');
+  } catch (e) {
+    err.textContent = `无效 JSON: ${e.message}`;
+    err.classList.remove('hidden');
+    ta.style.borderColor = 'var(--danger)';
+    return false;
+  }
+}
 
 async function saveRoleCard() {
   if (isGlobalRefreshLocked()) {
@@ -1811,7 +2033,15 @@ async function saveRoleCard() {
     return;
   }
 
-  const key = String(roleCardKeyInput?.value || '').trim().toLowerCase();
+  const isToneOk = validateRoleCardJson('role-card-tone', 'role-card-tone-error');
+  const isConstraintsOk = validateRoleCardJson('role-card-constraints', 'role-card-constraints-error');
+
+  if (!isToneOk || !isConstraintsOk) {
+    showToast('保存失败', 'JSON 格式不正确，请检查红框提示', { tone: 'error' });
+    return;
+  }
+...
+
   const name = String(roleCardNameInput?.value || '').trim();
   if (!key || !name) {
     showToast('保存失败', 'key 和 name 必填', { tone: 'error' });
@@ -1864,6 +2094,8 @@ async function disableRoleCard() {
     showToast('禁用失败', '请先选择角色卡', { tone: 'error' });
     return;
   }
+
+  if (!confirm(`确定要禁用角色卡 "${key}" 吗？此操作将使其不再参与回复生成。`)) return;
 
   setInlineButtonLoading(roleCardDisableBtn, true, '禁用中...');
   try {
@@ -2181,6 +2413,18 @@ const gatewayPublishSourceInput = document.getElementById('gateway-publish-sourc
 const gatewayPublishForceInput = document.getElementById('gateway-publish-force');
 const gatewayPublishReplyInput = document.getElementById('gateway-publish-reply');
 const gatewayPublishBtn = document.getElementById('gateway-publish-btn');
+const gatewayReplyCharCountEl = document.getElementById('gateway-reply-char-count');
+
+function updateGatewayReplyCharCount() {
+  if (!gatewayPublishReplyInput || !gatewayReplyCharCountEl) return;
+  const len = (gatewayPublishReplyInput.value || '').length;
+  gatewayReplyCharCountEl.textContent = `${len} / 1000`;
+  gatewayReplyCharCountEl.style.color = len > 900 ? 'var(--danger)' : '';
+}
+
+if (gatewayPublishReplyInput) {
+  gatewayPublishReplyInput.addEventListener('input', updateGatewayReplyCharCount);
+}
 const commentDetailIdInput = document.getElementById('comment-detail-id');
 const commentDetailQueryBtn = document.getElementById('comment-detail-query-btn');
 const commentDetailClearBtn = document.getElementById('comment-detail-clear-btn');
@@ -2199,6 +2443,26 @@ if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(getAutoRefre
 if (dailySimpleInput && typeof prefs.dailySimple === 'boolean') dailySimpleInput.checked = prefs.dailySimple;
 if (singleRetryAutoResetForceInput) singleRetryAutoResetForceInput.checked = prefs.singleRetryAutoResetForce !== false;
 applyPublisherModeStatus(PUBLISHER_MODE);
+const backToTopBtn = document.getElementById('back-to-top');
+
+function initBackToTop() {
+  if (!backToTopBtn) return;
+  
+  window.addEventListener('scroll', () => {
+    if (window.pageYOffset > 400) {
+      backToTopBtn.classList.add('show');
+    } else {
+      backToTopBtn.classList.remove('show');
+    }
+  });
+
+  backToTopBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+}
+
+initBackToTop();
 initSideNavHighlight();
 if (autoRefreshInput && typeof prefs.autoRefreshEnabled === 'boolean') autoRefreshInput.checked = prefs.autoRefreshEnabled;
 if (autoRefreshInput?.checked) toggleAutoRefresh();
@@ -2211,7 +2475,15 @@ updateBatchActionState();
 
 if (roleCardSelect) {
   roleCardSelect.addEventListener('change', () => {
-    const item = roleCardByKey(roleCardSelect.value);
+    const nextKey = roleCardSelect.value;
+    if (!nextKey) return;
+    
+    if (!checkRoleCardUnsavedChanges()) {
+      roleCardSelect.value = roleCardCurrentKey;
+      return;
+    }
+
+    const item = roleCardByKey(nextKey);
     if (item) renderRoleCardEditor(item);
   });
 }
@@ -2237,6 +2509,59 @@ if (jobDetailIdInput) {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     queryJobDetail();
+  });
+}
+
+if (bilibiliVideoBvidInput) {
+  bilibiliVideoBvidInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addBilibiliVideo();
+    }
+  });
+}
+
+if (credentialBuvid3Input) {
+  const inputs = [credentialNameInput, credentialSessdataInput, credentialBiliJctInput, credentialBuvid3Input, credentialBuvid4Input, credentialExpiresInput];
+  inputs.forEach(input => {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        addBilibiliCredential();
+      }
+    });
+  });
+}
+
+if (knowledgeContentInput) {
+  const inputs = [knowledgeCategoryInput, knowledgeTitleInput];
+  inputs.forEach(input => {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        createKnowledgeEntry();
+      }
+    });
+  });
+}
+
+if (gatewayCommentIdInput) {
+  gatewayCommentIdInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      refreshGatewayLogs();
+    }
+  });
+}
+
+if (gatewayPublishReplyInput) {
+  [gatewayPublishCommentIdInput, gatewayPublishSourceInput, gatewayPublishReplyInput].forEach(input => {
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && (event.ctrlKey || event.metaKey || input !== gatewayPublishReplyInput)) {
+        event.preventDefault();
+        publishGatewayReply();
+      }
+    });
   });
 }
 
@@ -2389,15 +2714,15 @@ function renderBilibiliVideos(items) {
 
   bilibiliVideosBody.innerHTML = items.map(item => `
     <tr>
-      <td>${escapeHtml(item.id)}</td>
-      <td class="mono">${escapeHtml(item.bvid)}</td>
+      <td>${renderIdCell(item.id, '监控视频ID')}</td>
+      <td>${renderIdCell(item.bvid, 'BV号')}</td>
       <td>${escapeHtml(item.title || '-')}</td>
       <td>
         <span class="status-pill ${item.poll_enabled ? 'status-ok' : 'status-warning'}">
           ${item.poll_enabled ? '启用' : '禁用'}
         </span>
       </td>
-      <td>${item.last_polled_at ? formatIsoDateTime(item.last_polled_at) : '-'}</td>
+      <td>${renderTimestamp(item.last_polled_at)}</td>
       <td>
         <span class="status-pill ${item.last_poll_status === 'ok' ? 'status-ok' : item.last_poll_status === 'error' ? 'status-error' : 'status-idle'}" title="${escapeHtml(item.last_poll_error || '')}">
           ${escapeHtml(item.last_poll_status || 'unknown')}
@@ -2405,11 +2730,11 @@ function renderBilibiliVideos(items) {
       </td>
       <td>${item.last_rpid || 0}</td>
       <td>
-        <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${item.id}, ${!item.poll_enabled})">
+        <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${item.id}, ${!item.poll_enabled}, this)">
           ${item.poll_enabled ? '禁用' : '启用'}
         </button>
-        <button class="btn-ghost btn-sm" onclick="syncBilibiliVideo(${item.id})">同步</button>
-        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliVideo(${item.id})">删除</button>
+        <button class="btn-ghost btn-sm" onclick="syncBilibiliVideo(${item.id}, this)">同步</button>
+        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliVideo(${item.id}, this)">删除</button>
       </td>
     </tr>
   `).join('');
@@ -2456,7 +2781,8 @@ async function addBilibiliVideo() {
   }
 }
 
-async function toggleBilibiliVideoPoll(videoId, enable) {
+async function toggleBilibiliVideoPoll(videoId, enable, btn) {
+  if (btn) setInlineButtonLoading(btn, true, enable ? '启用中...' : '禁用中...');
   try {
     const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}/toggle-poll`), {
       method: 'POST',
@@ -2475,10 +2801,13 @@ async function toggleBilibiliVideoPoll(videoId, enable) {
     refreshBilibiliStatus();
   } catch (error) {
     showToast('操作失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    if (btn) setInlineButtonLoading(btn, false);
   }
 }
 
-async function syncBilibiliVideo(videoId) {
+async function syncBilibiliVideo(videoId, btn) {
+  if (btn) setInlineButtonLoading(btn, true, '同步中...');
   try {
     const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}/sync`), {
       method: 'POST',
@@ -2494,11 +2823,14 @@ async function syncBilibiliVideo(videoId) {
     refreshBilibiliVideos();
   } catch (error) {
     showToast('同步失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    if (btn) setInlineButtonLoading(btn, false);
   }
 }
 
-async function deleteBilibiliVideo(videoId) {
+async function deleteBilibiliVideo(videoId, btn) {
   if (!confirm('确定要删除此视频监控吗？')) return;
+  if (btn) setInlineButtonLoading(btn, true, '删除中...');
 
   try {
     const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}`), {
@@ -2516,6 +2848,8 @@ async function deleteBilibiliVideo(videoId) {
     refreshBilibiliStatus();
   } catch (error) {
     showToast('删除失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    if (btn) setInlineButtonLoading(btn, false);
   }
 }
 
@@ -2592,8 +2926,8 @@ function renderBilibiliCredentials(items) {
   }
 
   bilibiliCredentialsBody.innerHTML = items.map(item => `
-    <tr>
-      <td>${escapeHtml(item.id)}</td>
+    <tr class="${item.is_active ? 'row-active' : ''}">
+      <td>${renderIdCell(item.id, '凭证ID')}</td>
       <td>${escapeHtml(item.name)}</td>
       <td>
         <span class="status-pill ${item.is_active ? 'status-ok' : 'status-warning'}">
@@ -2605,10 +2939,10 @@ function renderBilibiliCredentials(items) {
       <td>${item.expires_at ? formatIsoDateTime(item.expires_at) : '-'}</td>
       <td>${item.last_used_at ? formatIsoDateTime(item.last_used_at) : '-'}</td>
       <td>
-        <button class="btn-ghost btn-sm" onclick="activateBilibiliCredential(${item.id})" ${item.is_active ? 'disabled' : ''}>
+        <button class="btn-ghost btn-sm" onclick="activateBilibiliCredential(${item.id}, this)" ${item.is_active ? 'disabled' : ''}>
           激活
         </button>
-        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliCredential(${item.id})">删除</button>
+        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliCredential(${item.id}, this)">删除</button>
       </td>
     </tr>
   `).join('');
@@ -2681,7 +3015,8 @@ async function addBilibiliCredential() {
   }
 }
 
-async function activateBilibiliCredential(credentialId) {
+async function activateBilibiliCredential(credentialId, btn) {
+  if (btn) setInlineButtonLoading(btn, true, '激活中...');
   try {
     const res = await fetch(withApiKey(`/api/admin/bilibili/credentials/${credentialId}/activate`), {
       method: 'POST',
@@ -2695,13 +3030,17 @@ async function activateBilibiliCredential(credentialId) {
 
     showToast('激活成功', '凭证已激活', { tone: 'success' });
     refreshBilibiliCredentials();
+    refreshBilibiliStatus();
   } catch (error) {
     showToast('激活失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    if (btn) setInlineButtonLoading(btn, false);
   }
 }
 
-async function deleteBilibiliCredential(credentialId) {
+async function deleteBilibiliCredential(credentialId, btn) {
   if (!confirm('确定要删除此凭证吗？')) return;
+  if (btn) setInlineButtonLoading(btn, true, '删除中...');
 
   try {
     const res = await fetch(withApiKey(`/api/admin/bilibili/credentials/${credentialId}`), {
@@ -2716,8 +3055,11 @@ async function deleteBilibiliCredential(credentialId) {
 
     showToast('删除成功', '凭证已删除', { tone: 'success' });
     refreshBilibiliCredentials();
+    refreshBilibiliStatus();
   } catch (error) {
     showToast('删除失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
+  } finally {
+    if (btn) setInlineButtonLoading(btn, false);
   }
 }
 

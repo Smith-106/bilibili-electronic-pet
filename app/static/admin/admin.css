@@ -8,6 +8,7 @@
       --line: #2a3c63;
       --line-strong: #3a568c;
       --primary: #6b92ff;
+      --primary-rgb: 107, 146, 255;
       --primary-hover: #87abff;
       --success: #2ec98a;
       --warning: #f2be5b;
@@ -19,7 +20,40 @@
       --sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
-    * { box-sizing: border-box; }
+    html {
+      scroll-behavior: smooth;
+    }
+
+    .skip-link {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      background: var(--primary);
+      color: var(--bg);
+      padding: 8px;
+      z-index: 2000;
+      transition: top 0.2s;
+      text-decoration: none;
+      font-weight: bold;
+    }
+
+    .skip-link:focus {
+      top: 0;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    tr {
+      animation: fadeIn 0.3s ease-out;
+    }
 
     body {
       font-family: var(--sans);
@@ -153,6 +187,7 @@
       align-items: center;
       gap: 10px;
       letter-spacing: 0.2px;
+      scroll-margin-top: 24px;
     }
 
     .subsection-title {
@@ -346,6 +381,60 @@
       overflow: auto;
     }
     .card-value-small { font-size: 14px; }
+
+    .error-text {
+      color: #ff4d4f;
+      font-size: 12px;
+      margin-top: 4px;
+      display: block;
+    }
+
+    .row-active {
+      background-color: rgba(var(--primary-rgb), 0.1);
+      box-shadow: inset 4px 0 0 var(--primary);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .back-to-top {
+      position: fixed;
+      right: 30px;
+      bottom: 30px;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: var(--bg-elevated);
+      border: 1px solid var(--line-strong);
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 250ms, visibility 250ms, transform 200ms, background-color 200ms;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+      text-decoration: none;
+      font-size: 24px;
+    }
+
+    .back-to-top.show {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .back-to-top:hover {
+      background: var(--line);
+      transform: translateY(-4px);
+      color: var(--primary-hover);
+    }
+
+    .back-to-top:active {
+      transform: translateY(0);
+    }
 
 
     .toast {

@@ -32,6 +32,7 @@ def admin_page():
     <link rel="stylesheet" href="/static/admin/admin.css" />
 </head>
 <body>
+  <a href="#admin-main-content" class="skip-link">跳到主要内容</a>
   <div class="admin-layout">
     <aside class="side-nav mono" aria-label="管理导航">
       <div class="side-nav-title">Admin Navigation</div>
@@ -46,7 +47,7 @@ def admin_page():
       <a href="#section-audit">审计</a>
     </aside>
 
-    <main class="admin-main">
+    <main class="admin-main" id="admin-main-content">
   <div class="shell">
     <h1>Bili Pet 管理页</h1>
     <p class="page-subtitle">统一工作台：系统概览、角色卡、知识库、任务队列、发布网关与审计全链路可视化。</p>
@@ -102,21 +103,23 @@ def admin_page():
     </div>
 
     <div id="help-panel" class="help-panel">
-      <strong>操作说明</strong>
+      <strong>操作与快捷键说明</strong>
       <ul>
-        <li><span class="mono">r</span>：全量刷新（输入框聚焦时不触发）</li>
-        <li><span class="mono">?</span>：显示/隐藏本面板</li>
-        <li><span class="mono">Esc</span>：关闭帮助面板/关闭提示框</li>
-        <li>状态标签为“部分失败”时，表示仅部分模块刷新失败，可点击状态查看详情</li>
-        <li>自动刷新开启后会锁定秒数输入框</li>
-        <li>秒数输入框按回车：触发全量刷新（仅自动刷新关闭时）</li>
-        <li>支持偏好导入/导出 JSON，导入时自动做版本兼容迁移</li>
+        <li><span class="mono">r</span> / <span class="mono">R</span>：全量刷新面板（非输入框聚焦时）</li>
+        <li><span class="mono">?</span> / <span class="mono">/</span>：显示/隐藏本帮助面板</li>
+        <li><span class="mono">Esc</span>：关闭帮助面板、提示框或清空临时状态</li>
+        <li><span class="mono">Enter</span>：在多数搜索/表单输入框中按回车可直接提交或刷新</li>
+        <li><span class="mono">Shift + Click</span>：在任务列表中支持按住 Shift 键进行多选/范围勾选</li>
+        <li><strong>Copy 按钮</strong>：ID 旁边的 Copy 按钮会有短暂的 "Copied!" 成功反馈</li>
+        <li><strong>未保存提醒</strong>：角色卡编辑器在有未保存更改时切换或新建会有二次确认</li>
+        <li><strong>时间显示</strong>：所有时间均为相对时间（如“3分钟前”），悬停可查看具体绝对时间</li>
+        <li><strong>状态查看</strong>：点击顶部“状态”标签可查看详细的刷新错误信息</li>
       </ul>
       <div class="mt-8">
         <div class="mb-6"><strong>当前偏好快照</strong></div>
         <pre id="prefs-snapshot" class="mono prefs-snapshot">{}</pre>
       </div>
-      <div class="mt-8"><button onclick="toggleHelpPanel()" aria-label="关闭帮助面板">关闭</button></div>
+      <div class="mt-8"><button class="btn-primary" onclick="toggleHelpPanel()" aria-label="关闭帮助面板">知道了</button></div>
     </div>
   </div>
 
@@ -142,32 +145,34 @@ def admin_page():
       <span class="mono">兼容档位请继续使用上方“应用角色卡(旧)”。</span>
     </div>
     <div class="toolbar">
-      <label class="mono">列表</label>
+      <label for="role-card-select" class="mono">列表</label>
       <select id="role-card-select" aria-label="角色卡列表选择"></select>
-      <label class="mono">key</label>
+      <label for="role-card-key" class="mono">key</label>
       <input id="role-card-key" type="text" placeholder="comfort_plus" aria-label="角色卡 key" />
-      <label class="mono">name</label>
+      <label for="role-card-name" class="mono">name</label>
       <input id="role-card-name" type="text" placeholder="安抚陪伴增强" aria-label="角色卡名称" />
       <label><input id="role-card-enabled" type="checkbox" checked aria-label="角色卡启用状态" /> enabled</label>
     </div>
     <div class="toolbar toolbar-top">
       <div class="flex-1-280">
-        <div class="mono field-label">description</div>
+        <label for="role-card-description" class="mono field-label">description</label>
         <textarea id="role-card-description" class="ta-h-70" aria-label="角色卡描述"></textarea>
       </div>
       <div class="flex-2-320">
-        <div class="mono field-label">system_prompt</div>
+        <label for="role-card-system-prompt" class="mono field-label">system_prompt</label>
         <textarea id="role-card-system-prompt" class="ta-h-120" aria-label="角色卡系统提示词"></textarea>
       </div>
     </div>
     <div class="toolbar toolbar-top">
       <div class="flex-1-280">
-        <div class="mono field-label">tone (JSON)</div>
+        <label for="role-card-tone" class="mono field-label">tone (JSON)</label>
         <textarea id="role-card-tone" class="ta-h-90" aria-label="角色卡语气 JSON">{}</textarea>
+        <div id="role-card-tone-error" class="error-text mono hidden" role="alert"></div>
       </div>
       <div class="flex-1-280">
-        <div class="mono field-label">constraints (JSON)</div>
+        <label for="role-card-constraints" class="mono field-label">constraints (JSON)</label>
         <textarea id="role-card-constraints" class="ta-h-90" aria-label="角色卡约束 JSON">{}</textarea>
+        <div id="role-card-constraints-error" class="error-text mono hidden" role="alert"></div>
       </div>
     </div>
   </div>
@@ -182,7 +187,7 @@ def admin_page():
     </div>
     <div class="toolbar toolbar-top">
       <div class="flex-1-320">
-        <div class="mono field-label">content</div>
+        <label for="knowledge-content" class="mono field-label">content</label>
         <textarea id="knowledge-content" class="ta-h-90" aria-label="知识库内容"></textarea>
       </div>
     </div>
@@ -215,6 +220,7 @@ def admin_page():
 
     <h3 class="subsection-title">视频监控列表</h3>
     <div class="toolbar">
+      <label for="bilibili-video-bvid" class="field-label">添加视频监控:</label>
       <input id="bilibili-video-bvid" type="text" placeholder="BV号 (如: BV1xx411c7mD)" aria-label="视频BV号" />
       <label><input id="bilibili-video-poll-enabled" type="checkbox" checked aria-label="启用轮询" /> 启用轮询</label>
       <button id="bilibili-video-add-btn" onclick="addBilibiliVideo()" aria-label="添加视频到监控">添加视频</button>
@@ -254,12 +260,14 @@ def admin_page():
     </div>
   </div>
 
-  <h2 id="section-daily" class="section-title">近 7 天趋势</h2>
-  <div class=\"toolbar\">
-    <input id=\"daily-days\" type=\"number\" min=\"1\" max=\"60\" value=\"7\" aria-label=\"趋势统计天数\" />
-    <label><input id=\"daily-simple\" type=\"checkbox\" onchange=\"onDailySimpleChange()\" aria-label=\"切换趋势简版视图\" /> 简版视图</label>
-    <button id=\"daily-refresh-btn\" onclick=\"refreshDailyMetrics()\" aria-label=\"刷新近7天趋势数据\">刷新趋势</button>
+  <h2 id="section-daily" class="section-title">趋势统计</h2>
+  <div class="toolbar">
+    <label for="daily-days" class="mono">天数</label>
+    <input id="daily-days" type="number" min="1" max="60" value="7" aria-label="趋势统计天数" />
+    <label><input id="daily-simple" type="checkbox" onchange="onDailySimpleChange()" aria-label="切换趋势简版视图" /> 简版视图</label>
+    <button id="daily-refresh-btn" onclick="refreshDailyMetrics()" aria-label="刷新趋势数据">刷新趋势</button>
   </div>
+
 
   <div class=\"table-wrap\">
     <table aria-label=\"趋势统计表\">
@@ -277,6 +285,7 @@ def admin_page():
 
   <h2 id=\"section-jobs\" class=\"section-title\">任务列表</h2>
   <div class=\"toolbar\">
+    <label for=\"status\" class=\"mono\">状态</label>
     <select id=\"status\" aria-label=\"任务状态筛选\">
       <option value=\"\">全部状态</option>
       <option value=\"manual_queue\">manual_queue</option>
@@ -285,6 +294,7 @@ def admin_page():
       <option value=\"published\">published</option>
       <option value=\"skipped\">skipped</option>
     </select>
+    <label for=\"limit\" class=\"mono\">条数</label>
     <input id=\"limit\" type=\"number\" min=\"1\" max=\"200\" value=\"30\" aria-label=\"任务列表返回条数\" />
     <button id=\"jobs-refresh-btn\" onclick=\"refreshJobs()\" aria-label=\"刷新任务列表\">刷新</button>
     <button id=\"batch-approve-btn\" onclick=\"batchApprove()\" disabled aria-label=\"批量审批选中任务\">批量 Approve</button>
@@ -307,6 +317,7 @@ def admin_page():
   <h2 id=\"section-single-diagnostics\" class=\"section-title\">单项诊断 / 操作</h2>
   <div class=\"panel\">
     <div class=\"toolbar\">
+      <label for=\"comment-detail-id\" class=\"mono\">评论ID</label>
       <input id=\"comment-detail-id\" type=\"text\" placeholder=\"comment_id\" aria-label=\"评论详情查询 comment_id\" />
       <button id=\"comment-detail-query-btn\" onclick=\"queryCommentDetail()\" aria-label=\"查询指定评论详情\">查询评论详情</button>
       <button id=\"comment-detail-clear-btn\" onclick=\"clearCommentDetailResult()\" aria-label=\"清空评论详情结果\">清空</button>
@@ -316,6 +327,7 @@ def admin_page():
     <div id=\"comment-detail-meta\" class=\"mono\" role=\"status\" aria-live=\"polite\">上次查询: -</div>
 
     <div class=\"toolbar toolbar-mt-12\">
+      <label for=\"job-detail-id\" class=\"mono\">任务ID</label>
       <input id=\"job-detail-id\" type=\"number\" min=\"1\" placeholder=\"job_id\" aria-label=\"任务详情查询 job_id\" />
       <button id=\"job-detail-query-btn\" onclick=\"queryJobDetail()\" aria-label=\"查询指定任务详情\">查询任务详情</button>
       <button id=\"job-detail-clear-btn\" onclick=\"clearJobDetailResult()\" aria-label=\"清空任务详情结果\">清空</button>
@@ -325,6 +337,7 @@ def admin_page():
     <div id=\"job-detail-meta\" class=\"mono\" role=\"status\" aria-live=\"polite\">上次查询: -</div>
 
     <div class=\"toolbar toolbar-mt-12\">
+      <label for=\"single-retry-job-id\" class=\"mono\">重试ID</label>
       <input id=\"single-retry-job-id\" type=\"number\" min=\"1\" placeholder=\"job_id\" aria-label=\"单任务重试 job_id\" />
       <label><input id=\"single-retry-force-long\" type=\"checkbox\" aria-label=\"单任务重试启用 force_long\" /> force_long</label>
       <label><input id=\"single-retry-auto-reset-force\" type=\"checkbox\" checked aria-label=\"单任务重试成功后重置 force_long\" /> 成功后重置 force_long</label>
@@ -343,8 +356,11 @@ def admin_page():
     </div>
     <div class=\"toolbar toolbar-top\">
       <div class=\"flex-1-320\">
-        <div class=\"mono field-label\">reply_text</div>
-        <textarea id=\"gateway-publish-reply\" class=\"ta-h-90\" placeholder=\"输入要发布的回复内容\" aria-label=\"手动发布回复内容\"></textarea>
+        <div class=\"mono field-label\" style=\"display: flex; justify-content: space-between;\">
+          <span>reply_text</span>
+          <span id=\"gateway-reply-char-count\" style=\"font-size: 11px; opacity: 0.8;\">0 / 1000</span>
+        </div>
+        <textarea id=\"gateway-publish-reply\" class=\"ta-h-90\" placeholder=\"输入要发布的回复内容\" aria-label=\"手动发布回复内容\" maxlength=\"1000\"></textarea>
       </div>
     </div>
     <div class=\"toolbar\">
@@ -411,6 +427,8 @@ def admin_page():
       <button class="toast-btn" onclick="hideToast(event)" aria-label="关闭提示框">关闭</button>
     </div>
   </div>
+
+  <a href="#" class="back-to-top" id="back-to-top" aria-label="返回顶部">↑</a>
 
     </main>
   </div>
