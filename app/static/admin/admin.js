@@ -810,14 +810,14 @@ async function loadJobs() {
     const tr = document.createElement('tr');
     const allow = canApprove(item.status);
     tr.innerHTML = `
-      <td><input type=\"checkbox\" class=\"job-check\" value=\"${jobId}\" ${selectedJobIdSet.has(jobId) ? 'checked' : ''}></td>
+      <td><input type=\"checkbox\" class=\"job-check\" value=\"${jobId}\" aria-label=\"选择任务 ${jobId}\" ${selectedJobIdSet.has(jobId) ? 'checked' : ''}></td>
       <td>${renderIdCell(jobId, '任务ID')}</td>
       <td>${renderStatusBadge(item.status)}</td>
       <td>${renderIdCell(item.comment_id, '评论ID')}</td>
       <td class=\"comment-box\">${escapeHtml(item.comment_content)}</td>
-      <td><textarea id=\"reply-${jobId}\" ${locked ? 'disabled' : ''}>${escapeHtml(item.reply_text)}</textarea></td>
+      <td><textarea id=\"reply-${jobId}\" aria-label=\"任务 ${jobId} 的回复内容\" ${locked ? 'disabled' : ''}>${escapeHtml(item.reply_text)}</textarea></td>
       <td>${renderRiskFlags(item.risk_flags)}</td>
-      <td>${allow ? `<button class=\"approve-btn\" onclick=\"approveJob(${jobId}, this)\" ${locked ? 'disabled' : ''}>Approve</button>` : '-'}</td>
+      <td>${allow ? `<button class=\"approve-btn\" aria-label=\"批准任务 ${jobId}\" onclick=\"approveJob(${jobId}, this)\" ${locked ? 'disabled' : ''}>Approve</button>` : '-'}</td>
     `;
     jobsTableBody.appendChild(tr);
   }
