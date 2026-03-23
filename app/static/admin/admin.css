@@ -581,6 +581,13 @@
       font-size: 13px;
     }
 
+    .btn-sm.btn-copy-inline {
+      min-height: 24px;
+      padding: 2px 6px;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+
     .btn-danger {
       background: linear-gradient(180deg, #b54a52, #943a42);
       border-color: #c25a62;
