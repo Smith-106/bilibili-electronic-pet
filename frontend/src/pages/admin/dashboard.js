@@ -22,7 +22,7 @@ export async function renderAdminDashboard(container) {
         api.getGatewayLogs(),
         api.getAuditSummary(7),
       ]);
-      
+
       const snapshot = {
         overview: ov,
         jobs_count: Array.isArray(jb?.items) ? jb.items.length : 0,
@@ -36,18 +36,32 @@ export async function renderAdminDashboard(container) {
           <h2>Admin Dashboard</h2>
           <button id="ref-btn" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Refresh</button>
         </div>
-        <pre id="admin-dashboard-json" style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;">${JSON.stringify(snapshot, null, 2)}</pre>
+        <pre id="admin-dashboard-json" style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
       `;
-      container.querySelector('#ref-btn').onclick = load;
+      const dashboardJsonEl = container.querySelector('#admin-dashboard-json');
+      if (dashboardJsonEl) {
+        dashboardJsonEl.textContent = JSON.stringify(snapshot, null, 2);
+      }
+      const refreshBtn = container.querySelector('#ref-btn');
+      if (refreshBtn) {
+        refreshBtn.onclick = load;
+      }
     } catch (err) {
       container.innerHTML = `
         <h2>Admin Dashboard</h2>
         <div role="alert" style="border: 1px solid #ffcfcf; background: #fff5f5; padding: 1rem; border-radius: 4px;">
-          <p style="color: #d32f2f; margin: 0 0 1rem 0;"><strong>❌ Error:</strong> ${err.message || err}</p>
+          <p style="color: #d32f2f; margin: 0 0 1rem 0;"><strong>❌ Error:</strong> <span id="admin-dashboard-error"></span></p>
           <button id="ret-btn" aria-label="Retry loading dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Retry</button>
         </div>
       `;
-      container.querySelector('#ret-btn').onclick = load;
+      const errorEl = container.querySelector('#admin-dashboard-error');
+      if (errorEl) {
+        errorEl.textContent = String(err?.message || err || 'request_failed');
+      }
+      const retryBtn = container.querySelector('#ret-btn');
+      if (retryBtn) {
+        retryBtn.onclick = load;
+      }
     }
   };
 
