@@ -2,17 +2,70 @@ function canApprove(status) {
   return ['manual_queue', 'blocked', 'dedupe_skipped'].includes(status);
 }
 
-function getApiKey() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('api_key') || '';
+const ADMIN_API_KEY_STORAGE_KEY = 'bili_pet_admin_api_key';
+
+function getAdminApiKey() {
+  const value = sessionStorage.getItem(ADMIN_API_KEY_STORAGE_KEY) || '';
+  return String(value || '').trim();
 }
 
-function withApiKey(path) {
-  const key = getApiKey();
-  if (!key) return path;
-  const sep = path.includes('?') ? '&' : '?';
-  return `${path}${sep}api_key=${encodeURIComponent(key)}`;
+function setAdminApiKey(value) {
+  const normalized = String(value || '').trim();
+  if (!normalized) {
+    sessionStorage.removeItem(ADMIN_API_KEY_STORAGE_KEY);
+    return '';
+  }
+  sessionStorage.setItem(ADMIN_API_KEY_STORAGE_KEY, normalized);
+  return normalized;
 }
+
+function ensureAdminApiKey() {
+  const existing = getAdminApiKey();
+  if (existing) return existing;
+  const entered = window.prompt('请输入 Admin API Key（仅保存在当前标签页会话中）', '');
+  return setAdminApiKey(entered || '');
+}
+
+function buildAdminHeaders(headers = undefined) {
+  const next = new Headers(headers || undefined);
+  const key = ensureAdminApiKey();
+  if (key && !next.has('x-api-key')) {
+    next.set('x-api-key', key);
+  }
+  return next;
+}
+
+async function adminFetch(path, options = {}) {
+  const init = { ...options, headers: buildAdminHeaders(options.headers) };
+  return fetch(path, init);
+}
+
+async function downloadWithAdminAuth(path, fallbackFilename) {
+  const res = await adminFetch(path);
+  const data = await res.blob();
+  if (!res.ok) {
+    let detail = '下载失败';
+    try {
+      detail = await data.text();
+    } catch (_) {
+      detail = '下载失败';
+    }
+    throw new Error(detail || '下载失败');
+  }
+
+  const header = res.headers.get('content-disposition') || '';
+  const match = header.match(/filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i);
+  const filename = decodeURIComponent(match?.[1] || match?.[2] || fallbackFilename);
+  const url = URL.createObjectURL(data);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 
 let autoRefreshTimer = null;
 let fullRefreshRunning = false;
@@ -673,7 +726,7 @@ function toggleAutoRefresh() {
 }
 
 async function loadOverview() {
-  const res = await fetch(withApiKey('/api/admin/overview'));
+  const res = await adminFetch('/api/admin/overview');
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载概览失败'));
 
@@ -723,7 +776,7 @@ async function loadDailyMetrics() {
   const days = getClampedInt(dailyDaysInput?.value, 1, 60, 7);
   if (dailyDaysInput) dailyDaysInput.value = String(days);
   const simple = !!dailySimpleInput?.checked;
-  const res = await fetch(withApiKey(`/api/metrics/daily?days=${encodeURIComponent(days)}`));
+  const res = await adminFetch(`/api/metrics/daily?days=${encodeURIComponent(days)}`);
   const data = await readApiPayload(res);
   if (!dailyMetricsBody) throw new Error('daily_metrics_table_not_found');
   if (dailyHeadFull && dailyHeadSimple) {
@@ -780,7 +833,7 @@ async function loadJobs() {
   if (jobsLimitInput) jobsLimitInput.value = String(limit);
   const qs = new URLSearchParams({ limit: String(limit) });
   if (status) qs.set('status', status);
-  const res = await fetch(withApiKey('/api/admin/jobs?' + qs.toString()));
+  const res = await adminFetch('/api/admin/jobs?' + qs.toString());
   const data = await readApiPayload(res);
   if (!jobsTableBody) throw new Error('jobs_table_not_found');
   jobsTableBody.innerHTML = '';
@@ -979,7 +1032,7 @@ async function queryCommentDetail(options = {}) {
 
   setInlineButtonLoading(commentDetailQueryBtn, true, '查询中...');
   try {
-    const res = await fetch(withApiKey(`/api/comments/${encodeURIComponent(commentId)}`));
+    const res = await adminFetch(`/api/comments/${encodeURIComponent(commentId)}`);
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       const errorText = getErrorText(data, '请求失败');
@@ -1030,7 +1083,7 @@ async function queryJobDetail(options = {}) {
 
   setInlineButtonLoading(jobDetailQueryBtn, true, '查询中...');
   try {
-    const res = await fetch(withApiKey(`/api/jobs/${jobId}`));
+    const res = await adminFetch(`/api/jobs/${jobId}`);
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       const errorText = getErrorText(data, '请求失败');
@@ -1080,7 +1133,7 @@ async function retrySingleJob() {
   updateBatchActionState();
   setInlineButtonLoading(singleRetryBtn, true, '重试中...');
   try {
-    const res = await fetch(withApiKey(`/api/jobs/${jobId}/retry`), {
+    const res = await adminFetch(`/api/jobs/${jobId}/retry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ force_long: !!singleRetryForceLongInput?.checked }),
@@ -1371,7 +1424,7 @@ async function approveJob(jobId, triggerBtn = null) {
       return;
     }
     const txt = replyInput.value;
-    const res = await fetch(withApiKey(`/api/jobs/${jobId}/approve`), {
+    const res = await adminFetch(`/api/jobs/${jobId}/approve`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ override_reply_text: txt })
@@ -1412,7 +1465,7 @@ async function batchApprove() {
   try {
     const jobIds = getCheckedJobIds();
     if (!jobIds.length) return showToast('批量审批', '请先勾选要审批的任务');
-    const res = await fetch(withApiKey('/api/jobs/approve-batch'), {
+    const res = await adminFetch('/api/jobs/approve-batch', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ job_ids: jobIds })
@@ -1453,7 +1506,7 @@ async function batchRetry() {
   try {
     const jobIds = getCheckedJobIds();
     if (!jobIds.length) return showToast('批量重试', '请先勾选要重试的任务');
-    const res = await fetch(withApiKey('/api/jobs/retry-batch'), {
+    const res = await adminFetch('/api/jobs/retry-batch', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ job_ids: jobIds, force_long: false })
@@ -1482,7 +1535,7 @@ async function batchRetry() {
   }
 }
 
-function exportCsv() {
+async function exportCsv() {
   if (isGlobalRefreshLocked()) {
     showBusyToast();
     return;
@@ -1492,8 +1545,12 @@ function exportCsv() {
   if (jobsLimitInput) jobsLimitInput.value = String(limit);
   const qs = new URLSearchParams({ limit: String(limit) });
   if (status) qs.set('status', status);
-  const win = window.open(withApiKey('/api/export/jobs.csv?' + qs.toString()), '_blank');
-  if (!win) showToast('导出提示', '浏览器拦截了新窗口，请允许弹窗后重试');
+  try {
+    await downloadWithAdminAuth('/api/export/jobs.csv?' + qs.toString(), 'jobs.csv');
+    showToast('导出完成', '任务 CSV 已下载', { tone: 'success' });
+  } catch (error) {
+    showToast('导出失败', getErrorText(error, '下载失败'), { copyable: true, tone: 'error' });
+  }
 }
 
 async function refreshAuditLogs() {
@@ -1540,7 +1597,7 @@ async function loadAuditSummary() {
   if (action) qs.set('action', action);
   if (ok) qs.set('ok', ok);
 
-  const res = await fetch(withApiKey('/api/admin/audit/summary?' + qs.toString()));
+  const res = await adminFetch('/api/admin/audit/summary?' + qs.toString());
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载审计摘要失败'));
 
@@ -1569,7 +1626,16 @@ async function loadAuditLogs() {
   auditLogsBody.innerHTML = '<tr><td colspan="6" class="text-center">⌛ 正在加载审计日志...</td></tr>';
 
   const action = auditActionInput?.value || '';
+  const ok = auditOkInput?.value || '';
+  const limit = getClampedInt(auditLimitInput?.value, 1, 1000, 100);
+  if (auditLimitInput) auditLimitInput.value = String(limit);
 
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (action) qs.set('action', action);
+  if (ok) qs.set('ok', ok);
+
+  const res = await adminFetch('/api/audit-logs?' + qs.toString());
+  const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载审计日志失败'));
 
   const items = data.items || [];
@@ -1592,7 +1658,7 @@ async function loadAuditLogs() {
   }
 }
 
-function exportAuditCsv() {
+async function exportAuditCsv() {
   if (isGlobalRefreshLocked()) {
     showBusyToast();
     return;
@@ -1606,12 +1672,16 @@ function exportAuditCsv() {
   if (action) qs.set('action', action);
   if (ok) qs.set('ok', ok);
 
-  const win = window.open(withApiKey('/api/export/audit-logs.csv?' + qs.toString()), '_blank');
-  if (!win) showToast('导出提示', '浏览器拦截了新窗口，请允许弹窗后重试');
+  try {
+    await downloadWithAdminAuth('/api/export/audit-logs.csv?' + qs.toString(), 'audit-logs.csv');
+    showToast('导出完成', '审计日志 CSV 已下载', { tone: 'success' });
+  } catch (error) {
+    showToast('导出失败', getErrorText(error, '下载失败'), { copyable: true, tone: 'error' });
+  }
 }
 
 async function loadKnowledgeEntries() {
-  const res = await fetch(withApiKey('/api/admin/knowledge'));
+  const res = await adminFetch('/api/admin/knowledge');
   const data = await readApiPayload(res);
   if (!knowledgeEntriesBody) throw new Error('knowledge_table_not_found');
   knowledgeEntriesBody.innerHTML = '';
@@ -1673,7 +1743,7 @@ async function createKnowledgeEntry() {
 
   setInlineButtonLoading(knowledgeCreateBtn, true, '新增中...');
   try {
-    const res = await fetch(withApiKey('/api/admin/knowledge'), {
+    const res = await adminFetch('/api/admin/knowledge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ category, title, content }),
@@ -1714,7 +1784,7 @@ async function disableKnowledgeEntry(entryId) {
   if (!confirm(`确定要禁用知识条目 ID: ${id} 吗？`)) return;
 
   try {
-    const res = await fetch(withApiKey(`/api/admin/knowledge/${id}/disable`), { method: 'POST' });
+    const res = await adminFetch(`/api/admin/knowledge/${id}/disable`, { method: 'POST' });
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       showToast('禁用知识条目失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
@@ -1736,7 +1806,7 @@ async function loadGatewayLogs() {
   const qs = new URLSearchParams({ limit: String(limit) });
   if (commentId) qs.set('comment_id', commentId);
 
-  const res = await fetch(withApiKey('/api/admin/gateway/logs?' + qs.toString()));
+  const res = await adminFetch('/api/admin/gateway/logs?' + qs.toString());
   const data = await readApiPayload(res);
   if (!gatewayLogsBody) throw new Error('gateway_logs_table_not_found');
   gatewayLogsBody.innerHTML = '';
@@ -1799,7 +1869,7 @@ async function publishGatewayReply() {
 
   setInlineButtonLoading(gatewayPublishBtn, true, '发布中...');
   try {
-    const res = await fetch(withApiKey('/gateway/publish'), {
+    const res = await adminFetch('/gateway/publish', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1908,7 +1978,7 @@ function renderRoleCardOptions(activeKey = '') {
 }
 
 async function loadRoleCards() {
-  const res = await fetch(withApiKey('/api/admin/role-cards'));
+  const res = await adminFetch('/api/admin/role-cards');
   const data = await readApiPayload(res);
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载角色卡失败'));
 
@@ -2063,7 +2133,7 @@ async function saveRoleCard() {
 
   setInlineButtonLoading(roleCardSaveBtn, true, '保存中...');
   try {
-    const res = await fetch(withApiKey(endpoint), {
+    const res = await adminFetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -2098,7 +2168,7 @@ async function disableRoleCard() {
 
   setInlineButtonLoading(roleCardDisableBtn, true, '禁用中...');
   try {
-    const res = await fetch(withApiKey(`/api/admin/role-cards/${encodeURIComponent(key)}/disable`), { method: 'POST' });
+    const res = await adminFetch(`/api/admin/role-cards/${encodeURIComponent(key)}/disable`, { method: 'POST' });
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       showToast('角色卡禁用失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
@@ -2126,7 +2196,7 @@ async function activateRoleCard() {
 
   setInlineButtonLoading(roleCardActivateBtn, true, '激活中...');
   try {
-    const res = await fetch(withApiKey(`/api/admin/role-cards/${encodeURIComponent(key)}/activate`), { method: 'POST' });
+    const res = await adminFetch(`/api/admin/role-cards/${encodeURIComponent(key)}/activate`, { method: 'POST' });
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       showToast('角色卡激活失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
@@ -2154,7 +2224,7 @@ async function applyStyleProfile() {
 
   setInlineButtonLoading(styleProfileApplyBtn, true, '应用中...');
   try {
-    const res = await fetch(withApiKey('/api/admin/style-profile'), {
+    const res = await adminFetch('/api/admin/style-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ style_profile: profile }),
@@ -2181,7 +2251,7 @@ async function refreshStyleProfile() {
 
   setInlineButtonLoading(styleProfileRefreshBtn, true, '读取中...');
   try {
-    const res = await fetch(withApiKey('/api/admin/style-profile'));
+    const res = await adminFetch('/api/admin/style-profile');
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       showToast('风格读取失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
@@ -2210,7 +2280,7 @@ async function applyRoleProfile() {
 
   setInlineButtonLoading(roleProfileApplyBtn, true, '应用中...');
   try {
-    const res = await fetch(withApiKey('/api/admin/role-profile'), {
+    const res = await adminFetch('/api/admin/role-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ role_profile: profile }),
@@ -2237,7 +2307,7 @@ async function refreshRoleProfile() {
 
   setInlineButtonLoading(roleProfileRefreshBtn, true, '读取中...');
   try {
-    const res = await fetch(withApiKey('/api/admin/role-profile'));
+    const res = await adminFetch('/api/admin/role-profile');
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) {
       showToast('角色卡读取失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
@@ -2615,7 +2685,7 @@ async function refreshBilibiliStatus() {
   updateBilibiliStatusIndicator('loading', '加载中...');
 
   try {
-    const res = await fetch(withApiKey('/api/admin/bilibili/status'));
+    const res = await adminFetch('/api/admin/bilibili/status');
     const data = await readApiPayload(res);
 
     if (!res.ok || !data.ok) {
@@ -2686,7 +2756,7 @@ async function refreshBilibiliVideos() {
   setInlineButtonLoading(bilibiliVideosRefreshBtn, true, '刷新中...');
 
   try {
-    const res = await fetch(withApiKey('/api/admin/bilibili/videos'));
+    const res = await adminFetch('/api/admin/bilibili/videos');
     const data = await readApiPayload(res);
 
     if (!res.ok || !data.ok) {
@@ -2757,7 +2827,7 @@ async function addBilibiliVideo() {
   setInlineButtonLoading(bilibiliVideoAddBtn, true, '添加中...');
 
   try {
-    const res = await fetch(withApiKey('/api/admin/bilibili/videos'), {
+    const res = await adminFetch('/api/admin/bilibili/videos', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ bvid, poll_enabled: pollEnabled }),
@@ -2783,7 +2853,7 @@ async function addBilibiliVideo() {
 async function toggleBilibiliVideoPoll(videoId, enable, btn) {
   if (btn) setInlineButtonLoading(btn, true, enable ? '启用中...' : '禁用中...');
   try {
-    const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}/toggle-poll`), {
+    const res = await adminFetch(`/api/admin/bilibili/videos/${videoId}/toggle-poll`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ poll_enabled: enable }),
@@ -2808,7 +2878,7 @@ async function toggleBilibiliVideoPoll(videoId, enable, btn) {
 async function syncBilibiliVideo(videoId, btn) {
   if (btn) setInlineButtonLoading(btn, true, '同步中...');
   try {
-    const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}/sync`), {
+    const res = await adminFetch(`/api/admin/bilibili/videos/${videoId}/sync`, {
       method: 'POST',
     });
     const data = await readApiPayload(res);
@@ -2832,7 +2902,7 @@ async function deleteBilibiliVideo(videoId, btn) {
   if (btn) setInlineButtonLoading(btn, true, '删除中...');
 
   try {
-    const res = await fetch(withApiKey(`/api/admin/bilibili/videos/${videoId}`), {
+    const res = await adminFetch(`/api/admin/bilibili/videos/${videoId}`, {
       method: 'DELETE',
     });
     const data = await readApiPayload(res);
@@ -2861,7 +2931,7 @@ async function triggerBilibiliPoll() {
   setInlineButtonLoading(bilibiliPollBtn, true, '轮询中...');
 
   try {
-    const res = await fetch(withApiKey('/api/admin/bilibili/poll'), {
+    const res = await adminFetch('/api/admin/bilibili/poll', {
       method: 'POST',
     });
     const data = await readApiPayload(res);
@@ -2899,7 +2969,7 @@ async function refreshBilibiliCredentials() {
   setInlineButtonLoading(credentialsRefreshBtn, true, '刷新中...');
 
   try {
-    const res = await fetch(withApiKey('/api/admin/bilibili/credentials'));
+    const res = await adminFetch('/api/admin/bilibili/credentials');
     const data = await readApiPayload(res);
 
     if (!res.ok || !data.ok) {
@@ -2984,7 +3054,7 @@ async function addBilibiliCredential() {
     if (buvid4) payload.buvid4 = buvid4;
     if (expiresAt) payload.expires_at = expiresAt;
 
-    const res = await fetch(withApiKey('/api/admin/bilibili/credentials'), {
+    const res = await adminFetch('/api/admin/bilibili/credentials', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -3017,7 +3087,7 @@ async function addBilibiliCredential() {
 async function activateBilibiliCredential(credentialId, btn) {
   if (btn) setInlineButtonLoading(btn, true, '激活中...');
   try {
-    const res = await fetch(withApiKey(`/api/admin/bilibili/credentials/${credentialId}/activate`), {
+    const res = await adminFetch(`/api/admin/bilibili/credentials/${credentialId}/activate`, {
       method: 'POST',
     });
     const data = await readApiPayload(res);
@@ -3042,7 +3112,7 @@ async function deleteBilibiliCredential(credentialId, btn) {
   if (btn) setInlineButtonLoading(btn, true, '删除中...');
 
   try {
-    const res = await fetch(withApiKey(`/api/admin/bilibili/credentials/${credentialId}`), {
+    const res = await adminFetch(`/api/admin/bilibili/credentials/${credentialId}`, {
       method: 'DELETE',
     });
     const data = await readApiPayload(res);

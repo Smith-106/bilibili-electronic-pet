@@ -923,6 +923,25 @@ def test_admin_alias_endpoints_match_legacy_contracts(client, make_comment, make
     assert short_gateway_filtered.json() == alias_gateway_filtered.json()
 
 
+def test_admin_requires_header_api_key_and_rejects_query_param(client, monkeypatch):
+    monkeypatch.setattr(settings, "api_key", "admin-secret")
+
+    missing_key = client.get("/api/admin/overview")
+    assert missing_key.status_code == 401
+    assert missing_key.json()["detail"] == "unauthorized"
+
+    query_key = client.get("/api/admin/overview?api_key=admin-secret")
+    assert query_key.status_code == 401
+    assert query_key.json()["detail"] == "unauthorized"
+
+    wrong_header = client.get("/api/admin/overview", headers={"x-api-key": "wrong"})
+    assert wrong_header.status_code == 401
+    assert wrong_header.json()["detail"] == "unauthorized"
+
+    header_key = client.get("/api/admin/overview", headers={"x-api-key": "admin-secret"})
+    assert header_key.status_code == 200
+
+
 def test_admin_static_js_uses_admin_alias_routes():
     js_path = Path(__file__).resolve().parents[1] / "static" / "admin" / "admin.js"
     js_text = js_path.read_text(encoding="utf-8")
