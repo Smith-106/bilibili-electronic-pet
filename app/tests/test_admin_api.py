@@ -206,6 +206,15 @@ def test_admin_page_template_has_no_inline_style():
 
 
 
+def test_frontend_api_client_uses_header_only_api_key_transport():
+    client_js_path = Path(__file__).resolve().parents[2] / "frontend" / "src" / "api" / "client.js"
+    client_js_text = client_js_path.read_text(encoding="utf-8")
+
+    assert "params.get('api_key')" not in client_js_text
+    assert "api_key=${" not in client_js_text
+    assert "headers.set('x-api-key', apiKey)" in client_js_text
+
+
 def test_admin_static_assets_exist_and_have_core_markers():
     static_dir = Path(__file__).resolve().parents[1] / "static" / "admin"
     css_path = static_dir / "admin.css"

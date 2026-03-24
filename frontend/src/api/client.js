@@ -1,8 +1,5 @@
 export function resolveApiKey() {
-  const fromGlobal = (window.__ADMIN_API_KEY__ || '').trim();
-  if (fromGlobal) return fromGlobal;
-  const params = new URLSearchParams(window.location.search);
-  return (params.get('api_key') || '').trim();
+  return (window.__ADMIN_API_KEY__ || '').trim();
 }
 
 export async function requestJson(path, options = {}) {
@@ -12,17 +9,7 @@ export async function requestJson(path, options = {}) {
     headers.set('x-api-key', apiKey);
   }
 
-  let url = path;
-  if (!apiKey) {
-    const params = new URLSearchParams(window.location.search);
-    const queryKey = (params.get('api_key') || '').trim();
-    if (queryKey) {
-      const sep = path.includes('?') ? '&' : '?';
-      url = `${path}${sep}api_key=${encodeURIComponent(queryKey)}`;
-    }
-  }
-
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(path, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = payload?.detail || payload?.error || response.statusText || 'request_failed';
