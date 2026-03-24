@@ -664,6 +664,31 @@ function stopAutoRefresh() {
   autoRefreshTimer = null;
 }
 
+function isPageVisible() {
+  if (typeof document.hidden !== 'boolean') return true;
+  return !document.hidden;
+}
+
+function startAutoRefreshTimer() {
+  if (!autoRefreshInput?.checked || !isPageVisible()) return;
+  const seconds = getClampedInt(autoRefreshSecondsInput?.value, 3, 300, 15);
+  if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(seconds);
+  stopAutoRefresh();
+  autoRefreshTimer = setInterval(() => {
+    queueFullRefresh({ silent: true });
+  }, seconds * 1000);
+}
+
+function onDocumentVisibilityChange() {
+  if (!autoRefreshInput?.checked) return;
+  if (!isPageVisible()) {
+    stopAutoRefresh();
+    return;
+  }
+  startAutoRefreshTimer();
+  queueFullRefresh({ silent: true });
+}
+
 function onAutoRefreshSecondsChange() {
   if (isGlobalRefreshLocked()) {
     if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(getAutoRefreshSeconds(loadPrefs().autoRefreshSeconds));
@@ -718,11 +743,7 @@ function toggleAutoRefresh() {
   if (!enabled) return;
 
   queueFullRefresh({ silent: true });
-  const seconds = getClampedInt(autoRefreshSecondsInput?.value, 3, 300, 15);
-  if (autoRefreshSecondsInput) autoRefreshSecondsInput.value = String(seconds);
-  autoRefreshTimer = setInterval(() => {
-    queueFullRefresh({ silent: true });
-  }, seconds * 1000);
+  startAutoRefreshTimer();
 }
 
 async function loadOverview() {
@@ -2636,6 +2657,10 @@ if (gatewayPublishReplyInput) {
 
 if (singleRetryAutoResetForceInput) {
   singleRetryAutoResetForceInput.addEventListener('change', onSingleRetryAutoResetForceChange);
+}
+
+if (typeof document.addEventListener === 'function' && typeof document.hidden === 'boolean') {
+  document.addEventListener('visibilitychange', onDocumentVisibilityChange);
 }
 
 if (singleRetryJobIdInput) {
