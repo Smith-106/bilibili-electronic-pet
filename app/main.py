@@ -45,8 +45,8 @@ def readiness():
         redis_client.ping()
         redis_status = {"connected": True}
         redis_client.close()
-    except Exception as e:
-        redis_status = {"connected": False, "error": str(e)}
+    except Exception:
+        redis_status = {"connected": False, "error": "redis_unavailable"}
 
     # Get settings summary
     config_status = settings.build_readiness_summary()
@@ -76,11 +76,11 @@ def readiness():
         try:
             with SessionLocal() as db:
                 bilibili_diagnostics = build_bilibili_diagnostics(db=db)
-        except Exception as e:
+        except Exception:
             bilibili_diagnostics = {
                 **bilibili_diagnostics,
                 "ready": False,
-                "blocking_reasons": [f"dependency:{str(e)}"],
+                "blocking_reasons": ["dependency:diagnostics_unavailable"],
             }
 
     checks = bilibili_diagnostics.get("checks")

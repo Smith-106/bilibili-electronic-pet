@@ -74,5 +74,5 @@ def check_database_connection() -> dict[str, bool | str]:
         with SessionLocal() as session:
             session.execute(text("SELECT 1"))
         return {"connected": True}
-    except Exception as e:
-        return {"connected": False, "error": str(e)}
+    except Exception:
+        return {"connected": False, "error": "database_unavailable"}
