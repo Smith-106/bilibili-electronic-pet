@@ -313,6 +313,7 @@ function renderTimestamp(isoString) {
 
 function renderStatusBadge(status) {
   const value = String(status || 'unknown');
+  const statusArg = JSON.stringify(value);
   let cls = 'status-badge status-badge-neutral';
   if (value === 'published') {
     cls = 'status-badge status-badge-published';
@@ -321,7 +322,7 @@ function renderStatusBadge(status) {
   } else if (value === 'blocked') {
     cls = 'status-badge status-badge-blocked';
   }
-  return `<span class="${cls} clickable" onclick="filterJobsByStatus('${escapeHtml(value)}')" title="点击筛选 ${escapeHtml(value)} 状态">${escapeHtml(value)}</span>`;
+  return `<span class="${cls} clickable" onclick="filterJobsByStatus(${statusArg})" title="点击筛选 ${escapeHtml(value)} 状态">${escapeHtml(value)}</span>`;
 }
 
 function filterJobsByStatus(status) {
@@ -511,11 +512,16 @@ async function copyText(text, label = '内容', btn = null) {
 }
 
 function renderIdCell(id, label = 'ID') {
-  const safeId = escapeHtml(String(id));
+  const idText = String(id ?? '');
+  const labelText = String(label ?? 'ID');
+  const safeId = escapeHtml(idText);
+  const safeLabel = escapeHtml(labelText);
+  const idArg = JSON.stringify(idText);
+  const labelArg = JSON.stringify(labelText);
   return `
     <div class="id-cell">
       <span class="mono">${safeId}</span>
-      <button class="btn-ghost btn-sm btn-copy-inline" onclick="copyText('${safeId}', '${label}', this)" title="复制 ${label}">Copy</button>
+      <button class="btn-ghost btn-sm btn-copy-inline" onclick="copyText(${idArg}, ${labelArg}, this)" title="复制 ${safeLabel}">Copy</button>
     </div>
   `;
 }
@@ -899,7 +905,7 @@ async function loadJobs() {
       <td class=\"comment-box\">${escapeHtml(item.comment_content)}</td>
       <td><textarea id=\"reply-${jobId}\" aria-label=\"任务 ${jobId} 的回复内容\" ${locked ? 'disabled' : ''}>${escapeHtml(item.reply_text)}</textarea></td>
       <td>${renderRiskFlags(item.risk_flags)}</td>
-      <td>${allow ? `<button class=\"approve-btn\" aria-label=\"批准任务 ${jobId}\" onclick=\"approveJob(${jobId}, this)\" ${locked ? 'disabled' : ''}>Approve</button>` : '-'}</td>
+      <td>${allow ? `<button class=\"approve-btn\" aria-label=\"批准任务 ${jobId}\" onclick=\"approveJob(${JSON.stringify(jobId)}, this)\" ${locked ? 'disabled' : ''}>Approve</button>` : '-'}</td>
     `;
     jobsTableBody.appendChild(tr);
   }
@@ -984,8 +990,8 @@ function renderCommentDetailResult(data) {
         <td>${renderStatusBadge(item.status)}</td>
         <td class="comment-box">${escapeHtml(item.reply_text || '')}</td>
         <td>
-          <button class="detail-action-btn" onclick="quickQueryJobFromResult(${Number(item.id)})">查询</button>
-          <button class="detail-action-btn" onclick="retryJobFromDetail(${Number(item.id)})">重试</button>
+          <button class="detail-action-btn" onclick="quickQueryJobFromResult(${JSON.stringify(Number(item.id) || 0)})">查询</button>
+          <button class="detail-action-btn" onclick="retryJobFromDetail(${JSON.stringify(Number(item.id) || 0)})">重试</button>
         </td>
       </tr>
     `).join('')
@@ -1027,8 +1033,8 @@ function renderJobDetailResult(data) {
   jobDetailResultEl.innerHTML = `
     <div class="mono">
       job_id: ${escapeHtml(item.id)}
-      <button class="detail-action-btn" onclick="quickQueryJobFromResult(${Number(item.id)})">刷新该任务</button>
-      <button class="detail-action-btn" onclick="retryJobFromDetail(${Number(item.id)})">重试该任务</button>
+      <button class="detail-action-btn" onclick="quickQueryJobFromResult(${JSON.stringify(Number(item.id) || 0)})">刷新该任务</button>
+      <button class="detail-action-btn" onclick="retryJobFromDetail(${JSON.stringify(Number(item.id) || 0)})">重试该任务</button>
     </div>
     <div>状态: ${renderStatusBadge(item.status)}</div>
     <div class="mono">
@@ -1732,7 +1738,7 @@ async function loadKnowledgeEntries() {
       <td class="comment-box">${escapeHtml(String(item.content || ''))}</td>
       <td>${enabled ? '<span class="status-badge status-badge-published">enabled</span>' : '<span class="status-badge status-badge-blocked">disabled</span>'}</td>
       <td class="mono">${escapeHtml(String(item.updated_at || ''))}</td>
-      <td>${enabled ? `<button class="knowledge-disable-btn" onclick="disableKnowledgeEntry(${Number(item.id)})">禁用</button>` : '-'}</td>
+      <td>${enabled ? `<button class="knowledge-disable-btn" onclick="disableKnowledgeEntry(${JSON.stringify(Number(item.id) || 0)})">禁用</button>` : '-'}</td>
     `;
     knowledgeEntriesBody.appendChild(tr);
   }
@@ -2832,11 +2838,11 @@ function renderBilibiliVideos(items) {
       </td>
       <td>${item.last_rpid || 0}</td>
       <td>
-        <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${item.id}, ${!item.poll_enabled}, this)">
+        <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${JSON.stringify(Number(item.id) || 0)}, ${JSON.stringify(!item.poll_enabled)}, this)">
           ${item.poll_enabled ? '禁用' : '启用'}
         </button>
-        <button class="btn-ghost btn-sm" onclick="syncBilibiliVideo(${item.id}, this)">同步</button>
-        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliVideo(${item.id}, this)">删除</button>
+        <button class="btn-ghost btn-sm" onclick="syncBilibiliVideo(${JSON.stringify(Number(item.id) || 0)}, this)">同步</button>
+        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliVideo(${JSON.stringify(Number(item.id) || 0)}, this)">删除</button>
       </td>
     </tr>
   `).join('');
@@ -3041,10 +3047,10 @@ function renderBilibiliCredentials(items) {
       <td>${item.expires_at ? formatIsoDateTime(item.expires_at) : '-'}</td>
       <td>${item.last_used_at ? formatIsoDateTime(item.last_used_at) : '-'}</td>
       <td>
-        <button class="btn-ghost btn-sm" onclick="activateBilibiliCredential(${item.id}, this)" ${item.is_active ? 'disabled' : ''}>
+        <button class="btn-ghost btn-sm" onclick="activateBilibiliCredential(${JSON.stringify(Number(item.id) || 0)}, this)" ${item.is_active ? 'disabled' : ''}>
           激活
         </button>
-        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliCredential(${item.id}, this)">删除</button>
+        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliCredential(${JSON.stringify(Number(item.id) || 0)}, this)">删除</button>
       </td>
     </tr>
   `).join('');
