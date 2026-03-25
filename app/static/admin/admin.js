@@ -1186,7 +1186,7 @@ async function retrySingleJob() {
       return;
     }
 
-    const refreshResult = await refreshAfterAction();
+    const refreshResult = await refreshAfterAction('retry_single');
     if (!refreshResult.ok) {
       const failureSummary = formatFailureSummary(refreshResult.failures);
       showToast(
@@ -1404,8 +1404,8 @@ function updateBatchActionState() {
   }
 }
 
-async function refreshAfterAction() {
-  const steps = [
+const ACTION_REFRESH_SCOPES = {
+  default: [
     { label: 'jobs', run: loadJobs },
     { label: 'overview', run: loadOverview },
     { label: 'knowledge', run: loadKnowledgeEntries },
@@ -1413,7 +1413,49 @@ async function refreshAfterAction() {
     { label: 'daily_metrics', run: loadDailyMetrics },
     { label: 'audit_summary', run: loadAuditSummary },
     { label: 'audit_logs', run: loadAuditLogs },
-  ];
+  ],
+  approve_single: [
+    { label: 'jobs', run: loadJobs },
+    { label: 'overview', run: loadOverview },
+    { label: 'audit_summary', run: loadAuditSummary },
+    { label: 'audit_logs', run: loadAuditLogs },
+    { label: 'daily_metrics', run: loadDailyMetrics },
+  ],
+  approve_batch: [
+    { label: 'jobs', run: loadJobs },
+    { label: 'overview', run: loadOverview },
+    { label: 'audit_summary', run: loadAuditSummary },
+    { label: 'audit_logs', run: loadAuditLogs },
+    { label: 'daily_metrics', run: loadDailyMetrics },
+  ],
+  retry_single: [
+    { label: 'jobs', run: loadJobs },
+    { label: 'overview', run: loadOverview },
+    { label: 'audit_summary', run: loadAuditSummary },
+    { label: 'audit_logs', run: loadAuditLogs },
+    { label: 'daily_metrics', run: loadDailyMetrics },
+  ],
+  retry_batch: [
+    { label: 'jobs', run: loadJobs },
+    { label: 'overview', run: loadOverview },
+    { label: 'audit_summary', run: loadAuditSummary },
+    { label: 'audit_logs', run: loadAuditLogs },
+    { label: 'daily_metrics', run: loadDailyMetrics },
+  ],
+  knowledge_update: [
+    { label: 'knowledge', run: loadKnowledgeEntries },
+    { label: 'overview', run: loadOverview },
+  ],
+  gateway_publish: [
+    { label: 'gateway_logs', run: loadGatewayLogs },
+    { label: 'audit_summary', run: loadAuditSummary },
+    { label: 'audit_logs', run: loadAuditLogs },
+    { label: 'overview', run: loadOverview },
+  ],
+};
+
+async function refreshAfterAction(scope = 'default') {
+  const steps = ACTION_REFRESH_SCOPES[scope] || ACTION_REFRESH_SCOPES.default;
 
   const failures = [];
   for (const step of steps) {
@@ -1469,7 +1511,7 @@ async function approveJob(jobId, triggerBtn = null) {
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) return showToast('审批失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
 
-    const refreshResult = await refreshAfterAction();
+    const refreshResult = await refreshAfterAction('approve_single');
     if (!refreshResult.ok) {
       showToast(
         '审批完成（部分刷新失败）',
@@ -1510,7 +1552,7 @@ async function batchApprove() {
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) return showToast('批量审批失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
 
-    const refreshResult = await refreshAfterAction();
+    const refreshResult = await refreshAfterAction('approve_batch');
     if (!refreshResult.ok) {
       showToast(
         `批量审批完成（成功 ${data.summary.success} / 失败 ${data.summary.failed}）\n但界面刷新部分失败`,
@@ -1551,7 +1593,7 @@ async function batchRetry() {
     const data = await readApiPayload(res);
     if (!res.ok || !data.ok) return showToast('批量重试失败', getErrorText(data, '请求失败'), { copyable: true, tone: 'error' });
 
-    const refreshResult = await refreshAfterAction();
+    const refreshResult = await refreshAfterAction('retry_batch');
     if (!refreshResult.ok) {
       showToast(
         `批量重试完成（成功 ${data.summary.success} / 失败 ${data.summary.failed}）\n但界面刷新部分失败`,
@@ -1791,7 +1833,15 @@ async function createKnowledgeEntry() {
       return;
     }
 
-    await loadKnowledgeEntries();
+    const refreshResult = await refreshAfterAction('knowledge_update');
+    if (!refreshResult.ok) {
+      showToast(
+        '新增知识条目成功（部分刷新失败）',
+        formatFailureSummary(refreshResult.failures),
+        { copyable: true, tone: 'error', durationMs: 0 }
+      );
+      return;
+    }
     showToast('新增知识条目成功', `ID: ${data.item?.id ?? '-'}`, { tone: 'success' });
     
     // Clear inputs
@@ -1828,7 +1878,15 @@ async function disableKnowledgeEntry(entryId) {
       return;
     }
 
-    await loadKnowledgeEntries();
+    const refreshResult = await refreshAfterAction('knowledge_update');
+    if (!refreshResult.ok) {
+      showToast(
+        '知识条目已禁用（部分刷新失败）',
+        formatFailureSummary(refreshResult.failures),
+        { copyable: true, tone: 'error', durationMs: 0 }
+      );
+      return;
+    }
     showToast('知识条目已禁用', `ID: ${id}`, { tone: 'success' });
   } catch (error) {
     showToast('禁用知识条目失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
@@ -1880,12 +1938,6 @@ async function refreshGatewayLogs() {
   }
 }
 
-async function refreshAfterGatewayPublish() {
-  await loadGatewayLogs();
-  await loadOverview();
-  await loadJobs();
-}
-
 async function publishGatewayReply() {
   if (isGlobalRefreshLocked()) {
     showBusyToast();
@@ -1922,7 +1974,15 @@ async function publishGatewayReply() {
       return;
     }
 
-    await refreshAfterGatewayPublish();
+    const refreshResult = await refreshAfterAction('gateway_publish');
+    if (!refreshResult.ok) {
+      showToast(
+        '手动发布成功（部分刷新失败）',
+        formatFailureSummary(refreshResult.failures),
+        { copyable: true, tone: 'error', durationMs: 0 }
+      );
+      return;
+    }
     showToast('手动发布成功', `comment_id=${commentId}`, { tone: 'success' });
   } catch (error) {
     showToast('手动发布失败', getErrorText(error, '请求失败'), { copyable: true, tone: 'error' });
@@ -2146,7 +2206,7 @@ async function saveRoleCard() {
     showToast('保存失败', 'JSON 格式不正确，请检查红框提示', { tone: 'error' });
     return;
   }
-...
+  const key = String(roleCardKeyInput?.value || '').trim().toLowerCase();
 
   const name = String(roleCardNameInput?.value || '').trim();
   if (!key || !name) {
