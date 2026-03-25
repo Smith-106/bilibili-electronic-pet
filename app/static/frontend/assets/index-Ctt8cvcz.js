@@ -1,0 +1,18 @@
+(function(){const i=document.createElement("link").relList;if(i&&i.supports&&i.supports("modulepreload"))return;for(const e of document.querySelectorAll('link[rel="modulepreload"]'))o(e);new MutationObserver(e=>{for(const t of e)if(t.type==="childList")for(const a of t.addedNodes)a.tagName==="LINK"&&a.rel==="modulepreload"&&o(a)}).observe(document,{childList:!0,subtree:!0});function n(e){const t={};return e.integrity&&(t.integrity=e.integrity),e.referrerPolicy&&(t.referrerPolicy=e.referrerPolicy),e.crossOrigin==="use-credentials"?t.credentials="include":e.crossOrigin==="anonymous"?t.credentials="omit":t.credentials="same-origin",t}function o(e){if(e.ep)return;e.ep=!0;const t=n(e);fetch(e.href,t)}})();function m(r,i,n){return typeof r=="string"&&/^[a-z0-9_:-]+$/i.test(r)?r:i>=500?"request_failed":typeof n=="string"&&n.trim()?n.trim().toLowerCase().replace(/\s+/g,"_"):"request_failed"}function p(){return(window.__ADMIN_API_KEY__||"").trim()}async function s(r,i={}){const n=p(),o=new Headers(i.headers||{});n&&o.set("x-api-key",n);const e=await fetch(r,{...i,headers:o}),t=await e.json().catch(()=>({}));if(!e.ok){const a=(t==null?void 0:t.detail)||(t==null?void 0:t.error);throw new Error(m(a,e.status,e.statusText))}return t}function y(){return{getOverview(){return s("/api/admin/overview")},getJobs(){return s("/api/admin/jobs?limit=20")},getGatewayLogs(){return s("/api/admin/gateway/logs?limit=20")},getAuditSummary(r=7){return s(`/api/admin/audit/summary?days=${encodeURIComponent(String(r))}`)}}}async function b(r){if(!r)return;r.setAttribute("role","region"),r.setAttribute("aria-label","Admin dashboard panel");const i=y();let n=!1;const o=async()=>{if(!n){n=!0,r.setAttribute("aria-busy","true"),r.innerHTML=`
+      <div role="status" aria-live="polite" aria-atomic="true">
+        <h2>Admin Dashboard</h2>
+        <p>⌛ Loading snapshot...</p>
+      </div>
+    `;try{const[e,t,a,c]=await Promise.all([i.getOverview(),i.getJobs(),i.getGatewayLogs(),i.getAuditSummary(7)]),f={overview:e,jobs_count:Array.isArray(t==null?void 0:t.items)?t.items.length:0,gateway_logs_count:Array.isArray(a==null?void 0:a.items)?a.items.length:0,audit_summary:c,last_updated:new Date().toLocaleTimeString()};r.innerHTML=`
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2>Admin Dashboard</h2>
+          <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Refresh</button>
+        </div>
+        <pre id="admin-dashboard-json" style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
+      `;const d=r.querySelector("#admin-dashboard-json");d&&(d.textContent=JSON.stringify(f,null,2));const u=r.querySelector("#ref-btn");u&&(u.onclick=o)}catch(e){r.innerHTML=`
+        <h2>Admin Dashboard</h2>
+        <div role="alert" aria-live="assertive" aria-atomic="true" style="border: 1px solid #ffcfcf; background: #fff5f5; padding: 1rem; border-radius: 4px;">
+          <p style="color: #d32f2f; margin: 0 0 1rem 0;"><strong>❌ Error:</strong> <span id="admin-dashboard-error"></span></p>
+          <button id="ret-btn" type="button" aria-label="Retry loading dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Retry</button>
+        </div>
+      `;const t=r.querySelector("#admin-dashboard-error");t&&(t.textContent=String((e==null?void 0:e.message)||e||"request_failed"));const a=r.querySelector("#ret-btn");a&&(a.onclick=o)}finally{n=!1,r.setAttribute("aria-busy","false")}}};await o()}const l=document.getElementById("app");async function g(){if(!l)return;l.innerHTML='<h1>Bili Pet Frontend</h1><div id="admin-dashboard"></div>';const r=document.getElementById("admin-dashboard");await b(r)}g();

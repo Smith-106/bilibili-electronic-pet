@@ -6,11 +6,18 @@ import { createAdminDashboardApi } from '../../api/admin.js';
  */
 export async function renderAdminDashboard(container) {
   if (!container) return;
+  container.setAttribute('role', 'region');
+  container.setAttribute('aria-label', 'Admin dashboard panel');
   const api = createAdminDashboardApi();
+  let isLoading = false;
 
   const load = async () => {
+    if (isLoading) return;
+    isLoading = true;
+    container.setAttribute('aria-busy', 'true');
+
     container.innerHTML = `
-      <div role="status" aria-live="polite">
+      <div role="status" aria-live="polite" aria-atomic="true">
         <h2>Admin Dashboard</h2>
         <p>⌛ Loading snapshot...</p>
       </div>
@@ -34,7 +41,7 @@ export async function renderAdminDashboard(container) {
       container.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <h2>Admin Dashboard</h2>
-          <button id="ref-btn" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Refresh</button>
+          <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Refresh</button>
         </div>
         <pre id="admin-dashboard-json" style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
       `;
@@ -49,9 +56,9 @@ export async function renderAdminDashboard(container) {
     } catch (err) {
       container.innerHTML = `
         <h2>Admin Dashboard</h2>
-        <div role="alert" style="border: 1px solid #ffcfcf; background: #fff5f5; padding: 1rem; border-radius: 4px;">
+        <div role="alert" aria-live="assertive" aria-atomic="true" style="border: 1px solid #ffcfcf; background: #fff5f5; padding: 1rem; border-radius: 4px;">
           <p style="color: #d32f2f; margin: 0 0 1rem 0;"><strong>❌ Error:</strong> <span id="admin-dashboard-error"></span></p>
-          <button id="ret-btn" aria-label="Retry loading dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Retry</button>
+          <button id="ret-btn" type="button" aria-label="Retry loading dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Retry</button>
         </div>
       `;
       const errorEl = container.querySelector('#admin-dashboard-error');
@@ -62,6 +69,9 @@ export async function renderAdminDashboard(container) {
       if (retryBtn) {
         retryBtn.onclick = load;
       }
+    } finally {
+      isLoading = false;
+      container.setAttribute('aria-busy', 'false');
     }
   };
 
