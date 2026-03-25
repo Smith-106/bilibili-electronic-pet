@@ -234,7 +234,7 @@ function markDetailQueryTime(metaEl, prefix = '上次查询') {
 
 function markDetailQueryError(metaEl, reason) {
   if (!metaEl) return;
-  const text = String(reason || '请求失败').trim();
+  const text = getErrorText(reason, '请求失败');
   metaEl.textContent = `上次失败: ${nowLabel()} (${text.slice(0, 120)})`;
 }
 
