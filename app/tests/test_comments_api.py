@@ -168,7 +168,7 @@ def test_douyin_ingest_returns_platform_disabled_when_switch_off(client_and_stat
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "platform_disabled: douyin"
+    assert response.json()["detail"] == "platform_disabled"
     assert not queued_payloads
 
 
@@ -188,7 +188,7 @@ def test_kuaishou_ingest_returns_platform_disabled_when_switch_off(client_and_st
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "platform_disabled: kuaishou"
+    assert response.json()["detail"] == "platform_disabled"
     assert not queued_payloads
 
 
@@ -208,7 +208,7 @@ def test_bilibili_ingest_returns_platform_disabled_when_switch_off(client_and_st
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "platform_disabled: bilibili"
+    assert response.json()["detail"] == "platform_disabled"
     assert not queued_payloads
 
 

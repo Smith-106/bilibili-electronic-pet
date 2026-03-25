@@ -191,7 +191,7 @@ def _normalize_event_payload(raw_payload: dict, source: str) -> CommentEvent:
 
 def _normalize_platform_event_payload(raw_payload: dict, platform: PlatformName) -> CommentEvent:
     if not is_platform_enabled(platform):
-        raise HTTPException(status_code=403, detail=f"platform_disabled: {platform}")
+        raise HTTPException(status_code=403, detail="platform_disabled")
     try:
         return collect_platform_event_via_config(raw_payload, platform)
     except ValueError as exc:
@@ -214,7 +214,7 @@ def _approve_job_core(
     override_reply_text: str | None = None,
 ) -> dict:
     if job.status not in {"manual_queue", "blocked", "dedupe_skipped"}:
-        raise HTTPException(status_code=400, detail=f"job_status_not_approvable: {job.status}")
+        raise HTTPException(status_code=400, detail="job_status_not_approvable")
 
     comment_key = job.canonical_comment_id or f"bilibili:{job.comment_id}"
     comment = db.query(Comment).filter(Comment.canonical_comment_id == comment_key).first()
@@ -233,7 +233,7 @@ def _approve_job_core(
         video_bvid=comment.video_id,
     )
     if not published:
-        raise HTTPException(status_code=500, detail=f"approve_publish_failed: {publish_reason}")
+        raise HTTPException(status_code=500, detail="approve_publish_failed")
 
     publish_duplicate = publish_reason in {"idempotent_replay", "duplicate"}
     new_rpid_value = None
@@ -432,7 +432,7 @@ def approve_jobs_batch(payload: BatchApproveJobsRequest, db: Session = Depends(g
             results.append({"job_id": job_id, "ok": True, "status": result["status"]})
         except HTTPException as exc:
             failed += 1
-            results.append({"job_id": job_id, "ok": False, "error": str(exc.detail)})
+            results.append({"job_id": job_id, "ok": False, "error": "approve_failed"})
             _log_warning(
                 "job_approve_batch_item_failed",
                 trace_id=trace_id,

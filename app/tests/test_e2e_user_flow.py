@@ -342,7 +342,7 @@ class TestJobApprovalFlow:
 
         response = api_client.post(f"/api/jobs/{job.id}/approve", json={})
         assert response.status_code == 400
-        assert response.json().get("detail") == "job_status_not_approvable: published"
+        assert response.json().get("detail") == "job_status_not_approvable"
 
     def test_user_retries_existing_job_successfully(self, api_client, db_session):
         """Retry endpoint requeues existing job with explicit success contract."""

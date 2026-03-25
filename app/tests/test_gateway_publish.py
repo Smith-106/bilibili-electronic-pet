@@ -172,7 +172,7 @@ def test_gateway_publish_bilibili_route_returns_platform_disabled(gateway_test_c
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "platform_disabled: bilibili"
+    assert response.json()["detail"] == "platform_disabled"
 
 
 def test_gateway_publish_douyin_route_returns_platform_disabled(gateway_test_client, monkeypatch):
@@ -185,7 +185,7 @@ def test_gateway_publish_douyin_route_returns_platform_disabled(gateway_test_cli
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "platform_disabled: douyin"
+    assert response.json()["detail"] == "platform_disabled"
 
 
 def test_gateway_publish_kuaishou_route_returns_platform_disabled(gateway_test_client, monkeypatch):
@@ -198,7 +198,7 @@ def test_gateway_publish_kuaishou_route_returns_platform_disabled(gateway_test_c
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "platform_disabled: kuaishou"
+    assert response.json()["detail"] == "platform_disabled"
 
 
 def test_gateway_publish_bilibili_route_uses_platform_adapter_and_source(gateway_test_client, monkeypatch):

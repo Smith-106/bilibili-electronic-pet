@@ -229,7 +229,7 @@ def _publish_for_platform(
     db: Session,
 ):
     if not is_platform_enabled(platform):
-        raise HTTPException(status_code=403, detail=f"platform_disabled: {platform}")
+        raise HTTPException(status_code=403, detail="platform_disabled")
     return _publish_core(
         payload,
         authorization=authorization,

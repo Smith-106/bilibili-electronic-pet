@@ -469,6 +469,20 @@ def test_batch_approve_and_retry_endpoints(client, make_comment, make_job, db_se
     assert retry_audit.payload["summary"]["failed"] == 1
 
 
+def test_batch_approve_sanitizes_http_exception_error(client, make_comment, make_job):
+    make_comment(comment_id="admin-sanitize-c-1", user_id="admin-sanitize-user-1")
+    blocked_job = make_job(comment_id="admin-sanitize-c-1", status="published", reply_text="不可审批")
+
+    response = client.post(
+        "/api/jobs/approve-batch",
+        json={"job_ids": [blocked_job.id]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["summary"] == {"total": 1, "success": 0, "failed": 1}
+    assert payload["results"] == [{"job_id": blocked_job.id, "ok": False, "error": "approve_failed"}]
+
 
 def _configure_native_approval_path(monkeypatch, *, default_oid: int = 123456) -> tuple[dict[str, int], object]:
     from app.services import publisher as publisher_service
@@ -506,7 +520,6 @@ def _configure_native_approval_path(monkeypatch, *, default_oid: int = 123456) -
     return native_selection, publisher_service
 
 
-
 def _stub_bilibili_client(monkeypatch, *, reply_result: tuple[bool, str, int | None], captured: dict[str, object] | None = None):
     from app.services import bilibili_client as bilibili_client_module
 
@@ -521,7 +534,6 @@ def _stub_bilibili_client(monkeypatch, *, reply_result: tuple[bool, str, int | N
         return reply_result
 
     monkeypatch.setattr(bilibili_client_module.BilibiliClient, "reply_comment", fake_reply_comment)
-
 
 
 def test_approve_single_endpoint_native_success_persists_publish_metadata(client, make_comment, make_job, db_session, monkeypatch):
@@ -577,7 +589,7 @@ def test_approve_single_endpoint_native_failure_keeps_job_not_published(client, 
         publisher_service.close_bilibili_publisher()
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "approve_publish_failed: auth"
+    assert response.json()["detail"] == "approve_publish_failed"
 
     db_session.refresh(job)
     assert job.status == "blocked"
@@ -628,7 +640,7 @@ def test_approve_single_endpoint_native_duplicate_failure_is_deterministic(clien
         publisher_service.close_bilibili_publisher()
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "approve_publish_failed: idempotent_replay"
+    assert response.json()["detail"] == "approve_publish_failed"
 
     db_session.refresh(job)
     assert job.status == "dedupe_skipped"
