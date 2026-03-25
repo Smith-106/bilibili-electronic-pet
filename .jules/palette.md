@@ -15,3 +15,7 @@
 ## 2026-03-26 - [Visual Confirmation for Async Refreshes]
 **Learning:** Even when buttons correctly display a "Refreshing..." state, users lack definitive feedback when the update completes if the resulting data hasn't changed drastically. A visual "Last updated" timestamp provides this explicit confirmation.
 **Action:** When creating simple data dashboards, pair the refresh trigger with a visible timestamp so users aren't forced to guess whether the fetch succeeded or parse the raw payload.
+
+## 2026-03-26 - [Interactive Button States in Vanilla Views]
+**Learning:** Basic interactive elements like `<button>` naturally lack strong visible focus rings or hover states when using basic inline CSS in vanilla JS templates, leading to poor keyboard accessibility and an unresponsive feel.
+**Action:** Rather than maintaining inline styles, always establish a small global CSS reset (e.g., `style.css`) that defines a clear `:focus-visible` outline and `:hover` state for buttons, ensuring universal keyboard accessibility without cluttering the template markup.

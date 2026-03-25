@@ -1,3 +1,4 @@
+import './style.css';
 import { renderAdminDashboard } from './pages/admin/dashboard.js';
 
 const app = document.getElementById('app');
