@@ -308,7 +308,9 @@ function timeAgo(isoString) {
 
 function renderTimestamp(isoString) {
   if (!isoString) return '-';
-  return `<span title="${formatIsoDateTime(isoString)}" class="timestamp-help">${timeAgo(isoString)}</span>`;
+  const title = escapeHtml(formatIsoDateTime(isoString));
+  const label = escapeHtml(timeAgo(isoString));
+  return `<span title="${title}" class="timestamp-help">${label}</span>`;
 }
 
 function renderStatusBadge(status) {
