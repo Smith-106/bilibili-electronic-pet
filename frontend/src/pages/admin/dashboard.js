@@ -16,12 +16,22 @@ export async function renderAdminDashboard(container) {
     isLoading = true;
     container.setAttribute('aria-busy', 'true');
 
-    container.innerHTML = `
-      <div role="status" aria-live="polite" aria-atomic="true">
-        <h2>Admin Dashboard</h2>
-        <p>⌛ Loading snapshot...</p>
-      </div>
-    `;
+    const refreshBtn = container.querySelector('#ref-btn');
+    const retryBtn = container.querySelector('#ret-btn');
+    if (refreshBtn) {
+      refreshBtn.disabled = true;
+      refreshBtn.textContent = 'Refreshing...';
+    } else if (retryBtn) {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Retrying...';
+    } else {
+      container.innerHTML = `
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <h2>Admin Dashboard</h2>
+          <p>⌛ Loading snapshot...</p>
+        </div>
+      `;
+    }
     try {
       const [ov, jb, gl, as] = await Promise.all([
         api.getOverview(),
