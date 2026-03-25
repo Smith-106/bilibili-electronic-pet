@@ -20,3 +20,8 @@ button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+pre:focus-visible {
+  outline: 2px solid #0056b3;
+  outline-offset: 2px;
+}

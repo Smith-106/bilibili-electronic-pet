@@ -19,3 +19,7 @@
 ## 2026-03-26 - [Interactive Button States in Vanilla Views]
 **Learning:** Basic interactive elements like `<button>` naturally lack strong visible focus rings or hover states when using basic inline CSS in vanilla JS templates, leading to poor keyboard accessibility and an unresponsive feel.
 **Action:** Rather than maintaining inline styles, always establish a small global CSS reset (e.g., `style.css`) that defines a clear `:focus-visible` outline and `:hover` state for buttons, ensuring universal keyboard accessibility without cluttering the template markup.
+
+## 2026-03-26 - [Scrollable Area Accessibility]
+**Learning:** Long blocks of content with `overflow: auto` (like JSON dumps in `<pre>` tags) cannot be scrolled by keyboard-only users unless the element itself is focusable. Screen readers also need context for what the region contains.
+**Action:** Always add `tabindex="0"` and an `aria-label` to scrollable content areas (like `<pre>` or custom scroll containers), and ensure they have a visible `:focus-visible` state so keyboard users can track their focus context before scrolling.

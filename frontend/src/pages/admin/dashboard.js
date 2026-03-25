@@ -56,7 +56,7 @@ export async function renderAdminDashboard(container) {
             <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff;">Refresh</button>
           </div>
         </div>
-        <pre id="admin-dashboard-json" style="margin: 0; background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
+        <pre id="admin-dashboard-json" tabindex="0" aria-label="Dashboard JSON data snapshot" style="margin: 0; background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
       `;
       const dashboardJsonEl = container.querySelector('#admin-dashboard-json');
       if (dashboardJsonEl) {
