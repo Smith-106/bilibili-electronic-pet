@@ -49,11 +49,14 @@ export async function renderAdminDashboard(container) {
       };
 
       container.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h2>Admin Dashboard</h2>
-          <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Refresh</button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2 style="margin: 0;">Admin Dashboard</h2>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <span style="font-size: 0.875rem; color: #666;" aria-live="polite">Last updated: ${snapshot.last_updated}</span>
+            <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff;">Refresh</button>
+          </div>
         </div>
-        <pre id="admin-dashboard-json" style="background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
+        <pre id="admin-dashboard-json" style="margin: 0; background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
       `;
       const dashboardJsonEl = container.querySelector('#admin-dashboard-json');
       if (dashboardJsonEl) {

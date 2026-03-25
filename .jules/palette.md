@@ -11,3 +11,7 @@
 ## 2026-03-25 - [Vanilla JS State Preservation]
 **Learning:** In vanilla JS template-based views, fully replacing `innerHTML` on refresh destroys existing UI context, causing jarring layout shifts and losing focus.
 **Action:** Before applying a global loading state, check if interactive elements (like refresh buttons) already exist. If so, modify their state (e.g., `disabled=true`, text update) to provide inline feedback instead of wiping the entire DOM.
+
+## 2026-03-26 - [Visual Confirmation for Async Refreshes]
+**Learning:** Even when buttons correctly display a "Refreshing..." state, users lack definitive feedback when the update completes if the resulting data hasn't changed drastically. A visual "Last updated" timestamp provides this explicit confirmation.
+**Action:** When creating simple data dashboards, pair the refresh trigger with a visible timestamp so users aren't forced to guess whether the fetch succeeded or parse the raw payload.
