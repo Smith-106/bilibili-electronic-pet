@@ -238,16 +238,24 @@ function markDetailQueryError(metaEl, reason) {
   metaEl.textContent = `上次失败: ${nowLabel()} (${text.slice(0, 120)})`;
 }
 
+function sanitizeErrorDetail(detail, fallback = '请求失败') {
+  const text = String(detail || '').trim();
+  if (!text) return fallback;
+  if (/^[a-z0-9_:-]+$/i.test(text)) {
+    return text;
+  }
+  return fallback;
+}
+
 function getErrorText(error, fallback = '请求失败') {
   if (!error) return fallback;
-  if (typeof error === 'string') return error || fallback;
+  if (typeof error === 'string') return sanitizeErrorDetail(error, fallback);
   if (typeof error === 'object') {
     const detail = error.detail;
-    if (typeof detail === 'string') return detail;
-    if (detail && typeof detail === 'object') return JSON.stringify(detail, null, 2);
-    if (typeof error.message === 'string') return error.message;
+    if (typeof detail === 'string') return sanitizeErrorDetail(detail, fallback);
+    if (typeof error.message === 'string') return sanitizeErrorDetail(error.message, fallback);
   }
-  return String(error) || fallback;
+  return fallback;
 }
 
 function escapeHtml(value) {
