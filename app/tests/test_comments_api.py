@@ -347,3 +347,48 @@ def test_kuaishou_ingest_uses_platform_route_mapping(client_and_state, monkeypat
         record = db.query(Comment).filter(Comment.canonical_comment_id == "kuaishou:c-ks-route-1").first()
         assert record is not None
         assert record.parent_id == "p-ks-route-1"
+
+
+def test_webhook_ingest_invalid_payload_returns_fixed_detail(client_and_state):
+    client, session_local, queued_payloads = client_and_state
+    _ = session_local
+
+    response = client.post(
+        "/api/events/comment",
+        json={
+            "comment_id": "",
+            "video_id": "v-invalid-webhook-1",
+            "user_id": "u-invalid-webhook-1",
+            "content": "hello invalid webhook",
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["detail"] == "invalid_comment_event_payload"
+    assert "missing_fields=" not in payload["detail"]
+    assert "invalid_webhook_payload" not in payload["detail"]
+    assert not queued_payloads
+
+
+def test_platform_ingest_invalid_payload_returns_fixed_detail(client_and_state, monkeypatch):
+    client, session_local, queued_payloads = client_and_state
+    _ = session_local
+    monkeypatch.setattr(comments_api.settings, "platform_douyin_enabled", True)
+
+    response = client.post(
+        "/api/events/comment/douyin",
+        json={
+            "item_id": "c-invalid-douyin-1",
+            "aweme_id": "v-invalid-douyin-1",
+            "sec_uid": "u-invalid-douyin-1",
+            "text": "",
+        },
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["detail"] == "invalid_comment_event_payload"
+    assert "missing_fields=" not in payload["detail"]
+    assert "invalid_douyin_payload" not in payload["detail"]
+    assert not queued_payloads

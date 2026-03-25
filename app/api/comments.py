@@ -179,7 +179,14 @@ def _normalize_event_payload(raw_payload: dict, source: str) -> CommentEvent:
             return collect_official_connector_event(raw_payload)
         return collect_webhook_event(raw_payload)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _log_warning(
+            "comment_event_payload_invalid",
+            trace_id=ensure_trace_id(),
+            status="invalid_comment_event_payload",
+            source=source,
+            detail=str(exc),
+        )
+        raise HTTPException(status_code=400, detail="invalid_comment_event_payload") from exc
 
 
 def _normalize_platform_event_payload(raw_payload: dict, platform: PlatformName) -> CommentEvent:
@@ -188,7 +195,15 @@ def _normalize_platform_event_payload(raw_payload: dict, platform: PlatformName)
     try:
         return collect_platform_event_via_config(raw_payload, platform)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _log_warning(
+            "platform_comment_event_payload_invalid",
+            trace_id=ensure_trace_id(),
+            status="invalid_comment_event_payload",
+            platform=platform,
+            detail=str(exc),
+        )
+        raise HTTPException(status_code=400, detail="invalid_comment_event_payload") from exc
+
 
 
 def _approve_job_core(
