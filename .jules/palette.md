@@ -31,3 +31,7 @@
 ## 2026-03-26 - [Inline Loading Indicators for Data Tables]
 **Learning:** In dashboards where data is refreshed frequently, clearing a table's contents before a fetch without providing an immediate "Loading" row causes a jarring "blank" state. This makes the interface feel broken or slow.
 **Action:** Before initiating any async table data fetch, inject a single placeholder row with a "Loading..." message and a spinning emoji/icon. This provides immediate visual feedback that an action is in progress and preserves the layout's structural expectations.
+
+## 2026-03-26 - [Converting Static Spans to Accessible Controls]
+**Learning:** Designers often use `<span>` or `<div>` with click handlers for secondary actions (like filtering by a status badge), but these are invisible to keyboard users and screen readers.
+**Action:** When making a non-interactive element clickable, always add `role="button"` and `tabindex="0"`. Additionally, implement a global or local keyboard listener for "Enter" and "Space" to ensure parity between mouse and keyboard interaction.

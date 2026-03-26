@@ -324,7 +324,7 @@ function renderStatusBadge(status) {
   } else if (value === 'blocked') {
     cls = 'status-badge status-badge-blocked';
   }
-  return `<span class="${cls} clickable" onclick="filterJobsByStatus(${statusArg})" title="点击筛选 ${escapeHtml(value)} 状态">${escapeHtml(value)}</span>`;
+  return `<span class="${cls} clickable" onclick="filterJobsByStatus(${statusArg})" role="button" tabindex="0" title="点击筛选 ${escapeHtml(value)} 状态">${escapeHtml(value)}</span>`;
 }
 
 function filterJobsByStatus(status) {
@@ -523,7 +523,7 @@ function renderIdCell(id, label = 'ID') {
   return `
     <div class="id-cell">
       <span class="mono">${safeId}</span>
-      <button class="btn-ghost btn-sm btn-copy-inline" onclick="copyText(${idArg}, ${labelArg}, this)" title="复制 ${safeLabel}">Copy</button>
+      <button class="btn-ghost btn-sm btn-copy-inline" onclick="copyText(${idArg}, ${labelArg}, this)" title="复制 ${safeLabel}" aria-label="复制 ${safeLabel} ${safeId}">Copy</button>
     </div>
   `;
 }
@@ -3260,6 +3260,12 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     hideToast();
     closeHelpPanel();
+    return;
+  }
+
+  if (event.target.classList.contains('clickable') && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault();
+    event.target.click();
     return;
   }
 
