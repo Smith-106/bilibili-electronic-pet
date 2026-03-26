@@ -1,0 +1,21 @@
+(function(){const i=document.createElement("link").relList;if(i&&i.supports&&i.supports("modulepreload"))return;for(const t of document.querySelectorAll('link[rel="modulepreload"]'))n(t);new MutationObserver(t=>{for(const r of t)if(r.type==="childList")for(const s of r.addedNodes)s.tagName==="LINK"&&s.rel==="modulepreload"&&n(s)}).observe(document,{childList:!0,subtree:!0});function a(t){const r={};return t.integrity&&(r.integrity=t.integrity),t.referrerPolicy&&(r.referrerPolicy=t.referrerPolicy),t.crossOrigin==="use-credentials"?r.credentials="include":t.crossOrigin==="anonymous"?r.credentials="omit":r.credentials="same-origin",r}function n(t){if(t.ep)return;t.ep=!0;const r=a(t);fetch(t.href,r)}})();function y(e,i,a){return typeof e=="string"&&/^[a-z0-9_:-]+$/i.test(e)?e:i>=500?"request_failed":typeof a=="string"&&a.trim()?a.trim().toLowerCase().replace(/\s+/g,"_"):"request_failed"}function b(){return(window.__ADMIN_API_KEY__||"").trim()}async function l(e,i={}){const a=b(),n=new Headers(i.headers||{});a&&n.set("x-api-key",a);const t=await fetch(e,{...i,headers:n}),r=await t.json().catch(()=>({}));if(!t.ok){const s=(r==null?void 0:r.detail)||(r==null?void 0:r.error);throw new Error(y(s,t.status,t.statusText))}return r}function g(){return{getOverview(){return l("/api/admin/overview")},getJobs(){return l("/api/admin/jobs?limit=20")},getGatewayLogs(){return l("/api/admin/gateway/logs?limit=20")},getAuditSummary(e=7){return l(`/api/admin/audit/summary?days=${encodeURIComponent(String(e))}`)}}}async function h(e){if(!e)return;e.setAttribute("role","region"),e.setAttribute("aria-label","Admin dashboard panel");const i=g();let a=!1;const n=async()=>{if(a)return;a=!0,e.setAttribute("aria-busy","true");const t=e.querySelector("#ref-btn"),r=e.querySelector("#ret-btn");t?(t.disabled=!0,t.textContent="Refreshing..."):r?(r.disabled=!0,r.textContent="Retrying..."):e.innerHTML=`
+        <div role="status" aria-live="polite" aria-atomic="true">
+          <h2>Admin Dashboard</h2>
+          <p>⌛ Loading snapshot...</p>
+        </div>
+      `;try{const[s,o,d,p]=await Promise.all([i.getOverview(),i.getJobs(),i.getGatewayLogs(),i.getAuditSummary(7)]),u={overview:s,jobs_count:Array.isArray(o==null?void 0:o.items)?o.items.length:0,gateway_logs_count:Array.isArray(d==null?void 0:d.items)?d.items.length:0,audit_summary:p,last_updated:new Date().toLocaleTimeString()};e.innerHTML=`
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h2 style="margin: 0;">Admin Dashboard</h2>
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <span style="font-size: 0.875rem; color: #666;" aria-live="polite">Last updated: ${u.last_updated}</span>
+            <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff;">Refresh</button>
+          </div>
+        </div>
+        <pre id="admin-dashboard-json" tabindex="0" aria-label="Dashboard JSON data snapshot" style="margin: 0; background: #f4f4f4; padding: 1rem; border-radius: 4px; overflow: auto;"></pre>
+      `;const c=e.querySelector("#admin-dashboard-json");c&&(c.textContent=JSON.stringify(u,null,2));const f=e.querySelector("#ref-btn");f&&(f.onclick=n)}catch(s){e.innerHTML=`
+        <h2>Admin Dashboard</h2>
+        <div role="alert" aria-live="assertive" aria-atomic="true" style="border: 1px solid #ffcfcf; background: #fff5f5; padding: 1rem; border-radius: 4px;">
+          <p style="color: #d32f2f; margin: 0 0 1rem 0;"><strong>❌ Error:</strong> <span id="admin-dashboard-error"></span></p>
+          <button id="ret-btn" type="button" aria-label="Retry loading dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer;">Retry</button>
+        </div>
+      `;const o=e.querySelector("#admin-dashboard-error");o&&(o.textContent=String((s==null?void 0:s.message)||s||"request_failed"));const d=e.querySelector("#ret-btn");d&&(d.onclick=n)}finally{a=!1,e.setAttribute("aria-busy","false")}};await n()}const m=document.getElementById("app");async function v(){if(!m)return;m.innerHTML='<h1>Bili Pet Frontend</h1><div id="admin-dashboard"></div>';const e=document.getElementById("admin-dashboard");await h(e)}v();
