@@ -14,7 +14,7 @@
 
 ## 2026-03-26 - [Visual Confirmation for Async Refreshes]
 **Learning:** Even when buttons correctly display a "Refreshing..." state, users lack definitive feedback when the update completes if the resulting data hasn't changed drastically. A visual "Last updated" timestamp provides this explicit confirmation.
-**Action:** When creating simple data dashboards, pair the refresh trigger with a visible timestamp so users aren't forced to guess whether the fetch succeeded or parse the raw payload.
+**Action:** When creating simple data dashboards, pair the refresh trigger with a visual timestamp so users aren't forced to guess whether the fetch succeeded or parse the raw payload.
 
 ## 2026-03-26 - [Interactive Button States in Vanilla Views]
 **Learning:** Basic interactive elements like `<button>` naturally lack strong visible focus rings or hover states when using basic inline CSS in vanilla JS templates, leading to poor keyboard accessibility and an unresponsive feel.
@@ -27,3 +27,7 @@
 ## 2026-03-26 - [Micro-UX for Raw Data Dumps]
 **Learning:** When presenting users with raw data dumps (like JSON or configuration states), reading isn't their only goal—they often need to extract the data for debugging elsewhere. Manually selecting text in a `<pre>` block is error-prone and tedious.
 **Action:** Always pair raw data dumps with a one-click "Copy to Clipboard" action that provides immediate, localized visual feedback (e.g., temporarily changing the button text to "Copied!") and updates its `aria-label` to confirm the action succeeded to screen readers.
+
+## 2026-03-26 - [Inline Loading Indicators for Data Tables]
+**Learning:** In dashboards where data is refreshed frequently, clearing a table's contents before a fetch without providing an immediate "Loading" row causes a jarring "blank" state. This makes the interface feel broken or slow.
+**Action:** Before initiating any async table data fetch, inject a single placeholder row with a "Loading..." message and a spinning emoji/icon. This provides immediate visual feedback that an action is in progress and preserves the layout's structural expectations.

@@ -810,6 +810,9 @@ async function refreshDailyMetrics() {
 }
 
 async function loadDailyMetrics() {
+  if (dailyMetricsBody) {
+    dailyMetricsBody.innerHTML = '<tr><td colspan="7" class="text-center">⌛ 正在加载趋势...</td></tr>';
+  }
   const days = getClampedInt(dailyDaysInput?.value, 1, 60, 7);
   if (dailyDaysInput) dailyDaysInput.value = String(days);
   const simple = !!dailySimpleInput?.checked;
@@ -865,6 +868,9 @@ async function refreshJobs() {
 }
 
 async function loadJobs() {
+  if (jobsTableBody) {
+    jobsTableBody.innerHTML = '<tr><td colspan="8" class="text-center">⌛ 正在加载任务...</td></tr>';
+  }
   const status = jobsStatusInput?.value || '';
   const limit = getClampedInt(jobsLimitInput?.value, 1, 200, 30);
   if (jobsLimitInput) jobsLimitInput.value = String(limit);
@@ -1760,6 +1766,9 @@ async function exportAuditCsv() {
 }
 
 async function loadKnowledgeEntries() {
+  if (knowledgeEntriesBody) {
+    knowledgeEntriesBody.innerHTML = '<tr><td colspan="7" class="text-center">⌛ 正在加载知识库...</td></tr>';
+  }
   const res = await adminFetch('/api/admin/knowledge');
   const data = await readApiPayload(res);
   if (!knowledgeEntriesBody) throw new Error('knowledge_table_not_found');
@@ -2900,11 +2909,11 @@ function renderBilibiliVideos(items) {
       </td>
       <td>${item.last_rpid || 0}</td>
       <td>
-        <button class="btn-ghost btn-sm" onclick="toggleBilibiliVideoPoll(${JSON.stringify(Number(item.id) || 0)}, ${JSON.stringify(!item.poll_enabled)}, this)">
+        <button class="btn-ghost btn-sm" aria-label="${item.poll_enabled ? '禁用' : '启用'}视频轮询 ${item.bvid}" onclick="toggleBilibiliVideoPoll(${JSON.stringify(Number(item.id) || 0)}, ${JSON.stringify(!item.poll_enabled)}, this)">
           ${item.poll_enabled ? '禁用' : '启用'}
         </button>
-        <button class="btn-ghost btn-sm" onclick="syncBilibiliVideo(${JSON.stringify(Number(item.id) || 0)}, this)">同步</button>
-        <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliVideo(${JSON.stringify(Number(item.id) || 0)}, this)">删除</button>
+        <button class="btn-ghost btn-sm" aria-label="同步视频 ${item.bvid}" onclick="syncBilibiliVideo(${JSON.stringify(Number(item.id) || 0)}, this)">同步</button>
+        <button class="btn-ghost btn-sm btn-danger" aria-label="删除视频 ${item.bvid}" onclick="deleteBilibiliVideo(${JSON.stringify(Number(item.id) || 0)}, this)">删除</button>
       </td>
     </tr>
   `).join('');
