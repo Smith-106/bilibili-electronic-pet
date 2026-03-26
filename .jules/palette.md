@@ -35,3 +35,7 @@
 ## 2026-03-26 - [Converting Static Spans to Accessible Controls]
 **Learning:** Designers often use `<span>` or `<div>` with click handlers for secondary actions (like filtering by a status badge), but these are invisible to keyboard users and screen readers.
 **Action:** When making a non-interactive element clickable, always add `role="button"` and `tabindex="0"`. Additionally, implement a global or local keyboard listener for "Enter" and "Space" to ensure parity between mouse and keyboard interaction.
+
+## 2026-03-26 - [Proactive System States for Deadlines]
+**Learning:** Critical operational deadlines (like API token expirations) are often buried in dense tables. Users only notice them when the system fails, causing workflow interruptions.
+**Action:** Transform static expiration timestamps into proactive visual warnings. Use existing status badge styles (e.g., yellow for <7 days, red for expired) to immediately draw the administrator's eye to impending failures during routine dashboard reviews.

@@ -1903,6 +1903,9 @@ async function disableKnowledgeEntry(entryId) {
 }
 
 async function loadGatewayLogs() {
+  if (gatewayLogsBody) {
+    gatewayLogsBody.innerHTML = '<tr><td colspan="5" class="text-center">⌛ 正在加载网关日志...</td></tr>';
+  }
   const commentId = String(gatewayCommentIdInput?.value || '').trim();
   const limit = getClampedInt(gatewayLimitInput?.value, 1, 200, 50);
   if (gatewayLimitInput) gatewayLimitInput.value = String(limit);
@@ -1916,7 +1919,13 @@ async function loadGatewayLogs() {
   gatewayLogsBody.innerHTML = '';
   if (!res.ok || !data.ok) throw new Error(getErrorText(data, '加载网关日志失败'));
 
-  for (const item of (data.items || [])) {
+  const items = data.items || [];
+  if (items.length === 0) {
+    gatewayLogsBody.innerHTML = '<tr><td colspan="5" class="text-center">暂无网关日志</td></tr>';
+    return;
+  }
+
+  for (const item of items) {
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td>${renderIdCell(item.id, '网关日志ID')}</td>
@@ -3104,7 +3113,21 @@ function renderBilibiliCredentials(items) {
     return;
   }
 
-  bilibiliCredentialsBody.innerHTML = items.map(item => `
+  const now = new Date();
+  bilibiliCredentialsBody.innerHTML = items.map(item => {
+    let expiryCls = '';
+    if (item.expires_at) {
+      const exp = new Date(item.expires_at);
+      const diffDays = (exp - now) / (1000 * 60 * 60 * 24);
+      if (diffDays < 0) {
+        expiryCls = 'status-badge status-badge-blocked';
+      } else if (diffDays < 7) {
+        expiryCls = 'status-badge status-badge-manual';
+      }
+    }
+    const expiryHtml = item.expires_at ? `<span class="${expiryCls}">${formatIsoDateTime(item.expires_at)}</span>` : '-';
+
+    return `
     <tr class="${item.is_active ? 'row-active' : ''}">
       <td>${renderIdCell(item.id, '凭证ID')}</td>
       <td>${escapeHtml(item.name)}</td>
@@ -3115,7 +3138,7 @@ function renderBilibiliCredentials(items) {
       </td>
       <td class="mono">${item.has_sessdata ? '***已设置***' : '-'}</td>
       <td class="mono">${escapeHtml(item.buvid3 || '-')}</td>
-      <td>${item.expires_at ? formatIsoDateTime(item.expires_at) : '-'}</td>
+      <td>${expiryHtml}</td>
       <td>${item.last_used_at ? formatIsoDateTime(item.last_used_at) : '-'}</td>
       <td>
         <button class="btn-ghost btn-sm" onclick="activateBilibiliCredential(${JSON.stringify(Number(item.id) || 0)}, this)" ${item.is_active ? 'disabled' : ''}>
@@ -3124,7 +3147,7 @@ function renderBilibiliCredentials(items) {
         <button class="btn-ghost btn-sm btn-danger" onclick="deleteBilibiliCredential(${JSON.stringify(Number(item.id) || 0)}, this)">删除</button>
       </td>
     </tr>
-  `).join('');
+  `;}).join('');
 }
 
 async function addBilibiliCredential() {
