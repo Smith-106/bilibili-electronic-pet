@@ -53,6 +53,7 @@ export async function renderAdminDashboard(container) {
           <h2 style="margin: 0;">Admin Dashboard</h2>
           <div style="display: flex; align-items: center; gap: 1rem;">
             <span style="font-size: 0.875rem; color: #666;" aria-live="polite">Last updated: ${snapshot.last_updated}</span>
+            <button id="copy-btn" type="button" aria-label="Copy JSON data to clipboard" style="padding: 0.4rem 0.8rem; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff;">Copy JSON</button>
             <button id="ref-btn" type="button" aria-label="Refresh dashboard data" style="padding: 0.4rem 0.8rem; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; background: #fff;">Refresh</button>
           </div>
         </div>
@@ -65,6 +66,24 @@ export async function renderAdminDashboard(container) {
       const refreshBtn = container.querySelector('#ref-btn');
       if (refreshBtn) {
         refreshBtn.onclick = load;
+      }
+      const copyBtn = container.querySelector('#copy-btn');
+      if (copyBtn) {
+        copyBtn.onclick = async () => {
+          try {
+            await navigator.clipboard.writeText(JSON.stringify(snapshot, null, 2));
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = 'Copied!';
+            copyBtn.setAttribute('aria-label', 'JSON data copied successfully');
+            setTimeout(() => {
+              copyBtn.textContent = originalText;
+              copyBtn.setAttribute('aria-label', 'Copy JSON data to clipboard');
+            }, 2000);
+          } catch (err) {
+            console.error('Failed to copy', err);
+            copyBtn.textContent = 'Failed';
+          }
+        };
       }
     } catch (err) {
       container.innerHTML = `

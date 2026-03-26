@@ -23,3 +23,7 @@
 ## 2026-03-26 - [Scrollable Area Accessibility]
 **Learning:** Long blocks of content with `overflow: auto` (like JSON dumps in `<pre>` tags) cannot be scrolled by keyboard-only users unless the element itself is focusable. Screen readers also need context for what the region contains.
 **Action:** Always add `tabindex="0"` and an `aria-label` to scrollable content areas (like `<pre>` or custom scroll containers), and ensure they have a visible `:focus-visible` state so keyboard users can track their focus context before scrolling.
+
+## 2026-03-26 - [Micro-UX for Raw Data Dumps]
+**Learning:** When presenting users with raw data dumps (like JSON or configuration states), reading isn't their only goal—they often need to extract the data for debugging elsewhere. Manually selecting text in a `<pre>` block is error-prone and tedious.
+**Action:** Always pair raw data dumps with a one-click "Copy to Clipboard" action that provides immediate, localized visual feedback (e.g., temporarily changing the button text to "Copied!") and updates its `aria-label` to confirm the action succeeded to screen readers.
