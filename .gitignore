@@ -9,3 +9,4 @@ local.db
 .env
 frontend/node_modules/
 *.sqlite3
+celerybeat-schedule
