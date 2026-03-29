@@ -2,6 +2,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
+import { collectCommentEvent } from './services/collector.js';
 
 export type ConnectionStatus = {
   connected: boolean;
@@ -1864,132 +1865,37 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     return reply.send(response);
   });
 
-  // Comments event ingestion
-  app.post('/events/comment', async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const event: CommentEvent = {
-      comment_id: String(body.comment_id ?? ''),
-      video_id: body.video_id ? String(body.video_id) : undefined,
-      user_id: body.user_id ? String(body.user_id) : undefined,
-      content: body.content ? String(body.content) : undefined,
-      parent_id: body.parent_id ? String(body.parent_id) : undefined,
-      platform: body.platform ? String(body.platform) : undefined,
-      source: 'webhook',
-      trace_id: body.trace_id ? String(body.trace_id) : undefined,
-    };
+  // Comments event ingestion — uses collector for source-aware field mapping
+  const commentSources = [
+    { path: '/events/comment', source: 'webhook' as const },
+    { path: '/events/comment/poller', source: 'poller' as const },
+    { path: '/events/comment/official', source: 'official' as const },
+    { path: '/events/comment/bilibili', source: 'bilibili' as const, platform: 'bilibili' },
+    { path: '/events/comment/douyin', source: 'douyin' as const, platform: 'douyin' },
+    { path: '/events/comment/kuaishou', source: 'kuaishou' as const, platform: 'kuaishou' },
+  ];
 
-    if (!event.comment_id) {
-      return reply.code(400).send({ detail: 'comment_id_required' });
-    }
+  for (const { path, source, platform } of commentSources) {
+    app.post(path, async (request, reply) => {
+      const body = request.body as Record<string, unknown>;
 
-    const response = await ingestCommentEvent({ event, source: 'webhook' });
-    return reply.send(response);
-  });
+      let event: CommentEvent;
+      try {
+        const collected = collectCommentEvent(body, source, platform);
+        event = collected;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'invalid_payload';
+        return reply.code(400).send({ detail: message });
+      }
 
-  app.post('/events/comment/poller', async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const event: CommentEvent = {
-      comment_id: String(body.comment_id ?? ''),
-      video_id: body.video_id ? String(body.video_id) : undefined,
-      user_id: body.user_id ? String(body.user_id) : undefined,
-      content: body.content ? String(body.content) : undefined,
-      parent_id: body.parent_id ? String(body.parent_id) : undefined,
-      platform: body.platform ? String(body.platform) : undefined,
-      source: 'poller',
-      trace_id: body.trace_id ? String(body.trace_id) : undefined,
-    };
+      if (!event.comment_id) {
+        return reply.code(400).send({ detail: 'comment_id_required' });
+      }
 
-    if (!event.comment_id) {
-      return reply.code(400).send({ detail: 'comment_id_required' });
-    }
-
-    const response = await ingestCommentEvent({ event, source: 'poller' });
-    return reply.send(response);
-  });
-
-  app.post('/events/comment/official', async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const event: CommentEvent = {
-      comment_id: String(body.comment_id ?? ''),
-      video_id: body.video_id ? String(body.video_id) : undefined,
-      user_id: body.user_id ? String(body.user_id) : undefined,
-      content: body.content ? String(body.content) : undefined,
-      parent_id: body.parent_id ? String(body.parent_id) : undefined,
-      platform: body.platform ? String(body.platform) : undefined,
-      source: 'official',
-      trace_id: body.trace_id ? String(body.trace_id) : undefined,
-    };
-
-    if (!event.comment_id) {
-      return reply.code(400).send({ detail: 'comment_id_required' });
-    }
-
-    const response = await ingestCommentEvent({ event, source: 'official' });
-    return reply.send(response);
-  });
-
-  app.post('/events/comment/bilibili', async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const event: CommentEvent = {
-      comment_id: String(body.comment_id ?? ''),
-      video_id: body.video_id ? String(body.video_id) : undefined,
-      user_id: body.user_id ? String(body.user_id) : undefined,
-      content: body.content ? String(body.content) : undefined,
-      parent_id: body.parent_id ? String(body.parent_id) : undefined,
-      platform: 'bilibili',
-      source: 'bilibili',
-      trace_id: body.trace_id ? String(body.trace_id) : undefined,
-    };
-
-    if (!event.comment_id) {
-      return reply.code(400).send({ detail: 'comment_id_required' });
-    }
-
-    const response = await ingestCommentEvent({ event, source: 'bilibili' });
-    return reply.send(response);
-  });
-
-  app.post('/events/comment/douyin', async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const event: CommentEvent = {
-      comment_id: String(body.comment_id ?? ''),
-      video_id: body.video_id ? String(body.video_id) : undefined,
-      user_id: body.user_id ? String(body.user_id) : undefined,
-      content: body.content ? String(body.content) : undefined,
-      parent_id: body.parent_id ? String(body.parent_id) : undefined,
-      platform: 'douyin',
-      source: 'douyin',
-      trace_id: body.trace_id ? String(body.trace_id) : undefined,
-    };
-
-    if (!event.comment_id) {
-      return reply.code(400).send({ detail: 'comment_id_required' });
-    }
-
-    const response = await ingestCommentEvent({ event, source: 'douyin' });
-    return reply.send(response);
-  });
-
-  app.post('/events/comment/kuaishou', async (request, reply) => {
-    const body = request.body as Record<string, unknown>;
-    const event: CommentEvent = {
-      comment_id: String(body.comment_id ?? ''),
-      video_id: body.video_id ? String(body.video_id) : undefined,
-      user_id: body.user_id ? String(body.user_id) : undefined,
-      content: body.content ? String(body.content) : undefined,
-      parent_id: body.parent_id ? String(body.parent_id) : undefined,
-      platform: 'kuaishou',
-      source: 'kuaishou',
-      trace_id: body.trace_id ? String(body.trace_id) : undefined,
-    };
-
-    if (!event.comment_id) {
-      return reply.code(400).send({ detail: 'comment_id_required' });
-    }
-
-    const response = await ingestCommentEvent({ event, source: 'kuaishou' });
-    return reply.send(response);
-  });
+      const response = await ingestCommentEvent({ event, source });
+      return reply.send(response);
+    });
+  }
 
   // Job management
   app.post('/jobs/:job_id/retry', async (request, reply) => {

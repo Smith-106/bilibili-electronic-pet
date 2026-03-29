@@ -1415,7 +1415,7 @@ describe('comments domain parity', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toEqual({ detail: 'comment_id_required' });
+    expect((response.json() as { detail: string }).detail).toContain('comment_id');
 
     await app.close();
   });

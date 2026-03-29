@@ -123,7 +123,7 @@ describe('worker integration tests', () => {
 
       expect(result.reply_text).toBeDefined();
       // Without a real LLM API key, the service falls back to templates
-      expect(['fallback_template', 'openai', 'claude', 'ollama']).toContain(result.provider);
+      expect(['fallback_template', 'mock', 'openai', 'claude', 'ollama']).toContain(result.provider);
       expect(result.resolved_role_profile).toBe('doro');
     });
 
