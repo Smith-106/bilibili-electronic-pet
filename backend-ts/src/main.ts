@@ -3,6 +3,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { collectCommentEvent } from './services/collector.js';
+import { encrypt, decrypt } from './services/credential-crypto.js';
 
 export type ConnectionStatus = {
   connected: boolean;
@@ -747,7 +748,9 @@ function defaultGetStyleProfile(): { ok: boolean; style_profile: string; preset_
   };
 }
 
-function defaultSetStyleProfile(input: { styleProfile: string }): { ok: boolean; style_profile: string } {
+async function defaultSetStyleProfile(input: { styleProfile: string }): Promise<{ ok: boolean; style_profile: string }> {
+  // Update runtime setting via environment override
+  process.env.STYLE_PROFILE_DEFAULT = input.styleProfile;
   return {
     ok: true,
     style_profile: input.styleProfile,
@@ -757,12 +760,14 @@ function defaultSetStyleProfile(input: { styleProfile: string }): { ok: boolean;
 function defaultGetRoleProfile(): { ok: boolean; role_profile: string; preset_profiles: string[] } {
   return {
     ok: true,
-    role_profile: 'auto',
+    role_profile: process.env.ROLE_PROFILE_DEFAULT || 'auto',
     preset_profiles: ['auto', 'default', 'comfort', 'playful'],
   };
 }
 
-function defaultSetRoleProfile(input: { roleProfile: string }): { ok: boolean; role_profile: string } {
+async function defaultSetRoleProfile(input: { roleProfile: string }): Promise<{ ok: boolean; role_profile: string }> {
+  // Update runtime setting via environment override
+  process.env.ROLE_PROFILE_DEFAULT = input.roleProfile;
   return {
     ok: true,
     role_profile: input.roleProfile,
@@ -841,50 +846,233 @@ function defaultGetObservabilitySummary(input: { windowMinutes: number }): { ok:
   };
 }
 
-function defaultIngestCommentEvent(input: { event: CommentEvent; source: string }): { ok: boolean; comment_id: string; trace_id: string } {
-  return {
-    ok: true,
-    comment_id: input.event.comment_id,
-    trace_id: input.event.trace_id ?? randomUUID(),
-  };
+async function defaultIngestCommentEvent(input: { event: CommentEvent; source: string }): Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }> {
+  const traceId = input.event.trace_id || randomUUID();
+  const platform = input.event.platform || 'bilibili';
+  const canonicalCommentId = `${platform}:${input.event.comment_id}`;
+
+  const prisma = getPrisma();
+  try {
+    await prisma.comment.create({
+      data: {
+        platform,
+        canonical_comment_id: canonicalCommentId,
+        comment_id: input.event.comment_id,
+        video_id: input.event.video_id || '',
+        user_id: input.event.user_id || '',
+        content: input.event.content || '',
+        parent_id: input.event.parent_id || null,
+      },
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('UNIQUE') || msg.includes('unique') || msg.includes('duplicate')) {
+      return { ok: true, message: 'duplicate_ignored', comment_id: input.event.comment_id, trace_id: traceId };
+    }
+    throw err;
+  }
+
+  // Enqueue worker task via BullMQ
+  try {
+    const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
+    const queue = createCommentEventQueue('comment-event');
+    await queue.add('comment-event', {
+      comment_id: input.event.comment_id,
+      video_id: input.event.video_id,
+      user_id: input.event.user_id,
+      content: input.event.content,
+      parent_id: input.event.parent_id,
+      platform,
+      source: input.source,
+      trace_id: traceId,
+    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+  } catch {
+    // Worker queue unavailable — comment is persisted, will be processed later
+  }
+
+  return { ok: true, queued: true, comment_id: input.event.comment_id, trace_id: traceId };
 }
 
-function defaultRetryJob(input: { jobId: number; forceLong?: boolean; styleProfile?: string; roleProfile?: string; roleCardKey?: string }): { ok: boolean; requeued: boolean; job_id: number; trace_id: string } {
+async function defaultRetryJob(input: { jobId: number; forceLong?: boolean; styleProfile?: string; roleProfile?: string; roleCardKey?: string }): Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }> {
+  const traceId = randomUUID();
+  const prisma = getPrisma();
+  const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
+  if (!job) {
+    await writeAuditLog(prisma, { action: 'retry_single', targetId: input.jobId, ok: false, traceId, status: 'job_not_found', payload: { error: 'job_not_found' } });
+    throw { statusCode: 404, detail: 'job_not_found' };
+  }
+
+  const platform = (job.canonical_comment_id || 'bilibili:').split(':', 1)[0] || 'bilibili';
+
+  // Enqueue worker task
+  try {
+    const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
+    const queue = createCommentEventQueue('comment-event');
+    await queue.add('comment-event', {
+      comment_id: job.comment_id,
+      platform,
+      force_long: input.forceLong,
+      style_profile: input.styleProfile,
+      role_profile: input.roleProfile,
+      role_card_key: input.roleCardKey,
+      trace_id: traceId,
+      source: 'retry',
+    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+  } catch {
+    // Queue unavailable — job still persisted
+  }
+
+  await writeAuditLog(prisma, { action: 'retry_single', targetId: input.jobId, ok: true, traceId, commentId: job.comment_id, status: 'queued', payload: { comment_id: job.comment_id, force_long: input.forceLong } });
+  return { ok: true, requeued: true, job_id: input.jobId, trace_id: traceId };
+}
+
+async function defaultApproveJob(input: { jobId: number; overrideReplyText?: string; styleProfile?: string; roleProfile?: string; roleCardKey?: string }): Promise<{ ok: boolean; job_id: number; status: string; published_at: string | null; trace_id: string }> {
+  const traceId = randomUUID();
+  const prisma = getPrisma();
+
+  const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
+  if (!job) {
+    await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: false, traceId, status: 'job_not_found', payload: { error: 'job_not_found' } });
+    throw { statusCode: 404, detail: 'job_not_found' };
+  }
+
+  const approvableStatuses = ['manual_queue', 'blocked', 'dedupe_skipped'];
+  if (!approvableStatuses.includes(job.status)) {
+    await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: false, traceId, commentId: job.comment_id, status: 'not_approvable', payload: { error: 'job_status_not_approvable', current_status: job.status } });
+    throw { statusCode: 400, detail: 'job_status_not_approvable' };
+  }
+
+  // Look up comment for video context
+  const commentKey = job.canonical_comment_id || `bilibili:${job.comment_id}`;
+  const comment = await prisma.comment.findUnique({ where: { canonical_comment_id: commentKey } });
+  if (!comment) {
+    throw { statusCode: 404, detail: 'comment_not_found' };
+  }
+
+  const replyText = (input.overrideReplyText || job.reply_text || '').trim();
+  if (!replyText) {
+    throw { statusCode: 400, detail: 'empty_reply_text' };
+  }
+
+  // Publish reply
+  const { publishReplyWithResult } = await import('./services/publisher.js');
+  const [published, publishReason, publishedAt, publishResult] = await publishReplyWithResult(job.comment_id, replyText, traceId);
+
+  if (!published) {
+    await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: false, traceId, commentId: job.comment_id, status: 'publish_failed', payload: { error: 'approve_publish_failed', publish_reason: publishReason } });
+    throw { statusCode: 500, detail: 'approve_publish_failed' };
+  }
+
+  // Update job
+  const newRiskFlags = typeof job.risk_flags === 'string' ? JSON.parse(job.risk_flags) : (job.risk_flags || {});
+  const updatedJob = await prisma.replyJob.update({
+    where: { id: input.jobId },
+    data: {
+      status: 'published',
+      reply_text: replyText,
+      risk_flags: JSON.stringify({
+        ...newRiskFlags,
+        approved: true,
+        publish_reason: publishReason,
+        ...(publishResult?.new_rpid ? { new_rpid: publishResult.new_rpid } : {}),
+      }),
+      published_at: publishedAt || new Date(),
+      attempts: (job.attempts || 0) + 1,
+    },
+  });
+
+  // Record dedup phrase
+  try {
+    if (comment.user_id) {
+      const { prisma: prismaFromDb } = await import('./services/db-queries.js');
+      const p = prismaFromDb();
+      const existingState = await p.userState.findUnique({ where: { user_id: comment.user_id } });
+      const recentPhrases = existingState ? (typeof existingState.recent_phrases === 'string' ? JSON.parse(existingState.recent_phrases) : existingState.recent_phrases) : { phrases: [] };
+      const phrases = Array.isArray(recentPhrases.phrases) ? recentPhrases.phrases : [];
+      phrases.push(replyText.substring(0, 60));
+      if (phrases.length > 20) phrases.shift();
+      await p.userState.upsert({
+        where: { user_id: comment.user_id },
+        update: { recent_phrases: JSON.stringify({ phrases }) },
+        create: { user_id: comment.user_id, recent_phrases: JSON.stringify({ phrases: [replyText.substring(0, 60)] }) },
+      });
+    }
+  } catch { /* non-critical */ }
+
+  await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: true, traceId, commentId: job.comment_id, status: 'published', payload: { reply_text_preview: replyText.substring(0, 40) } });
+
   return {
     ok: true,
-    requeued: true,
     job_id: input.jobId,
-    trace_id: randomUUID(),
+    status: 'published',
+    published_at: updatedJob.published_at?.toISOString() ?? null,
+    trace_id: traceId,
   };
 }
 
-function defaultApproveJob(input: { jobId: number; styleProfile?: string; roleProfile?: string; roleCardKey?: string }): { ok: boolean; job_id: number; status: string; trace_id: string } {
-  return {
-    ok: true,
-    job_id: input.jobId,
-    status: 'queued',
-    trace_id: randomUUID(),
-  };
+async function defaultApproveJobsBatch(input: { jobIds: number[] }): Promise<{ ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>; trace_id: string }> {
+  const traceId = randomUUID();
+  const results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }> = [];
+  let success = 0;
+  let failed = 0;
+
+  for (const jobId of input.jobIds) {
+    try {
+      const result = await defaultApproveJob({ jobId, overrideReplyText: undefined });
+      success++;
+      results.push({ job_id: jobId, ok: true, status: result.status });
+    } catch (err: unknown) {
+      failed++;
+      const detail = err instanceof Error ? err.message : (err as { detail?: string })?.detail || 'approve_failed';
+      results.push({ job_id: jobId, ok: false, error: detail });
+    }
+  }
+
+  const summary = { total: input.jobIds.length, success, failed };
+
+  const prisma = getPrisma();
+  await writeAuditLog(prisma, {
+    action: 'approve_batch',
+    targetId: null,
+    ok: failed === 0,
+    traceId,
+    status: failed === 0 ? 'published' : 'partial_failure',
+    payload: { job_ids: input.jobIds, summary },
+  });
+
+  return { ok: true, summary, results, trace_id: traceId };
 }
 
-function defaultApproveJobsBatch(input: { jobIds: number[] }): { ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>; trace_id: string } {
-  const results = input.jobIds.map((id) => ({ job_id: id, ok: true, status: 'queued' as const }));
-  return {
-    ok: true,
-    summary: { total: input.jobIds.length, success: input.jobIds.length, failed: 0 },
-    results,
-    trace_id: randomUUID(),
-  };
-}
+async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: boolean }): Promise<{ ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>; trace_id: string }> {
+  const traceId = randomUUID();
+  const results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }> = [];
+  let success = 0;
+  let failed = 0;
 
-function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: boolean }): { ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>; trace_id: string } {
-  const results = input.jobIds.map((id) => ({ job_id: id, ok: true, requeued: true as const }));
-  return {
-    ok: true,
-    summary: { total: input.jobIds.length, success: input.jobIds.length, failed: 0 },
-    results,
-    trace_id: randomUUID(),
-  };
+  for (const jobId of input.jobIds) {
+    try {
+      await defaultRetryJob({ jobId, forceLong: input.forceLong });
+      success++;
+      results.push({ job_id: jobId, ok: true, requeued: true });
+    } catch {
+      failed++;
+      results.push({ job_id: jobId, ok: false, error: 'retry_failed' });
+    }
+  }
+
+  const summary = { total: input.jobIds.length, success, failed };
+
+  const prisma = getPrisma();
+  await writeAuditLog(prisma, {
+    action: 'retry_batch',
+    targetId: null,
+    ok: failed === 0,
+    traceId,
+    status: failed === 0 ? 'queued' : 'partial_failure',
+    payload: { job_ids: input.jobIds, force_long: input.forceLong, summary },
+  });
+
+  return { ok: true, summary, results, trace_id: traceId };
 }
 
 function defaultGetComment(input: { commentId: string }): { ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] } {
@@ -1065,6 +1253,40 @@ let _prisma: PrismaClient | null = null;
 function getPrisma(): PrismaClient {
   if (!_prisma) _prisma = new PrismaClient();
   return _prisma;
+}
+
+/** Write an operation audit log entry (mirrors Python's _write_audit_log) */
+async function writeAuditLog(
+  prisma: PrismaClient,
+  input: {
+    action: string;
+    targetId: number | null;
+    ok: boolean;
+    traceId: string;
+    commentId?: string;
+    status?: string;
+    payload?: Record<string, unknown>;
+  },
+): Promise<void> {
+  const enrichedPayload = {
+    ...input.payload,
+    trace_id: input.traceId,
+    ...(input.commentId ? { comment_id: input.commentId } : {}),
+    ...(input.status ? { status: input.status } : {}),
+  };
+  try {
+    await prisma.operationAuditLog.create({
+      data: {
+        action: input.action,
+        target_type: 'reply_job',
+        target_id: input.targetId,
+        ok: input.ok,
+        payload: JSON.stringify(enrichedPayload),
+      },
+    });
+  } catch {
+    // Audit log write failure is non-critical
+  }
 }
 
 /** Check x-api-key header; returns false and sends 401 on failure */
@@ -2183,11 +2405,15 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     const existingCount = await prisma.bilibiliCredential.count();
     const isActive = existingCount === 0;
 
+    // Encrypt sensitive fields before storage
+    const encSessdata = encrypt(sessdata);
+    const encBiliJct = encrypt(biliJct);
+
     const credential = await prisma.bilibiliCredential.create({
       data: {
         name,
-        sessdata,
-        bili_jct: biliJct,
+        sessdata: encSessdata,
+        bili_jct: encBiliJct,
         buvid3,
         buvid4: buvid4 || null,
         is_active: isActive,

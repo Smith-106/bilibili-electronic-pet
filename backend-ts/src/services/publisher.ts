@@ -9,6 +9,7 @@
 import type { PublishReplyService } from './interfaces.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
+import { createHash } from 'node:crypto';
 
 // ── Publisher mode configuration ───────────────────────────
 
@@ -59,15 +60,9 @@ function isCircuitBreakerEnabled(): boolean {
 
 // ── Hash helper ────────────────────────────────────────────
 
-function createReplyHash(text: string): string {
-  let hash = 0;
-  const str = text.trim().substring(0, 100);
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = ((hash << 5) - hash + char) | 0;
-    hash = hash & hash;
-  }
-  return String(hash >>> 0).padStart(8, '0');
+function createReplyHash(commentId: string, replyText: string): string {
+  const raw = `${commentId}::${replyText.trim()}`;
+  return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
 // ── Mode implementations ───────────────────────────────────
@@ -80,7 +75,7 @@ async function publishManualQueue(
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
   const prisma = getPrisma();
-  const replyHash = createReplyHash(replyText);
+  const replyHash = createReplyHash(commentId, replyText);
   const now = new Date();
 
   await prisma.publishLog.create({
@@ -108,7 +103,7 @@ async function publishSimulated(
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
   const prisma = getPrisma();
-  const replyHash = createReplyHash(replyText);
+  const replyHash = createReplyHash(commentId, replyText);
   const now = new Date();
 
   await prisma.publishLog.create({
@@ -183,7 +178,7 @@ async function publishReal(
 
   if (!result.success) {
     const prisma = getPrisma();
-    const replyHash = createReplyHash(replyText);
+    const replyHash = createReplyHash(commentId, replyText);
 
     await prisma.publishLog.create({
       data: {
@@ -202,7 +197,7 @@ async function publishReal(
   }
 
   const prisma = getPrisma();
-  const replyHash = createReplyHash(replyText);
+  const replyHash = createReplyHash(commentId, replyText);
 
   await prisma.publishLog.create({
     data: {
@@ -240,7 +235,7 @@ export const publishReplyWithResult: PublishReplyService = async (
   try {
     // 1. Check duplicate via Publish log
     const prisma = getPrisma();
-    const replyHash = createReplyHash(replyText);
+    const replyHash = createReplyHash(commentId, replyText);
 
     const existing = await prisma.publishLog.findFirst({
       where: {
@@ -296,7 +291,7 @@ export const publishReplyWithResult: PublishReplyService = async (
 
     try {
       const prisma = getPrisma();
-      const replyHash = createReplyHash(replyText);
+      const replyHash = createReplyHash(commentId, replyText);
       await prisma.publishLog.create({
         data: {
           platform: 'bilibili',
