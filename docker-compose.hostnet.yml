@@ -2,3 +2,5 @@ services:
   api:
     network_mode: host
     ports: []
+  worker:
+    network_mode: host

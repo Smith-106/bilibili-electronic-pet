@@ -4,14 +4,14 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY backend-ts/package*.json ./
-COPY backend-ts/prisma ./prisma/
+COPY package*.json ./
+COPY prisma ./prisma/
 
 # Install dependencies
 RUN npm ci
 
 # Copy source code
-COPY backend-ts/ .
+COPY . .
 
 # Generate Prisma client
 RUN npx prisma generate
@@ -32,18 +32,18 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
 
 # Copy package files and install production dependencies
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma/
+COPY package*.json ./
+COPY prisma ./prisma/
 RUN npm ci --only=production && npm cache clean --force
 
 # Generate Prisma client for production
 RUN npx prisma generate
 
 # Copy built application
-COPY --from=builder /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
 # Copy public static files (admin panel)
-COPY backend-ts/public ./public
+COPY --chown=nodejs:nodejs public ./public
 
 # Set environment
 ENV NODE_ENV=production

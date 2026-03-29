@@ -1,3 +1,13 @@
 .ace-tool/
 node_modules/
 dist/
+
+/src/generated/prisma
+
+# Local databases
+*.db
+*.db-journal
+
+# Local databases
+*.db
+*.db-journal

@@ -1,0 +1,187 @@
+// Prisma Schema for TypeScript Backend
+// Migrated from Python SQLAlchemy models
+// SQLite-compatible schema (no native type annotations)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Comment {
+  id                  Int      @id @default(autoincrement())
+  platform            String   @default("bilibili")
+  canonical_comment_id String   @unique
+  comment_id          String
+  video_id            String
+  user_id             String
+  content             String
+  parent_id           String?
+  created_at          DateTime @default(now())
+
+  @@index([platform])
+  @@index([canonical_comment_id])
+  @@index([comment_id])
+  @@map("comments")
+}
+
+model ReplyJob {
+  id                  Int      @id @default(autoincrement())
+  comment_id          String
+  canonical_comment_id String?
+  status              String   @default("queued")
+  length_mode         String   @default("medium")
+  style_mode          String   @default("doro")
+  reply_text          String?
+  risk_flags          String   @default("{}")
+  attempts            Int      @default(0)
+  published_at        DateTime?
+  created_at          DateTime @default(now())
+
+  @@index([comment_id])
+  @@index([canonical_comment_id])
+  @@index([status])
+  @@index([created_at])
+  @@index([status, created_at, id])
+  @@map("reply_jobs")
+}
+
+model UserState {
+  id              Int      @id @default(autoincrement())
+  user_id         String   @unique
+  recent_phrases  String   @default("{}")
+  cooldown_enabled Boolean @default(false)
+  updated_at      DateTime @default(now())
+
+  @@map("user_state")
+}
+
+model PublishLog {
+  id                  Int      @id @default(autoincrement())
+  platform            String   @default("bilibili")
+  canonical_comment_id String
+  comment_id          String
+  reply_hash          String
+  source              String   @default("bili-pet-bot")
+  status              String   @default("published")
+  published_at        DateTime?
+  failure_reason      String?
+  created_at          DateTime @default(now())
+
+  @@unique([canonical_comment_id, reply_hash], name: "uq_publish_logs_canonical_reply")
+  @@index([platform])
+  @@index([canonical_comment_id])
+  @@index([comment_id])
+  @@map("publish_logs")
+}
+
+model KnowledgeEntry {
+  id         Int      @id @default(autoincrement())
+  category   String
+  title      String
+  content    String
+  enabled    Boolean  @default(true)
+  updated_at DateTime @default(now())
+
+  @@index([category])
+  @@index([enabled])
+  @@index([updated_at])
+  @@map("knowledge_entries")
+}
+
+model RoleCard {
+  id            Int      @id @default(autoincrement())
+  key           String   @unique
+  name          String
+  description   String   @default("")
+  system_prompt String   @default("")
+  tone          String   @default("{}")
+  constraints   String   @default("{}")
+  enabled       Boolean  @default(true)
+  is_active     Boolean  @default(false)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+
+  @@index([key])
+  @@index([enabled])
+  @@index([is_active])
+  @@map("role_cards")
+}
+
+model OperationAuditLog {
+  id          Int      @id @default(autoincrement())
+  action      String
+  target_type String   @default("reply_job")
+  target_id   Int?
+  payload     String   @default("{}")
+  ok          Boolean  @default(true)
+  created_at  DateTime @default(now())
+
+  @@index([action])
+  @@index([target_id])
+  @@index([ok])
+  @@index([created_at])
+  @@index([action, ok, created_at, id])
+  @@index([target_id, created_at, id])
+  @@map("operation_audit_logs")
+}
+
+model ObservabilityEvent {
+  id           Int      @id @default(autoincrement())
+  event_type   String
+  trace_id     String
+  comment_id   String?
+  job_id       Int?
+  status       String?
+  duration_ms  Int?
+  event_metadata String @default("{}")
+  created_at   DateTime @default(now())
+
+  @@index([event_type])
+  @@index([trace_id])
+  @@index([comment_id])
+  @@index([job_id])
+  @@index([status])
+  @@index([created_at])
+  @@map("observability_events")
+}
+
+model BilibiliCredential {
+  id           Int       @id @default(autoincrement())
+  name         String
+  sessdata     String    // Encrypted storage
+  bili_jct     String    // Encrypted storage
+  buvid3       String
+  buvid4       String?
+  is_active    Boolean   @default(true)
+  expires_at   DateTime?
+  last_used_at DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @default(now())
+
+  @@index([is_active])
+  @@index([updated_at])
+  @@map("bilibili_credentials")
+}
+
+model BilibiliVideo {
+  id               Int       @id @default(autoincrement())
+  bvid             String    @unique
+  aid              Int?
+  title            String?
+  owner_mid        Int?
+  poll_enabled     Boolean   @default(false)
+  last_polled_at   DateTime?
+  last_poll_status String?
+  last_poll_error  String?
+  last_rpid        Int       @default(0)
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @default(now())
+
+  @@index([poll_enabled, last_polled_at])
+  @@index([last_polled_at])
+  @@index([updated_at])
+  @@map("bilibili_videos")
+}

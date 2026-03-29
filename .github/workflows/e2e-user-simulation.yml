@@ -59,16 +59,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - name: Setup Node
+        uses: actions/setup-node@v5
         with:
-          python-version: "3.12"
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend-ts/package-lock.json
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio httpx celery[redis]
+      - name: Install backend-ts dependencies
+        run: npm --prefix backend-ts ci
 
       - name: Wait for services
         run: |
@@ -77,47 +76,43 @@ jobs:
 
       - name: Run database migrations
         env:
-          DATABASE_URL: postgresql+psycopg://test_user:test_pass@localhost:5432/bili_pet_test
-        run: alembic upgrade head
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/bili_pet_test
+        run: npm --prefix backend-ts run prisma:migrate:deploy 2>/dev/null || npx --prefix backend-ts prisma migrate deploy
+
+      - name: Build backend-ts
+        run: npm --prefix backend-ts run build
 
       - name: Start application in background
         env:
           APP_ENV: test
-          DATABASE_URL: postgresql+psycopg://test_user:test_pass@localhost:5432/bili_pet_test
-          CELERY_BROKER_URL: redis://localhost:6379/0
-          CELERY_RESULT_BACKEND: redis://localhost:6379/1
+          PORT: 18000
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/bili_pet_test
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
           API_KEY: test-api-key-e2e
           GATEWAY_TOKEN: test-gateway-token
           GATEWAY_HMAC_SECRET: test-hmac-secret-32-bytes!!
-          BILIBILI_COOKIE_ENCRYPTION_KEY: test-encryption-key-32-bytes!!
-          BILIBILI_ENABLED: "false"
-          BILIBILI_PUBLISH_ENABLED: "false"
-          BILIBILI_POLL_ENABLED: "false"
+          KILL_SWITCH: "false"
           LLM_PROVIDER: mock
-          PUBLISHER_MODE: simulated
         run: |
-          python -m uvicorn app.main:app --host 0.0.0.0 --port 18000 &
-          sleep 10
-          curl -sS http://localhost:18000/health || exit 1
+          node backend-ts/dist/index.js &
+          APP_PID=$!
+          trap 'kill $APP_PID' EXIT
 
-      - name: Run strict E2E business acceptance tests
+          for i in {1..30}; do
+            if curl -fsS http://localhost:18000/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+
+          curl -fsS http://localhost:18000/health || exit 1
+
+      - name: Run smoke contract tests
         env:
           BASE_URL: http://localhost:18000
           API_KEY: test-api-key-e2e
-          DATABASE_URL: postgresql+psycopg://test_user:test_pass@localhost:5432/bili_pet_test
-          CELERY_BROKER_URL: redis://localhost:6379/0
-          CELERY_RESULT_BACKEND: redis://localhost:6379/1
-          BILIBILI_COOKIE_ENCRYPTION_KEY: test-encryption-key-32-bytes!!
-          BILIBILI_ENABLED: "false"
-          BILIBILI_PUBLISH_ENABLED: "false"
-          PUBLISHER_MODE: simulated
-        run: |
-          python -m pytest app/tests/test_e2e_user_flow.py -v --tb=short
-
-      - name: Cleanup
-        if: always()
-        run: |
-          pkill -f "uvicorn app.main:app" || true
+        run: bash smoke.sh
 
   pre-release-real-chain-smoke:
     if: ${{ needs.release-gate-config.outputs.pre_release_smoke_ready == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) }}

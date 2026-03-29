@@ -1,5 +1,6 @@
-# docker-compose.yml — TypeScript backend (cutover from Python)
-# Usage: docker compose up
+# docker-compose for TypeScript backend
+# Replaces the Python-based docker-compose.yml
+# Usage: docker compose -f docker-compose.ts.yml up
 
 services:
   migrate:
