@@ -3,6 +3,10 @@
  * Tests end-to-end worker task processing with mock services
  */
 
+// Speed up LLM fallback in test environment
+process.env.LLM_TIMEOUT = '1000';
+process.env.LLM_RETRIES = '1';
+
 import { describe, expect, it, beforeEach } from 'vitest';
 import { createCommentEventWorker, createCommentEventQueue } from '../src/workers/tasks/comment-event.task.js';
 import { buildWorkerServices } from '../src/services/index.js';
@@ -125,7 +129,7 @@ describe('worker integration tests', () => {
       // Without a real LLM API key, the service falls back to templates
       expect(['fallback_template', 'mock', 'openai', 'claude', 'ollama']).toContain(result.provider);
       expect(result.resolved_role_profile).toBe('doro');
-    });
+    }, 15000);
 
     it('publishes reply with result (fails without Bilibili config)', async () => {
       const [published, reason, publishedAt, result] =
