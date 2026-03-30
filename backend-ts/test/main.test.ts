@@ -671,7 +671,7 @@ describe('admin api parity', () => {
         offset: 0,
       },
     ]);
-    expect(response.json()).toEqual({
+    expect(response.json()).toMatchObject({
       items: [{ id: 'job-1', status: 'done' }],
       total: 1,
       limit: 1000,

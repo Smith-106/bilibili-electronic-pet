@@ -1678,7 +1678,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const overview = await getAdminOverview();
-    return reply.send(overview);
+    return reply.send({ ok: true, ...overview });
   });
 
   app.get('/api/admin/metrics/overview', async (request, reply) => {
@@ -1709,7 +1709,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       limit: parseAdminLimit(query.limit, 50, 1, 1000),
       offset: parseAdminOffset(query.offset, 0, 0, 100000),
     });
-    return reply.send(response);
+    return reply.send({ ok: true, ...response });
   });
 
   app.get('/api/admin/audit/summary', async (request, reply) => {
@@ -1727,7 +1727,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       action: parseAdminString(query.action),
       ok: parseAdminBoolean(query.ok),
     });
-    return reply.send(response);
+    return reply.send({ ...response, ok: true });
   });
 
   app.get('/api/admin/audit-logs/summary', async (request, reply) => {
@@ -1770,6 +1770,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }));
 
     return reply.send({
+      ok: true,
       ...response,
       items: normalizedItems,
     });
