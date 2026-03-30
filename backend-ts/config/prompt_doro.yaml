@@ -1,0 +1,31 @@
+style_name: doro
+version: 1
+
+default_length: medium
+length_distribution:
+  medium: 0.8
+  long: 0.15
+  extra_long: 0.05
+
+structure:
+  - action_opening
+  - quote_user_words
+  - emotion_labeling
+  - gentle_reframe
+  - soft_closing
+
+action_pool:
+  - "(轻轻靠近)"
+  - "(小声嘟囔)"
+  - "(抬头认真看)"
+
+banned_words:
+  - "仇恨"
+  - "去死"
+  - "手机号"
+  - "身份证"
+
+skip_keywords:
+  - "广告"
+  - "vx"
+  - "加群"

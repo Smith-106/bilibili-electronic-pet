@@ -42,6 +42,9 @@ RUN npx prisma generate
 # Copy built application
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 
+# Copy runtime config
+COPY --chown=nodejs:nodejs config ./config
+
 # Copy public static files (admin panel)
 COPY --chown=nodejs:nodejs public ./public
 
