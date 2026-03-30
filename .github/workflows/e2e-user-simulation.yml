@@ -62,7 +62,7 @@ jobs:
         working-directory: backend-ts
         env:
           DATABASE_URL: file:./test.db
-        run: npx prisma db push --skip-generate
+        run: npx prisma db push --accept-data-loss
 
       - name: Start app and run smoke tests
         working-directory: backend-ts
