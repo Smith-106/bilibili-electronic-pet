@@ -43,7 +43,10 @@ RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 
 # Copy public static files (admin panel)
-COPY backend-ts/public ./public
+COPY --from=builder /app/public ./public
+
+# Copy runtime config
+COPY --from=builder /app/config ./config
 
 # Set environment
 ENV NODE_ENV=production
