@@ -30,6 +30,9 @@ jobs:
       - name: Install backend-ts dependencies
         run: npm --prefix backend-ts ci
 
+      - name: Generate Prisma client
+        run: npm --prefix backend-ts run prisma:generate
+
       - name: Run backend-ts tests
         run: npm --prefix backend-ts test
 
@@ -96,6 +99,9 @@ jobs:
 
       - name: Install backend-ts dependencies
         run: npm --prefix backend-ts ci
+
+      - name: Generate Prisma client
+        run: npm --prefix backend-ts run prisma:generate
 
       - name: Run backend-ts full suite
         run: npm --prefix backend-ts test

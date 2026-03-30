@@ -69,6 +69,9 @@ jobs:
       - name: Install backend-ts dependencies
         run: npm --prefix backend-ts ci
 
+      - name: Generate Prisma client
+        run: npm --prefix backend-ts run prisma:generate
+
       - name: Wait for services
         run: |
           sleep 5
@@ -77,7 +80,7 @@ jobs:
       - name: Run database migrations
         env:
           DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/bili_pet_test
-        run: npm --prefix backend-ts run prisma:migrate:deploy 2>/dev/null || npx --prefix backend-ts prisma migrate deploy
+        run: npm --prefix backend-ts run prisma:migrate:prod
 
       - name: Build backend-ts
         run: npm --prefix backend-ts run build
