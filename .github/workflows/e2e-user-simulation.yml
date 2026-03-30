@@ -38,23 +38,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: test_user
-          POSTGRES_PASSWORD: test_pass
-          POSTGRES_DB: bili_pet_test
-        ports:
-          - 5432:5432
-        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
-
-      redis:
-        image: redis:7
-        ports:
-          - 6379:6379
-        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
-
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -72,16 +55,6 @@ jobs:
       - name: Generate Prisma client
         run: npm --prefix backend-ts run prisma:generate
 
-      - name: Wait for services
-        run: |
-          sleep 5
-          pg_isready -h localhost -p 5432
-
-      - name: Run database migrations
-        env:
-          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/bili_pet_test
-        run: npm --prefix backend-ts run prisma:migrate:prod
-
       - name: Build backend-ts
         run: npm --prefix backend-ts run build
 
@@ -89,9 +62,7 @@ jobs:
         env:
           APP_ENV: test
           PORT: 18000
-          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/bili_pet_test
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
+          DATABASE_URL: file:./test.db
           API_KEY: test-api-key-e2e
           GATEWAY_TOKEN: test-gateway-token
           GATEWAY_HMAC_SECRET: test-hmac-secret-32-bytes!!
