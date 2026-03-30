@@ -58,6 +58,12 @@ jobs:
       - name: Build backend-ts
         run: npm --prefix backend-ts run build
 
+      - name: Push database schema
+        working-directory: backend-ts
+        env:
+          DATABASE_URL: file:./test.db
+        run: npx prisma db push --skip-generate
+
       - name: Start app and run smoke tests
         working-directory: backend-ts
         env:
