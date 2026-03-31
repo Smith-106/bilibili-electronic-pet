@@ -3,10 +3,242 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bili Pet Frontend</title>
+    <title>Bili Pet - 沉浸式 UI</title>
   </head>
   <body>
-    <div id="app"></div>
+    <!-- Define SVG symbols for clean HTML -->
+    <svg style="display:none">
+      <symbol id="icon-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="icon-chevron-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+      <symbol id="icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+      <symbol id="icon-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></symbol>
+      <symbol id="icon-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol>
+      <symbol id="icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></symbol>
+      <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
+      <symbol id="icon-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+      <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+      <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+      <symbol id="icon-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></symbol>
+      <symbol id="icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+      <symbol id="icon-zap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></symbol>
+      <symbol id="icon-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></symbol>
+      <symbol id="icon-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+      <symbol id="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></symbol>
+      <symbol id="icon-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+    </svg>
+
+    <div id="app">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <button class="btn btn-icon-only" title="返回概览">
+            <svg width="18" height="18"><use href="#icon-chevron-left"></use></svg> 返回概览
+          </button>
+        </div>
+        <div class="top-bar-center">
+          <div class="dropdown">
+            <button class="btn btn-capsule dropdown-trigger"><svg width="14" height="14" style="color:var(--primary-cta)"><use href="#icon-play"></use></svg> 启动宠物 ▼</button>
+            <div class="dropdown-menu" style="left:50%; transform:translate(-50%, -5px); transform-origin: top center;">
+              <div class="dropdown-item"><svg width="14" height="14"><use href="#icon-zap"></use></svg> 核心唤醒 (Boot)</div>
+              <div class="dropdown-item"><svg width="14" height="14"><use href="#icon-moon"></use></svg> 进入休眠 (Sleep)</div>
+              <div class="dropdown-divider"></div>
+              <div class="dropdown-item danger"><svg width="14" height="14"><use href="#icon-shield"></use></svg> 紧急停机</div>
+            </div>
+          </div>
+          
+          <div class="dropdown">
+            <button class="btn btn-capsule dropdown-trigger"><svg width="14" height="14" style="color:#ff9900"><use href="#icon-heart"></use></svg> 喂食 ▼</button>
+            <div class="dropdown-menu" style="left:50%; transform:translate(-50%, -5px); transform-origin: top center;">
+              <div class="dropdown-item"><span style="font-size:16px;">🦴</span> 给零食</div>
+              <div class="dropdown-item"><span style="font-size:16px;">🍲</span> 定时正餐</div>
+            </div>
+          </div>
+
+          <div class="dropdown">
+            <button class="btn btn-capsule dropdown-trigger"><svg width="14" height="14" style="color:#10bc5f"><use href="#icon-activity"></use></svg> 互动 ▼</button>
+            <div class="dropdown-menu" style="left:50%; transform:translate(-50%, -5px); transform-origin: top center;">
+              <div class="dropdown-item"><span style="font-size:16px;">🎾</span> 抛接乐</div>
+              <div class="dropdown-item"><span style="font-size:16px;">🧩</span> 智能解谜</div>
+            </div>
+          </div>
+
+          <button class="btn btn-capsule"><svg width="14" height="14" style="color:#4285f4"><use href="#icon-file"></use></svg> 属性报表</button>
+          
+          <div class="dropdown">
+            <button class="btn btn-capsule dropdown-trigger"><svg width="14" height="14"><use href="#icon-settings"></use></svg> 首选项 ▼</button>
+            <div class="dropdown-menu" style="left:50%; transform:translate(-50%, -5px); transform-origin: top center;">
+              <div class="dropdown-item"><svg width="14" height="14"><use href="#icon-clock"></use></svg> 网络设置</div>
+              <div class="dropdown-item"><svg width="14" height="14"><use href="#icon-terminal"></use></svg> 更换驱动模型</div>
+            </div>
+          </div>
+        </div>
+        <div class="top-bar-right">
+          <span class="stat-text">已运行: 24小时</span>
+          <span class="stat-text stat-check">连接正常 <svg width="12" height="12"><use href="#icon-check"></use></svg></span>
+          <button class="btn btn-icon-only" title="导出日记"><svg width="18" height="18"><use href="#icon-upload"></use></svg></button>
+          <button class="btn btn-icon-only" id="theme-toggle-btn" title="循环切换主题（亮、暗、护眼）"><svg width="18" height="18"><use href="#icon-moon"></use></svg></button>
+          <button class="btn btn-icon-only" title="求助向导"><svg width="18" height="18"><use href="#icon-help"></use></svg></button>
+          <button class="btn btn-icon-only" title="全局设置"><svg width="18" height="18"><use href="#icon-settings"></use></svg></button>
+        </div>
+      </header>
+
+      <!-- Main Layout -->
+      <div class="main-container">
+        <!-- Left Sidebar -->
+        <aside class="sidebar" id="left-sidebar">
+          <div class="sidebar-header">
+            <span>Bili Pet 大厅</span>
+            <button class="btn btn-icon-only" id="toggle-left-btn"><svg width="18" height="18"><use href="#icon-chevron-left"></use></svg></button>
+          </div>
+          <div class="sidebar-actions">
+            <button class="btn" style="flex:1"><svg width="14" height="14"><use href="#icon-plus"></use></svg> 新增宠物</button>
+            <button class="btn" style="flex:1"><svg width="14" height="14"><use href="#icon-download"></use></svg> 读取存档</button>
+          </div>
+          <div class="sidebar-section">
+            <div class="nav-item active"><svg width="16" height="16"><use href="#icon-cpu"></use></svg> 后台仪表盘</div>
+            <div class="nav-item"><svg width="16" height="16"><use href="#icon-shield"></use></svg> 接入网关配置</div>
+          </div>
+          <div class="sidebar-footer">
+            <div class="toggle-switch on">
+              <span class="small-text font-weight-500">开启配置文件浮窗</span>
+              <div class="toggle-track"><div class="toggle-thumb"></div></div>
+            </div>
+            <div style="margin-top:16px;">
+              <span class="nav-item" style="padding:0; margin:0;"><span class="small-text" style="display:flex; align-items:center; gap:4px;"><svg width="14" height="14"><use href="#icon-trash"></use></svg> 回收站</span></span>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Center Editor -->
+        <main class="center-editor-space">
+          <!-- Temporary triggers for collapsed sidebars -->
+          <button class="btn btn-icon-only trigger-left" id="expand-left-btn" style="display:none;" title="展开左栏"><svg width="18" height="18" style="transform:rotate(180deg)"><use href="#icon-chevron-left"></use></svg></button>
+          <button class="btn btn-icon-only trigger-right" id="expand-right-btn" style="display:none;" title="展开右栏"><svg width="18" height="18"><use href="#icon-chevron-left"></use></svg></button>
+
+          <!-- Sticky Toolbar -->
+          <div class="editor-toolbar">
+            <button class="btn btn-icon-only"><svg width="16" height="16"><use href="#icon-file"></use></svg></button>
+            <button class="btn btn-icon-only" style="font-weight:bold;">B</button>
+            <button class="btn btn-icon-only" style="font-style:italic;">I</button>
+            <button class="btn btn-icon-only" style="text-decoration:underline;">U</button>
+            <div style="border-right:1px solid var(--grey-3); margin:4px;"></div>
+            <button class="btn btn-icon-only" style="font-family:serif;">Aa</button>
+            <button class="btn btn-icon-only">H1</button>
+            <button class="btn btn-icon-only"><svg width="16" height="16"><use href="#icon-more"></use></svg></button>
+          </div>
+
+          <!-- Document Area -->
+          <div class="document-container">
+            <div class="document-title">
+              <span>系统运行核心日志</span>
+              <button class="btn btn-icon-only"><svg width="18" height="18"><use href="#icon-more"></use></svg></button>
+            </div>
+            <div class="document-content" id="admin-dashboard">
+              <!-- Dynamically injected admin dashboard will go here -->
+            </div>
+          </div>
+
+          <!-- Interactive System Config (Story Bible Substitute) -->
+          <div class="story-bible">
+            <div class="bible-header">
+              <span>系统配置库 (System Configuration)</span>
+            </div>
+            
+            <div class="bible-section">
+              <div class="bible-section-header">
+                <div class="bible-section-label">
+                  <span class="chevron"><svg width="16" height="16"><use href="#icon-chevron"></use></svg></span>
+                  <svg width="14" height="14" style="color:#ff9900"><use href="#icon-heart"></use></svg> 宠物个性格局 (Personality)
+                </div>
+              </div>
+              <div class="bible-section-content" id="panel-overview">
+                在此处查阅、调整您专属电子宠物的心情波动矩阵与系统行为边界参数。
+              </div>
+            </div>
+
+            <div class="bible-section">
+              <div class="bible-section-header">
+                <div class="bible-section-label">
+                  <span class="chevron"><svg width="16" height="16"><use href="#icon-chevron"></use></svg></span>
+                  <svg width="14" height="14" style="color:var(--primary-cta)"><use href="#icon-activity"></use></svg> 活跃状态任务 (Active Jobs)
+                </div>
+              </div>
+              <div class="bible-section-content" id="panel-jobs">
+                目前没有任何挂起的后台工作队列，状态十分畅通。
+              </div>
+            </div>
+
+            <div class="bible-section">
+              <div class="bible-section-header">
+                <div class="bible-section-label">
+                  <span class="chevron"><svg width="16" height="16"><use href="#icon-chevron"></use></svg></span>
+                  <svg width="14" height="14"><use href="#icon-shield"></use></svg> B站网关状态 (Gateway Logs)
+                </div>
+                <span class="small-text" style="color:var(--success-color);">🟢 连通良好</span>
+              </div>
+              <div class="bible-section-content" id="panel-gateway">
+                与后端网关的连接状态呈现高度稳定。平均回音延迟：42ms。
+              </div>
+            </div>
+
+            <div class="bible-section" style="cursor:default;">
+              <div class="bible-section-header">
+                <div class="bible-section-label" style="cursor:default;">
+                   <svg width="16" height="16" style="visibility:hidden"><use href="#icon-chevron"></use></svg>
+                   <svg width="14" height="14"><use href="#icon-clock"></use></svg> 审计溯源信息 (Audit)
+                </div>
+                <button class="btn btn-primary" style="padding:4px 8px; font-size:12px;"><svg width="12" height="12" style="margin-right:4px;"><use href="#icon-zap"></use></svg> ✨ 一键获取快照</button>
+              </div>
+              <div class="bible-section-content" id="panel-audit" style="display:none">
+              </div>
+            </div>
+          </div>
+          <div style="height: 60px;"></div> <!-- Bottom Spacing -->
+        </main>
+
+        <!-- Right Sidebar -->
+        <aside class="sidebar sidebar-right" id="right-sidebar">
+          <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px 16px;">
+            <button class="btn btn-icon-only" id="toggle-right-btn"><svg width="18" height="18" style="transform:rotate(180deg)"><use href="#icon-chevron-left"></use></svg></button>
+            <button class="btn btn-icon-only"><svg width="18" height="18"><use href="#icon-clock"></use></svg></button>
+          </div>
+          
+          <div class="tabs-header">
+            <div class="tab">历史对话</div>
+            <div class="tab active">交互终端</div>
+          </div>
+
+          <div class="chat-panel">
+            <div class="spacer"></div>
+            <h3><svg width="24" height="24" style="color:var(--primary-cta); margin-bottom:8px;"><use href="#icon-terminal"></use></svg><br>直接指引交互</h3>
+            <p>通过命令行或者自然语言，快速唤醒并调用您的 Bili Pet 行为体系。</p>
+            <div class="spacer"></div>
+          </div>
+
+          <div class="chat-footer">
+            <div class="chat-input-wrapper">
+              <input type="text" class="chat-input" placeholder="输入你想下达的任何指令..." />
+              <button class="btn btn-primary" style="border-radius:6px; padding:6px; min-width:32px;"><svg width="14" height="14"><use href="#icon-send"></use></svg></button>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+              <select class="select-model">
+                <option>GPT-4 (Pet Brain 框架)</option>
+              </select>
+            </div>
+            <div style="display:flex; gap:8px; margin-top:16px;">
+              <button class="btn" style="flex:1"><svg width="14" height="14"><use href="#icon-file"></use></svg> 说明手册</button>
+              <button class="btn btn-primary" style="flex:1"><svg width="14" height="14"><use href="#icon-upload"></use></svg> 云端部署</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

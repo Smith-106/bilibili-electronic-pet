@@ -5,4 +5,12 @@ export default defineConfig({
     outDir: '../app/static/frontend',
     emptyOutDir: true,
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:18000',
+        changeOrigin: true,
+      },
+    },
+  },
 });
