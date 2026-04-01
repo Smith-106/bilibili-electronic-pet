@@ -2725,68 +2725,55 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     return reply.send({ ok: true, days, total });
   });
 
-  // ── Serve admin static files ──
+  // ── Serve admin SPA (Vite-built frontend) ──
 
   app.get('/admin', async (_request, reply) => {
-    return reply.type('text/html').send(`<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Bili Pet Admin</title>
-  <link rel="stylesheet" href="/static/admin/admin.css" />
-</head>
-<body>
-  <div id="admin-root"></div>
-  <script src="/static/admin/admin.js"></script>
-</body>
-</html>`);
-  });
-
-  // Serve admin static assets
-  app.get('/admin/admin.css', async (_request, reply) => {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const cssPath = path.join(process.cwd(), 'public', 'admin', 'admin.css');
+    const indexPath = path.join(process.cwd(), 'public', 'admin', 'index.html');
     try {
-      const css = await fs.readFile(cssPath, 'utf-8');
-      return reply.type('text/css').send(css);
+      const html = await fs.readFile(indexPath, 'utf-8');
+      return reply.type('text/html').send(html);
     } catch {
-      return reply.code(404).send({ error: 'not_found' });
+      return reply.code(404).send({ error: 'Admin SPA not found' });
     }
   });
 
-  app.get('/admin/admin.js', async (_request, reply) => {
+  // Serve Vite-built assets from /admin/assets/*
+  app.get('/admin/assets/*', async (request, reply) => {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const jsPath = path.join(process.cwd(), 'public', 'admin', 'admin.js');
+    const assetPath = path.join(process.cwd(), 'public', 'admin', 'assets', (request.params as Record<string, string>)['*']);
     try {
-      const js = await fs.readFile(jsPath, 'utf-8');
-      return reply.type('application/javascript').send(js);
+      const content = await fs.readFile(assetPath);
+      if (assetPath.endsWith('.js')) {
+        return reply.type('application/javascript').send(content);
+      } else if (assetPath.endsWith('.css')) {
+        return reply.type('text/css').send(content);
+      } else {
+        return reply.type('application/octet-stream').send(content);
+      }
     } catch {
-      return reply.code(404).send({ error: 'not_found' });
+      return reply.code(404).send({ error: 'Asset not found' });
     }
   });
 
   // ── Static asset aliases (smoke test compatibility: /static/admin/*) ──
-
-  app.get('/static/admin/admin.css', async (_request, reply) => {
+  app.get('/static/admin/*', async (request, reply) => {
     const fs = await import('fs/promises');
     const path = await import('path');
+    const filePath = path.join(process.cwd(), 'public', 'admin', (request.params as Record<string, string>)['*']);
     try {
-      const css = await fs.readFile(path.join(process.cwd(), 'public', 'admin', 'admin.css'), 'utf-8');
-      return reply.type('text/css').send(css);
-    } catch {
-      return reply.code(404).send({ error: 'not_found' });
-    }
-  });
-
-  app.get('/static/admin/admin.js', async (_request, reply) => {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    try {
-      const js = await fs.readFile(path.join(process.cwd(), 'public', 'admin', 'admin.js'), 'utf-8');
-      return reply.type('application/javascript').send(js);
+      const content = await fs.readFile(filePath);
+      if (filePath.endsWith('.js')) {
+        return reply.type('application/javascript').send(content);
+      } else if (filePath.endsWith('.css')) {
+        return reply.type('text/css').send(content);
+      } else if (filePath.endsWith('.html')) {
+        return reply.type('text/html').send(content);
+      } else {
+        return reply.type('application/octet-stream').send(content);
+      }
     } catch {
       return reply.code(404).send({ error: 'not_found' });
     }

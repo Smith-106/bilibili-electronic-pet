@@ -1,129 +1,155 @@
 import './style.css';
-import { renderAdminDashboard } from './pages/admin/dashboard.js';
+import { requestJson } from './api/client.js';
 
-// Setup DEV local API key for frontend-backend handshake
-window.__ADMIN_API_KEY__ = 'pet-local-key-20260308';
+// Page imports (lazy-loaded modules)
+import { render as renderDashboard } from './pages/dashboard.js';
+import { render as renderJobs } from './pages/jobs.js';
+import { render as renderDailyMetrics } from './pages/daily-metrics.js';
+import { render as renderKnowledge } from './pages/knowledge.js';
+import { render as renderRoleCards } from './pages/role-cards.js';
+import { render as renderProfiles } from './pages/profiles.js';
+import { render as renderGateway } from './pages/gateway.js';
+import { render as renderAudit } from './pages/audit.js';
+import { render as renderBilibili } from './pages/bilibili.js';
+import { render as renderQuery } from './pages/query.js';
+
+const PAGES = {
+  dashboard: { render: renderDashboard, title: '仪表盘' },
+  jobs: { render: renderJobs, title: '任务管理' },
+  'daily-metrics': { render: renderDailyMetrics, title: '每日指标' },
+  knowledge: { render: renderKnowledge, title: '知识库' },
+  'role-cards': { render: renderRoleCards, title: '角色卡' },
+  profiles: { render: renderProfiles, title: '风格配置' },
+  gateway: { render: renderGateway, title: '网关' },
+  audit: { render: renderAudit, title: '审计日志' },
+  bilibili: { render: renderBilibili, title: 'B站集成' },
+  query: { render: renderQuery, title: '查询' },
+};
+
+let currentPage = null;
+
+function ensureApiKey() {
+  const stored = sessionStorage.getItem('admin_api_key');
+  if (stored) {
+    window.__ADMIN_API_KEY__ = stored;
+    return true;
+  }
+  return false;
+}
+
+function showLogin() {
+  document.getElementById('login-overlay').style.display = 'flex';
+  document.getElementById('logout-btn').style.display = 'none';
+}
+
+function hideLogin() {
+  document.getElementById('login-overlay').style.display = 'none';
+  document.getElementById('logout-btn').style.display = '';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const input = document.getElementById('login-api-key');
+  const errorEl = document.getElementById('login-error');
+  const key = input.value.trim();
+  if (!key) return;
+
+  window.__ADMIN_API_KEY__ = key;
+  try {
+    await requestJson('/api/admin/overview');
+    sessionStorage.setItem('admin_api_key', key);
+    hideLogin();
+    navigateTo('dashboard');
+  } catch {
+    errorEl.textContent = 'API Key 无效或服务不可用';
+    errorEl.style.display = 'block';
+    window.__ADMIN_API_KEY__ = '';
+  }
+}
+
+function handleLogout() {
+  sessionStorage.removeItem('admin_api_key');
+  window.__ADMIN_API_KEY__ = '';
+  document.getElementById('page-container').innerHTML = '';
+  showLogin();
+}
+
+function navigateTo(page) {
+  if (!PAGES[page]) return;
+  currentPage = page;
+
+  // Update nav active state
+  document.querySelectorAll('#nav-list .nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === page);
+  });
+
+  // Update page title
+  document.getElementById('page-title').textContent = PAGES[page].title;
+
+  // Render page
+  const container = document.getElementById('page-container');
+  container.innerHTML = '<div class="page-loading">加载中...</div>';
+  PAGES[page].render(container).catch(err => {
+    container.innerHTML = `<div class="page-error">加载失败: ${err.message}</div>`;
+  });
+}
+
+function setupSidebarNav() {
+  document.querySelectorAll('#nav-list .nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const page = item.dataset.page;
+      if (page && page !== currentPage) {
+        navigateTo(page);
+      }
+    });
+  });
+}
 
 function setupLayoutToggles() {
   const leftSidebar = document.getElementById('left-sidebar');
-  const rightSidebar = document.getElementById('right-sidebar');
   const toggleLeftBtn = document.getElementById('toggle-left-btn');
-  const toggleRightBtn = document.getElementById('toggle-right-btn');
   const expandLeftBtn = document.getElementById('expand-left-btn');
-  const expandRightBtn = document.getElementById('expand-right-btn');
-  const storyBibleToggle = document.querySelector('.toggle-switch');
 
-  // Left Sidebar Toggle
   if (toggleLeftBtn && expandLeftBtn && leftSidebar) {
     toggleLeftBtn.addEventListener('click', () => {
       leftSidebar.classList.add('collapsed');
       expandLeftBtn.style.display = 'block';
     });
-
     expandLeftBtn.addEventListener('click', () => {
       leftSidebar.classList.remove('collapsed');
       expandLeftBtn.style.display = 'none';
     });
   }
+}
 
-  // Right Sidebar Toggle
-  if (toggleRightBtn && expandRightBtn && rightSidebar) {
-    toggleRightBtn.addEventListener('click', () => {
-      rightSidebar.classList.add('collapsed');
-      expandRightBtn.style.display = 'block';
-    });
-
-    expandRightBtn.addEventListener('click', () => {
-      rightSidebar.classList.remove('collapsed');
-      expandRightBtn.style.display = 'none';
-    });
-  }
-
-  // Accordion Logic for System Config
-  const bibleSections = document.querySelectorAll('.bible-section');
-  bibleSections.forEach(section => {
-    // Only add logic if there's a chevron to click
-    const chevron = section.querySelector('.chevron');
-    if (chevron) {
-      section.addEventListener('click', () => {
-        section.classList.toggle('open');
-      });
+function setupTheme() {
+  const btn = document.getElementById('theme-toggle-btn');
+  if (!btn) return;
+  const themes = ['', 'dark', 'sepia'];
+  let idx = 0;
+  btn.addEventListener('click', () => {
+    idx = (idx + 1) % themes.length;
+    if (themes[idx]) {
+      document.body.setAttribute('data-theme', themes[idx]);
+    } else {
+      document.body.removeAttribute('data-theme');
     }
-  });
-
-  // Theme Toggle Logic
-  const themeToggleBtn = document.getElementById('theme-toggle-btn');
-  if (themeToggleBtn) {
-    let currentThemeIndex = 0;
-    const themes = ['', 'dark', 'sepia'];
-    themeToggleBtn.addEventListener('click', () => {
-      currentThemeIndex = (currentThemeIndex + 1) % themes.length;
-      const nextTheme = themes[currentThemeIndex];
-      if (!nextTheme) {
-        document.body.removeAttribute('data-theme');
-      } else {
-        document.body.setAttribute('data-theme', nextTheme);
-      }
-    });
-  }
-
-  // System Config (Story Bible) Toggle Switch
-  const systemConfigToggle = document.querySelector('.toggle-switch');
-  const systemConfigPanel = document.querySelector('.story-bible');
-  if (systemConfigToggle && systemConfigPanel) {
-    systemConfigToggle.addEventListener('click', () => {
-      const isOn = systemConfigToggle.classList.toggle('on');
-      systemConfigPanel.style.display = isOn ? 'block' : 'none';
-    });
-  }
-
-  // Right Sidebar Tabs Logic
-  const tabs = document.querySelectorAll('.tab');
-  const chatPanel = document.querySelector('.chat-panel');
-  const chatFooter = document.querySelector('.chat-footer');
-  
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      
-      if (tab.textContent.includes('History')) {
-        chatPanel.innerHTML = '<div class="spacer"></div><h3>History Log</h3><p>No recorded commands in current session.</p><div class="spacer"></div>';
-        if (chatFooter) chatFooter.style.display = 'none';
-      } else {
-        chatPanel.innerHTML = '<div class="spacer"></div><h3><svg width="24" height="24" style="color:var(--primary-cta); margin-bottom:8px;"><use href="#icon-terminal"></use></svg><br>Interact directly</h3><p>Send commands to your Bili Pet System, check live behavior, or paste diagnostic text.</p><div class="spacer"></div>';
-        if (chatFooter) chatFooter.style.display = 'block';
-      }
-    });
-  });
-
-  // Dropdown Logic
-  const dropdowns = document.querySelectorAll('.dropdown');
-  dropdowns.forEach(dropdown => {
-    const trigger = dropdown.querySelector('.dropdown-trigger');
-    if (trigger) {
-      trigger.addEventListener('click', (e) => {
-        e.stopPropagation();
-        dropdowns.forEach(d => { if(d !== dropdown) d.classList.remove('open') });
-        dropdown.classList.toggle('open');
-      });
-    }
-  });
-
-  // Close dropdowns on outside click
-  document.addEventListener('click', () => {
-    dropdowns.forEach(d => d.classList.remove('open'));
   });
 }
 
-async function bootstrap() {
+function bootstrap() {
   setupLayoutToggles();
+  setupTheme();
+  setupSidebarNav();
 
-  const panel = document.getElementById('admin-dashboard');
-  if (panel) {
-    await renderAdminDashboard(panel);
+  document.getElementById('login-form').addEventListener('submit', handleLogin);
+  document.getElementById('logout-btn').addEventListener('click', handleLogout);
+
+  if (ensureApiKey()) {
+    hideLogin();
+    navigateTo('dashboard');
   } else {
-    console.error('Admin dashboard container not found.');
+    showLogin();
   }
 }
 

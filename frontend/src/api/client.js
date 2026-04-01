@@ -30,3 +30,24 @@ export async function requestJson(path, options = {}) {
   }
   return payload;
 }
+
+export async function downloadFile(path, filename) {
+  const apiKey = resolveApiKey();
+  const headers = new Headers();
+  if (apiKey) {
+    headers.set('x-api-key', apiKey);
+  }
+  const response = await fetch(path, { headers });
+  if (!response.ok) {
+    throw new Error('download_failed');
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}

@@ -1,21 +1,69 @@
-.git
-.gitignore
-.claude
-.workflow
-.ace-tool
+# Dependencies
+node_modules/
+
+# Build outputs
+**/dist
+**/build
+*.tsbuildinfo
+
+# Python (legacy)
 .pytest_cache
 __pycache__/
 **/__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+venv/
+.venv/
 
+# Environment
 .env
 .env.*
 local.db
 **/local.db
 
-venv/
-.venv/
+# Git
+.git
+.gitignore
 
-node_modules/
+# Claude / workflow
+.claude
+.workflow
+.ace-tool
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs
+
+# Database
+*.db
+*.db-journal
+prisma/dev.db
+prisma/test.db
+
+# Docker (avoid recursive Dockerfile pickup)
+Dockerfile
+.dockerignore
+
+# Test / coverage
+test
+coverage
+.nyc_output
+
+# Misc
+.eslintcache
+.cache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

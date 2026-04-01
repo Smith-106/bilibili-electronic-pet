@@ -4,8 +4,8 @@
 services:
   migrate:
     build:
-      context: ./backend-ts
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend-ts/Dockerfile
     command: npx prisma migrate deploy
     environment:
       - APP_ENV=${APP_ENV:-development}
@@ -40,8 +40,8 @@ services:
 
   api:
     build:
-      context: ./backend-ts
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend-ts/Dockerfile
     command: node dist/index.js
     ports:
       - "${API_PORT:-18000}:3000"
@@ -92,8 +92,8 @@ services:
 
   worker:
     build:
-      context: ./backend-ts
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend-ts/Dockerfile
     command: node dist/workers/worker-main.js
     environment:
       - APP_ENV=${APP_ENV:-development}
