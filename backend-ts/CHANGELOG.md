@@ -26,8 +26,7 @@ All notable changes to the TypeScript backend migration project.
   - BilibiliCredential
   - BilibiliVideo
 - 2 database migrations
-- SQLite for development
-- PostgreSQL support for production
+- SQLite / libSQL default database path
 - Lazy Prisma client initialization
 
 #### API Routes (70+ tests)

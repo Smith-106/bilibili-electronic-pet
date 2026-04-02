@@ -12,11 +12,14 @@ export type RedisConnectionConfig = {
 };
 
 export function buildRedisConnectionConfig(): RedisConnectionConfig {
+  const port = Number.parseInt(process.env.REDIS_PORT ?? '', 10);
+  const db = Number.parseInt(process.env.REDIS_DB ?? '', 10);
+
   return {
     host: process.env.REDIS_HOST ?? 'localhost',
-    port: Number(process.env.REDIS_PORT) ?? 6379,
+    port: Number.isFinite(port) ? port : 6379,
     password: process.env.REDIS_PASSWORD ?? undefined,
-    db: Number(process.env.REDIS_DB) ?? 0,
+    db: Number.isFinite(db) ? db : 0,
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
   };

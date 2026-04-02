@@ -6,8 +6,10 @@
 // Speed up LLM fallback in test environment
 process.env.LLM_TIMEOUT = '1000';
 process.env.LLM_RETRIES = '1';
+process.env.LLM_PROVIDER = 'ollama';
+process.env.LLM_BASE_URL = 'http://127.0.0.1:1';
 
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createCommentEventWorker, createCommentEventQueue } from '../src/workers/tasks/comment-event.task.js';
 import { buildWorkerServices } from '../src/services/index.js';
 import type { WorkerServices } from '../src/services/interfaces.js';
@@ -15,13 +17,25 @@ import type { CommentEventPayload } from '../src/workers/tasks/comment-event.tas
 
 describe('worker integration tests', () => {
   let mockServices: WorkerServices;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     // Build mock services with test configuration
     mockServices = buildWorkerServices({
       killSwitch: false,
       roleProfileDefault: 'doro',
     });
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    consoleLogSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
   });
 
   describe('comment event worker', () => {
@@ -131,14 +145,47 @@ describe('worker integration tests', () => {
       expect(result.resolved_role_profile).toBe('doro');
     }, 15000);
 
-    it('publishes reply with result (fails without Bilibili config)', async () => {
-      const [published, reason, publishedAt, result] =
-        await mockServices.publishReplyWithResult('test-comment', 'test reply', 'test-trace');
+    it('publishes reply with result defaults to manual_queue when mode is unset', async () => {
+      const originalPublisherMode = process.env.PUBLISHER_MODE;
+      const commentId = `test-comment-${Date.now()}`;
+      delete process.env.PUBLISHER_MODE;
 
-      expect(published).toBe(false);
-      // Without real Bilibili credentials, the API call fails
-      expect(['publish_failed', 'not_configured']).toContain(reason);
-      expect(publishedAt).toBeDefined();
+      try {
+        const [published, reason, publishedAt, result] =
+          await mockServices.publishReplyWithResult(commentId, 'test reply', 'test-trace');
+
+        expect(published).toBe(true);
+        expect(reason).toBe('manual_queued');
+        expect(publishedAt).toBeDefined();
+      } finally {
+        if (originalPublisherMode !== undefined) {
+          process.env.PUBLISHER_MODE = originalPublisherMode;
+        } else {
+          delete process.env.PUBLISHER_MODE;
+        }
+      }
+    });
+
+    it('publishes reply with result (fails without Bilibili config)', async () => {
+      const originalPublisherMode = process.env.PUBLISHER_MODE;
+      const commentId = `test-comment-${Date.now()}`;
+      process.env.PUBLISHER_MODE = 'real_publish';
+
+      try {
+        const [published, reason, publishedAt, result] =
+          await mockServices.publishReplyWithResult(commentId, 'test reply', 'test-trace');
+
+        expect(published).toBe(false);
+        // Without real Bilibili credentials, the API call fails
+        expect(['publish_failed', 'not_configured']).toContain(reason);
+        expect(publishedAt).toBeDefined();
+      } finally {
+        if (originalPublisherMode !== undefined) {
+          process.env.PUBLISHER_MODE = originalPublisherMode;
+        } else {
+          delete process.env.PUBLISHER_MODE;
+        }
+      }
     });
 
     it('searches knowledge (placeholder)', async () => {

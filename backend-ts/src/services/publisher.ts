@@ -16,11 +16,11 @@ import { createHash } from 'node:crypto';
 type PublisherMode = 'manual_queue' | 'simulated' | 'webhook' | 'real_publish';
 
 function getPublisherMode(): PublisherMode {
-  const mode = (process.env.PUBLISHER_MODE || 'real_publish').trim().toLowerCase();
+  const mode = (process.env.PUBLISHER_MODE || 'manual_queue').trim().toLowerCase();
   if (['manual_queue', 'simulated', 'webhook', 'real_publish'].includes(mode)) {
     return mode as PublisherMode;
   }
-  return 'real_publish';
+  return 'manual_queue';
 }
 
 // ── Circuit breaker ────────────────────────────────────────

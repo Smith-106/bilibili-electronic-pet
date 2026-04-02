@@ -1,11 +1,10 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import path from 'node:path';
 
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
-import { PrismaLibSql } from '@prisma/adapter-libsql';
 import { collectCommentEvent } from './services/collector.js';
 import { encrypt, decrypt } from './services/credential-crypto.js';
+import { getPrisma } from './lib/prisma.js';
 
 export type ConnectionStatus = {
   connected: boolean;
@@ -1248,19 +1247,6 @@ function getHeaderValue(value: string | string[] | undefined): string {
     return String(value[0] ?? '');
   }
   return String(value ?? '');
-}
-
-/** Lazy Prisma singleton for admin routes */
-let _prisma: PrismaClient | null = null;
-function getPrisma(): PrismaClient {
-  if (!_prisma) {
-    const dbUrl = process.env['DATABASE_URL'] ?? 'file:./dev.db';
-    const filePath = dbUrl.replace(/^file:/, '');
-    const resolved = path.resolve(filePath);
-    const adapter = new PrismaLibSql({ url: `file:${resolved}` });
-    _prisma = new PrismaClient({ adapter } as never);
-  }
-  return _prisma;
 }
 
 /** Write an operation audit log entry (mirrors Python's _write_audit_log) */

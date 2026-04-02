@@ -10,12 +10,12 @@
 
 - 后端：TypeScript + Fastify + Prisma + BullMQ
 - 前端：Vite 原生管理后台
-- 数据库：`backend-ts/prisma/schema.prisma` 当前使用 SQLite provider；默认 `docker-compose.yml` 同时编排了 PostgreSQL 服务，文档中需区分“当前 schema 配置”和“compose 部署拓扑”
+- 数据库：当前默认路径已统一为 SQLite / libSQL，Prisma schema 使用 SQLite provider，主服务通过 `@prisma/adapter-libsql` 连接 `file:` 数据库
 - 队列：BullMQ + Redis
-- 部署：Docker 多阶段构建，根目录 `docker-compose.yml` 可直接拉起 API / Worker / Redis / PostgreSQL
+- 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
 
-> 注意：根目录旧 README 中仍残留部分 Python/FastAPI/Celery 描述；以当前 `backend-ts/` 与 `frontend/` 目录中的实现为准。
+> 注意：仓库内仍残留部分 Python/FastAPI/Celery 风格命名；阅读与运行时优先以当前 `backend-ts/` 与 `frontend/` 目录中的实现为准。
 
 ---
 
@@ -85,7 +85,8 @@
 
 - Docker / Docker Compose
 - Redis 7
-- PostgreSQL 16（compose 默认）
+- 当前数据层实现：SQLite / libSQL 适配
+- 默认 compose 使用共享 SQLite volume 与 Redis
 
 ---
 
@@ -1000,7 +1001,7 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
 
 当前 `CELERY_*` 仍保留历史命名，但 TypeScript 实现已经使用 BullMQ / Redis，不再使用 Celery。
 
-`.env.example` 中 `DATABASE_URL` 仍写成 `postgresql+psycopg://...` 风格，这是从 Python 版本沿用的示例值；当前 TypeScript / Prisma 实现应以 `backend-ts/prisma/schema.prisma` 与实际运行时配置为准，不应直接按当前 Prisma datasource 配置理解这个示例值。
+当前 `.env.example` 默认使用 SQLite / libSQL 风格的 `file:` 数据库路径；运行时应以 `backend-ts/prisma/schema.prisma`、共享 Prisma 工厂与实际部署环境变量为准。
 
 ### 8.2 LLM 相关
 
@@ -1221,7 +1222,7 @@ docker compose up --build
 - `api`：启动 Fastify API
 - `worker`：启动 BullMQ Worker + B 站轮询调度
 - `redis`：Redis
-- `db`：PostgreSQL
+- `sqlite-data`：通过共享 volume 持久化 SQLite 数据文件
 
 ### 单机 Docker 最小落地步骤
 
@@ -1236,13 +1237,12 @@ docker compose up --build
 4. 用 `/health` 与 `/readiness` 检查服务
 5. 再访问管理后台或调用管理接口验证鉴权
 
-这就是仓库默认的单机自托管路径：直接使用根目录 `docker-compose.yml` 启动构建、迁移、API、Worker、Redis、PostgreSQL 整套服务。
+这就是仓库默认的单机自托管路径：直接使用根目录 `docker-compose.yml` 启动构建、迁移、API、Worker、Redis，并通过共享 volume 挂载 SQLite 数据文件。
 
 ### 默认端口
 
 - API：`${API_PORT:-18000}` → 容器 `3000`
 - Redis：`6379`
-- PostgreSQL：`5432`
 
 ### 镜像构建方式
 
@@ -1261,7 +1261,7 @@ docker compose up --build
 
 默认 compose 编排中：
 
-- `migrate` 依赖数据库健康后执行 `npx prisma migrate deploy`
+- `migrate` 使用共享 SQLite volume 执行 `npx prisma migrate deploy`
 - `api` 与 `worker` 依赖 `migrate` 成功完成
 - `api` 还会暴露宿主机端口，`worker` 只在内部消费队列与执行轮询
 
@@ -1459,12 +1459,12 @@ B 站视频记录里和轮询最相关的状态字段包括：
 
 这些不影响当前实现运行，但阅读与部署时仍应以 `backend-ts/` 中的现行实现为准。
 
-### 13.2 数据库配置存在“声明与编排”差异
+### 13.2 数据库默认入口已统一为 SQLite / libSQL
 
 - `backend-ts/prisma/schema.prisma` 当前声明的是 SQLite provider
-- 根目录 `docker-compose.yml` 默认编排的是 PostgreSQL
+- 根目录 `docker-compose.yml` 默认通过共享 volume 挂载 SQLite 数据文件
 
-当前仓库同时存在两套数据库信号。实际部署前，应先确认采用的 `DATABASE_URL`、Prisma 迁移方式与容器编排是否一致，不应直接把 schema 声明、示例值和 compose 配置视为天然对齐。
+当前仓库默认路径已统一为 SQLite / libSQL 风格 `file:` 数据库 URL。实际部署前，仍应确认 `DATABASE_URL`、Prisma 迁移方式与所选容器编排保持一致。
 
 ### 13.3 前端不是框架式 SPA
 

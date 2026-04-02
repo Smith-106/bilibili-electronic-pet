@@ -1,160 +1,101 @@
-# docker-compose.yml — TypeScript backend (cutover from Python)
-# Usage: docker compose up
+version: '3.8'
 
 services:
   migrate:
     build:
       context: .
       dockerfile: backend-ts/Dockerfile
-    command: npx prisma migrate deploy
+    command: ["npx", "prisma", "migrate", "deploy"]
     environment:
-      - APP_ENV=${APP_ENV:-development}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/bili_pet}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DB=${REDIS_DB:-0}
-      - KILL_SWITCH=${KILL_SWITCH:-false}
-      - ROLE_PROFILE_DEFAULT=${ROLE_PROFILE_DEFAULT:-doro}
-      - API_KEY=${API_KEY:-__SET_API_KEY__}
-      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-__SET_GATEWAY_TOKEN__}
-      - GATEWAY_HMAC_SECRET=${GATEWAY_HMAC_SECRET:-__SET_GATEWAY_HMAC_SECRET__}
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4}
-      - LLM_BASE_URL=${LLM_BASE_URL:-}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-150}
-      - LLM_TIMEOUT=${LLM_TIMEOUT:-30000}
-      - LLM_RETRIES=${LLM_RETRIES:-2}
-      - BILIBILI_SESSDATA=${BILIBILI_SESSDATA:-}
-      - BILIBILI_BILI_JCT=${BILIBILI_BILI_JCT:-}
-      - BILIBILI_BUVID3=${BILIBILI_BUVID3:-}
-      - BILIBILI_DEDEUSERID=${BILIBILI_DEDEUSERID:-}
-      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-serpapi}
-      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
-    depends_on:
-      db:
-        condition: service_healthy
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-file:/app/data/dev.db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - KILL_SWITCH=false
+      - ROLE_PROFILE_DEFAULT=doro
+    volumes:
+      - sqlite-data:/app/data
     restart: "no"
+    networks:
+      - backend-network
 
-  api:
+  app:
     build:
       context: .
       dockerfile: backend-ts/Dockerfile
-    command: node dist/index.js
+    command: ["node", "dist/index.js"]
     ports:
-      - "${API_PORT:-18000}:3000"
+      - "3000:3000"
     environment:
-      - APP_ENV=${APP_ENV:-development}
+      - NODE_ENV=production
       - PORT=3000
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/bili_pet}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DB=${REDIS_DB:-0}
-      - KILL_SWITCH=${KILL_SWITCH:-false}
-      - ROLE_PROFILE_DEFAULT=${ROLE_PROFILE_DEFAULT:-doro}
-      - API_KEY=${API_KEY:-__SET_API_KEY__}
-      - GATEWAY_TOKEN=${GATEWAY_TOKEN:-__SET_GATEWAY_TOKEN__}
-      - GATEWAY_HMAC_SECRET=${GATEWAY_HMAC_SECRET:-__SET_GATEWAY_HMAC_SECRET__}
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4}
-      - LLM_BASE_URL=${LLM_BASE_URL:-}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-150}
-      - LLM_TIMEOUT=${LLM_TIMEOUT:-30000}
-      - LLM_RETRIES=${LLM_RETRIES:-2}
-      - BILIBILI_SESSDATA=${BILIBILI_SESSDATA:-}
-      - BILIBILI_BILI_JCT=${BILIBILI_BILI_JCT:-}
-      - BILIBILI_BUVID3=${BILIBILI_BUVID3:-}
-      - BILIBILI_DEDEUSERID=${BILIBILI_DEDEUSERID:-}
-      - BILIBILI_BASE_URL=${BILIBILI_BASE_URL:-https://api.bilibili.com}
-      - BILIBILI_TIMEOUT=${BILIBILI_TIMEOUT:-30000}
-      - BILIBILI_RETRIES=${BILIBILI_RETRIES:-3}
-      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-serpapi}
-      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
-      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-5}
-      - SEARCH_TIMEOUT=${SEARCH_TIMEOUT:-10000}
-      - REPLY_BASE_PROBABILITY=${REPLY_BASE_PROBABILITY:-0.7}
-      - REPLY_COOLDOWN_MINUTES=${REPLY_COOLDOWN_MINUTES:-5}
-      - REPLY_QUIET_HOURS_START=${REPLY_QUIET_HOURS_START:-23}
-      - REPLY_QUIET_HOURS_END=${REPLY_QUIET_HOURS_END:-7}
-      - SAFETY_SENSITIVITY_LEVEL=${SAFETY_SENSITIVITY_LEVEL:-medium}
+      - DATABASE_URL=${DATABASE_URL:-file:/app/data/dev.db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - WORKER_MAX_RETRIES=3
+      - WORKER_RETRY_BACKOFF=2
+      - WORKER_RETRY_JITTER=true
+      - KILL_SWITCH=false
+      - ROLE_PROFILE_DEFAULT=doro
     depends_on:
       migrate:
         condition: service_completed_successfully
-      db:
-        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    volumes:
+      - sqlite-data:/app/data
+    restart: unless-stopped
+    networks:
+      - backend-network
 
   worker:
     build:
       context: .
       dockerfile: backend-ts/Dockerfile
-    command: node dist/workers/worker-main.js
+    command: ["node", "dist/workers/worker-main.js"]
     environment:
-      - APP_ENV=${APP_ENV:-development}
-      - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@db:5432/bili_pet}
-      - REDIS_HOST=${REDIS_HOST:-redis}
-      - REDIS_PORT=${REDIS_PORT:-6379}
-      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
-      - REDIS_DB=${REDIS_DB:-0}
-      - KILL_SWITCH=${KILL_SWITCH:-false}
-      - ROLE_PROFILE_DEFAULT=${ROLE_PROFILE_DEFAULT:-doro}
-      - API_KEY=${API_KEY:-__SET_API_KEY__}
-      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - LLM_API_KEY=${LLM_API_KEY:-}
-      - LLM_MODEL=${LLM_MODEL:-gpt-4}
-      - LLM_BASE_URL=${LLM_BASE_URL:-}
-      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-150}
-      - LLM_TIMEOUT=${LLM_TIMEOUT:-30000}
-      - LLM_RETRIES=${LLM_RETRIES:-2}
-      - BILIBILI_SESSDATA=${BILIBILI_SESSDATA:-}
-      - BILIBILI_BILI_JCT=${BILIBILI_BILI_JCT:-}
-      - BILIBILI_BUVID3=${BILIBILI_BUVID3:-}
-      - BILIBILI_DEDEUSERID=${BILIBILI_DEDEUSERID:-}
-      - BILIBILI_BASE_URL=${BILIBILI_BASE_URL:-https://api.bilibili.com}
-      - BILIBILI_TIMEOUT=${BILIBILI_TIMEOUT:-30000}
-      - BILIBILI_RETRIES=${BILIBILI_RETRIES:-3}
-      - SEARCH_PROVIDER=${SEARCH_PROVIDER:-serpapi}
-      - SEARCH_API_KEY=${SEARCH_API_KEY:-}
-      - REPLY_BASE_PROBABILITY=${REPLY_BASE_PROBABILITY:-0.7}
-      - REPLY_COOLDOWN_MINUTES=${REPLY_COOLDOWN_MINUTES:-5}
-      - REPLY_QUIET_HOURS_START=${REPLY_QUIET_HOURS_START:-23}
-      - REPLY_QUIET_HOURS_END=${REPLY_QUIET_HOURS_END:-7}
-      - SAFETY_SENSITIVITY_LEVEL=${SAFETY_SENSITIVITY_LEVEL:-medium}
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL:-file:/app/data/dev.db}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - WORKER_MAX_RETRIES=3
+      - WORKER_RETRY_BACKOFF=2
+      - WORKER_RETRY_JITTER=true
+      - KILL_SWITCH=false
+      - ROLE_PROFILE_DEFAULT=doro
     depends_on:
       migrate:
         condition: service_completed_successfully
-      db:
-        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    volumes:
+      - sqlite-data:/app/data
+    restart: unless-stopped
+    networks:
+      - backend-network
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-
-  db:
-    image: postgres:16-alpine
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=bili_pet
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d bili_pet"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    ports:
-      - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - backend-network
 
 volumes:
-  pgdata:
+  sqlite-data:
+  redis-data:
+
+networks:
+  backend-network:
+    driver: bridge

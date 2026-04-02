@@ -7,6 +7,8 @@
 
 import { PrismaClient } from '@prisma/client';
 
+import { createPrismaClient } from '../lib/prisma.js';
+
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
 const MAX_PAGES = 5;
@@ -286,7 +288,7 @@ async function pollVideoComments(
  */
 export async function pollAllVideos(): Promise<PollResult> {
   const config = loadConfig();
-  const prisma = new PrismaClient();
+  const prisma = createPrismaClient();
 
   try {
     if (!config) {

@@ -4,7 +4,7 @@ import { createServer, type RuntimeSettings, type ServerDependencies } from '../
 
 function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
-    databaseUrl: 'postgresql://test',
+    databaseUrl: 'file:./test.db',
     celeryBrokerUrl: 'redis://localhost:6379/0',
     celeryResultBackend: 'redis://localhost:6379/1',
     apiKey: '',

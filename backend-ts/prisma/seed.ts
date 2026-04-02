@@ -5,9 +5,9 @@
  * Seeds default settings needed for first-time deployment.
  */
 
-import { PrismaClient } from '@prisma/client';
+import { createPrismaClient } from '../src/lib/prisma.js';
 
-const prisma = new PrismaClient();
+const prisma = createPrismaClient();
 
 async function main(): Promise<void> {
   console.log('[seed] Starting database seed...');

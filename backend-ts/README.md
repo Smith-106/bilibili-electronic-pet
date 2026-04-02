@@ -13,7 +13,7 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 - **Runtime**: Node.js 20+
 - **Framework**: Fastify
 - **ORM**: Prisma
-- **Database**: SQLite (development) / PostgreSQL (production)
+- **Database**: SQLite / libSQL (`file:` database URLs by default)
 - **Task Queue**: BullMQ + Redis
 - **Testing**: Vitest
 - **Language**: TypeScript (strict mode)
@@ -197,8 +197,8 @@ npm run build
 ### Production Database
 
 ```bash
-# Set production DATABASE_URL
-export DATABASE_URL="postgresql://user:password@host:5432/db"
+# Set production DATABASE_URL (local SQLite/libSQL-style path by default)
+export DATABASE_URL="file:/app/data/dev.db"
 
 # Run migrations
 npx prisma migrate deploy

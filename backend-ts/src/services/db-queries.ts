@@ -3,22 +3,8 @@
  * Replaces placeholder implementations with real database operations
  */
 
-import { PrismaClient } from '@prisma/client';
 import type { Comment, ReplyJob, RoleCard, KnowledgeEntry } from '../models/entities.js';
-
-// Lazy-loaded Prisma Client singleton
-let _prisma: PrismaClient | null = null;
-
-function getPrisma(): PrismaClient {
-  if (!_prisma) {
-    // Ensure environment variables are loaded
-    if (!process.env.DATABASE_URL) {
-      require('dotenv').config();
-    }
-    _prisma = new PrismaClient();
-  }
-  return _prisma;
-}
+import { getPrisma } from '../lib/prisma.js';
 
 /**
  * Get comment by canonical ID
