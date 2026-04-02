@@ -1,158 +1,302 @@
 # Bilibili 电子宠物
 
-一个面向评论区自动回复的服务端项目，包含：评论事件接入、风险拦截、角色卡生成、发布网关、管理后台与审计能力。
+一个面向 B 站评论区的自动回复系统，当前代码库已完成 **Python 后端向 TypeScript 后端迁移**，并配套了独立的 Vite 管理后台。
 
-## 功能概览
+项目核心目标是把“评论采集 → 风险判断 → 回复生成 → 审核/发布 → 审计追踪”串成一条可运营、可观测、可人工干预的链路。
 
-- 评论事件接入（webhook / poller / official / 多平台入口）
-- **B站主动轮询** - 自动拉取B站视频评论并生成回复
-- **B站真实发布** - 自动将回复发布到B站
-- 自动生成回复（风格 + 长度 + 角色卡优先级）
-- 安全策略（关键词、PII、人工审核队列）
-- 发布网关（Bearer + HMAC 校验、幂等去重）
-- 管理后台（任务列表、批量 approve/retry、趋势、审计、角色卡工作台、**B站集成管理**）
-- 云端 CI（GitHub Actions：`pytest` + `docker build`）
-- 云端镜像发布（GitHub Container Registry / GHCR）
+---
 
-## 技术栈
+## 1. 当前状态
 
-- FastAPI
-- SQLAlchemy + Alembic
-- Celery + Redis
-- PostgreSQL
-- Pytest
+- 后端：TypeScript + Fastify + Prisma + BullMQ
+- 前端：Vite 原生管理后台
+- 数据库：`backend-ts/prisma/schema.prisma` 当前使用 SQLite provider；默认 `docker-compose.yml` 同时编排了 PostgreSQL 服务，文档中需区分“当前 schema 配置”和“compose 部署拓扑”
+- 队列：BullMQ + Redis
+- 部署：Docker 多阶段构建，根目录 `docker-compose.yml` 可直接拉起 API / Worker / Redis / PostgreSQL
+- 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
+
+> 注意：根目录旧 README 中仍残留部分 Python/FastAPI/Celery 描述；以当前 `backend-ts/` 与 `frontend/` 目录中的实现为准。
+
+---
+
+## 2. 功能概览
+
+### 评论处理链路
+
+- 接收评论事件并入队处理
+- 去重与冷却判断
+- 安全检查与回复决策
+- 结合知识库 / 搜索 / 角色卡生成回复
+- 进入人工审核或自动发布流程
+- 记录发布日志与可观测事件
+
+### B 站集成
+
+- 管理 B 站账号凭证
+- 管理监控视频列表
+- 定时轮询视频评论
+- 将新评论注入内部处理流水线
+- 支持启用真实 B 站发布
+
+### 管理后台
+
+- 仪表盘
+- 任务管理
+- 每日指标
+- 知识库管理
+- 角色卡管理
+- 风格配置
+- 网关日志
+- 审计日志
+- B 站集成管理
+- 查询页
+
+### 运维与审计
+
+- 健康检查与就绪检查
+- 发布日志查询
+- 审计日志导出
+- 每日指标统计
+- Observability 汇总
+
+---
+
+## 3. 技术栈
+
+### 后端
+
+- Node.js 20+
+- TypeScript 5
+- Fastify 5
+- Prisma 7
+- BullMQ 5
+- ioredis
+- dotenv
+- Vitest
+
+### 前端
+
+- Vite 5
+- 原生 ES Module
+- 原生 CSS
+- 无 React / Vue 依赖
+
+### 基础设施
+
 - Docker / Docker Compose
+- Redis 7
+- PostgreSQL 16（compose 默认）
 
-## 核心行为规则
+---
 
-### 角色设定优先级
-
-生成链路按如下优先级解析角色上下文：
-
-1. 显式 `role_card`
-2. 激活 `active_role_card`
-3. 兼容 `role_profile`
-
-### Prompt 配置（`config/prompt_doro.yaml`）
-
-已接入运行时：
-
-- `skip_keywords`（拦截关键词）
-- `action_pool`（mock 动作语气）
-- `banned_words`（系统提示禁用词）
-- `default_length` / `length_distribution`（长度策略与 long 扩展概率）
-
-## 项目结构
+## 4. 项目结构
 
 ```text
 .
-├─ app/
-│  ├─ api/          # comments / gateway / admin
-│  ├─ services/     # decider / generator / publisher / prompt_config ...
-│  ├─ workers/      # celery tasks
-│  ├─ models/       # ORM entities
-│  ├─ static/admin/ # admin.css / admin.js（管理页静态资源）
-│  ├─ schemas.py
-│  └─ main.py
-├─ config/
-│  └─ prompt_doro.yaml
-├─ migrations/
-├─ .github/workflows/
-│  ├─ cloud-validate.yml
-│  └─ build-and-push-ghcr.yml
-├─ docker-compose.yml
-├─ Dockerfile
-└─ requirements.txt
+├─ backend-ts/                  # TypeScript 后端
+│  ├─ src/
+│  │  ├─ index.ts              # 进程启动入口
+│  │  ├─ main.ts               # Fastify 服务与全部路由
+│  │  ├─ models/               # 领域实体
+│  │  ├─ services/             # 评论采集、决策、安全、生成、发布等服务
+│  │  └─ workers/              # BullMQ worker 与任务处理
+│  ├─ prisma/
+│  │  └─ schema.prisma         # Prisma 数据模型
+│  ├─ config/                  # 配置文件
+│  ├─ Dockerfile               # 后端镜像构建（也会打包前端）
+│  └─ package.json
+├─ frontend/                    # 管理后台
+│  ├─ index.html
+│  ├─ src/
+│  │  ├─ main.js               # 前端入口
+│  │  ├─ api/                  # API 请求封装
+│  │  ├─ components/           # 页面组件
+│  │  ├─ pages/                # 各页面渲染逻辑
+│  │  ├─ utils/                # 工具函数
+│  │  └─ style.css             # 全局样式
+│  └─ package.json
+├─ docker-compose.yml           # 本地/容器编排入口
+├─ docker-compose.ghcr.yml      # GHCR 镜像部署编排
+├─ docker-compose.hostnet.yml   # host network 部署变体
+├─ .env.example                 # 环境变量示例
+└─ README.md
 ```
 
-## 快速开始（本地）
+---
 
-### 1) 安装依赖
+## 5. 后端架构说明
 
-```bash
-pip install -r requirements.txt
-```
+### 5.1 API 服务
 
-### 2) 运行测试
+启动入口：`backend-ts/src/index.ts:1`
 
-```bash
-pytest app/tests -q --ignore=app/tests/test_e2e_user_flow.py
-```
+- 通过 `createServer()` 创建 Fastify 应用
+- 默认监听 `0.0.0.0:8000`
+- Docker 中容器端口为 `3000`，宿主机默认映射 `18000`
 
-> 已在 `pytest.ini` 配置 `pythonpath = .`，无需额外手动设置 `PYTHONPATH`。`test_e2e_user_flow.py` 现支持双模式：设置 `BASE_URL` 时对已启动实例做严格验收；未设置时会在测试进程内自举应用与测试数据库，可直接单独运行。
+核心实现：`backend-ts/src/main.ts`
 
-### 3) 启动服务（Docker）
+职责包括：
 
-```bash
-docker compose up -d --build
-```
+- 初始化 Fastify 服务
+- 注册健康检查接口
+- 暴露管理后台 API
+- 暴露网关发布 API
+- 暴露 B 站集成 API
+- 处理任务查询、审批、重试、导出、统计等接口
 
-服务启动后，API 默认监听 `http://127.0.0.1:18000`（可通过 `API_PORT` 环境变量覆盖）。
+### 5.2 Worker 服务
 
-### 4) 健康检查
+入口：`backend-ts/src/workers/worker-main.ts:1`
 
-```bash
-curl -sS http://127.0.0.1:18000/health
-```
+职责：
 
-期望：
+- 消费 `comment-event` 队列
+- 执行评论事件处理任务
+- 按配置周期执行 B 站评论轮询
+- 管理优雅关闭
 
-```json
-{"ok": true}
-```
+Worker 同时承担两类职责：
 
-**完整部署验证（推荐）：**
+1. **BullMQ 消费者**：处理评论事件任务
+2. **轮询调度器**：当 `BILIBILI_POLL_ENABLED=true` 时周期性运行轮询逻辑
 
-```bash
-# 使用 smoke 脚本进行完整健康检查（需要设置 API_KEY）
-API_KEY=your-api-key-here bash smoke.sh
+### 5.3 服务层
 
-# 非默认端口、host 网络或远程环境可一行覆盖目标地址
-BASE_URL=http://127.0.0.1:8080 API_KEY=your-api-key-here bash smoke.sh
-BASE_URL=http://your-host:18000 API_KEY=your-api-key-here bash smoke.sh
+`backend-ts/src/services/` 主要包含：
 
-# 或仅检查基础健康
-curl -sS http://127.0.0.1:18000/readiness
-```
+- `collector.ts`：评论采集与事件注入
+- `decider.ts`：是否回复、采取何种动作
+- `safety.ts`：安全检查
+- `generator.ts`：回复生成
+- `publisher.ts`：发布逻辑
+- `knowledge.ts`：知识库上下文
+- `search.ts`：搜索增强
+- `bilibili-client.ts`：B 站 API 访问
+- `bilibili-poller.ts`：轮询视频评论并注入处理链路
+- `credential-crypto.ts`：B 站凭证加解密
+- `db-queries.ts`：数据库读写封装
+- `observability.ts`：可观测性事件记录
 
-**自定义端口：**
+### 5.4 队列模型
 
-如果需要使用其他端口，可通过环境变量覆盖：
+队列基础设施：`backend-ts/src/workers/task-queue.ts:1`
 
-```bash
-API_PORT=8080 docker compose up -d --build
-# 服务将监听 http://127.0.0.1:8080
-# 验证时使用同一地址：
-curl -sS http://127.0.0.1:8080/health
-BASE_URL=http://127.0.0.1:8080 API_KEY=your-api-key-here bash smoke.sh
-```
+特性：
 
-## 主要接口
+- 基于 BullMQ
+- 默认重试 3 次
+- 指数退避
+- 自动清理完成 / 失败任务
+- 支持可重试 / 不可重试错误分类
 
-> 业务接口默认受 `API_KEY` 保护（见 `require_api_key`）。
+### 5.5 数据模型
 
-### 健康检查
+Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
+
+主要表：
+
+- `Comment`：评论原始数据
+- `ReplyJob`：回复任务
+- `UserState`：用户状态 / 冷却信息
+- `PublishLog`：发布日志
+- `KnowledgeEntry`：知识库
+- `RoleCard`：角色卡
+- `OperationAuditLog`：操作审计日志
+- `ObservabilityEvent`：可观测事件
+- `BilibiliCredential`：B 站凭证
+- `BilibiliVideo`：B 站视频监控配置
+
+---
+
+## 6. 前端架构说明
+
+前端入口：`frontend/src/main.js:1`
+页面骨架：`frontend/index.html:1`
+
+当前管理后台基于 Vite 原生前端实现，不依赖 UI 框架。
+
+### 页面模块
+
+从 `frontend/src/main.js:15` 可见，当前页面包括：
+
+- `dashboard`：仪表盘
+- `jobs`：任务管理
+- `daily-metrics`：每日指标
+- `knowledge`：知识库
+- `role-cards`：角色卡
+- `profiles`：风格配置
+- `gateway`：网关
+- `audit`：审计日志
+- `bilibili`：B 站集成
+- `query`：查询
+
+### 登录方式
+
+- 管理后台通过 API Key 登录
+- API Key 保存在 `sessionStorage`
+- 前端通过请求 `/api/admin/overview` 验证 API Key 是否可用
+
+### 主题能力
+
+前端内置主题切换：
+
+- 默认主题
+- dark
+- sepia
+
+---
+
+## 7. 主要接口
+
+以下接口来自 `backend-ts/src/main.ts` 的实际路由定义。
+
+### 7.1 基础检查
 
 - `GET /health`
+- `GET /readiness`
 
-### 评论事件接入
+补充说明：
 
-- `POST /api/events/comment`
-- `POST /api/events/comment/poller`
-- `POST /api/events/comment/official`
-- `POST /api/events/comment/bilibili`
-- `POST /api/events/comment/douyin`
-- `POST /api/events/comment/kuaishou`
+- `/health` 只返回最基础的存活状态，响应形如 `{ ok: true }`
+- `/readiness` 会同时检查数据库、Redis 与关键配置，返回 `ready`、`database`、`redis`、`config`、`publish`、`kill_switch`、`foundation_ready`、`delivery_ready`、`foundation_blockers`、`delivery_blockers`、`delivery_signals`、`bilibili_diagnostics` 等字段
+- 可将 `/health` 用作轻量存活探针，把 `/readiness` 用作就绪探针
 
-### 任务处理
+调用示例：
 
-- `POST /api/jobs/{job_id}/retry`
-- `POST /api/jobs/{job_id}/approve`
-- `GET /api/comments/{comment_id}`（单评论详情）
-- `GET /api/jobs/{job_id}`（单任务详情）
-- 批量 approve / retry 与列表查询见管理页对应 API
+```bash
+curl http://127.0.0.1:18000/health
+curl http://127.0.0.1:18000/readiness
+```
 
-### 发布网关
+典型响应：
+
+```json
+{
+  "ready": true,
+  "foundation_ready": true,
+  "delivery_ready": false,
+  "foundation_blockers": [],
+  "delivery_blockers": [
+    "bilibili:publish_mode_not_delivery_capable:manual_queue",
+    "bilibili:delivery_diagnostics_not_ready"
+  ],
+  "delivery_signals": {
+    "kill_switch_enabled": false,
+    "polling_requested": false,
+    "delivery_path_ready": false,
+    "effective_publish_mode": "manual_queue"
+  }
+}
+```
+
+排查建议：
+
+- `ready=false` 优先看 `foundation_blockers`，通常是数据库或 Redis 不可用
+- `ready=true` 但 `delivery_ready=false` 时，说明服务本身可启动，但发布链路或 B 站链路还没满足交付条件
+- `kill_switch_enabled=true` 会直接出现在 `delivery_blockers` 中，适合先查环境变量 `KILL_SWITCH`
+
+### 7.2 发布网关
 
 - `POST /gateway/publish`
 - `POST /gateway/publish/bilibili`
@@ -160,232 +304,1262 @@ BASE_URL=http://127.0.0.1:8080 API_KEY=your-api-key-here bash smoke.sh
 - `POST /gateway/publish/kuaishou`
 - `GET /gateway/publish-logs`
 
-### 管理页
+补充说明：
 
-- `GET /admin`
-- 管理页前端已工程化为静态资源：
-  - `/static/admin/admin.css`
-  - `/static/admin/admin.js`
-- 已覆盖单项诊断能力：评论详情查询、任务详情查询、单任务重试（`force_long` + 成功后自动重置选项）
-- 已强化可访问性与语义一致性：`aria-label`、`role/aria-live`、表头 `th scope="col"`、`prefers-reduced-motion`
+- 入口会先校验请求体，再按配置依次校验 `x-api-key`、`Authorization: Bearer <GATEWAY_TOKEN>`、`x-signature`
+- 只要配置了 `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET`，调用方就必须同时满足对应校验
+- 平台专用路由在平台未启用时会返回 `403 { detail: 'platform_disabled' }`
+- 常见错误响应包括：`400 { detail: 'invalid_payload' }`、`401 { detail: 'unauthorized' }`、`401 { detail: 'missing_signature' }`、`401 { detail: 'invalid_signature' }`
+- 请求体最少需要 `comment_id` 与 `reply_text`；可选字段包括 `force_publish`、`source`、`trace_id`
+- 路由会生成或透传 `trace_id`，优先级是：请求体 `trace_id` → 请求头 `x-trace-id` → 服务端生成
+- 发布接口采用幂等保留日志策略；相同平台 + `comment_id` + 相同回复文本再次提交时会返回 `duplicate=true`
+- 即使发布失败，业务层通常也会返回 `200`，再通过响应体中的 `ok`、`published`、`reason` 区分结果
 
-### B站集成 API
+请求头示例：
 
-- `GET /api/admin/bilibili/status` - 获取集成状态
-- `GET /api/admin/bilibili/videos` - 获取视频监控列表
-- `POST /api/admin/bilibili/videos` - 添加视频到监控
-- `POST /api/admin/bilibili/videos/{id}/toggle-poll` - 启用/禁用视频轮询
-- `DELETE /api/admin/bilibili/videos/{id}` - 删除视频监控
-- `POST /api/admin/bilibili/videos/{id}/sync` - 同步视频信息
-- `POST /api/admin/bilibili/poll` - 手动触发评论轮询
-- `GET /api/admin/bilibili/credentials` - 获取凭证列表
-- `POST /api/admin/bilibili/credentials` - 创建凭证
-- `POST /api/admin/bilibili/credentials/{id}/activate` - 激活凭证
-- `DELETE /api/admin/bilibili/credentials/{id}` - 删除凭证
+```http
+x-api-key: your-admin-api-key
+Authorization: Bearer your-gateway-token
+x-signature: sha256=...
+x-trace-id: trace-demo-001
+Content-Type: application/json
+```
 
-## 环境变量（重点）
+调用示例：
 
-### 基础运行
+```bash
+curl -X POST http://127.0.0.1:18000/gateway/publish \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -H "Authorization: Bearer your-gateway-token" \
+  -H "x-signature: sha256=your-signature" \
+  -H "x-trace-id: trace-demo-001" \
+  -d '{
+    "comment_id": "1953012345678900000",
+    "reply_text": "收到，稍后给你补一个更完整的说明。",
+    "force_publish": false,
+    "source": "bili-pet-bot",
+    "trace_id": "trace-demo-001"
+  }'
+```
 
-- `APP_ENV`（建议生产为 `production`）
+典型成功响应：
+
+```json
+{
+  "ok": true,
+  "published": true,
+  "reason": "published",
+  "comment_id": "1953012345678900000",
+  "published_at": "2026-04-02T12:34:56.000Z",
+  "trace_id": "trace-demo-001"
+}
+```
+
+典型失败响应：
+
+```json
+{
+  "ok": false,
+  "published": false,
+  "reason": "manual_queue",
+  "comment_id": "1953012345678900000",
+  "trace_id": "trace-demo-001"
+}
+```
+
+典型幂等重放响应：
+
+```json
+{
+  "ok": true,
+  "published": false,
+  "duplicate": true,
+  "reason": "idempotent_replay",
+  "trace_id": "trace-demo-001"
+}
+```
+
+排查建议：
+
+- 一进接口就返回 `401 unauthorized`，优先检查 `x-api-key` 与 `Authorization` 是否同时命中当前配置
+- 返回 `401 missing_signature` / `invalid_signature` 时，检查签名是否基于实际请求体字段计算，而不是基于格式化后的其它版本
+- 返回 `200` 但 `published=false` 时，不代表接口失败，而是发布策略、人工审核队列或平台交付链路未满足
+- 如果需要按平台强制走特定发布器，用 `/gateway/publish/<platform>`；同时确认对应平台已启用
+- 建议把响应里的 `trace_id` 与 `/gateway/publish-logs`、审计日志一起关联排查
+
+### 7.3 管理后台总览与统计
+
+- `GET /api/admin/overview`
+- `GET /api/admin/metrics/overview`
+- `GET /api/admin/observability/summary`
+- `GET /api/metrics/overview`
+- `GET /metrics/daily`
+
+补充说明：
+
+- 管理后台接口普遍要求 `x-api-key` 与环境变量 `API_KEY` 一致，否则返回 `401 { detail: 'unauthorized' }`
+- `/api/admin/overview` 响应形如 `{ ok: true, ...overview }`，用于前端登录后探测 API Key 是否可用
+- `/api/admin/metrics/overview` 返回的是纯 overview 对象，不额外包 `ok: true`
+- `overview` 中通常包含 `totals` 与 `generated_at`；`totals` 会汇总评论、任务、发布、队列、依赖状态等多类计数
+- `/metrics/daily` 返回 `{ ok, days, totals, items }`，适合日报与趋势图
+- `/api/admin/observability/summary`、`/api/admin/metrics/overview` 用于后台聚合统计，而 `/api/metrics/overview` 更偏通用指标查询入口
+
+调用示例：
+
+```bash
+curl http://127.0.0.1:18000/api/admin/overview \
+  -H "x-api-key: your-admin-api-key"
+
+curl "http://127.0.0.1:18000/metrics/daily?days=7" \
+  -H "x-api-key: your-admin-api-key"
+```
+
+`/api/admin/overview` 典型响应：
+
+```json
+{
+  "ok": true,
+  "totals": {
+    "comments": 128,
+    "jobs": 91,
+    "pending_jobs": 6,
+    "done_jobs": 72,
+    "failed_jobs": 3,
+    "published_jobs": 58,
+    "gateway_publish_attempts_last_24h": 24,
+    "gateway_publish_success_last_24h": 20,
+    "gateway_publish_failure_last_24h": 2,
+    "gateway_publish_duplicate_last_24h": 2,
+    "database_connected": 1,
+    "redis_connected": 1,
+    "kill_switch_enabled": 0
+  },
+  "generated_at": "2026-04-02T12:34:56.000Z"
+}
+```
+
+`/metrics/daily` 典型响应：
+
+```json
+{
+  "ok": true,
+  "days": 7,
+  "totals": {
+    "comments": 128,
+    "jobs": 91,
+    "published": 58
+  },
+  "items": [
+    {
+      "date": "2026-04-01",
+      "comments": 18,
+      "jobs": 12,
+      "published": 9
+    }
+  ]
+}
+```
+
+排查建议：
+
+- 前端登录失败时，先直接请求 `/api/admin/overview`，这是后台实际用来验证 API Key 的探测接口
+- 如果 `/api/admin/overview` 成功但某个统计接口异常，优先区分是鉴权问题还是聚合查询本身失败
+- 看概览时可优先关注 `gateway_publish_*`、`database_connected`、`redis_connected`、`kill_switch_enabled` 这些运维相关字段
+
+### 7.4 任务与评论管理
+
+这一组接口同时覆盖后台管理与通用查询：
+
+- `GET /api/admin/jobs`
+- `POST /jobs/:job_id/retry`
+- `POST /jobs/:job_id/approve`
+- `POST /jobs/approve-batch`
+- `POST /jobs/retry-batch`
+- `GET /jobs/:job_id`
+- `GET /jobs`
+- `GET /comments`
+- `GET /comments/:comment_id`
+- `GET /export/jobs.csv`
+
+补充说明：
+
+- `/api/admin/jobs` 是后台任务列表接口，要求 `x-api-key`；支持 `status`、`limit`、`offset`，默认 `limit=50`，上限 `1000`
+- `/jobs`、`/jobs/:job_id`、`/comments`、`/comments/:comment_id`、`/export/jobs.csv` 更偏通用查询/排查接口，适合脚本、联调工具和临时排障
+- `/jobs/:job_id/retry` 支持在请求体中覆盖 `force_long`、`style_profile`、`role_profile`、`role_card_key`
+- `/jobs/:job_id/approve` 支持在审批时附带 `style_profile`、`role_profile`、`role_card_key`
+- `/jobs/approve-batch` 需要 `job_ids` 数组；`/jobs/retry-batch` 需要 `job_ids`，并支持 `force_long`
+- `/comments` 返回 `{ ok: true, total, items }`，按 `created_at desc` 排序；分页参数默认 `limit=50`，上限 `500`
+- `/export/jobs.csv` 返回 `text/csv`，默认导出 `500` 条，最大 `5000` 条，可按 `status` 过滤
+
+后台任务列表示例：
+
+```bash
+curl "http://127.0.0.1:18000/api/admin/jobs?status=manual_queue&limit=20&offset=0" \
+  -H "x-api-key: your-admin-api-key"
+```
+
+典型成功响应：
+
+```json
+{
+  "ok": true,
+  "total": 2,
+  "items": [
+    {
+      "id": 101,
+      "status": "manual_queue",
+      "comment_id": "comment-20260402-001",
+      "style_profile": "normal",
+      "role_profile": "default",
+      "created_at": "2026-04-02T12:34:56.000Z"
+    }
+  ]
+}
+```
+
+单任务重试示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/jobs/101/retry \
+  -H "Content-Type: application/json" \
+  -d '{
+    "force_long": true,
+    "style_profile": "empathy",
+    "role_profile": "comfort",
+    "role_card_key": "healer"
+  }'
+```
+
+批量审批示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/jobs/approve-batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "job_ids": [101, 102, 103]
+  }'
+```
+
+评论列表典型响应：
+
+```json
+{
+  "ok": true,
+  "total": 128,
+  "items": [
+    {
+      "id": 88,
+      "comment_id": "comment-20260402-001",
+      "platform": "bilibili",
+      "content": "今天怎么样？",
+      "created_at": "2026-04-02T12:34:56.000Z"
+    }
+  ]
+}
+```
+
+典型错误响应：
+
+```json
+{
+  "detail": "job_not_found"
+}
+```
+
+```json
+{
+  "detail": "job_ids_required"
+}
+```
+
+排查建议：
+
+- 如果后台任务页能打开但列表接口返回 `401 unauthorized`，优先确认前端保存的 `admin_api_key` 是否与服务端 `API_KEY` 一致
+- `/jobs/:job_id/retry`、`/jobs/:job_id/approve` 对非法或空 `job_id` 会直接返回 `404 job_not_found`，这类情况通常是路径参数错误
+- 批量审批/批量重试必须传有效正整数 `job_ids`；空数组、空字符串或无效数字都会落到 `job_ids_required`
+- 导出 CSV 时如果结果为空，先核对 `status` 过滤条件，再确认当前导出上限是否截断了你需要的数据范围
+
+### 7.5 知识库与角色配置
+
+这组接口用于维护知识条目、风格配置、角色配置与角色卡：
+
+- `GET /api/admin/knowledge`
+- `POST /api/admin/knowledge`
+- `POST /api/admin/knowledge/:entry_id/disable`
+- `GET /api/admin/style-profile`
+- `POST /api/admin/style-profile`
+- `GET /api/admin/role-profile`
+- `POST /api/admin/role-profile`
+- `GET /api/admin/role-cards`
+- `POST /api/admin/role-cards`
+- `POST /api/admin/role-cards/:card_key`
+- `POST /api/admin/role-cards/:card_key/disable`
+- `POST /api/admin/role-cards/:card_key/activate`
+
+补充说明：
+
+- 这一组接口全部要求 `x-api-key`
+- `GET /api/admin/knowledge` 支持 `limit`、`offset`；默认 `limit=200`，上限 `1000`
+- 新增知识条目时，`category`、`title`、`content` 都是必填；缺失时分别返回 `category_required`、`title_required`、`content_required`
+- 禁用知识条目时，非法 `entry_id` 会返回 `404 { "detail": "knowledge_not_found" }`
+- `POST /api/admin/style-profile` 仅允许：`auto`、`empathy`、`meme`、`normal`
+- `POST /api/admin/role-profile` 仅允许：`auto`、`default`、`comfort`、`playful`
+- `GET /api/admin/role-cards` 支持 `limit`、`offset`；默认 `limit=200`，上限 `1000`
+- 新建角色卡时，`key`、`name` 必填；`description`、`system_prompt`、`tone`、`constraints`、`enabled` 可选
+- 角色卡 `key` 会被转成小写并截断，适合作为稳定配置键，不适合作为展示名称
+- 更新角色卡使用 `POST /api/admin/role-cards/:card_key`；只有请求体里出现的字段会被更新，显式传入空 `name` 会返回 `role_card_name_required`
+
+新增知识条目示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/api/admin/knowledge \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -d '{
+    "category": "reply_policy",
+    "title": "夜间低打扰",
+    "content": "23:00-07:00 优先短回复，避免连续追问。"
+  }'
+```
+
+典型成功响应：
+
+```json
+{
+  "ok": true,
+  "item": {
+    "id": 12,
+    "category": "reply_policy",
+    "title": "夜间低打扰",
+    "content": "23:00-07:00 优先短回复，避免连续追问。",
+    "enabled": true
+  }
+}
+```
+
+设置风格配置示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/api/admin/style-profile \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -d '{
+    "style_profile": "empathy"
+  }'
+```
+
+新建角色卡示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/api/admin/role-cards \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -d '{
+    "key": "healer",
+    "name": "安抚型",
+    "description": "优先给情绪支持",
+    "system_prompt": "你是一个温和、稳定、善于安抚的电子宠物。",
+    "tone": { "warm": true },
+    "constraints": { "avoid_scolding": true },
+    "enabled": true
+  }'
+```
+
+典型参数错误响应：
+
+```json
+{
+  "detail": "invalid_style_profile"
+}
+```
+
+```json
+{
+  "detail": "role_card_key_required"
+}
+```
+
+排查建议：
+
+- 新增知识条目失败时，先检查三项必填字段是否都是非空字符串；后端会先做 `trim()` 再校验
+- 设置风格或角色配置时，值必须落在允许集合内；拼写错误、大小写不一致都会在归一化后被判为非法
+- 角色卡更新接口支持部分更新；只切换启停状态时，优先使用 `/disable` 和 `/activate`，避免误覆盖其他字段
+- 如果后台能读取角色卡列表但创建或更新失败，先检查 `key` 和 `name` 是否为空，再看 `tone`、`constraints` 是否传成对象
+
+### 7.6 审计与网关日志
+
+这一组接口对应运维、审计与发布链路排查：
+
+- `GET /api/admin/audit/summary`
+- `GET /api/admin/audit-logs/summary`
+- `GET /api/admin/gateway/logs`
+- `GET /api/admin/gateway/publish-logs`
+- `GET /audit-logs`
+- `GET /audit-logs/summary`
+- `GET /export/audit-logs.csv`
+- `GET /gateway/publish-logs`
+
+补充说明：
+
+- 这一组接口都要求 API Key；后台前缀接口使用 `x-api-key`，顶层通用接口通过 `checkApiKey(...)` 鉴权
+- `/api/admin/audit/summary` 与 `/api/admin/audit-logs/summary` 都支持 `days`、`action`、`ok`；默认 `days=7`，范围 `1~90`
+- `/api/admin/audit/summary` 会在响应中补上 `ok: true`；`/api/admin/audit-logs/summary` 直接返回汇总结果
+- `/api/admin/gateway/logs`、`/api/admin/gateway/publish-logs` 支持 `comment_id`、`limit`；默认 `limit=50`，上限 `200`
+- `/api/admin/gateway/logs` 会返回 `ok: true`；`/api/admin/gateway/publish-logs` 更接近原始日志列表
+- `/audit-logs` 支持 `action`、`ok`、`target_id`、`limit`、`offset`；代码会读取 `trace_id`，但当前查询条件并未使用该字段
+- `/audit-logs` 返回 `{ ok, summary, items }`，其中 `summary` 至少包含 `total`、`returned`、`limit`
+- `/export/audit-logs.csv` 返回 `text/csv`，CSV 表头固定为 `id,action,target_type,target_id,ok,status,trace_id,payload,created_at`
+- 顶层 `/gateway/publish-logs` 支持 `status`、`limit`、`offset`，默认 `limit=50`，上限 `500`
+
+审计汇总示例：
+
+```bash
+curl "http://127.0.0.1:18000/api/admin/audit/summary?days=7&ok=true" \
+  -H "x-api-key: your-admin-api-key"
+```
+
+典型成功响应：
+
+```json
+{
+  "ok": true,
+  "days": 7,
+  "totals": {
+    "audit_logs": 42
+  },
+  "by_action": {
+    "approve_job": 10,
+    "retry_job": 6
+  },
+  "by_status": {
+    "duplicate": 2,
+    "published": 28
+  },
+  "by_result": {
+    "ok": 38,
+    "failed": 4
+  }
+}
+```
+
+审计明细查询示例：
+
+```bash
+curl "http://127.0.0.1:18000/audit-logs?action=retry_job&ok=true&limit=100" \
+  -H "x-api-key: your-admin-api-key"
+```
+
+网关发布日志查询示例：
+
+```bash
+curl "http://127.0.0.1:18000/gateway/publish-logs?status=published&limit=50" \
+  -H "x-api-key: your-admin-api-key"
+```
+
+顶层发布日志典型响应：
+
+```json
+{
+  "ok": true,
+  "total": 20,
+  "items": [
+    {
+      "id": 301,
+      "platform": "bilibili",
+      "canonical_comment_id": "comment-20260402-001",
+      "comment_id": "comment-20260402-001",
+      "reply_hash": "sha256:...",
+      "source": "gateway",
+      "status": "published",
+      "published_at": "2026-04-02T12:34:56.000Z",
+      "failure_reason": null,
+      "created_at": "2026-04-02T12:34:50.000Z"
+    }
+  ]
+}
+```
+
+排查建议：
+
+- 如果审计列表里 `payload` 看起来像对象而不是字符串，这是接口层主动做了 JSON 解析，属预期行为
+- `/api/admin/gateway/logs` 与 `/api/admin/gateway/publish-logs` 的区别主要在响应包装；写脚本时不要假设两者都有相同的顶层 `ok` 字段
+- 导出审计 CSV 时，如需 `trace_id` 或状态字段，优先使用 `/export/audit-logs.csv`，因为表头已经把这些排障字段展开了
+- `/audit-logs` 代码虽然读取了 `trace_id` 参数，但当前查询条件并未真正按 `trace_id` 过滤；传参后看不到筛选效果时，应按当前实现理解
+- 发布日志排查时，先用 `/gateway/publish-logs?status=published|failed|duplicate` 看结果，再回到审计日志按 `action` 与 `ok` 交叉确认是业务拒绝、重复命中还是实际发布失败
+
+### 7.7 B 站集成管理
+
+- `GET /api/admin/bilibili/status`
+- `GET /api/admin/bilibili/videos`
+- `POST /api/admin/bilibili/videos`
+- `POST /api/admin/bilibili/videos/:videoId/toggle-poll`
+- `DELETE /api/admin/bilibili/videos/:videoId`
+- `POST /api/admin/bilibili/videos/:videoId/sync`
+- `POST /api/admin/bilibili/poll`
+- `GET /api/admin/bilibili/credentials`
+- `POST /api/admin/bilibili/credentials`
+- `POST /api/admin/bilibili/credentials/:credentialId/activate`
+- `DELETE /api/admin/bilibili/credentials/:credentialId`
+
+补充说明：
+
+- 所有后台 B 站管理接口都要求 `x-api-key`
+- 新增监控视频时，`bvid` 必填，且必须匹配 `^BV[a-zA-Z0-9]{10}$`；否则会返回 `bvid_required` 或 `invalid_bvid_format`
+- `GET /api/admin/bilibili/videos` 支持 `poll_enabled`、`limit`、`offset`
+- `poll_enabled` 默认是 `true`
+- 触发 `/api/admin/bilibili/poll` 或 `/videos/:videoId/sync` 可手动执行一次同步
+- `/api/admin/bilibili/credentials` 列表接口不会直接返回完整密钥，只返回 `has_sessdata`、`has_bili_jct`、脱敏后的 `buvid3` 以及时间字段
+- 新建凭证时，`name`、`sessdata`、`bili_jct`、`buvid3` 必填；首条凭证会自动设为激活状态
+- 凭证写入前会对敏感 Cookie 字段做加密，明文不会直接落库
+
+新增监控视频示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/api/admin/bilibili/videos \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -d '{
+    "bvid": "BV1xx411c7mD",
+    "poll_enabled": true
+  }'
+```
+
+典型成功响应：
+
+```json
+{
+  "ok": true,
+  "item": {
+    "id": 3,
+    "bvid": "BV1xx411c7mD",
+    "poll_enabled": true
+  }
+}
+```
+
+典型参数错误响应：
+
+```json
+{
+  "detail": "invalid_bvid_format"
+}
+```
+
+新增凭证示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/api/admin/bilibili/credentials \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: your-admin-api-key" \
+  -d '{
+    "name": "主账号",
+    "sessdata": "your-sessdata",
+    "bili_jct": "your-bili-jct",
+    "buvid3": "your-buvid3",
+    "buvid4": "optional-buvid4",
+    "expires_at": "2026-12-31T23:59:59.000Z"
+  }'
+```
+
+凭证列表典型响应：
+
+```json
+{
+  "ok": true,
+  "items": [
+    {
+      "id": 1,
+      "name": "主账号",
+      "is_active": true,
+      "has_sessdata": true,
+      "has_bili_jct": true,
+      "buvid3": "your-buv...",
+      "expires_at": "2026-12-31T23:59:59.000Z",
+      "last_used_at": null,
+      "created_at": "2026-04-02T12:34:56.000Z",
+      "updated_at": "2026-04-02T12:34:56.000Z"
+    }
+  ]
+}
+```
+
+排查建议：
+
+- 视频新增失败时，先确认 `bvid` 是否是标准 BV 号，而不是 aid 或短链接中的其它标识
+- 如果轮询一直没有抓到评论，先确认视频仍是 `poll_enabled=true`，再手动触发 `/api/admin/bilibili/poll` 或 `/videos/:videoId/sync`
+- 凭证写入成功但实际调用 B 站仍失败时，重点检查 Cookie 是否过期，以及 `BILIBILI_COOKIE_ENCRYPTION_KEY` 是否稳定一致
+- 凭证列表只会返回脱敏字段；如果你在接口响应里找不到明文 Cookie，这是预期行为
+
+### 7.8 评论事件注入入口
+
+除管理后台接口外，系统还暴露一组评论事件注入入口：
+
+- `POST /events/comment`
+- `POST /events/comment/poller`
+- `POST /events/comment/official`
+- `POST /events/comment/bilibili`
+- `POST /events/comment/douyin`
+- `POST /events/comment/kuaishou`
+
+补充说明：
+
+- 这些入口会把外部评论事件统一收敛为内部 `CommentEvent`
+- 不同入口会自动绑定不同 `source` / `platform`，例如 `/events/comment` 对应 `webhook`，`/events/comment/bilibili` 对应 `bilibili`
+- 这些入口的硬性要求是能解析出 `comment_id`
+- 如果请求体无法被解析，会返回 `400 { detail: 'invalid_<source>_payload: ...' }` 或具体字段错误
+- `comment_id` 是必填字段，缺失时返回 `400 { detail: 'comment_id_required' }`
+- 成功后会进入 `ingestCommentEvent()`，后续再进入队列与回复流水线
+- 即使后续入队失败，只要评论已经成功落库，接口仍可能返回成功，后续由后台补处理
+
+B 站评论事件示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/events/comment/bilibili \
+  -H "Content-Type: application/json" \
+  -d '{
+    "comment_id": "1953012345678900000",
+    "video_id": "BV1xx411c7mD",
+    "user_id": "12345678",
+    "content": "催更一下部署文档",
+    "parent_id": null,
+    "trace_id": "trace-comment-001"
+  }'
+```
+
+轮询入口兼容格式示例：
+
+```bash
+curl -X POST http://127.0.0.1:18000/events/comment/poller \
+  -H "Content-Type: application/json" \
+  -d '{
+    "rpid": "1953012345678900000",
+    "oid": "123456789",
+    "mid": "12345678",
+    "message": "这是轮询抓到的新评论",
+    "trace_id": "trace-comment-002"
+  }'
+```
+
+典型成功响应：
+
+```json
+{
+  "ok": true,
+  "queued": true,
+  "comment_id": "1953012345678900000",
+  "trace_id": "trace-comment-001"
+}
+```
+
+典型重复响应：
+
+```json
+{
+  "ok": true,
+  "message": "duplicate_ignored",
+  "comment_id": "1953012345678900000",
+  "trace_id": "trace-comment-001"
+}
+```
+
+典型错误响应：
+
+```json
+{
+  "detail": "comment_id_required"
+}
+```
+
+排查建议：
+
+- 如果是第三方 webhook 对接，先确认请求体能被映射出 `comment_id`
+- `/events/comment/poller`、`/events/comment/bilibili` 等入口支持多种别名字段，可兼容不同来源的评论结构
+- 返回 `duplicate_ignored` 说明评论已经入库过，通常不是错误，而是去重保护已生效
+- 如怀疑事件已收到但后续未处理，先记下返回的 `trace_id`，再结合任务表、审计日志、可观测事件一起排查
+
+---
+
+## 8. 环境变量说明
+
+环境变量示例文件：`.env.example:1`
+运行时默认值与就绪检查摘要构造：`backend-ts/src/main.ts:435`
+
+当前环境变量信息主要来自两处：
+1. `.env.example`：提供示例值与历史兼容变量名
+2. `backend-ts/src/main.ts:435` 的 `buildDefaultSettings()`：定义主服务启动时直接读取的一组核心变量
+
+如果 `.env.example`、`docker-compose.yml` 与实际运行行为不完全一致，以当前 TypeScript 代码中的读取逻辑为准。
+
+### 8.1 基础连接
+
 - `DATABASE_URL`
 - `CELERY_BROKER_URL`
 - `CELERY_RESULT_BACKEND`
 - `KILL_SWITCH`
 
-### 鉴权与签名
+当前 `CELERY_*` 仍保留历史命名，但 TypeScript 实现已经使用 BullMQ / Redis，不再使用 Celery。
+
+`.env.example` 中 `DATABASE_URL` 仍写成 `postgresql+psycopg://...` 风格，这是从 Python 版本沿用的示例值；当前 TypeScript / Prisma 实现应以 `backend-ts/prisma/schema.prisma` 与实际运行时配置为准，不应直接按当前 Prisma datasource 配置理解这个示例值。
+
+### 8.2 LLM 相关
+
+- `.env.example` 中保留的示例变量：
+  - `LLM_PROVIDER`
+  - `LLM_MODEL`
+  - `LLM_BASE_URL`
+  - `LLM_API_KEY`
+  - `LLM_TIMEOUT_SECONDS`
+  - `LLM_RETRY_ATTEMPTS`
+  - `LLM_RETRY_WAIT_SECONDS`
+  - `LLM_FALLBACK_TO_MOCK`
+- 当前 `backend-ts/src/main.ts:441` 明确读取并纳入运行时设置的字段只有：
+  - `LLM_PROVIDER`
+  - `LLM_FALLBACK_TO_MOCK`
+
+其余 LLM 变量虽保留在 `.env.example` 中，但是否生效仍应以对应模块实现为准。
+
+### 8.3 鉴权与签名
 
 - `API_KEY`
 - `GATEWAY_TOKEN`
 - `GATEWAY_HMAC_SECRET`
 
-### LLM
+### 8.4 Publisher 相关
 
-- `LLM_PROVIDER`（如 `mock` / `openai_compatible`）
-- `LLM_MODEL`
-- `LLM_BASE_URL`
-- `LLM_API_KEY`
-- `LLM_FALLBACK_TO_MOCK`（生产建议 `false`）
+- `.env.example` 中可见的发布变量：
+  - `PUBLISHER_MODE`
+  - `PUBLISHER_WEBHOOK_URL`
+  - `PUBLISHER_WEBHOOK_TOKEN`
+  - `PUBLISHER_REAL_PUBLISH_URL`
+  - `PUBLISHER_REAL_PUBLISH_TOKEN`
+  - `PUBLISHER_TIMEOUT_SECONDS`
+  - `PUBLISHER_HMAC_SECRET`
+- 当前 `backend-ts/src/main.ts:443` 在主服务启动时直接读取 `PUBLISHER_MODE`
 
-### 发布模式
+其余 Publisher 变量虽出现在 `.env.example` 中，但是否生效仍应结合具体发布链路判断。
 
-**Publisher 选择优先级**（从高到低）：
+### 8.5 B 站集成
 
-1. **Native Bilibili 发布**（当 `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时）
-   - 此配置优先级最高，会覆盖 `PUBLISHER_MODE` 设置
-   - 适用于直接集成 B 站官方 API 的场景
+- `.env.example` 中可见的 B 站相关变量：
+  - `BILIBILI_ENABLED`
+  - `BILIBILI_POLL_ENABLED`
+  - `BILIBILI_POLL_INTERVAL_SECONDS`
+  - `BILIBILI_PUBLISH_ENABLED`
+  - `BILIBILI_CREDENTIAL_ID`
+  - `BILIBILI_RATE_LIMIT_PER_MINUTE`
+  - `BILIBILI_SESSDATA`
+  - `BILIBILI_BILI_JCT`
+  - `BILIBILI_BUVID3`
+  - `BILIBILI_BUVID4`
+  - `BILIBILI_COOKIE_ENCRYPTION_KEY`
+- 当前 `backend-ts/src/main.ts:444` 在主服务启动时直接读取并纳入运行时设置的字段是：
+  - `BILIBILI_ENABLED`
+  - `BILIBILI_POLL_ENABLED`
+  - `BILIBILI_POLL_INTERVAL_SECONDS`
+  - `BILIBILI_PUBLISH_ENABLED`
 
-2. **PUBLISHER_MODE 配置**（`manual_queue` / `simulated` / `webhook` / `real_publish`）
-   - 当 native Bilibili 未启用时生效
-   - `manual_queue`：人工审核队列（默认）
-   - `simulated`：模拟发布（测试用）
-   - `webhook`：通过 webhook 调用外部发布服务
-   - `real_publish`：调用真实发布端点
+其中 `BILIBILI_ENABLED`、`BILIBILI_POLL_ENABLED`、`BILIBILI_PUBLISH_ENABLED` 属于全局行为开关；`BILIBILI_CREDENTIAL_ID`、`BILIBILI_RATE_LIMIT_PER_MINUTE`、`BILIBILI_BUVID4`、`BILIBILI_COOKIE_ENCRYPTION_KEY` 等字段则由 B 站凭证、轮询或发布子模块分别消费。
 
-3. **ManualQueuePublisher 回退**（当 `PUBLISHER_MODE` 配置值不被识别时）
+### 8.6 多平台发布开关
 
-**配置冲突警告**：当同时启用 native Bilibili 发布和 `webhook`/`real_publish` 模式时，启动时会记录警告日志，native Bilibili 将实际生效。
+- 当前 `backend-ts/src/main.ts:451` 还直接读取一组多平台发布变量：
+  - `PLATFORM_BILIBILI_ENABLED`
+  - `PLATFORM_DOUYIN_ENABLED`
+  - `PLATFORM_KUAISHOU_ENABLED`
+  - `PLATFORM_BILIBILI_PUBLISH_SOURCE`
+  - `PLATFORM_DOUYIN_PUBLISH_SOURCE`
+  - `PLATFORM_KUAISHOU_PUBLISH_SOURCE`
+- 这些变量当前未出现在 `.env.example` 中，但已经进入主服务运行时设置。
 
-**相关配置**：
-- `PUBLISHER_MODE`（默认 `manual_queue`）
-- `PUBLISHER_TIMEOUT_SECONDS`
-- `PUBLISHER_HMAC_SECRET`
-- `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_WEBHOOK_TOKEN`
-- `PUBLISHER_REAL_PUBLISH_URL` / `PUBLISHER_REAL_PUBLISH_TOKEN`
+如果接入 `/gateway/publish/:platform`，还应同时配置平台启停变量和对应的 `*_PUBLISH_SOURCE` 来源标识。
 
-### B站集成
+### 8.7 风格与角色默认值
 
-- `BILIBILI_ENABLED`（是否启用B站集成，默认 `false`）
-- `BILIBILI_POLL_ENABLED`（是否启用评论轮询，默认 `false`）
-- `BILIBILI_PUBLISH_ENABLED`（是否启用真实发布，默认 `false`）
-  - **注意**：当设置为 `true` 且 `BILIBILI_ENABLED=true` 时，将覆盖 `PUBLISHER_MODE` 设置
-- `BILIBILI_POLL_INTERVAL_SECONDS`（轮询间隔秒数，默认 `300`）
-- `BILIBILI_RATE_LIMIT_PER_MINUTE`（API 请求频率限制，默认 `30`）
-- `BILIBILI_CREDENTIAL_ID`（使用的凭证 ID，默认 `1`）
-- `BILIBILI_COOKIE_ENCRYPTION_KEY`（凭证加密密钥，32字节以上字符串）
+- `STYLE_PROFILE_DEFAULT` 与 `ROLE_PROFILE_DEFAULT` 属于当前实现已使用、但未在 `buildDefaultSettings()` 中统一汇总的配置。
+- `backend-ts/src/main.ts:755` / `backend-ts/src/main.ts:772` 表明管理后台在写入风格配置和角色配置时，会改写 `process.env` 中的默认值。
+- `backend-ts/src/workers/worker-main.ts:28` 表明 Worker 启动时会读取 `ROLE_PROFILE_DEFAULT`，未设置时回退到 `doro`。
 
-### 生产最小配置（必填）
+这组配置更接近进程级默认值：既可通过环境变量提供初始值，也可能被部分管理接口在运行时改写。
 
-当 `APP_ENV=production` 时，以下校验会在启动前触发（与 `app/settings.py` 一致）：
+### 8.8 常用配置建议
 
-- 基础连接必须非空：`DATABASE_URL`、`CELERY_BROKER_URL`、`CELERY_RESULT_BACKEND`
-- 鉴权密钥必须非空且不能使用占位符值（如 `__SET_XXX__`）：
-  - `API_KEY`
-  - `GATEWAY_TOKEN`
-  - `GATEWAY_HMAC_SECRET`
-- 当 `LLM_PROVIDER` 为 `openai` / `openai_compatible` 时：`LLM_API_KEY` 必填
-- 当 `PUBLISHER_MODE=webhook` 时：`PUBLISHER_WEBHOOK_URL`、`PUBLISHER_WEBHOOK_TOKEN`、`PUBLISHER_HMAC_SECRET` 必填
-- 当 `PUBLISHER_MODE=real_publish` 时：`PUBLISHER_REAL_PUBLISH_URL`、`PUBLISHER_REAL_PUBLISH_TOKEN`、`PUBLISHER_HMAC_SECRET` 必填
+#### 本地开发最小配置
 
-生产 `.env` 最小示例（请替换为真实值）：
+- 使用测试数据库 URL
+- Redis 指向本地容器或本地服务
+- `LLM_PROVIDER=mock`
+- `BILIBILI_ENABLED=false`
+- `BILIBILI_PUBLISH_ENABLED=false`
+- `PUBLISHER_MODE=manual_queue`
 
-```env
-APP_ENV=production
-DATABASE_URL=postgresql+psycopg://pet_user:<db_password>@postgres:5432/bili_pet
-CELERY_BROKER_URL=redis://redis:6379/0
-CELERY_RESULT_BACKEND=redis://redis:6379/1
+#### 生产环境配置
 
-API_KEY=<strong-random-api-key>
-GATEWAY_TOKEN=<strong-random-gateway-token>
-GATEWAY_HMAC_SECRET=<strong-random-gateway-hmac-secret>
+- `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 使用强随机值
+- 关闭 `LLM_FALLBACK_TO_MOCK`
+- 明确配置 `BILIBILI_COOKIE_ENCRYPTION_KEY`
+- 如果启用真实发布，明确手动审核与自动发布策略
 
-LLM_PROVIDER=openai_compatible
-LLM_MODEL=gpt-4o-mini
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_API_KEY=<llm-api-key>
-LLM_FALLBACK_TO_MOCK=false
+---
 
-PUBLISHER_MODE=manual_queue
-PUBLISHER_TIMEOUT_SECONDS=15
-PUBLISHER_HMAC_SECRET=<publisher-hmac-secret>
+## 9. 本地开发
+
+### 9.1 安装前端依赖
+
+```bash
+cd frontend
+npm install
 ```
 
-## 生产建议
+### 9.2 安装后端依赖
 
-- 先 `manual_queue` 灰度，再切 `real_publish`
-- 外部执行端异常时优先切回 `manual_queue`（保持服务可用）
-- 发现异常优先：`KILL_SWITCH=true` 或切回 `manual_queue`
-- 生产务必关闭 mock 回退：`LLM_FALLBACK_TO_MOCK=false`
+```bash
+cd backend-ts
+npm install
+```
 
-### 生产演练：故障切换与回滚（建议每次发布前执行）
+### 9.3 生成 Prisma Client
 
-**生产验证流程**（按顺序执行）：
+```bash
+cd backend-ts
+npx prisma generate
+```
 
-1. **上线前核对**
-   - 确认 `.env` 满足”生产最小配置（必填）”
-   - 运行 `pytest app/tests -q`，确保回归通过
-   - 执行 `bash smoke.sh` 验证基础健康检查
+### 9.4 启动后端开发服务
 
-2. **依赖验证**
-   - 检查 `/readiness` 确认 DB/Redis 连接正常
-   - 检查 `/api/admin/bilibili/status` 确认配置状态
-   - 验证 `diagnostics.ready` 为 `true` 或理解具体阻塞原因
+```bash
+cd backend-ts
+npm run dev
+```
 
-3. **灰度阶段**
-   - 以 `PUBLISHER_MODE=manual_queue` 启动
-   - 观察 `/health`、`/readiness`、`/api/jobs`、`/gateway/publish-logs` 是否正常
-   - 确认 Bilibili 集成状态（若启用）：
-     ```bash
-     curl -sS -H “x-api-key: ${API_KEY}” http://127.0.0.1:18000/api/admin/bilibili/status | jq .
-     ```
+默认监听 `http://127.0.0.1:8000`
 
-4. **切换到自动发布**
-   - 调整为 `PUBLISHER_MODE=real_publish`（或 `webhook`）并重启服务
-   - **注意**：若启用 native Bilibili 发布（`BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true`），将覆盖 `PUBLISHER_MODE` 设置
-   - 确认发布成功率与审计日志稳定
+### 9.5 启动 Worker
 
-5. **故障切换（Failover）**
-   - 外部发布端异常时，立即切回 `PUBLISHER_MODE=manual_queue` 并重启
-   - 必要时设置 `KILL_SWITCH=true` 暂停自动处理
-   - 验证 `/api/admin/bilibili/status` 的 `diagnostics` 字段识别问题类型
+当前仓库没有单独的 `npm run worker` 脚本；Worker 入口是 `backend-ts/src/workers/worker-main.ts:24`。
 
-6. **回滚（Rollback）**
-   - 回退到上一版镜像与上一版 `.env`
-   - 重启后再次检查 `/health`、`/readiness` 与关键业务接口
+如果已经构建完成：
 
-**诊断说明**：
+```bash
+cd backend-ts
+node --env-file=../.env dist/workers/worker-main.js
+```
 
-`/api/admin/bilibili/status` 返回的 `diagnostics` 字段包含：
-- `config_error`: 配置缺失或错误（如 `bilibili_enabled=false`）
-- `auth_error`: 凭证缺失、过期或验证失败
-- `dependency_error`: 发布器初始化失败或外部依赖不可用
-- `ready`: 所有检查通过，可安全启用真实发布
+如果开发期尚未构建，先执行：
 
-## CI 状态
+```bash
+cd backend-ts
+npm run build
+node --env-file=../.env dist/workers/worker-main.js
+```
 
-仓库已配置工作流：
+Worker 启动后会：
 
-- `.github/workflows/cloud-validate.yml`
-- `.github/workflows/e2e-user-simulation.yml`
-- `.github/workflows/build-and-push-ghcr.yml`
+- 消费 `comment-event` 队列
+- 在 `BILIBILI_POLL_ENABLED=true` 时启用轮询调度
+- 默认轮询间隔读取 `BILIBILI_POLL_INTERVAL_SECONDS`，默认值 `300`
+- 收到 `SIGTERM` / `SIGINT` 时优雅关闭
 
-执行内容（按触发路径）：
+### 9.6 启动前端开发服务
 
-1. `cloud-validate`（PR 门禁，`pull_request`）：安装依赖后执行 `alembic upgrade head`、后端回归用例（`test_admin_api` / `test_comments_api` / `test_gateway_publish`）、`npm --prefix frontend ci`、`npm --prefix frontend run build`、`docker build`
-2. `cloud-validate`（release-only，默认分支 `push` 或 `workflow_dispatch`）：执行 `python -m pytest app/tests -q --ignore=app/tests/test_e2e_user_flow.py` 后端回归；E2E 由独立 `e2e-user-simulation` 工作流覆盖
-3. `e2e-user-simulation`：执行模拟用户流 E2E；在默认分支/手动触发路径追加 `PRE_RELEASE_REAL_CHAIN=true STRICT_SMOKE=true bash smoke.sh` 真实链路合同校验
-4. `build-and-push-ghcr`：
-   - 非默认分支：仅推送预览镜像标签 `sha-<commit>`
-   - 默认分支/手动触发：先执行真实链路 smoke 合同校验，再推送 `latest` 与 `sha-<commit>`
+前端脚本定义见 `frontend/package.json:6`。
 
-预发布真实链路门禁依赖以下 GitHub Secrets：
+```bash
+cd frontend
+npm run dev
+```
 
-- `PRE_RELEASE_SMOKE_BASE_URL`：预发布环境地址（需可访问 `/api/admin/bilibili/status`）
-- `PRE_RELEASE_SMOKE_API_KEY`：预发布环境 API Key
+如需构建静态资源：
 
-推荐顺序（与镜像发布/部署类 issue 并行时）：
+```bash
+cd frontend
+npm run build
+```
 
-1. 先在 PR 中通过 `cloud-validate` 的 PR 门禁
-2. 合并到 `main` 后等待 release-only 全量回归完成
-3. 确认 `PRE_RELEASE_SMOKE_BASE_URL` / `PRE_RELEASE_SMOKE_API_KEY` 已配置并通过真实链路 smoke 合同校验
-4. 最后执行 `build-and-push-ghcr` 推送发布镜像
+如需本地预览构建产物：
 
-## 常见问题
+```bash
+cd frontend
+npm run preview
+```
 
-### 1) `pytest: command not found`（CI）
+### 9.7 运行测试
 
-已在工作流中通过 `python -m pip install pytest` + `python -m pytest` 规避。
+```bash
+cd backend-ts
+npm test
+```
 
-### 2) 本地 `docker compose` 无法连接 Engine
+覆盖率：
 
-通常是 Docker Desktop 未启动或引擎未就绪。先确认 Docker 正常运行再执行 compose。
+```bash
+cd backend-ts
+npm run test:coverage
+```
 
-### 3) 管理页静态资源 404
+---
 
-优先检查：
+## 10. Docker 部署
 
-- `app/static/admin/admin.css` 与 `app/static/admin/admin.js` 是否存在
-- 访问路径是否为 `/static/admin/admin.css`、`/static/admin/admin.js`
-- `/admin` 页面源码中两条静态资源引用是否各 1 次
+根目录 `docker-compose.yml:1` 已提供完整编排。
 
-### 4) 发布 401 / 签名失败
+### 启动
 
-优先检查：
+```bash
+docker compose up -d --build
+```
 
+如需先看迁移与启动日志，也可以先前台启动一次：
+
+```bash
+docker compose up --build
+```
+
+默认服务：
+
+- `migrate`：执行 Prisma migrate deploy
+- `api`：启动 Fastify API
+- `worker`：启动 BullMQ Worker + B 站轮询调度
+- `redis`：Redis
+- `db`：PostgreSQL
+
+### 单机 Docker 最小落地步骤
+
+1. 以 `.env.example:1` 为参考创建自己的 `.env`
+2. 至少将这些值替换为真实部署配置：
+   - `API_KEY`
+   - `GATEWAY_TOKEN`
+   - `GATEWAY_HMAC_SECRET`
+   - `DATABASE_URL`
+   - `BILIBILI_COOKIE_ENCRYPTION_KEY`（如果启用 B 站凭证存储）
+3. 执行 `docker compose up -d --build`
+4. 用 `/health` 与 `/readiness` 检查服务
+5. 再访问管理后台或调用管理接口验证鉴权
+
+这就是仓库默认的单机自托管路径：直接使用根目录 `docker-compose.yml` 启动构建、迁移、API、Worker、Redis、PostgreSQL 整套服务。
+
+### 默认端口
+
+- API：`${API_PORT:-18000}` → 容器 `3000`
+- Redis：`6379`
+- PostgreSQL：`5432`
+
+### 镜像构建方式
+
+当前 `backend-ts/Dockerfile:1` 采用多阶段构建：
+
+1. 先构建 `frontend/` 静态资源
+2. 再构建 `backend-ts/` 的 TypeScript 产物
+3. 最终镜像内包含：
+   - `dist/`：后端运行代码
+   - `public/admin`：前端管理后台静态文件
+   - `config/`：运行配置目录
+
+默认容器镜像同时承载 API 与后台前端资源，不需要再单独部署前端容器。
+
+### 启动顺序
+
+默认 compose 编排中：
+
+- `migrate` 依赖数据库健康后执行 `npx prisma migrate deploy`
+- `api` 与 `worker` 依赖 `migrate` 成功完成
+- `api` 还会暴露宿主机端口，`worker` 只在内部消费队列与执行轮询
+
+### 健康检查
+
+```bash
+curl http://127.0.0.1:18000/health
+curl http://127.0.0.1:18000/readiness
+```
+
+### GHCR 镜像部署变体
+
+`docker-compose.ghcr.yml:1` 是一个 **override 文件**，用于覆盖默认 compose 中 `migrate` / `api` / `worker` 的镜像来源；它本身不是完整编排，需要和根目录 `docker-compose.yml` 组合使用：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+```
+
+实际覆盖内容包括：
+
+- `migrate` / `api` / `worker` 都直接使用 `ghcr.io/smith-106/bilibili-electronic-pet:latest`
+- 配置了 `pull_policy: always`
+- 仍保留与默认 compose 相同的启动命令分工：
+  - `migrate` → `npx prisma migrate deploy`
+  - `api` → `node dist/index.js`
+  - `worker` → `node dist/workers/worker-main.js`
+
+适用于已有预构建镜像、需要快速启动服务的场景。
+
+常见使用顺序是：
+
+1. 先准备好 `.env`
+2. 确认部署机器已经能拉取 `ghcr.io/smith-106/bilibili-electronic-pet:latest`
+3. 执行组合命令启动服务
+4. 用 `docker compose logs api worker migrate` 检查首轮启动结果
+5. 再执行 `/health` 与 `/readiness` 验证 API 是否就绪
+
+GHCR override 只替换镜像来源，数据库、Redis、环境变量与端口定义仍来自根目录 `docker-compose.yml`。
+
+### Host Network 部署变体
+
+`docker-compose.hostnet.yml:1` 同样是一个 **override 文件**，用于覆盖默认 compose 的网络模式，也要和根目录 `docker-compose.yml` 叠加使用：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
+```
+
+它当前只调整了这些项：
+
+- `api` 使用 `network_mode: host`
+- `api` 的 `ports` 被清空，不再做显式端口映射
+- `worker` 同样运行在 `network_mode: host`
+
+这种模式适用于部分 Linux 服务器直接接入宿主网络的场景，但要注意：
+
+- 端口冲突会直接落在宿主机上
+- Windows / macOS 下的 Docker Desktop 一般不如 Linux 主机模式直观
+- 网络隔离能力弱于 bridge 模式
+
+如果按这一模式部署，建议再检查：
+
+1. 宿主机上的目标端口没有被其他进程占用
+2. 你的服务发现、反向代理、监控方式确实需要 host network
+3. `api` 容器内监听地址仍然是 `0.0.0.0`
+4. 对外暴露策略已经在宿主机层面控制好
+
+这个 override 只调整网络模式，不改变镜像、环境变量或 `db` / `redis` 编排；因此它是网络接入策略切换，不是独立部署清单。
+
+### 环境变量与部署的关系
+
+部署时优先确认这些变量：
+
+- `DATABASE_URL`
+- `API_KEY`
 - `GATEWAY_TOKEN`
 - `GATEWAY_HMAC_SECRET`
-- 调用端 `Authorization` / `X-Signature` 是否匹配
+- `PUBLISHER_MODE`
+- `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_REAL_PUBLISH_URL`
+- `BILIBILI_ENABLED`
+- `BILIBILI_POLL_ENABLED`
+- `BILIBILI_PUBLISH_ENABLED`
+- `BILIBILI_COOKIE_ENCRYPTION_KEY`
 
-## License
+- `.env.example:1` 中给出的 `DATABASE_URL` 仍带有 Python 时代风格的示例值，实际部署要与当前 Prisma / 运行环境匹配
+- `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时，会优先走 B 站原生发布，覆盖普通 `PUBLISHER_MODE`
+- 如果启用网关签名校验，调用方必须与 `GATEWAY_HMAC_SECRET` 保持一致
+- 如果接入 `/gateway/publish/:platform`，还应补充检查 `PLATFORM_BILIBILI_ENABLED`、`PLATFORM_DOUYIN_ENABLED`、`PLATFORM_KUAISHOU_ENABLED` 以及对应的 `*_PUBLISH_SOURCE`
 
-如需开源许可，可按你的发布策略补充（MIT/Apache-2.0/专有）。
+这些变量可按下面的层次理解：
+
+- `.env.example`：提供示例值与历史兼容变量名
+- `docker-compose.yml`：负责将一部分变量注入容器
+- `backend-ts/src/main.ts:435`：定义主服务启动时直接读取的核心开关
+- 其余变量可能由 Worker、B 站子模块、发布子链路或管理接口的运行时逻辑消费
+
+---
+
+## 11. B 站轮询与发布机制
+
+轮询实现：`backend-ts/src/services/bilibili-poller.ts:1`
+调度入口：`backend-ts/src/workers/worker-main.ts:39`
+就绪诊断：`backend-ts/src/main.ts:1472`
+
+### 11.1 轮询逻辑概述
+
+- Worker 进程启动后持续消费 `comment-event` 队列
+- 当 `BILIBILI_POLL_ENABLED=true` 时，还会注册定时轮询调度器
+- 当前实现会先等待 `10` 秒预热，再按 `BILIBILI_POLL_INTERVAL_SECONDS` 周期执行轮询，默认值 `300`
+- 轮询目标来自数据库中 `poll_enabled=true` 的视频记录
+- 每个视频会分页抓取评论，并用 `last_rpid` 做增量判断
+- 新评论写入 `Comment` 后，会继续注入统一回复流水线
+- 每轮轮询后还会更新 `last_polled_at`、`last_poll_status`、`last_poll_error`、`last_rpid`
+
+### 11.2 配置条件与行为结果
+
+#### 只启用评论轮询
+
+当：
+
+- `BILIBILI_ENABLED=true`
+- `BILIBILI_POLL_ENABLED=true`
+- `BILIBILI_PUBLISH_ENABLED=false`
+
+系统会持续抓取已启用视频的评论，并把新评论送入内部处理链路；是否实际发出回复，还要结合发布模式、审核策略与交付链路判断。
+
+#### 启用 B 站原生发布
+
+当：
+
+- `BILIBILI_ENABLED=true`
+- `BILIBILI_PUBLISH_ENABLED=true`
+
+系统会切换到 native Bilibili publish 路径，并覆盖普通 `PUBLISHER_MODE`。就绪诊断也会优先按 `native_bilibili` 路径判断交付能力，见 `backend-ts/src/main.ts:1468`。
+
+#### 未启用轮询
+
+当 `BILIBILI_POLL_ENABLED=false` 时，Worker 不会注册轮询定时器，日志中会输出 `Bilibili polling disabled`；系统仍可处理其他来源注入的评论事件。
+
+### 11.3 轮询状态字段含义
+
+B 站视频记录里和轮询最相关的状态字段包括：
+
+- `poll_enabled`：该视频是否参与自动轮询
+- `last_rpid`：上次已处理到的最大评论 ID，用于增量判断
+- `last_polled_at`：最近一次轮询时间
+- `last_poll_status`：最近一次轮询结果，如 `ok`、`no_new`、`error`
+- `last_poll_error`：最近一次错误原因，如 `no_aid`、`retry_exhausted`
+
+这些字段直接影响后台对轮询状态的展示，也可用于区分“没有新评论”和“轮询失败”。
+
+### 11.4 常见排障点
+
+- `/readiness` 里如果出现 `worker:redis_unavailable_for_polling`，通常表示你请求了轮询，但 Redis 未连通，见 `backend-ts/src/main.ts:1492`
+- 如果视频缺少 `aid` 且补取失败，轮询会把该视频标记为 `last_poll_status=error`、`last_poll_error=no_aid`，见 `backend-ts/src/services/bilibili-poller.ts:178`
+- 如果评论接口连续重试后仍失败，会记录 `retry_exhausted`，见 `backend-ts/src/services/bilibili-poller.ts:195`
+- 如果长时间没有新评论，但 `last_poll_status=no_new` 且 `last_polled_at` 持续更新，通常说明调度器正常，只是当前没有增量数据
+- 如果 `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true`，但交付仍未就绪，应优先看 `/readiness` 返回的 `bilibili_diagnostics` 和 `delivery_blockers`
+
+---
+
+## 12. 数据流简述
+
+### 自动回复主链路
+
+1. 评论由 `backend-ts/src/main.ts:2100` 定义的多组事件路由统一接入，包括 `/events/comment`、`/events/comment/poller`、`/events/comment/official` 以及平台化入口 `/events/comment/bilibili`、`/events/comment/douyin`、`/events/comment/kuaishou`
+2. 路由层先做字段收集与基础校验，再统一调用 `ingestCommentEvent(...)`，见 `backend-ts/src/main.ts:2126`
+3. `defaultIngestCommentEvent()` 会生成或透传 `trace_id`，计算 `canonical_comment_id`，并先把评论落库到 `Comment`；如果命中唯一约束冲突，则直接返回 `duplicate_ignored`，见 `backend-ts/src/main.ts:851`
+4. 评论写入后，服务会把事件投递到 BullMQ 的 `comment-event` 队列；投递载荷本身带有 `trace_id`，队列基础设施也明确将 `trace_id` 作为通用任务字段，见 `backend-ts/src/main.ts:877` 与 `backend-ts/src/workers/task-queue.ts:21`
+5. Worker 进程启动后持续消费 `comment-event` 队列，入口在 `backend-ts/src/workers/worker-main.ts:24`；队列默认带 3 次重试、指数退避和失败/完成清理策略，见 `backend-ts/src/workers/task-queue.ts:35`
+6. 在 Worker 处理阶段，任务会继续进入 shouldReply / safetyCheck / 去重 / 知识库与搜索增强 / 文本生成等统一回复链路；最终产出 `ReplyJob`，并根据策略决定是直接发布、进入人工审核，还是标记为跳过
+7. 如果任务进入人工审核链路，管理端可通过 `/jobs/:job_id/approve`、`/jobs/:job_id/retry` 以及对应批量接口继续推进，见 `backend-ts/src/main.ts:2132`、`backend-ts/src/main.ts:2150`、`backend-ts/src/main.ts:2167`、`backend-ts/src/main.ts:2179`
+8. 审核通过或自动发布时，发布链路会进入 `publishCore(...)`：先处理 `trace_id`，再校验 `x-api-key`、Bearer Token、HMAC 签名，并先执行 `reservePublishLog(...)` 预留幂等发布记录，见 `backend-ts/src/main.ts:1589`
+9. 如果同一平台 + 评论 + 回复文本重复提交，发布接口会直接返回 `duplicate=true` 和 `reason=idempotent_replay`；如果实际发布失败或成功，则分别通过 `finalizePublishLog(...)` 落成失败/成功状态，见 `backend-ts/src/main.ts:1620` 与 `backend-ts/src/main.ts:1642`
+10. 整个链路最后会把结果沉淀到多类记录：发布日志、`OperationAuditLog`、统计/可观测性事件；审计日志既可通过 `/audit-logs` 查询，也可通过 `/export/audit-logs.csv` 导出，其中导出头已包含 `trace_id`，见 `backend-ts/src/main.ts:2474` 与 `backend-ts/src/main.ts:2516`
+
+### B 站主动轮询链路
+
+1. Worker 启动时除了消费队列，还会根据 `BILIBILI_POLL_ENABLED` 决定是否注册轮询调度器，见 `backend-ts/src/workers/worker-main.ts:39`
+2. 当前实现会先等待 10 秒预热，再按 `BILIBILI_POLL_INTERVAL_SECONDS` 固定周期执行 `pollAllVideos()`；如果上一轮还没结束，会直接跳过下一轮，避免重叠轮询，见 `backend-ts/src/workers/worker-main.ts:47`
+3. Poller 会遍历已启用轮询的视频，拉取评论并用 `last_rpid` 做增量判断；新评论会回注到统一评论事件入口
+4. B 站轮询只是评论来源之一；一旦注入成功，后续仍进入同一套 `Comment` 落库、队列投递、Worker 处理、审核/发布、日志/审计链路
+5. 排查轮询问题时，既要查看 B 站视频自身的 `last_polled_at`、`last_poll_status`、`last_poll_error`、`last_rpid`，也要联动查看 ReplyJob 状态、发布日志与审计日志，而不应只看 poller 本身
+
+
+---
+
+## 13. 已知注意事项
+
+### 13.1 历史命名尚未完全清理
+
+项目已经迁移到 TypeScript，但仓库里仍保留一些历史命名：
+
+- `.env.example` 中仍有 `CELERY_*` 变量名
+- 部分示例值与命名仍延续 Python / FastAPI / Celery 时期的习惯
+
+这些不影响当前实现运行，但阅读与部署时仍应以 `backend-ts/` 中的现行实现为准。
+
+### 13.2 数据库配置存在“声明与编排”差异
+
+- `backend-ts/prisma/schema.prisma` 当前声明的是 SQLite provider
+- 根目录 `docker-compose.yml` 默认编排的是 PostgreSQL
+
+当前仓库同时存在两套数据库信号。实际部署前，应先确认采用的 `DATABASE_URL`、Prisma 迁移方式与容器编排是否一致，不应直接把 schema 声明、示例值和 compose 配置视为天然对齐。
+
+### 13.3 前端不是框架式 SPA
+
+扩展页面时，沿用现有 `pages/ + render(container)` 模式即可。
+
+---
+
+## 14. 常用命令速查
+
+### 后端
+
+```bash
+cd backend-ts
+npm run dev
+npm run build
+npm run start
+npm test
+npm run test:coverage
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:studio
+```
+
+### 前端
+
+```bash
+cd frontend
+npm run dev
+npm run build
+npm run preview
+```
+
+### 容器
+
+```bash
+docker compose up -d --build
+docker compose down
+```
+
+### 组合 override 示例
+
+```bash
+# 使用 GHCR 预构建镜像
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+
+# 使用 host network 变体
+docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
+```
+
+---
+
+## 15. 关键文件索引
+
+### 后端入口
+
+- `backend-ts/src/index.ts:1`
+- `backend-ts/src/main.ts:1`
+
+### Worker 与队列
+
+- `backend-ts/src/workers/worker-main.ts:1`
+- `backend-ts/src/workers/task-queue.ts:1`
+
+### B 站集成
+
+- `backend-ts/src/services/bilibili-poller.ts:1`
+- `backend-ts/src/services/bilibili-client.ts:1`
+- `backend-ts/src/services/credential-crypto.ts:1`
+
+### 数据层
+
+- `backend-ts/prisma/schema.prisma:1`
+- `backend-ts/src/services/db-queries.ts:1`
+
+### 前端
+
+- `frontend/index.html:1`
+- `frontend/src/main.js:1`
+- `frontend/src/pages/`
+
+### 部署
+
+- `docker-compose.yml:1`
+- `backend-ts/Dockerfile:1`
+- `.env.example:1`
+
+---
+
+## 16. 项目现状总结
+
+当前仓库已形成一条较完整的 TypeScript 运行链路：
+
+1. `backend-ts/` 提供 Fastify API、管理接口、事件接入、发布网关与审计导出能力
+2. `worker-main.ts` 负责消费 `comment-event` 队列，并在启用时承载 B 站轮询调度
+3. `frontend/` 提供原生模块化管理后台，构建后会打包进后端镜像的 `public/admin`
+4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis`、`db` 串成一套可启动的最小部署拓扑
+
+这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/` 以及 compose / Dockerfile 中的现行实现，而非旧的 Python 历史描述。
