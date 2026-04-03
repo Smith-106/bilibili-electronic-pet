@@ -106,7 +106,7 @@ metadata:
   name: worker
   namespace: bilibili-pet
 spec:
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: worker

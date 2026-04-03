@@ -4,9 +4,11 @@ import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { PrismaLibSql } from '@prisma/adapter-libsql';
 
+export const DEFAULT_DATABASE_URL = 'file:./dev.db';
+
 let prismaSingleton: PrismaClient | null = null;
 
-export function resolveDatabaseUrl(databaseUrl = process.env.DATABASE_URL ?? 'file:./dev.db'): string {
+export function resolveDatabaseUrl(databaseUrl = process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL): string {
   if (!databaseUrl.startsWith('file:')) {
     return databaseUrl;
   }

@@ -85,7 +85,7 @@ services:
       migrate:
         condition: service_completed_successfully
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - sqlite-data:/app/data
 
@@ -130,7 +130,7 @@ services:
       migrate:
         condition: service_completed_successfully
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - sqlite-data:/app/data
 
@@ -138,6 +138,11 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   sqlite-data:

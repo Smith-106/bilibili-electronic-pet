@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply }
 import { PrismaClient } from '@prisma/client';
 import { collectCommentEvent } from './services/collector.js';
 import { encrypt, decrypt } from './services/credential-crypto.js';
-import { getPrisma } from './lib/prisma.js';
+import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 
 export type ConnectionStatus = {
   connected: boolean;
@@ -433,7 +433,7 @@ function defaultVerifyPayloadSignature(payload: Record<string, unknown>, secret:
 
 function buildDefaultSettings(): RuntimeSettings {
   return {
-    databaseUrl: process.env.DATABASE_URL ?? '',
+    databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
     celeryBrokerUrl: process.env.CELERY_BROKER_URL ?? 'redis://localhost:6379/0',
     celeryResultBackend: process.env.CELERY_RESULT_BACKEND ?? 'redis://localhost:6379/1',
     apiKey: process.env.API_KEY ?? '',

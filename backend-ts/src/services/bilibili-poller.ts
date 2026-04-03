@@ -5,7 +5,7 @@
  * Polls enabled videos for new comments and injects them into the processing pipeline.
  */
 
-import { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '@prisma/client';
 
 import { createPrismaClient } from '../lib/prisma.js';
 
