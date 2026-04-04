@@ -118,6 +118,15 @@ function getBilibiliVideoEmptyMessage(filterValue) {
   return '暂无视频';
 }
 
+function formatBilibiliVideoSummary(total, renderedCount, filterValue) {
+  const filterLabel = filterValue === 'true'
+    ? '轮询中'
+    : filterValue === 'false'
+      ? '已停用'
+      : '全部';
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条`;
+}
+
 export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
@@ -158,6 +167,7 @@ export async function render(container) {
           <button class="btn btn-primary" id="bili-video-filter-btn">查询</button>
         </div>
       </div>
+      <div class="form-hint" id="bili-video-summary" style="padding: 0 16px 16px;">加载中...</div>
       <div class="table-wrapper" id="bili-videos-wrapper">
         <div class="page-loading">加载中...</div>
       </div>
@@ -253,13 +263,19 @@ export async function render(container) {
 
   async function loadVideos() {
     const wrapper = container.querySelector('#bili-videos-wrapper');
+    const summaryEl = container.querySelector('#bili-video-summary');
+    const filterBtn = container.querySelector('#bili-video-filter-btn');
     const filterValue = container.querySelector('#bili-video-poll-filter').value;
+    summaryEl.textContent = '加载中...';
+    filterBtn.disabled = true;
     try {
       const data = await api.getBilibiliVideos({
         limit: 50,
         poll_enabled: parseBilibiliPollFilter(filterValue),
       });
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      const total = Number(data?.total ?? items.length);
+      summaryEl.textContent = formatBilibiliVideoSummary(total, items.length, filterValue);
 
       if (items.length === 0) {
         wrapper.innerHTML = `<div class="table-empty">${escapeHtml(getBilibiliVideoEmptyMessage(filterValue))}</div>`;
@@ -329,7 +345,10 @@ export async function render(container) {
         });
       });
     } catch (err) {
+      summaryEl.textContent = '视频加载失败';
       wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
+    } finally {
+      filterBtn.disabled = false;
     }
   }
 
@@ -473,6 +492,7 @@ export async function render(container) {
     loadStatus(); loadVideos(); loadCredentials();
   });
   container.querySelector('#bili-video-filter-btn').addEventListener('click', loadVideos);
+  container.querySelector('#bili-video-poll-filter').addEventListener('change', loadVideos);
 
   await Promise.all([loadStatus(), loadVideos(), loadCredentials()]);
 }
