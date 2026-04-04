@@ -27,6 +27,13 @@ const bilibiliBlockingReasonMessages = {
   'auth:no active credential': '缺少可用的激活凭证。',
   'dependency:diagnostics_unavailable': '诊断信息暂时不可用。',
 };
+const bilibiliPublishModeMessages = {
+  manual_queue: '人工队列',
+  simulated: '模拟发布',
+  webhook: 'Webhook',
+  real_publish: '真实发布',
+  native_bilibili: '原生 B 站发布',
+};
 
 function getBilibiliErrorMessage(error) {
   const raw = error instanceof Error ? error.message : String(error ?? 'request_failed');
@@ -61,6 +68,18 @@ function formatBilibiliBlockingReasons(reasons) {
   return items
     .map((reason) => bilibiliBlockingReasonMessages[reason] || reason)
     .join('；');
+}
+
+function formatBilibiliPublishMode(mode) {
+  const normalized = String(mode ?? '').trim().toLowerCase();
+  return bilibiliPublishModeMessages[normalized] || normalized || '-';
+}
+
+function formatBilibiliPollInterval(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  if (value % 60 === 0) return `${value / 60} 分钟`;
+  return `${value} 秒`;
 }
 
 export async function render(container) {
@@ -127,6 +146,8 @@ export async function render(container) {
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
       const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
       const activeCredentialName = data?.credential?.name ? escapeHtml(data.credential.name) : '未配置';
+      const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
+      const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       el.innerHTML = `
         <div class="stat-card mini">
           <div class="stat-label">启用</div>
@@ -155,6 +176,14 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">诊断</div>
           <div class="stat-value" style="color:${diagnosticsReady ? 'var(--success-color)' : 'var(--danger-color)'}">${diagnosticsReady ? '就绪' : '阻塞'}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">发布模式</div>
+          <div class="stat-value">${escapeHtml(publishMode)}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">轮询间隔</div>
+          <div class="stat-value">${escapeHtml(pollInterval)}</div>
         </div>
         ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
       `;
