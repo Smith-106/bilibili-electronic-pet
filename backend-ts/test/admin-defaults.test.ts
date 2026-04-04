@@ -808,6 +808,82 @@ describe('default admin data providers', () => {
 
     await app.close();
   });
+
+  it('returns a conflict when bilibili video sync is requested without runtime credentials', async () => {
+    mockPrisma.bilibiliVideo.findUnique.mockResolvedValue({
+      id: 31,
+      bvid: 'BV1GJ411x7fD',
+      aid: 1001,
+      title: '同步前',
+      owner_mid: 99,
+      poll_enabled: true,
+      last_polled_at: null,
+      last_poll_status: null,
+      last_poll_error: null,
+      last_rpid: 0,
+      created_at: new Date('2026-04-03T09:00:00.000Z'),
+      updated_at: new Date('2026-04-04T09:05:00.000Z'),
+    });
+    mockPollVideoById.mockResolvedValue({
+      status: 'disabled',
+      videos: 0,
+      comments: 0,
+      events_injected: 0,
+      details: [],
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/videos/31/sync',
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(mockPrisma.bilibiliVideo.findUnique).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.comment.count).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({
+      detail: 'bilibili_not_configured',
+      result: {
+        status: 'disabled',
+        videos: 0,
+        comments: 0,
+        events_injected: 0,
+        details: [],
+      },
+    });
+
+    await app.close();
+  });
+
+  it('returns a conflict when manual bilibili polling is requested without runtime credentials', async () => {
+    mockPollAllVideos.mockResolvedValue({
+      status: 'disabled',
+      videos: 0,
+      comments: 0,
+      events_injected: 0,
+      details: [],
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/poll',
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({
+      detail: 'bilibili_not_configured',
+      result: {
+        status: 'disabled',
+        videos: 0,
+        comments: 0,
+        events_injected: 0,
+        details: [],
+      },
+    });
+
+    await app.close();
+  });
 });
 
 describe('default query and export providers', () => {

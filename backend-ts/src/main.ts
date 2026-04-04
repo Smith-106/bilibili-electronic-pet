@@ -3029,6 +3029,16 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const { pollVideoById } = await import('./services/bilibili-poller.js');
     const result = await pollVideoById(videoId);
+    if (result.status === 'disabled') {
+      return reply.code(409).send({ detail: 'bilibili_not_configured', result });
+    }
+    if (result.status === 'not_found') {
+      return reply.code(404).send({ detail: 'video_not_found', result });
+    }
+    if (result.status === 'error') {
+      return reply.code(502).send({ detail: 'bilibili_sync_failed', result });
+    }
+
     const refreshedVideo = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
     const resolvedVideo = refreshedVideo ?? video;
     const commentCount = await prisma.comment.count({
@@ -3051,6 +3061,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     if (!checkApiKey(request, reply, settings)) return;
     const { pollAllVideos } = await import('./services/bilibili-poller.js');
     const result = await pollAllVideos();
+    if (result.status === 'disabled') {
+      return reply.code(409).send({ detail: 'bilibili_not_configured', result });
+    }
     return reply.send({ ok: true, result });
   });
 
