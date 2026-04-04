@@ -283,22 +283,30 @@ export async function render(container) {
 
   // Add video
   container.querySelector('#bili-video-add').addEventListener('click', async () => {
+    const btn = container.querySelector('#bili-video-add');
     const bvid = container.querySelector('#bili-video-bvid').value.trim();
     const validationError = validateBilibiliVideoInput(bvid);
     if (validationError) {
       showToast(getBilibiliErrorMessage(validationError), 'warning');
       return;
     }
+    btn.disabled = true;
+    btn.textContent = '添加中...';
     try {
       await api.addBilibiliVideo(bvid);
       showToast('添加成功', 'success');
       container.querySelector('#bili-video-bvid').value = '';
       await Promise.all([loadStatus(), loadVideos()]);
     } catch (err) { showToast(`添加失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+    finally {
+      btn.disabled = false;
+      btn.textContent = '添加';
+    }
   });
 
   // Add credential
   container.querySelector('#cred-add').addEventListener('click', async () => {
+    const btn = container.querySelector('#cred-add');
     const payload = {
       name: container.querySelector('#cred-name').value.trim(),
       sessdata: container.querySelector('#cred-sessdata').value.trim(),
@@ -312,6 +320,8 @@ export async function render(container) {
       showToast(getBilibiliErrorMessage(validationError), 'warning');
       return;
     }
+    btn.disabled = true;
+    btn.textContent = '添加中...';
     try {
       await api.addBilibiliCredential(payload);
       showToast('凭证添加成功', 'success');
@@ -323,6 +333,10 @@ export async function render(container) {
       container.querySelector('#cred-expires').value = '';
       await Promise.all([loadStatus(), loadCredentials()]);
     } catch (err) { showToast(`添加失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+    finally {
+      btn.disabled = false;
+      btn.textContent = '添加凭证';
+    }
   });
 
   // Manual poll
