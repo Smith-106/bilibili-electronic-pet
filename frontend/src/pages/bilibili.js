@@ -192,7 +192,7 @@ export async function render(container) {
           try {
             await api.toggleBilibiliVideoPoll(btn.dataset.id);
             showToast('操作成功', 'success');
-            loadVideos();
+            await Promise.all([loadStatus(), loadVideos()]);
           } catch (err) { showToast(`失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
@@ -214,7 +214,7 @@ export async function render(container) {
           try {
             await api.deleteBilibiliVideo(btn.dataset.id);
             showToast('已删除', 'success');
-            loadVideos();
+            await Promise.all([loadStatus(), loadVideos()]);
           } catch (err) { showToast(`删除失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
@@ -261,7 +261,7 @@ export async function render(container) {
           try {
             await api.activateBilibiliCredential(btn.dataset.id);
             showToast('已激活', 'success');
-            loadCredentials();
+            await Promise.all([loadStatus(), loadCredentials()]);
           } catch (err) { showToast(`激活失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
@@ -272,7 +272,7 @@ export async function render(container) {
           try {
             await api.deleteBilibiliCredential(btn.dataset.id);
             showToast('已删除', 'success');
-            loadCredentials();
+            await Promise.all([loadStatus(), loadCredentials()]);
           } catch (err) { showToast(`删除失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
@@ -293,7 +293,7 @@ export async function render(container) {
       await api.addBilibiliVideo(bvid);
       showToast('添加成功', 'success');
       container.querySelector('#bili-video-bvid').value = '';
-      loadVideos();
+      await Promise.all([loadStatus(), loadVideos()]);
     } catch (err) { showToast(`添加失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
   });
 
@@ -321,7 +321,7 @@ export async function render(container) {
       container.querySelector('#cred-buvid3').value = '';
       container.querySelector('#cred-buvid4').value = '';
       container.querySelector('#cred-expires').value = '';
-      loadCredentials();
+      await Promise.all([loadStatus(), loadCredentials()]);
     } catch (err) { showToast(`添加失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
   });
 
