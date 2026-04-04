@@ -755,8 +755,16 @@ export async function render(container) {
   });
 
   // Refresh all
-  container.querySelector('#bili-refresh').addEventListener('click', () => {
-    loadStatus(); loadVideos(); loadCredentials();
+  container.querySelector('#bili-refresh').addEventListener('click', async () => {
+    const btn = container.querySelector('#bili-refresh');
+    btn.disabled = true;
+    btn.textContent = '刷新中...';
+    try {
+      await Promise.all([loadStatus(), loadVideos(), loadCredentials()]);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新';
+    }
   });
   container.querySelector('#bili-video-filter-btn').addEventListener('click', () => {
     videoOffset = 0;
