@@ -2115,7 +2115,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   }
 
   // Job management
-  app.post('/jobs/:job_id/retry', async (request, reply) => {
+  const handleRetryJobRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const params = request.params as Record<string, unknown>;
     const jobId = Number.parseInt(String(params.job_id ?? ''), 10);
     if (!Number.isFinite(jobId) || jobId <= 0) {
@@ -2131,9 +2131,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       roleCardKey: body.role_card_key ? String(body.role_card_key) : undefined,
     });
     return reply.send(response);
-  });
+  };
 
-  app.post('/jobs/:job_id/approve', async (request, reply) => {
+  app.post('/jobs/:job_id/retry', handleRetryJobRoute);
+  app.post('/api/jobs/:job_id/retry', handleRetryJobRoute);
+
+  const handleApproveJobRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const params = request.params as Record<string, unknown>;
     const jobId = Number.parseInt(String(params.job_id ?? ''), 10);
     if (!Number.isFinite(jobId) || jobId <= 0) {
@@ -2148,9 +2151,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       roleCardKey: body.role_card_key ? String(body.role_card_key) : undefined,
     });
     return reply.send(response);
-  });
+  };
 
-  app.post('/jobs/approve-batch', async (request, reply) => {
+  app.post('/jobs/:job_id/approve', handleApproveJobRoute);
+  app.post('/api/jobs/:job_id/approve', handleApproveJobRoute);
+
+  const handleApproveJobsBatchRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const body = request.body as Record<string, unknown>;
     const jobIds = Array.isArray(body.job_ids) ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0) : [];
 
@@ -2160,9 +2166,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const response = await approveJobsBatch({ jobIds });
     return reply.send(response);
-  });
+  };
 
-  app.post('/jobs/retry-batch', async (request, reply) => {
+  app.post('/jobs/approve-batch', handleApproveJobsBatchRoute);
+  app.post('/api/jobs/approve-batch', handleApproveJobsBatchRoute);
+
+  const handleRetryJobsBatchRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const body = request.body as Record<string, unknown>;
     const jobIds = Array.isArray(body.job_ids) ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0) : [];
 
@@ -2175,7 +2184,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       forceLong: body.force_long ? Boolean(body.force_long) : undefined,
     });
     return reply.send(response);
-  });
+  };
+
+  app.post('/jobs/retry-batch', handleRetryJobsBatchRoute);
+  app.post('/api/jobs/retry-batch', handleRetryJobsBatchRoute);
 
   app.get('/comments', async (request, reply) => {
     const query = request.query as Record<string, unknown>;
@@ -2189,7 +2201,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     return reply.send({ ok: true, total, items });
   });
 
-  app.get('/comments/:comment_id', async (request, reply) => {
+  const handleGetCommentRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const params = request.params as Record<string, unknown>;
     const commentId = String(params.comment_id ?? '').trim();
 
@@ -2199,9 +2211,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const response = await getComment({ commentId });
     return reply.send(response);
-  });
+  };
 
-  app.get('/jobs/:job_id', async (request, reply) => {
+  app.get('/comments/:comment_id', handleGetCommentRoute);
+  app.get('/api/comments/:comment_id', handleGetCommentRoute);
+
+  const handleGetJobRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const params = request.params as Record<string, unknown>;
     const jobId = Number.parseInt(String(params.job_id ?? ''), 10);
 
@@ -2211,7 +2226,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const response = await getJob({ jobId });
     return reply.send(response);
-  });
+  };
+
+  app.get('/jobs/:job_id', handleGetJobRoute);
+  app.get('/api/jobs/:job_id', handleGetJobRoute);
 
   app.get('/jobs', async (request, reply) => {
     const query = request.query as Record<string, unknown>;
@@ -2457,7 +2475,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   // ── Audit logs ──
 
-  app.get('/audit-logs', async (request, reply) => {
+  const handleListAuditLogsRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!checkApiKey(request, reply, settings)) return;
     const query = request.query as Record<string, unknown>;
     const prisma = getPrisma();
@@ -2497,7 +2515,11 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
         created_at: item.created_at?.toISOString() ?? null,
       })),
     });
-  });
+  };
+
+  app.get('/audit-logs', handleListAuditLogsRoute);
+  app.get('/api/audit-logs', handleListAuditLogsRoute);
+  app.get('/api/audit-log', handleListAuditLogsRoute);
 
   app.get('/export/audit-logs.csv', async (request, reply) => {
     if (!checkApiKey(request, reply, settings)) return;
@@ -2580,7 +2602,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   // ── Metrics /daily ──
 
-  app.get('/metrics/daily', async (request, reply) => {
+  const handleDailyMetricsRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     if (!checkApiKey(request, reply, settings)) return;
     const query = request.query as Record<string, unknown>;
     const days = parseAdminLimit(query.days, 7, 1, 60);
@@ -2625,7 +2647,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       totals: totalsByStatus,
       items,
     });
-  });
+  };
+
+  app.get('/metrics/daily', handleDailyMetricsRoute);
+  app.get('/api/metrics/daily', handleDailyMetricsRoute);
 
   // ── Gateway publish-logs (top-level route) ──
 

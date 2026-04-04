@@ -1609,6 +1609,201 @@ describe('comments domain parity', () => {
     await app.close();
   });
 
+  it('supports /api job aliases for get, retry, and approve', async () => {
+    const getCaptured: Array<Record<string, unknown>> = [];
+    const retryCaptured: Array<Record<string, unknown>> = [];
+    const approveCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        getJob: (input) => {
+          getCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: input.jobId,
+              comment_id: 'comment-1',
+              status: 'queued',
+            },
+          };
+        },
+        retryJob: (input) => {
+          retryCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            requeued: true,
+            job_id: input.jobId,
+          };
+        },
+        approveJob: (input) => {
+          approveCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            job_id: input.jobId,
+            status: 'queued',
+          };
+        },
+      }),
+    );
+
+    const getResponse = await app.inject({
+      method: 'GET',
+      url: '/api/jobs/123',
+    });
+    expect(getResponse.statusCode).toBe(200);
+    expect(getCaptured).toEqual([{ jobId: 123 }]);
+
+    const retryResponse = await app.inject({
+      method: 'POST',
+      url: '/api/jobs/123/retry',
+      payload: {
+        force_long: true,
+        style_profile: 'empathy',
+      },
+    });
+    expect(retryResponse.statusCode).toBe(200);
+    expect(retryCaptured).toEqual([
+      {
+        jobId: 123,
+        forceLong: true,
+        styleProfile: 'empathy',
+        roleProfile: undefined,
+        roleCardKey: undefined,
+      },
+    ]);
+
+    const approveResponse = await app.inject({
+      method: 'POST',
+      url: '/api/jobs/123/approve',
+      payload: {
+        role_profile: 'comfort',
+      },
+    });
+    expect(approveResponse.statusCode).toBe(200);
+    expect(approveCaptured).toEqual([
+      {
+        jobId: 123,
+        styleProfile: undefined,
+        roleProfile: 'comfort',
+        roleCardKey: undefined,
+      },
+    ]);
+
+    await app.close();
+  });
+
+  it('supports /api job batch aliases and preserves validation', async () => {
+    const approveCaptured: Array<Record<string, unknown>> = [];
+    const retryCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        approveJobsBatch: (input) => {
+          approveCaptured.push(input as unknown as Record<string, unknown>);
+          return { ok: true, summary: { total: input.jobIds.length, success: input.jobIds.length, failed: 0 } };
+        },
+        retryJobsBatch: (input) => {
+          retryCaptured.push(input as unknown as Record<string, unknown>);
+          return { ok: true, summary: { total: input.jobIds.length, success: input.jobIds.length, failed: 0 } };
+        },
+      }),
+    );
+
+    const approveResponse = await app.inject({
+      method: 'POST',
+      url: '/api/jobs/approve-batch',
+      payload: {
+        job_ids: [1, 2, 3],
+      },
+    });
+    expect(approveResponse.statusCode).toBe(200);
+    expect(approveCaptured).toEqual([{ jobIds: [1, 2, 3] }]);
+
+    const retryResponse = await app.inject({
+      method: 'POST',
+      url: '/api/jobs/retry-batch',
+      payload: {
+        job_ids: [7, 8],
+        force_long: true,
+      },
+    });
+    expect(retryResponse.statusCode).toBe(200);
+    expect(retryCaptured).toEqual([{ jobIds: [7, 8], forceLong: true }]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/jobs/approve-batch',
+      payload: {
+        job_ids: [],
+      },
+    });
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'job_ids_required' });
+
+    await app.close();
+  });
+
+  it('supports /api comment detail alias', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        getComment: (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            comment: {
+              comment_id: input.commentId,
+              content: 'alias comment',
+            },
+            jobs: [],
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/comments/comment-42',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([{ commentId: 'comment-42' }]);
+    expect(response.json()).toMatchObject({
+      ok: true,
+      comment: {
+        comment_id: 'comment-42',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('exposes audit log and daily metrics aliases with auth parity', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+      }),
+    );
+
+    const urls = [
+      '/api/audit-logs?limit=20&action=%20approve%20',
+      '/api/audit-log?limit=20&ok=true',
+      '/api/metrics/daily?days=30',
+    ];
+
+    for (const url of urls) {
+      const response = await app.inject({
+        method: 'GET',
+        url,
+      });
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ detail: 'unauthorized' });
+    }
+
+    await app.close();
+  });
+
   it('gets comment by id', async () => {
     const captured: Array<Record<string, unknown>> = [];
 
