@@ -8,6 +8,10 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { createPrismaClient } from '../lib/prisma.js';
+import {
+  loadBilibiliRuntimeConfig,
+  type BilibiliRuntimeConfig,
+} from './bilibili-runtime-config.js';
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
@@ -115,30 +119,8 @@ async function fetchCommentsWithRetry(
 /**
  * Load bilibili config from environment
  */
-function loadConfig(): {
-  baseUrl: string;
-  sessdata: string;
-  biliJct: string;
-  buvid: string;
-  userAgent: string;
-  timeout: number;
-} | null {
-  const sessdata = process.env.BILIBILI_SESSDATA || '';
-  const biliJct = process.env.BILIBILI_BILI_JCT || '';
-  const buvid = process.env.BILIBILI_BUVID3 || '';
-
-  if (!sessdata || !biliJct || !buvid) return null;
-
-  return {
-    baseUrl: process.env.BILIBILI_BASE_URL || 'https://api.bilibili.com',
-    sessdata,
-    biliJct,
-    buvid,
-    userAgent:
-      process.env.BILIBILI_USER_AGENT ||
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    timeout: parseInt(process.env.BILIBILI_TIMEOUT || '30000', 10),
-  };
+async function loadConfig(prisma: PrismaClient): Promise<BilibiliRuntimeConfig | null> {
+  return loadBilibiliRuntimeConfig(prisma);
 }
 
 /**
@@ -147,7 +129,7 @@ function loadConfig(): {
 async function pollVideoComments(
   prisma: PrismaClient,
   video: { id: number; bvid: string; aid: number | null; last_rpid: number },
-  config: NonNullable<ReturnType<typeof loadConfig>>,
+  config: BilibiliRuntimeConfig,
   onlyNew = true,
 ): Promise<PollVideoResult> {
   // Ensure we have an aid
@@ -287,10 +269,10 @@ async function pollVideoComments(
  * Poll all enabled videos — main entry point
  */
 export async function pollAllVideos(): Promise<PollResult> {
-  const config = loadConfig();
   const prisma = createPrismaClient();
 
   try {
+    const config = await loadConfig(prisma);
     if (!config) {
       return { status: 'disabled', videos: 0, comments: 0, events_injected: 0, details: [] };
     }

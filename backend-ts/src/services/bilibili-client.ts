@@ -4,44 +4,19 @@
  */
 
 import type { PublishReplyService } from './interfaces.js';
+import {
+  loadBilibiliRuntimeConfig,
+  type BilibiliRuntimeConfig,
+} from './bilibili-runtime-config.js';
 
 // ============================================================
 // Configuration
 // ============================================================
 
-interface BilibiliConfig {
-  sessdata: string;
-  biliJct: string;
-  buvid: string;
-  dedeuserid: string;
-  baseUrl: string;
-  userAgent: string;
-  timeout: number;
-  retries: number;
-}
+type BilibiliConfig = BilibiliRuntimeConfig;
 
-function loadBilibiliConfig(): BilibiliConfig {
-  const sessdata = process.env.BILIBILI_SESSDATA || '';
-  const biliJct = process.env.BILIBILI_BILI_JCT || '';
-  const buvid = process.env.BILIBILI_BUVID3 || '';
-  const dedeuserid = process.env.BILIBILI_DEDEUSERID || '';
-  const baseUrl = process.env.BILIBILI_BASE_URL || 'https://api.bilibili.com';
-  const userAgent =
-    process.env.BILIBILI_USER_AGENT ||
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0';
-  const timeout = parseInt(process.env.BILIBILI_TIMEOUT || '30000', 10);
-  const retries = parseInt(process.env.BILIBILI_RETRIES || '3', 10);
-
-  return {
-    sessdata,
-    biliJct,
-    buvid,
-    dedeuserid,
-    baseUrl,
-    userAgent,
-    timeout,
-    retries,
-  };
+async function loadBilibiliConfig(): Promise<BilibiliConfig | null> {
+  return loadBilibiliRuntimeConfig();
 }
 
 // ============================================================
@@ -105,7 +80,7 @@ export async function postReply(
   replyText: string,
   config?: BilibiliConfig
 ): Promise<{ success: boolean; rpid: string }> {
-  const resolvedConfig = config || loadBilibiliConfig();
+  const resolvedConfig = config || await loadBilibiliConfig();
   if (!resolvedConfig) {
     console.error('[Bilibili] Cannot post reply: not configured');
     return { success: false, rpid: '' };
@@ -233,8 +208,7 @@ async function verifyCredentials(
 /**
  * Check if Bilibili API is fully configured
  */
-export function isBilibiliConfigured(): boolean {
-  const config = loadBilibiliConfig();
-  return !!(config.sessdata && config.biliJct && config.buvid);
+export async function isBilibiliConfigured(): Promise<boolean> {
+  const config = await loadBilibiliConfig();
+  return !!(config?.sessdata && config?.biliJct && config?.buvid);
 }
-
