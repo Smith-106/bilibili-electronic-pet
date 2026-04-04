@@ -630,6 +630,24 @@ function normalizeAdminAuditSummaryPayload(summary: Record<string, unknown>): Re
   };
 }
 
+function normalizeStyleProfilePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const styleProfile = String(payload.style_profile ?? payload.style ?? '').trim().toLowerCase();
+  return {
+    ...payload,
+    style_profile: styleProfile,
+    style: styleProfile,
+  };
+}
+
+function normalizeRoleProfilePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const roleProfile = String(payload.role_profile ?? payload.role ?? '').trim().toLowerCase();
+  return {
+    ...payload,
+    role_profile: roleProfile,
+    role: roleProfile,
+  };
+}
+
 function inferPlatformFromCanonicalCommentId(canonicalCommentId: string | null | undefined): string | null {
   if (!canonicalCommentId) {
     return null;
@@ -2433,7 +2451,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const response = await getStyleProfile();
-    return reply.send(response);
+    return reply.send(normalizeStyleProfilePayload(response as unknown as Record<string, unknown>));
   });
 
   app.post('/api/admin/style-profile', async (request, reply) => {
@@ -2446,14 +2464,14 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const value = String(body.style_profile ?? '').trim().toLowerCase();
+    const value = String(body.style_profile ?? body.style ?? '').trim().toLowerCase();
     const allowed = new Set(['auto', 'empathy', 'meme', 'normal']);
     if (!allowed.has(value)) {
       return reply.code(400).send({ detail: 'invalid_style_profile' });
     }
 
     const response = await setStyleProfile({ styleProfile: value });
-    return reply.send(response);
+    return reply.send(normalizeStyleProfilePayload(response as unknown as Record<string, unknown>));
   });
 
   // Role profile
@@ -2467,7 +2485,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const response = await getRoleProfile();
-    return reply.send(response);
+    return reply.send(normalizeRoleProfilePayload(response as unknown as Record<string, unknown>));
   });
 
   app.post('/api/admin/role-profile', async (request, reply) => {
@@ -2480,14 +2498,14 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const value = String(body.role_profile ?? '').trim().toLowerCase();
+    const value = String(body.role_profile ?? body.role ?? '').trim().toLowerCase();
     const allowed = new Set(['auto', 'default', 'comfort', 'playful']);
     if (!allowed.has(value)) {
       return reply.code(400).send({ detail: 'invalid_role_profile' });
     }
 
     const response = await setRoleProfile({ roleProfile: value });
-    return reply.send(response);
+    return reply.send(normalizeRoleProfilePayload(response as unknown as Record<string, unknown>));
   });
 
   // Role cards

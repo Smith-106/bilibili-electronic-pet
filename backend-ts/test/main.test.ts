@@ -977,17 +977,18 @@ describe('admin api parity', () => {
     expect(getResponse.json()).toEqual({
       ok: true,
       style_profile: 'auto',
+      style: 'auto',
       preset_profiles: ['auto', 'empathy', 'meme', 'normal'],
     });
 
     const setResponse = await app.inject({
       method: 'POST',
       url: '/api/admin/style-profile',
-      payload: { style_profile: '  EMPATHY  ' },
+      payload: { style: '  EMPATHY  ' },
     });
 
     expect(setResponse.statusCode).toBe(200);
-    expect(setResponse.json()).toEqual({ ok: true, style_profile: 'empathy' });
+    expect(setResponse.json()).toEqual({ ok: true, style_profile: 'empathy', style: 'empathy' });
 
     const invalidResponse = await app.inject({
       method: 'POST',
@@ -1027,17 +1028,18 @@ describe('admin api parity', () => {
     expect(getResponse.json()).toEqual({
       ok: true,
       role_profile: 'auto',
+      role: 'auto',
       preset_profiles: ['auto', 'default', 'comfort', 'playful'],
     });
 
     const setResponse = await app.inject({
       method: 'POST',
       url: '/api/admin/role-profile',
-      payload: { role_profile: '  COMFORT  ' },
+      payload: { role: '  COMFORT  ' },
     });
 
     expect(setResponse.statusCode).toBe(200);
-    expect(setResponse.json()).toEqual({ ok: true, role_profile: 'comfort' });
+    expect(setResponse.json()).toEqual({ ok: true, role_profile: 'comfort', role: 'comfort' });
 
     const invalidResponse = await app.inject({
       method: 'POST',
