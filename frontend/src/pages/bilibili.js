@@ -43,6 +43,7 @@ const bilibiliPollErrorMessages = {
   no_aid: '缺少视频 aid，暂时无法轮询。',
   retry_exhausted: '评论抓取重试耗尽。',
 };
+const bilibiliVideoPageSize = 50;
 
 function getBilibiliErrorMessage(error) {
   const raw = error instanceof Error ? error.message : String(error ?? 'request_failed');
@@ -118,13 +119,15 @@ function getBilibiliVideoEmptyMessage(filterValue) {
   return '暂无视频';
 }
 
-function formatBilibiliVideoSummary(total, renderedCount, filterValue) {
+function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize) {
   const filterLabel = filterValue === 'true'
     ? '轮询中'
     : filterValue === 'false'
       ? '已停用'
       : '全部';
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条`;
+  const currentPage = Math.floor(offset / limit) + 1;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
@@ -164,6 +167,8 @@ function bindEnterKeyToClick(container, selectors, buttonSelector) {
 }
 
 export async function render(container) {
+  let videoOffset = 0;
+
   container.innerHTML = `
     <div class="page-header">
       <h2>B站集成</h2>
@@ -201,6 +206,12 @@ export async function render(container) {
         </div>
         <div class="form-group">
           <button class="btn btn-primary" id="bili-video-filter-btn">查询</button>
+        </div>
+        <div class="form-group">
+          <button class="btn" id="bili-video-prev">上一页</button>
+        </div>
+        <div class="form-group">
+          <button class="btn" id="bili-video-next">下一页</button>
         </div>
       </div>
       <div class="form-hint" id="bili-video-summary" style="padding: 0 16px 16px;">加载中...</div>
@@ -302,17 +313,29 @@ export async function render(container) {
     const wrapper = container.querySelector('#bili-videos-wrapper');
     const summaryEl = container.querySelector('#bili-video-summary');
     const filterBtn = container.querySelector('#bili-video-filter-btn');
+    const prevBtn = container.querySelector('#bili-video-prev');
+    const nextBtn = container.querySelector('#bili-video-next');
     const filterValue = container.querySelector('#bili-video-poll-filter').value;
     summaryEl.textContent = '加载中...';
     filterBtn.disabled = true;
+    prevBtn.disabled = true;
+    nextBtn.disabled = true;
     try {
       const data = await api.getBilibiliVideos({
-        limit: 50,
+        limit: bilibiliVideoPageSize,
+        offset: videoOffset,
         poll_enabled: parseBilibiliPollFilter(filterValue),
       });
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
       const total = Number(data?.total ?? items.length);
-      summaryEl.textContent = formatBilibiliVideoSummary(total, items.length, filterValue);
+      if (items.length === 0 && total > 0 && videoOffset > 0) {
+        videoOffset = Math.max(0, videoOffset - bilibiliVideoPageSize);
+        await loadVideos();
+        return;
+      }
+      summaryEl.textContent = formatBilibiliVideoSummary(total, items.length, filterValue, videoOffset, bilibiliVideoPageSize);
+      prevBtn.disabled = videoOffset <= 0;
+      nextBtn.disabled = videoOffset + items.length >= total;
 
       if (items.length === 0) {
         wrapper.innerHTML = `<div class="table-empty">${escapeHtml(getBilibiliVideoEmptyMessage(filterValue))}</div>`;
@@ -531,8 +554,23 @@ export async function render(container) {
   container.querySelector('#bili-refresh').addEventListener('click', () => {
     loadStatus(); loadVideos(); loadCredentials();
   });
-  container.querySelector('#bili-video-filter-btn').addEventListener('click', loadVideos);
-  container.querySelector('#bili-video-poll-filter').addEventListener('change', loadVideos);
+  container.querySelector('#bili-video-filter-btn').addEventListener('click', () => {
+    videoOffset = 0;
+    loadVideos();
+  });
+  container.querySelector('#bili-video-poll-filter').addEventListener('change', () => {
+    videoOffset = 0;
+    loadVideos();
+  });
+  container.querySelector('#bili-video-prev').addEventListener('click', () => {
+    if (videoOffset <= 0) return;
+    videoOffset = Math.max(0, videoOffset - bilibiliVideoPageSize);
+    loadVideos();
+  });
+  container.querySelector('#bili-video-next').addEventListener('click', () => {
+    videoOffset += bilibiliVideoPageSize;
+    loadVideos();
+  });
   bindEnterKeyToClick(container, ['#bili-video-bvid'], '#bili-video-add');
   bindEnterKeyToClick(
     container,
