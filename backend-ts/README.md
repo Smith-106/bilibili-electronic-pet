@@ -5,7 +5,7 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 110 tests passing in the current backend suite
+✅ **Tests Passing** - 114 tests passing in the current backend suite
 ⚠️ **External Delivery Depends on Configuration** - LLM, search, webhook, and native Bilibili publishing paths still require runtime credentials and environment setup
 
 ## Tech Stack
@@ -199,7 +199,7 @@ npm test -- --coverage
 npm test -- test/workers.test.ts
 ```
 
-**Test Coverage**: 110 tests, all passing
+**Test Coverage**: 114 tests, all passing
 
 ## Deployment
 

@@ -6,11 +6,13 @@ const mockPrisma = {
   comment: {
     count: vi.fn(),
     findMany: vi.fn(),
+    findFirst: vi.fn(),
   },
   replyJob: {
     count: vi.fn(),
     findMany: vi.fn(),
     groupBy: vi.fn(),
+    findUnique: vi.fn(),
   },
   publishLog: {
     findMany: vi.fn(),
@@ -317,6 +319,216 @@ describe('default admin data providers', () => {
         },
       ],
     });
+
+    await app.close();
+  });
+});
+
+describe('default query and export providers', () => {
+  it('returns comment details with related jobs from prisma', async () => {
+    mockPrisma.comment.findFirst.mockResolvedValue({
+      id: 11,
+      platform: 'bilibili',
+      canonical_comment_id: 'bilibili:comment-2',
+      comment_id: 'comment-2',
+      video_id: 'video-2',
+      user_id: 'user-2',
+      content: '这是评论正文',
+      parent_id: null,
+      created_at: new Date('2026-04-04T08:00:00.000Z'),
+    });
+    mockPrisma.replyJob.findMany.mockResolvedValue([
+      {
+        id: 7,
+        comment_id: 'comment-2',
+        canonical_comment_id: 'bilibili:comment-2',
+        status: 'published',
+        reply_text: '已回复',
+        created_at: new Date('2026-04-04T09:00:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({ method: 'GET', url: '/comments/comment-2' });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.comment.findFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { comment_id: 'comment-2' },
+          { canonical_comment_id: 'comment-2' },
+        ],
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
+    expect(response.json()).toMatchObject({
+      ok: true,
+      comment: {
+        comment_id: 'comment-2',
+        canonical_comment_id: 'bilibili:comment-2',
+        platform: 'bilibili',
+        content: '这是评论正文',
+        created_at: '2026-04-04T08:00:00.000Z',
+      },
+      jobs: [
+        {
+          id: 7,
+          comment_id: 'comment-2',
+          canonical_comment_id: 'bilibili:comment-2',
+          status: 'published',
+          reply_text: '已回复',
+          comment_content: '这是评论正文',
+          platform: 'bilibili',
+          created_at: '2026-04-04T09:00:00.000Z',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('returns flattened top-level fields for the job detail query route', async () => {
+    mockPrisma.replyJob.findUnique.mockResolvedValue({
+      id: 101,
+      comment_id: 'comment-9',
+      canonical_comment_id: 'bilibili:comment-9',
+      status: 'manual_queue',
+      reply_text: '待人工审核回复',
+      created_at: new Date('2026-04-04T10:00:00.000Z'),
+    });
+    mockPrisma.comment.findFirst.mockResolvedValue({
+      id: 12,
+      platform: 'bilibili',
+      canonical_comment_id: 'bilibili:comment-9',
+      comment_id: 'comment-9',
+      video_id: 'video-9',
+      user_id: 'user-9',
+      content: '关联评论内容',
+      parent_id: null,
+      created_at: new Date('2026-04-04T09:30:00.000Z'),
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({ method: 'GET', url: '/api/jobs/101' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      ok: true,
+      id: 101,
+      comment_id: 'comment-9',
+      canonical_comment_id: 'bilibili:comment-9',
+      status: 'manual_queue',
+      reply_text: '待人工审核回复',
+      comment_content: '关联评论内容',
+      platform: 'bilibili',
+      item: {
+        id: 101,
+        comment_id: 'comment-9',
+        status: 'manual_queue',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('lists jobs from prisma with pending_review compatibility filtering', async () => {
+    mockPrisma.replyJob.findMany.mockResolvedValue([
+      {
+        id: 15,
+        comment_id: 'comment-15',
+        canonical_comment_id: 'bilibili:comment-15',
+        status: 'blocked',
+        reply_text: null,
+        created_at: new Date('2026-04-04T11:00:00.000Z'),
+      },
+    ]);
+    mockPrisma.comment.findMany.mockResolvedValue([
+      {
+        id: 15,
+        platform: 'bilibili',
+        canonical_comment_id: 'bilibili:comment-15',
+        comment_id: 'comment-15',
+        video_id: 'video-15',
+        user_id: 'user-15',
+        content: '被拦截的评论',
+        parent_id: null,
+        created_at: new Date('2026-04-04T10:30:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/jobs?status=pending_review&limit=10&offset=5',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
+      where: {
+        status: {
+          in: ['manual_queue', 'blocked', 'dedupe_skipped'],
+        },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      skip: 5,
+      take: 10,
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      items: [
+        {
+          id: 15,
+          comment_id: 'comment-15',
+          canonical_comment_id: 'bilibili:comment-15',
+          status: 'blocked',
+          reply_text: null,
+          style_profile: null,
+          role_profile: null,
+          role_card_key: null,
+          force_long: null,
+          platform: 'bilibili',
+          created_at: '2026-04-04T11:00:00.000Z',
+          updated_at: null,
+          comment_content: '被拦截的评论',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('exports jobs csv from prisma by default', async () => {
+    mockPrisma.replyJob.findMany.mockResolvedValue([
+      {
+        id: 21,
+        comment_id: 'comment-21',
+        canonical_comment_id: 'bilibili:comment-21',
+        status: 'manual_queue',
+        reply_text: '等待审核',
+        created_at: new Date('2026-04-04T12:00:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/export/jobs.csv?status=pending_review&limit=500',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toBe('text/csv');
+    expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
+      where: {
+        status: {
+          in: ['manual_queue', 'blocked', 'dedupe_skipped'],
+        },
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 500,
+    });
+    expect(response.body).toBe(
+      'job_id,comment_id,status,created_at\n21,comment-21,manual_queue,2026-04-04T12:00:00.000Z\n',
+    );
 
     await app.close();
   });

@@ -573,6 +573,45 @@ function normalizeAdminAuditSummaryPayload(summary: Record<string, unknown>): Re
   };
 }
 
+function inferPlatformFromCanonicalCommentId(canonicalCommentId: string | null | undefined): string | null {
+  if (!canonicalCommentId) {
+    return null;
+  }
+  const normalized = String(canonicalCommentId).trim();
+  const separator = normalized.indexOf(':');
+  if (separator <= 0) {
+    return null;
+  }
+  return normalized.slice(0, separator);
+}
+
+function normalizeQueryJobRecord(
+  item: Record<string, unknown>,
+  options: {
+    commentContent?: string | null;
+    platform?: string | null;
+  } = {},
+): ReplyJob {
+  const canonicalCommentId = isNonEmptyString(item.canonical_comment_id) ? item.canonical_comment_id : null;
+  const inferredPlatform = options.platform ?? inferPlatformFromCanonicalCommentId(canonicalCommentId);
+
+  return {
+    id: Number(item.id ?? 0),
+    comment_id: String(item.comment_id ?? ''),
+    canonical_comment_id: canonicalCommentId,
+    status: String(item.status ?? ''),
+    reply_text: typeof item.reply_text === 'string' ? item.reply_text : null,
+    style_profile: typeof item.style_profile === 'string' ? item.style_profile : null,
+    role_profile: typeof item.role_profile === 'string' ? item.role_profile : null,
+    role_card_key: typeof item.role_card_key === 'string' ? item.role_card_key : null,
+    force_long: typeof item.force_long === 'boolean' ? item.force_long : null,
+    platform: inferredPlatform ?? null,
+    created_at: normalizeNullableIsoTimestamp(item.created_at as Date | string | null | undefined),
+    updated_at: normalizeNullableIsoTimestamp(item.updated_at as Date | string | null | undefined),
+    comment_content: options.commentContent ?? (typeof item.comment_content === 'string' ? item.comment_content : null),
+  };
+}
+
 function normalizePublishMode(mode: string): string {
   return mode.trim().toLowerCase();
 }
@@ -1299,51 +1338,145 @@ async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: bool
   return { ok: true, summary, results, trace_id: traceId };
 }
 
-function defaultGetComment(input: { commentId: string }): { ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] } {
+async function defaultGetComment(input: { commentId: string }): Promise<{ ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] }> {
+  const prisma = getPrisma();
+  const commentId = String(input.commentId ?? '').trim();
+  const comment = await prisma.comment.findFirst({
+    where: {
+      OR: [
+        { comment_id: commentId },
+        { canonical_comment_id: commentId },
+      ],
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+  });
+
+  if (!comment) {
+    throw { statusCode: 404, detail: 'comment_not_found' };
+  }
+
+  const jobs = await prisma.replyJob.findMany({
+    where: {
+      OR: [
+        { comment_id: comment.comment_id },
+        { canonical_comment_id: comment.canonical_comment_id },
+      ],
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+  });
+
   return {
     ok: true,
     comment: {
-      comment_id: input.commentId,
-      video_id: null,
-      user_id: null,
-      content: null,
-      parent_id: null,
-      created_at: null,
+      id: comment.id,
+      platform: comment.platform,
+      canonical_comment_id: comment.canonical_comment_id,
+      comment_id: comment.comment_id,
+      video_id: comment.video_id,
+      user_id: comment.user_id,
+      content: comment.content,
+      parent_id: comment.parent_id,
+      created_at: comment.created_at?.toISOString() ?? null,
     },
-    jobs: [],
+    jobs: jobs.map((job) => normalizeQueryJobRecord(job as unknown as Record<string, unknown>, {
+      commentContent: comment.content,
+      platform: comment.platform,
+    })),
   };
 }
 
-function defaultGetJob(input: { jobId: number }): { ok: boolean; item: ReplyJob } {
+async function defaultGetJob(input: { jobId: number }): Promise<{ ok: boolean; item: ReplyJob }> {
+  const prisma = getPrisma();
+  const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
+  if (!job) {
+    throw { statusCode: 404, detail: 'job_not_found' };
+  }
+
+  const comment = await prisma.comment.findFirst({
+    where: {
+      OR: [
+        { comment_id: job.comment_id },
+        ...(job.canonical_comment_id ? [{ canonical_comment_id: job.canonical_comment_id }] : []),
+      ],
+    },
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+  });
+
   return {
     ok: true,
-    item: {
-      id: input.jobId,
-      comment_id: '',
-      canonical_comment_id: null,
-      status: 'pending',
-      reply_text: null,
-      style_profile: null,
-      role_profile: null,
-      role_card_key: null,
-      force_long: null,
-      platform: null,
-      created_at: new Date().toISOString(),
-      updated_at: null,
-      comment_content: null,
-    },
+    item: normalizeQueryJobRecord(job as unknown as Record<string, unknown>, {
+      commentContent: comment?.content ?? null,
+      platform: comment?.platform ?? null,
+    }),
   };
 }
 
-function defaultListJobs(input: { status?: string; limit: number; offset: number }): { ok: boolean; items: ReplyJob[] } {
+async function defaultListJobs(input: { status?: string; limit: number; offset: number }): Promise<{ ok: boolean; items: ReplyJob[] }> {
+  const prisma = getPrisma();
+  const where = buildAdminJobStatusWhere(input.status);
+  const items = await prisma.replyJob.findMany({
+    where,
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    skip: input.offset,
+    take: input.limit,
+  });
+
+  const commentIds = [...new Set(
+    items
+      .map((item) => item.comment_id)
+      .filter((value): value is string => Boolean(value)),
+  )];
+  const canonicalCommentIds = [...new Set(
+    items
+      .map((item) => item.canonical_comment_id)
+      .filter((value): value is string => Boolean(value)),
+  )];
+
+  const comments = commentIds.length === 0 && canonicalCommentIds.length === 0
+    ? []
+    : await prisma.comment.findMany({
+      where: {
+        OR: [
+          ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
+          ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
+        ],
+      },
+    });
+
+  const commentByCanonicalId = new Map(comments.map((item) => [item.canonical_comment_id, item]));
+  const commentByCommentId = new Map(comments.map((item) => [item.comment_id, item]));
+
   return {
     ok: true,
-    items: [],
+    items: items.map((item) => {
+      const comment = (item.canonical_comment_id && commentByCanonicalId.get(item.canonical_comment_id))
+        || commentByCommentId.get(item.comment_id);
+      return normalizeQueryJobRecord(item as unknown as Record<string, unknown>, {
+        commentContent: comment?.content ?? null,
+        platform: comment?.platform ?? null,
+      });
+    }),
   };
 }
 
-function defaultExportJobsCsv(input: { status?: string; limit: number }): string {
-  return 'job_id,comment_id,status,created_at\n';
+async function defaultExportJobsCsv(input: { status?: string; limit: number }): Promise<string> {
+  const prisma = getPrisma();
+  const where = buildAdminJobStatusWhere(input.status);
+  const items = await prisma.replyJob.findMany({
+    where,
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: input.limit,
+  });
+
+  const header = 'job_id,comment_id,status,created_at';
+  const rows = items.map((item) => [
+    item.id,
+    csvEscape(item.comment_id),
+    csvEscape(item.status),
+    csvEscape(item.created_at?.toISOString() ?? ''),
+  ].join(','));
+
+  return `${[header, ...rows].join('\n')}\n`;
 }
 
 function defaultGetBilibiliStatus(): { ok: boolean; config: Record<string, unknown>; credential: Record<string, unknown> | null; videos: Record<string, unknown>; diagnostics: Record<string, unknown> } {
@@ -2452,7 +2585,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const response = await getJob({ jobId });
-    return reply.send(response);
+    const item = response && typeof response === 'object' && 'item' in response && response.item && typeof response.item === 'object' && !Array.isArray(response.item)
+      ? response.item as Record<string, unknown>
+      : null;
+    return reply.send(item ? { ...response, ...item, item } : response);
   };
 
   app.get('/jobs/:job_id', handleGetJobRoute);
