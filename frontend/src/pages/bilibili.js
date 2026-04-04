@@ -120,7 +120,19 @@ function getBilibiliVideoEmptyMessage(filterValue) {
   return '暂无视频';
 }
 
-function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize) {
+function countBilibiliVideosMissingAid(items) {
+  return items.filter((item) => !(typeof item?.aid === 'number' && Number.isFinite(item.aid))).length;
+}
+
+function renderBilibiliVideoIdentity(video) {
+  const hasAid = typeof video?.aid === 'number' && Number.isFinite(video.aid);
+  const hint = hasAid
+    ? `aid: ${video.aid}`
+    : bilibiliPollErrorMessages.no_aid;
+  return `${escapeHtml(video?.bvid || '-')}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
+}
+
+function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize, items = []) {
   const filterLabel = filterValue === 'true'
     ? '轮询中'
     : filterValue === 'false'
@@ -128,7 +140,9 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
       : '全部';
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页`;
+  const missingAidCount = countBilibiliVideosMissingAid(items);
+  const missingAidText = missingAidCount > 0 ? `，当前页缺少 aid ${missingAidCount} 条` : '';
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
@@ -464,7 +478,14 @@ export async function render(container) {
         await loadVideos();
         return;
       }
-      summaryEl.textContent = formatBilibiliVideoSummary(total, items.length, filterValue, videoOffset, bilibiliVideoPageSize);
+      summaryEl.textContent = formatBilibiliVideoSummary(
+        total,
+        items.length,
+        filterValue,
+        videoOffset,
+        bilibiliVideoPageSize,
+        items,
+      );
       prevBtn.disabled = videoOffset <= 0;
       nextBtn.disabled = videoOffset + items.length >= total;
 
@@ -478,7 +499,7 @@ export async function render(container) {
           <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>最后轮询</th><th>轮询结果</th><th>操作</th></tr></thead>
           <tbody>
             ${items.map(v => `<tr data-id="${escapeHtml(v.id || v.video_id)}">
-              <td class="cell-id">${escapeHtml(v.bvid)}</td>
+              <td class="cell-id">${renderBilibiliVideoIdentity(v)}</td>
               <td class="cell-truncate">${escapeHtml(v.title || '-')}</td>
               <td>${renderBoolBadge(v.poll_enabled)}</td>
               <td>${v.comment_count ?? '-'}</td>
