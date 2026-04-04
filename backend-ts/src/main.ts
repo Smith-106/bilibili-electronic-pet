@@ -3230,14 +3230,25 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     const prisma = getPrisma();
 
     const startUtc = new Date(Date.now() - days * 24 * 3600 * 1000);
+    const comments = await prisma.comment.findMany({
+      where: { created_at: { gte: startUtc } },
+      select: { created_at: true },
+      orderBy: { created_at: 'asc' },
+    });
     const jobs = await prisma.replyJob.findMany({
       where: { created_at: { gte: startUtc } },
       select: { created_at: true, status: true },
       orderBy: { created_at: 'asc' },
     });
 
+    const commentsByDay: Record<string, number> = {};
     const grouped: Record<string, Record<string, number>> = {};
     const totalsByStatus: Record<string, number> = {};
+
+    for (const comment of comments) {
+      const dayKey = (comment.created_at ?? new Date()).toISOString().slice(0, 10);
+      commentsByDay[dayKey] = (commentsByDay[dayKey] ?? 0) + 1;
+    }
 
     for (const job of jobs) {
       const dayKey = (job.created_at ?? new Date()).toISOString().slice(0, 10);
@@ -3247,18 +3258,33 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       totalsByStatus[status] = (totalsByStatus[status] ?? 0) + 1;
     }
 
-    const items = Object.keys(grouped).sort().map((dayKey) => {
-      const statusMap = grouped[dayKey];
+    const allDayKeys = [...new Set([...Object.keys(commentsByDay), ...Object.keys(grouped)])].sort();
+    const items = allDayKeys.map((dayKey) => {
+      const statusMap = grouped[dayKey] ?? {};
+      const commentCount = commentsByDay[dayKey] ?? 0;
+      const totalJobs = Object.values(statusMap).reduce((a, b) => a + b, 0);
+      const publishedCount = statusMap.published ?? 0;
+      const failedCount = statusMap.failed ?? 0;
+      const skippedCount = statusMap.skipped ?? 0;
+
       return {
         date: dayKey,
+        comments: commentCount,
+        comment_count: commentCount,
+        jobs: totalJobs,
+        job_count: totalJobs,
         queued: statusMap.queued ?? 0,
-        published: statusMap.published ?? 0,
+        published: publishedCount,
+        published_count: publishedCount,
         manual_queue: statusMap.manual_queue ?? 0,
         blocked: statusMap.blocked ?? 0,
+        failed: failedCount,
+        failed_count: failedCount,
         dedupe_skipped: statusMap.dedupe_skipped ?? 0,
-        skipped: statusMap.skipped ?? 0,
+        skipped: skippedCount,
+        skipped_count: skippedCount,
         status_breakdown: Object.fromEntries(Object.entries(statusMap).sort()),
-        total: Object.values(statusMap).reduce((a, b) => a + b, 0),
+        total: totalJobs,
       };
     });
 

@@ -354,6 +354,114 @@ describe('default admin data providers', () => {
 
     await app.close();
   });
+
+  it('returns frontend-compatible daily metrics aggregates from prisma', async () => {
+    mockPrisma.comment.findMany.mockResolvedValue([
+      {
+        id: 1,
+        created_at: new Date('2026-04-03T08:00:00.000Z'),
+      },
+      {
+        id: 2,
+        created_at: new Date('2026-04-03T10:00:00.000Z'),
+      },
+      {
+        id: 3,
+        created_at: new Date('2026-04-04T09:00:00.000Z'),
+      },
+    ]);
+    mockPrisma.replyJob.findMany.mockResolvedValue([
+      {
+        id: 11,
+        status: 'published',
+        created_at: new Date('2026-04-03T11:00:00.000Z'),
+      },
+      {
+        id: 12,
+        status: 'failed',
+        created_at: new Date('2026-04-03T12:00:00.000Z'),
+      },
+      {
+        id: 13,
+        status: 'skipped',
+        created_at: new Date('2026-04-04T10:00:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/metrics/daily?days=30',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.comment.findMany).toHaveBeenCalledWith({
+      where: { created_at: { gte: expect.any(Date) } },
+      select: { created_at: true },
+      orderBy: { created_at: 'asc' },
+    });
+    expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
+      where: { created_at: { gte: expect.any(Date) } },
+      select: { created_at: true, status: true },
+      orderBy: { created_at: 'asc' },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      days: 30,
+      totals: {
+        published: 1,
+        failed: 1,
+        skipped: 1,
+      },
+      items: [
+        {
+          date: '2026-04-03',
+          comments: 2,
+          comment_count: 2,
+          jobs: 2,
+          job_count: 2,
+          queued: 0,
+          published: 1,
+          published_count: 1,
+          manual_queue: 0,
+          blocked: 0,
+          failed: 1,
+          failed_count: 1,
+          dedupe_skipped: 0,
+          skipped: 0,
+          skipped_count: 0,
+          status_breakdown: {
+            failed: 1,
+            published: 1,
+          },
+          total: 2,
+        },
+        {
+          date: '2026-04-04',
+          comments: 1,
+          comment_count: 1,
+          jobs: 1,
+          job_count: 1,
+          queued: 0,
+          published: 0,
+          published_count: 0,
+          manual_queue: 0,
+          blocked: 0,
+          failed: 0,
+          failed_count: 0,
+          dedupe_skipped: 0,
+          skipped: 1,
+          skipped_count: 1,
+          status_breakdown: {
+            skipped: 1,
+          },
+          total: 1,
+        },
+      ],
+    });
+
+    await app.close();
+  });
 });
 
 describe('default query and export providers', () => {
