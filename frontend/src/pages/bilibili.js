@@ -93,6 +93,12 @@ function formatBilibiliPollInterval(seconds) {
   return `${value} 秒`;
 }
 
+function formatBilibiliRateLimit(limitPerMinute) {
+  const value = Number(limitPerMinute);
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  return `${value} 次/分钟`;
+}
+
 function formatBilibiliCoverage(enabledCount, totalCount) {
   const total = Number(totalCount ?? 0);
   if (!Number.isFinite(total) || total <= 0) {
@@ -566,6 +572,7 @@ export async function render(container) {
       const diagnosticHealth = formatBilibiliDiagnosticHealth(data?.diagnostics);
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
+      const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
       const credentialLastUsedAt = formatBilibiliStatusTime(data?.credential?.last_used_at);
       el.innerHTML = `
@@ -611,6 +618,10 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">轮询间隔</div>
           <div class="stat-value">${escapeHtml(pollInterval)}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">速率限制</div>
+          <div class="stat-value">${escapeHtml(rateLimit)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">凭证过期</div>
