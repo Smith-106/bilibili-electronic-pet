@@ -145,11 +145,32 @@ function formatBilibiliPollResultMessage(result, options = {}) {
   return `${subject}完成，暂无可处理视频。`;
 }
 
-function formatBilibiliCredentialSummary(items) {
+function formatBilibiliCredentialSummary(items, filterValue = '', renderedCount = items.length) {
   const total = items.length;
   const active = items.filter((item) => item.is_active || item.active).length;
   const expiring = items.filter((item) => item.expires_at).length;
-  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个`;
+  const filterLabel = filterValue === 'active'
+    ? '仅激活'
+    : filterValue === 'inactive'
+      ? '仅未激活'
+      : '全部';
+  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
+}
+
+function filterBilibiliCredentials(items, filterValue) {
+  if (filterValue === 'active') {
+    return items.filter((item) => item.is_active || item.active);
+  }
+  if (filterValue === 'inactive') {
+    return items.filter((item) => !(item.is_active || item.active));
+  }
+  return items;
+}
+
+function getBilibiliCredentialEmptyMessage(filterValue) {
+  if (filterValue === 'active') return '暂无激活中的凭证';
+  if (filterValue === 'inactive') return '暂无未激活凭证';
+  return '暂无凭证';
 }
 
 function bindEnterKeyToClick(container, selectors, buttonSelector) {
@@ -237,6 +258,16 @@ export async function render(container) {
           <div class="form-group"><label class="form-label">过期时间</label><input type="datetime-local" id="cred-expires" class="form-input" /></div>
         </div>
         <button class="btn btn-primary" id="cred-add">添加凭证</button>
+      </div>
+      <div class="filter-bar" style="padding: 0 16px 16px;">
+        <div class="form-group">
+          <label class="form-label">激活状态</label>
+          <select id="bili-cred-active-filter" class="form-input">
+            <option value="">全部</option>
+            <option value="active">仅激活</option>
+            <option value="inactive">仅未激活</option>
+          </select>
+        </div>
       </div>
       <div class="form-hint" id="bili-cred-summary" style="padding: 0 16px 16px;">加载中...</div>
       <div class="table-wrapper" id="bili-creds-wrapper">
@@ -415,13 +446,15 @@ export async function render(container) {
   async function loadCredentials() {
     const wrapper = container.querySelector('#bili-creds-wrapper');
     const summaryEl = container.querySelector('#bili-cred-summary');
+    const filterValue = container.querySelector('#bili-cred-active-filter').value;
     try {
       const data = await api.getBilibiliCredentials();
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-      summaryEl.textContent = formatBilibiliCredentialSummary(items);
+      const filteredItems = filterBilibiliCredentials(items, filterValue);
+      summaryEl.textContent = formatBilibiliCredentialSummary(items, filterValue, filteredItems.length);
 
-      if (items.length === 0) {
-        wrapper.innerHTML = '<div class="table-empty">暂无凭证</div>';
+      if (filteredItems.length === 0) {
+        wrapper.innerHTML = `<div class="table-empty">${escapeHtml(getBilibiliCredentialEmptyMessage(filterValue))}</div>`;
         return;
       }
 
@@ -429,7 +462,7 @@ export async function render(container) {
         <table class="data-table">
           <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期</th><th>最近使用</th><th>操作</th></tr></thead>
           <tbody>
-            ${items.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
+            ${filteredItems.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
               <td>${escapeHtml(c.name || '-')}</td>
               <td class="cell-id">${escapeHtml([
                 c.has_sessdata ? 'SESSDATA' : '',
@@ -571,6 +604,7 @@ export async function render(container) {
     videoOffset += bilibiliVideoPageSize;
     loadVideos();
   });
+  container.querySelector('#bili-cred-active-filter').addEventListener('change', loadCredentials);
   bindEnterKeyToClick(container, ['#bili-video-bvid'], '#bili-video-add');
   bindEnterKeyToClick(
     container,
