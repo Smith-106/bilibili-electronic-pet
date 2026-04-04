@@ -485,10 +485,13 @@ export async function render(container) {
     const wrapper = container.querySelector('#bili-videos-wrapper');
     const summaryEl = container.querySelector('#bili-video-summary');
     const filterBtn = container.querySelector('#bili-video-filter-btn');
+    const filterEl = container.querySelector('#bili-video-poll-filter');
     const prevBtn = container.querySelector('#bili-video-prev');
     const nextBtn = container.querySelector('#bili-video-next');
-    const filterValue = container.querySelector('#bili-video-poll-filter').value;
+    const filterValue = filterEl.value;
     summaryEl.textContent = '加载中...';
+    wrapper.innerHTML = '<div class="page-loading">加载中...</div>';
+    filterEl.disabled = true;
     filterBtn.disabled = true;
     prevBtn.disabled = true;
     nextBtn.disabled = true;
@@ -591,6 +594,7 @@ export async function render(container) {
       summaryEl.textContent = '视频加载失败';
       wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
     } finally {
+      filterEl.disabled = false;
       filterBtn.disabled = false;
     }
   }
