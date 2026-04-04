@@ -127,6 +127,21 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue) {
   return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条`;
 }
 
+function formatBilibiliPollResultMessage(result, options = {}) {
+  const videos = Number(result?.videos ?? 0);
+  const comments = Number(result?.comments ?? 0);
+  const events = Number(result?.events_injected ?? comments);
+  const subject = options.subject || (videos === 1 ? '视频' : '轮询');
+
+  if (comments > 0 || events > 0) {
+    return `${subject}完成，处理 ${videos} 个视频，新增 ${comments} 条评论，注入 ${events} 个事件。`;
+  }
+  if (videos > 0) {
+    return `${subject}完成，处理 ${videos} 个视频，暂无新增评论。`;
+  }
+  return `${subject}完成，暂无可处理视频。`;
+}
+
 export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
@@ -321,8 +336,8 @@ export async function render(container) {
           btn.disabled = true;
           btn.textContent = '同步中...';
           try {
-            await api.syncBilibiliVideo(btn.dataset.id);
-            showToast('同步完成', 'success');
+            const response = await api.syncBilibiliVideo(btn.dataset.id);
+            showToast(formatBilibiliPollResultMessage(response?.result, { subject: '同步' }), 'success');
             await Promise.all([loadStatus(), loadVideos()]);
           } catch (err) { showToast(`同步失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
           finally {
@@ -480,8 +495,8 @@ export async function render(container) {
     btn.disabled = true;
     btn.textContent = '轮询中...';
     try {
-      await api.triggerBilibiliPoll();
-      showToast('轮询完成', 'success');
+      const response = await api.triggerBilibiliPoll();
+      showToast(formatBilibiliPollResultMessage(response?.result), 'success');
       await Promise.all([loadStatus(), loadVideos()]);
     } catch (err) { showToast(`轮询失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
     finally { btn.disabled = false; btn.textContent = '触发轮询'; }
