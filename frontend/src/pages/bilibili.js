@@ -205,13 +205,14 @@ export async function render(container) {
 
       wrapper.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>操作</th></tr></thead>
+          <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>最后轮询</th><th>操作</th></tr></thead>
           <tbody>
             ${items.map(v => `<tr data-id="${escapeHtml(v.id || v.video_id)}">
               <td class="cell-id">${escapeHtml(v.bvid)}</td>
               <td class="cell-truncate">${escapeHtml(v.title || '-')}</td>
               <td>${renderBoolBadge(v.poll_enabled)}</td>
               <td>${v.comment_count ?? '-'}</td>
+              <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
               <td class="cell-actions">
                 <button class="btn btn-sm bili-toggle-poll" data-id="${escapeHtml(v.id || v.video_id)}">${v.poll_enabled ? '禁用轮询' : '启用轮询'}</button>
                 <button class="btn btn-sm bili-sync" data-id="${escapeHtml(v.id || v.video_id)}">同步</button>
