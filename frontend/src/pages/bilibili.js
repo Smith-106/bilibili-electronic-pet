@@ -225,6 +225,13 @@ function renderBilibiliCredentialExpiry(value) {
   return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
 }
 
+function getBilibiliCredentialExpiryColor(expiryState) {
+  if (expiryState?.cls === 'badge-danger') return 'var(--danger-color)';
+  if (expiryState?.cls === 'badge-warning') return 'var(--warning-color)';
+  if (expiryState?.cls === 'badge-success') return 'var(--success-color)';
+  return 'var(--grey-2)';
+}
+
 function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilterValue = '') {
   const activeLabel = activeFilterValue === 'active'
     ? '仅激活'
@@ -400,7 +407,7 @@ export async function render(container) {
       const activeCredentialName = data?.credential?.name ? escapeHtml(data.credential.name) : '未配置';
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
-      const credentialExpiresAt = formatBilibiliStatusTime(data?.credential?.expires_at);
+      const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
       const credentialLastUsedAt = formatBilibiliStatusTime(data?.credential?.last_used_at);
       el.innerHTML = `
         <div class="stat-card mini">
@@ -441,7 +448,8 @@ export async function render(container) {
         </div>
         <div class="stat-card mini">
           <div class="stat-label">凭证过期</div>
-          <div class="stat-value" style="font-size:14px;">${escapeHtml(credentialExpiresAt)}</div>
+          <div class="stat-value" style="font-size:14px; color:${getBilibiliCredentialExpiryColor(credentialExpiry)}">${escapeHtml(credentialExpiry.label)}</div>
+          ${credentialExpiry.detail ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialExpiry.detail)}</div>` : ''}
         </div>
         <div class="stat-card mini">
           <div class="stat-label">最近使用</div>
