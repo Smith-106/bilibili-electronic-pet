@@ -153,6 +153,9 @@ function renderBilibiliVideoIdentity(video) {
 
 function renderBilibiliVideoTitle(video) {
   const hints = [];
+  if (typeof video?.owner_mid === 'number' && Number.isFinite(video.owner_mid)) {
+    hints.push(`UP主 MID: ${video.owner_mid}`);
+  }
   if (video?.updated_at) {
     hints.push(`更新: ${formatIsoDateTime(video.updated_at)}`);
   }
