@@ -106,6 +106,18 @@ function formatBilibiliStatusTime(value) {
   return value ? formatIsoDateTime(value) : '-';
 }
 
+function parseBilibiliPollFilter(value) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return undefined;
+}
+
+function getBilibiliVideoEmptyMessage(filterValue) {
+  if (filterValue === 'true') return '暂无轮询中视频';
+  if (filterValue === 'false') return '暂无已停用视频';
+  return '暂无视频';
+}
+
 export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
@@ -131,6 +143,19 @@ export async function render(container) {
         <div class="form-group" style="margin:0;">
           <input type="text" id="bili-video-bvid" class="form-input" placeholder="输入 BVID" />
           <button class="btn btn-primary" id="bili-video-add">添加</button>
+        </div>
+      </div>
+      <div class="filter-bar" style="padding: 0 16px 16px;">
+        <div class="form-group">
+          <label class="form-label">轮询状态</label>
+          <select id="bili-video-poll-filter" class="form-input">
+            <option value="">全部</option>
+            <option value="true">仅轮询中</option>
+            <option value="false">仅已停用</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <button class="btn btn-primary" id="bili-video-filter-btn">查询</button>
         </div>
       </div>
       <div class="table-wrapper" id="bili-videos-wrapper">
@@ -228,12 +253,16 @@ export async function render(container) {
 
   async function loadVideos() {
     const wrapper = container.querySelector('#bili-videos-wrapper');
+    const filterValue = container.querySelector('#bili-video-poll-filter').value;
     try {
-      const data = await api.getBilibiliVideos({ limit: 50 });
+      const data = await api.getBilibiliVideos({
+        limit: 50,
+        poll_enabled: parseBilibiliPollFilter(filterValue),
+      });
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
 
       if (items.length === 0) {
-        wrapper.innerHTML = '<div class="table-empty">暂无视频</div>';
+        wrapper.innerHTML = `<div class="table-empty">${escapeHtml(getBilibiliVideoEmptyMessage(filterValue))}</div>`;
         return;
       }
 
@@ -443,6 +472,7 @@ export async function render(container) {
   container.querySelector('#bili-refresh').addEventListener('click', () => {
     loadStatus(); loadVideos(); loadCredentials();
   });
+  container.querySelector('#bili-video-filter-btn').addEventListener('click', loadVideos);
 
   await Promise.all([loadStatus(), loadVideos(), loadCredentials()]);
 }
