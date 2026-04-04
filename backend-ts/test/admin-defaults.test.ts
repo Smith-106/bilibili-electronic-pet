@@ -8,6 +8,11 @@ const mockPrisma = {
     findMany: vi.fn(),
     findFirst: vi.fn(),
   },
+  knowledgeEntry: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  },
   replyJob: {
     count: vi.fn(),
     findMany: vi.fn(),
@@ -586,6 +591,132 @@ describe('audit log list compatibility', () => {
           created_at: '2026-04-04T13:00:00.000Z',
         },
       ],
+    });
+
+    await app.close();
+  });
+});
+
+describe('default knowledge providers', () => {
+  it('lists knowledge entries from prisma with created_at compatibility', async () => {
+    mockPrisma.knowledgeEntry.findMany.mockResolvedValue([
+      {
+        id: 41,
+        category: 'persona',
+        title: '角色设定',
+        content: '保持温和回复',
+        enabled: true,
+        updated_at: new Date('2026-04-04T14:00:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/knowledge?limit=50&offset=10',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.knowledgeEntry.findMany).toHaveBeenCalledWith({
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      skip: 10,
+      take: 50,
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      items: [
+        {
+          id: 41,
+          category: 'persona',
+          title: '角色设定',
+          content: '保持温和回复',
+          enabled: true,
+          created_at: '2026-04-04T14:00:00.000Z',
+          updated_at: '2026-04-04T14:00:00.000Z',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('creates knowledge entries through prisma by default', async () => {
+    mockPrisma.knowledgeEntry.create.mockResolvedValue({
+      id: 42,
+      category: 'persona',
+      title: '新条目',
+      content: '新的知识内容',
+      enabled: true,
+      updated_at: new Date('2026-04-04T14:10:00.000Z'),
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/knowledge',
+      payload: {
+        category: '  persona  ',
+        title: '  新条目  ',
+        content: '  新的知识内容  ',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.knowledgeEntry.create).toHaveBeenCalledWith({
+      data: {
+        category: 'persona',
+        title: '新条目',
+        content: '新的知识内容',
+        enabled: true,
+      },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 42,
+        category: 'persona',
+        title: '新条目',
+        content: '新的知识内容',
+        enabled: true,
+        created_at: '2026-04-04T14:10:00.000Z',
+        updated_at: '2026-04-04T14:10:00.000Z',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('disables knowledge entries through prisma by default', async () => {
+    mockPrisma.knowledgeEntry.update.mockResolvedValue({
+      id: 42,
+      category: 'persona',
+      title: '旧条目',
+      content: '旧内容',
+      enabled: false,
+      updated_at: new Date('2026-04-04T14:20:00.000Z'),
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/knowledge/42/disable',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.knowledgeEntry.update).toHaveBeenCalledWith({
+      where: { id: 42 },
+      data: {
+        enabled: false,
+        updated_at: expect.any(Date),
+      },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 42,
+        enabled: false,
+        updated_at: '2026-04-04T14:20:00.000Z',
+      },
     });
 
     await app.close();

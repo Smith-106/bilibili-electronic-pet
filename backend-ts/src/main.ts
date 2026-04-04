@@ -125,6 +125,7 @@ export type KnowledgeEntry = {
   title: string;
   content: string;
   enabled: boolean;
+  created_at?: string | null;
   updated_at: string | null;
 };
 
@@ -983,34 +984,69 @@ async function defaultAdminAuditSummary(input: { days: number; action?: string; 
   };
 }
 
-function defaultListKnowledgeEntries(input: { limit: number; offset: number }): { ok: boolean; items: KnowledgeEntry[] } {
+async function defaultListKnowledgeEntries(input: { limit: number; offset: number }): Promise<{ ok: boolean; items: KnowledgeEntry[] }> {
+  const prisma = getPrisma();
+  const items = await prisma.knowledgeEntry.findMany({
+    orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+    skip: input.offset,
+    take: input.limit,
+  });
+
   return {
     ok: true,
-    items: [],
+    items: items.map((item) => ({
+      id: item.id,
+      category: item.category,
+      title: item.title,
+      content: item.content,
+      enabled: item.enabled,
+      created_at: item.updated_at?.toISOString() ?? null,
+      updated_at: item.updated_at?.toISOString() ?? null,
+    })),
   };
 }
 
-function defaultCreateKnowledgeEntry(input: { category: string; title: string; content: string }): { ok: boolean; item: KnowledgeEntry } {
-  return {
-    ok: true,
-    item: {
-      id: 1,
+async function defaultCreateKnowledgeEntry(input: { category: string; title: string; content: string }): Promise<{ ok: boolean; item: KnowledgeEntry }> {
+  const prisma = getPrisma();
+  const item = await prisma.knowledgeEntry.create({
+    data: {
       category: input.category,
       title: input.title,
       content: input.content,
       enabled: true,
-      updated_at: new Date().toISOString(),
+    },
+  });
+
+  return {
+    ok: true,
+    item: {
+      id: item.id,
+      category: item.category,
+      title: item.title,
+      content: item.content,
+      enabled: item.enabled,
+      created_at: item.updated_at?.toISOString() ?? null,
+      updated_at: item.updated_at?.toISOString() ?? null,
     },
   };
 }
 
-function defaultDisableKnowledgeEntry(input: { entryId: number }): { ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } } {
+async function defaultDisableKnowledgeEntry(input: { entryId: number }): Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }> {
+  const prisma = getPrisma();
+  const item = await prisma.knowledgeEntry.update({
+    where: { id: input.entryId },
+    data: {
+      enabled: false,
+      updated_at: new Date(),
+    },
+  });
+
   return {
     ok: true,
     item: {
-      id: input.entryId,
-      enabled: false,
-      updated_at: new Date().toISOString(),
+      id: item.id,
+      enabled: item.enabled,
+      updated_at: item.updated_at?.toISOString() ?? null,
     },
   };
 }
