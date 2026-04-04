@@ -561,6 +561,64 @@ describe('default admin data providers', () => {
     await app.close();
   });
 
+  it('derives default bilibili diagnostics from runtime credentials', async () => {
+    mockPrisma.bilibiliCredential.findFirst.mockResolvedValue({
+      id: 7,
+      name: '主账号',
+      is_active: true,
+      sessdata: 'db-sess',
+      bili_jct: 'db-jct',
+      buvid3: 'db-buvid',
+      buvid4: null,
+      expires_at: new Date('2026-12-31T00:00:00.000Z'),
+      last_used_at: null,
+      created_at: new Date('2026-04-01T08:00:00.000Z'),
+      updated_at: new Date('2026-04-04T08:35:00.000Z'),
+    });
+    mockPrisma.bilibiliVideo.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1);
+
+    const app = createServer({
+      settings: buildSettings({
+        bilibiliEnabled: true,
+        bilibiliPollEnabled: true,
+      }),
+      checkDatabaseConnection: async () => ({ connected: true }),
+      checkRedisConnection: async () => ({ connected: true }),
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bilibili/status',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      diagnostics: {
+        ready: true,
+        blocking_reasons: [],
+        checks: {
+          auth: {
+            ready: true,
+            errors: [],
+          },
+        },
+        release_gates: {
+          worker_or_publish_ready: true,
+          credential_present: true,
+          credential_complete: true,
+        },
+        signals: {
+          polling_worker_enabled: true,
+          credential_present: true,
+          credential_complete: true,
+        },
+      },
+    });
+
+    await app.close();
+  });
+
   it('lists bilibili videos from prisma defaults with comment counts', async () => {
     mockPrisma.bilibiliVideo.count.mockResolvedValue(2);
     mockPrisma.bilibiliVideo.findMany.mockResolvedValue([

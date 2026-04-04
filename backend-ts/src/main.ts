@@ -3,6 +3,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { PrismaClient } from '@prisma/client';
 import { collectCommentEvent } from './services/collector.js';
+import { loadBilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { encrypt, decrypt } from './services/credential-crypto.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 
@@ -840,19 +841,41 @@ function buildDefaultReadinessSummary(settings: RuntimeSettings): {
   };
 }
 
-function defaultBilibiliDiagnostics(settings: RuntimeSettings): BilibiliDiagnostics {
+async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<BilibiliDiagnostics> {
   const effectivePublishMode = normalizePublishMode(settings.publisherMode);
+  const nativePublishEnabled = settings.bilibiliEnabled && settings.bilibiliPublishEnabled;
+  const pollingWorkerEnabled = settings.bilibiliEnabled && settings.bilibiliPollEnabled;
+  const credential = await loadBilibiliRuntimeConfig();
+  const credentialPresent = Boolean(credential);
+  const credentialComplete = Boolean(credential?.sessdata && credential?.biliJct && credential?.buvid);
+  const authRequired = nativePublishEnabled || pollingWorkerEnabled;
+  const authErrors = authRequired && !credentialComplete ? ['no active credential'] : [];
+
   return {
-    ready: false,
-    blocking_reasons: [],
+    ready: authRequired ? credentialComplete : false,
+    blocking_reasons: authRequired && !credentialComplete ? ['auth:no active credential'] : [],
     effective_publish_mode: effectivePublishMode,
+    checks: {
+      config: { ready: true, errors: [] },
+      auth: { ready: credentialComplete, errors: authErrors },
+      worker_or_publish: {
+        ready: authRequired ? credentialComplete : false,
+        errors: authErrors,
+      },
+    },
+    release_gates: {
+      worker_or_publish_ready: authRequired ? credentialComplete : false,
+      native_publish_enabled: nativePublishEnabled,
+      credential_present: credentialPresent,
+      credential_complete: credentialComplete,
+    },
     signals: {
       raw_publish_mode: effectivePublishMode,
       effective_publish_mode: effectivePublishMode,
-      native_publish_enabled: settings.bilibiliEnabled && settings.bilibiliPublishEnabled,
-      polling_worker_enabled: settings.bilibiliEnabled && settings.bilibiliPollEnabled,
-      credential_present: false,
-      credential_complete: false,
+      native_publish_enabled: nativePublishEnabled,
+      polling_worker_enabled: pollingWorkerEnabled,
+      credential_present: credentialPresent,
+      credential_complete: credentialComplete,
       publish_mode_config_ready: true,
     },
   };
@@ -2020,7 +2043,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const settings = overrides.settings ?? defaults.settings;
   const checkDatabaseConnection = overrides.checkDatabaseConnection ?? defaults.checkDatabaseConnection;
   const checkRedisConnection = overrides.checkRedisConnection ?? defaults.checkRedisConnection;
-  const buildBilibiliDiagnostics = overrides.buildBilibiliDiagnostics ?? defaults.buildBilibiliDiagnostics;
+  const buildBilibiliDiagnostics = overrides.buildBilibiliDiagnostics ?? (() => defaultBilibiliDiagnostics(settings));
   const verifyPayloadSignature = overrides.verifyPayloadSignature ?? defaults.verifyPayloadSignature;
   const reservePublishLog = overrides.reservePublishLog ?? defaults.reservePublishLog;
   const finalizePublishLog = overrides.finalizePublishLog ?? defaults.finalizePublishLog;
@@ -2081,17 +2104,19 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
     const foundationReady = foundationBlockers.length === 0;
 
-    let bilibiliDiagnostics: BilibiliDiagnostics = defaultBilibiliDiagnostics(settings);
+    let bilibiliDiagnostics: BilibiliDiagnostics;
     if (dbStatus.connected) {
       try {
         bilibiliDiagnostics = await buildBilibiliDiagnostics();
       } catch {
         bilibiliDiagnostics = {
-          ...bilibiliDiagnostics,
+          ...await defaultBilibiliDiagnostics(settings),
           ready: false,
           blocking_reasons: ['dependency:diagnostics_unavailable'],
         };
       }
+    } else {
+      bilibiliDiagnostics = await defaultBilibiliDiagnostics(settings);
     }
 
     const checks = typeof bilibiliDiagnostics.checks === 'object' && bilibiliDiagnostics.checks !== null
