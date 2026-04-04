@@ -1,6 +1,6 @@
 import { createAdminApi } from '../api/admin.js';
 import { escapeHtml, formatIsoDateTime, renderTimestamp } from '../utils/format.js';
-import { renderBadge, renderBoolBadge } from '../components/badge.js';
+import { renderBoolBadge } from '../components/badge.js';
 import { showToast } from '../components/toast.js';
 
 const api = createAdminApi();
@@ -33,6 +33,15 @@ const bilibiliPublishModeMessages = {
   webhook: 'Webhook',
   real_publish: '真实发布',
   native_bilibili: '原生 B 站发布',
+};
+const bilibiliPollStatusMessages = {
+  ok: { label: '成功', cls: 'badge-success' },
+  no_new: { label: '无新增', cls: 'badge-muted' },
+  error: { label: '失败', cls: 'badge-danger' },
+};
+const bilibiliPollErrorMessages = {
+  no_aid: '缺少视频 aid，暂时无法轮询。',
+  retry_exhausted: '评论抓取重试耗尽。',
 };
 
 function getBilibiliErrorMessage(error) {
@@ -80,6 +89,17 @@ function formatBilibiliPollInterval(seconds) {
   if (!Number.isFinite(value) || value <= 0) return '-';
   if (value % 60 === 0) return `${value / 60} 分钟`;
   return `${value} 秒`;
+}
+
+function renderBilibiliPollStatus(status, error) {
+  const normalized = String(status ?? '').trim().toLowerCase();
+  if (!normalized) return '-';
+  const info = bilibiliPollStatusMessages[normalized] || { label: normalized, cls: 'badge-muted' };
+  const errorText = normalized === 'error' && error
+    ? bilibiliPollErrorMessages[String(error).trim().toLowerCase()] || String(error)
+    : '';
+  const titleAttr = errorText ? ` title="${escapeHtml(errorText)}"` : '';
+  return `<span class="status-badge ${info.cls}"${titleAttr}>${escapeHtml(info.label)}</span>${errorText ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(errorText)}</div>` : ''}`;
 }
 
 export async function render(container) {
@@ -205,7 +225,7 @@ export async function render(container) {
 
       wrapper.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>最后轮询</th><th>操作</th></tr></thead>
+          <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>最后轮询</th><th>轮询结果</th><th>操作</th></tr></thead>
           <tbody>
             ${items.map(v => `<tr data-id="${escapeHtml(v.id || v.video_id)}">
               <td class="cell-id">${escapeHtml(v.bvid)}</td>
@@ -213,6 +233,7 @@ export async function render(container) {
               <td>${renderBoolBadge(v.poll_enabled)}</td>
               <td>${v.comment_count ?? '-'}</td>
               <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
+              <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error)}</td>
               <td class="cell-actions">
                 <button class="btn btn-sm bili-toggle-poll" data-id="${escapeHtml(v.id || v.video_id)}">${v.poll_enabled ? '禁用轮询' : '启用轮询'}</button>
                 <button class="btn btn-sm bili-sync" data-id="${escapeHtml(v.id || v.video_id)}">同步</button>
