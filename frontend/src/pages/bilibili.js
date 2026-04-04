@@ -256,6 +256,19 @@ function renderBilibiliCredentialExpiry(value) {
   return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
 }
 
+function renderBilibiliCredentialName(item) {
+  const hints = [];
+  if (item?.updated_at) {
+    hints.push(`更新: ${formatIsoDateTime(item.updated_at)}`);
+  }
+  if (item?.created_at) {
+    hints.push(`创建: ${formatIsoDateTime(item.created_at)}`);
+  }
+  return `${escapeHtml(item?.name || '-')}${hints
+    .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
+    .join('')}`;
+}
+
 function getBilibiliCredentialExpiryColor(expiryState) {
   if (expiryState?.cls === 'badge-danger') return 'var(--danger-color)';
   if (expiryState?.cls === 'badge-warning') return 'var(--warning-color)';
@@ -284,6 +297,7 @@ function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilte
 function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFilterValue = '', renderedCount = items.length) {
   const total = items.length;
   const active = items.filter((item) => item.is_active || item.active).length;
+  const neverUsed = items.filter((item) => !item.last_used_at).length;
   const now = Date.now();
   const expiryStates = items.map((item) => getBilibiliCredentialExpiryState(item.expires_at, now));
   const expiring = expiryStates.filter((item) => item.hasExpiry).length;
@@ -291,7 +305,7 @@ function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFi
   const expiringSoon = expiryStates.filter((item) => item.expiringSoon).length;
   const unsetExpiry = expiryStates.filter((item) => !item.hasExpiry).length;
   const filterLabel = formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue);
-  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个，已过期 ${expired} 个，即将过期 ${expiringSoon} 个，未设置 ${unsetExpiry} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
+  return `共 ${total} 个凭证，激活中 ${active} 个，从未使用 ${neverUsed} 个，设置过期时间 ${expiring} 个，已过期 ${expired} 个，即将过期 ${expiringSoon} 个，未设置 ${unsetExpiry} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
 }
 
 function filterBilibiliCredentials(items, activeFilterValue = '', expiryFilterValue = '') {
@@ -646,7 +660,7 @@ export async function render(container) {
           <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期状态</th><th>最近使用</th><th>操作</th></tr></thead>
           <tbody>
             ${filteredItems.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
-              <td>${escapeHtml(c.name || '-')}</td>
+              <td>${renderBilibiliCredentialName(c)}</td>
               <td class="cell-id">${escapeHtml([
                 c.has_sessdata ? 'SESSDATA' : '',
                 c.has_bili_jct ? 'bili_jct' : '',
