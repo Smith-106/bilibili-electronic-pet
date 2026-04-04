@@ -142,6 +142,13 @@ function formatBilibiliPollResultMessage(result, options = {}) {
   return `${subject}完成，暂无可处理视频。`;
 }
 
+function formatBilibiliCredentialSummary(items) {
+  const total = items.length;
+  const active = items.filter((item) => item.is_active || item.active).length;
+  const expiring = items.filter((item) => item.expires_at).length;
+  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个`;
+}
+
 function bindEnterKeyToClick(container, selectors, buttonSelector) {
   const button = container.querySelector(buttonSelector);
   selectors.forEach((selector) => {
@@ -220,6 +227,7 @@ export async function render(container) {
         </div>
         <button class="btn btn-primary" id="cred-add">添加凭证</button>
       </div>
+      <div class="form-hint" id="bili-cred-summary" style="padding: 0 16px 16px;">加载中...</div>
       <div class="table-wrapper" id="bili-creds-wrapper">
         <div class="page-loading">加载中...</div>
       </div>
@@ -383,9 +391,11 @@ export async function render(container) {
 
   async function loadCredentials() {
     const wrapper = container.querySelector('#bili-creds-wrapper');
+    const summaryEl = container.querySelector('#bili-cred-summary');
     try {
       const data = await api.getBilibiliCredentials();
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+      summaryEl.textContent = formatBilibiliCredentialSummary(items);
 
       if (items.length === 0) {
         wrapper.innerHTML = '<div class="table-empty">暂无凭证</div>';
@@ -440,6 +450,7 @@ export async function render(container) {
         });
       });
     } catch (err) {
+      summaryEl.textContent = '凭证加载失败';
       wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
     }
   }
@@ -487,8 +498,8 @@ export async function render(container) {
     btn.disabled = true;
     btn.textContent = '添加中...';
     try {
-      await api.addBilibiliCredential(payload);
-      showToast('凭证添加成功', 'success');
+      const response = await api.addBilibiliCredential(payload);
+      showToast(response?.item?.is_active ? '凭证添加成功，已自动激活' : '凭证添加成功', 'success');
       container.querySelector('#cred-name').value = '';
       container.querySelector('#cred-sessdata').value = '';
       container.querySelector('#cred-bili-jct').value = '';
