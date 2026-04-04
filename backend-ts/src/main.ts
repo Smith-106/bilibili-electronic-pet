@@ -2997,10 +2997,13 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const body = request.body as Record<string, unknown>;
     const bvid = String(body.bvid ?? '').trim().slice(0, 20);
-    const pollEnabled = body.poll_enabled !== undefined ? Boolean(body.poll_enabled) : true;
+    const pollEnabled = body.poll_enabled !== undefined ? parseAdminBoolean(body.poll_enabled) : undefined;
 
     if (!bvid) {
       return reply.code(400).send({ detail: 'bvid_required' });
+    }
+    if (body.poll_enabled !== undefined && pollEnabled === undefined) {
+      return reply.code(400).send({ detail: 'invalid_poll_enabled' });
     }
 
     // Basic BVID format validation (BV + 10 alphanumeric characters)
@@ -3008,7 +3011,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       return reply.code(400).send({ detail: 'invalid_bvid_format' });
     }
 
-    const response = await addBilibiliVideo({ bvid, pollEnabled });
+    const response = await addBilibiliVideo({ bvid, pollEnabled: pollEnabled ?? true });
     return reply.send(response);
   });
 
@@ -3024,7 +3027,11 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     if (!video) return reply.code(404).send({ detail: 'video_not_found' });
 
     const body = request.body as Record<string, unknown> | undefined;
-    const pollEnabled = body?.poll_enabled !== undefined ? Boolean(body.poll_enabled) : !video.poll_enabled;
+    const requestedPollEnabled = body?.poll_enabled !== undefined ? parseAdminBoolean(body.poll_enabled) : undefined;
+    if (body?.poll_enabled !== undefined && requestedPollEnabled === undefined) {
+      return reply.code(400).send({ detail: 'invalid_poll_enabled' });
+    }
+    const pollEnabled = requestedPollEnabled ?? !video.poll_enabled;
     await prisma.bilibiliVideo.update({ where: { id: videoId }, data: { poll_enabled: pollEnabled } });
 
     return reply.send({ ok: true, item: { id: videoId, bvid: video.bvid, poll_enabled: pollEnabled } });

@@ -18,6 +18,8 @@ const mockPrisma = {
     findMany: vi.fn(),
     findUnique: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   },
   comment: {
     count: vi.fn(),
@@ -772,6 +774,96 @@ describe('default admin data providers', () => {
         created_at: '2026-04-04T11:00:00.000Z',
         updated_at: '2026-04-04T11:00:00.000Z',
       },
+    });
+
+    await app.close();
+  });
+
+  it('rejects invalid bilibili video poll_enabled payloads', async () => {
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/videos',
+      payload: {
+        bvid: 'BV1GJ411x7fD',
+        poll_enabled: 'maybe',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(mockPrisma.bilibiliVideo.create).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({ detail: 'invalid_poll_enabled' });
+
+    await app.close();
+  });
+
+  it('toggles bilibili video polling through prisma defaults with string boolean payloads', async () => {
+    mockPrisma.bilibiliVideo.findUnique.mockResolvedValue({
+      id: 31,
+      bvid: 'BV1GJ411x7fD',
+      poll_enabled: true,
+    });
+    mockPrisma.bilibiliVideo.update.mockResolvedValue({
+      id: 31,
+      bvid: 'BV1GJ411x7fD',
+      poll_enabled: false,
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/videos/31/toggle-poll',
+      payload: {
+        poll_enabled: 'false',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.bilibiliVideo.findUnique).toHaveBeenCalledWith({
+      where: { id: 31 },
+    });
+    expect(mockPrisma.bilibiliVideo.update).toHaveBeenCalledWith({
+      where: { id: 31 },
+      data: { poll_enabled: false },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 31,
+        bvid: 'BV1GJ411x7fD',
+        poll_enabled: false,
+      },
+    });
+
+    await app.close();
+  });
+
+  it('deletes bilibili videos through prisma defaults', async () => {
+    mockPrisma.bilibiliVideo.findUnique.mockResolvedValue({
+      id: 31,
+      bvid: 'BV1GJ411x7fD',
+      poll_enabled: true,
+    });
+    mockPrisma.bilibiliVideo.delete.mockResolvedValue({
+      id: 31,
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/bilibili/videos/31',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.bilibiliVideo.findUnique).toHaveBeenCalledWith({
+      where: { id: 31 },
+    });
+    expect(mockPrisma.bilibiliVideo.delete).toHaveBeenCalledWith({
+      where: { id: 31 },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      deleted_id: 31,
     });
 
     await app.close();
