@@ -167,14 +167,16 @@ export type KnowledgeEntry = {
 /**
  * Role card entity
  */
+export type RoleCardValue = string | Record<string, unknown>;
+
 export type RoleCard = {
   id: number;
   key: string;
   enabled: boolean;
   is_active: boolean;
   system_prompt: string;
-  tone: Record<string, unknown>;
-  constraints: Record<string, unknown>;
+  tone: RoleCardValue;
+  constraints: RoleCardValue;
   created_at: Date;
   updated_at: Date;
 };

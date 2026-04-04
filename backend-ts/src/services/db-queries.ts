@@ -3,8 +3,29 @@
  * Replaces placeholder implementations with real database operations
  */
 
-import type { Comment, ReplyJob, RoleCard, KnowledgeEntry } from '../models/entities.js';
+import type { Comment, ReplyJob, RoleCard, KnowledgeEntry, RoleCardValue } from '../models/entities.js';
 import { getPrisma } from '../lib/prisma.js';
+
+function parseRoleCardValue(value: unknown): RoleCardValue {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return '';
+  }
+  try {
+    const parsed = JSON.parse(normalized);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : normalized;
+  } catch {
+    return normalized;
+  }
+}
 
 /**
  * Get comment by canonical ID
@@ -73,8 +94,8 @@ export async function getRoleCardByKey(key: string): Promise<RoleCard | null> {
     enabled: result.enabled,
     is_active: result.is_active,
     system_prompt: result.system_prompt,
-    tone: typeof result.tone === 'string' ? JSON.parse(result.tone) : result.tone,
-    constraints: typeof result.constraints === 'string' ? JSON.parse(result.constraints) : result.constraints,
+    tone: parseRoleCardValue(result.tone),
+    constraints: parseRoleCardValue(result.constraints),
     created_at: result.created_at,
     updated_at: result.updated_at,
   };
@@ -104,8 +125,8 @@ export async function getActiveRoleCard(): Promise<RoleCard | null> {
     enabled: result.enabled,
     is_active: result.is_active,
     system_prompt: result.system_prompt,
-    tone: typeof result.tone === 'string' ? JSON.parse(result.tone) : result.tone,
-    constraints: typeof result.constraints === 'string' ? JSON.parse(result.constraints) : result.constraints,
+    tone: parseRoleCardValue(result.tone),
+    constraints: parseRoleCardValue(result.constraints),
     created_at: result.created_at,
     updated_at: result.updated_at,
   };

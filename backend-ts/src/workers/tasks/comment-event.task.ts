@@ -8,7 +8,7 @@ import { Job } from 'bullmq';
 import { BaseTaskPayload, createTaskQueue, createTaskWorker } from '../task-queue.js';
 import { NonRetryableWorkerError, RetryableWorkerError } from '../errors.js';
 import type { WorkerServices } from '../../services/interfaces.js';
-import type { KnowledgeEntry } from '../../models/entities.js';
+import type { KnowledgeEntry, RoleCardValue } from '../../models/entities.js';
 
 /**
  * Comment event payload structure
@@ -205,8 +205,8 @@ export function createCommentEventWorker(
             key: string;
             enabled: boolean;
             system_prompt: string;
-            tone: Record<string, unknown>;
-            constraints: Record<string, unknown>;
+            tone: RoleCardValue;
+            constraints: RoleCardValue;
           }
         | undefined;
       if (job.data.role_card_key) {
@@ -227,8 +227,8 @@ export function createCommentEventWorker(
             key: string;
             enabled: boolean;
             system_prompt: string;
-            tone: Record<string, unknown>;
-            constraints: Record<string, unknown>;
+            tone: RoleCardValue;
+            constraints: RoleCardValue;
           }
         | undefined;
       const active = await services.getActiveRoleCard();

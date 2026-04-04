@@ -129,14 +129,16 @@ export type KnowledgeEntry = {
   updated_at: string | null;
 };
 
+export type RoleCardValue = string | Record<string, unknown>;
+
 export type RoleCard = {
   id: number;
   key: string;
   name: string;
   description: string;
   system_prompt: string;
-  tone: Record<string, unknown>;
-  constraints: Record<string, unknown>;
+  tone: RoleCardValue;
+  constraints: RoleCardValue;
   enabled: boolean;
   is_active: boolean;
   created_at: string | null;
@@ -243,8 +245,8 @@ export type ServerDependencies = {
     name: string;
     description: string;
     system_prompt: string;
-    tone: Record<string, unknown>;
-    constraints: Record<string, unknown>;
+    tone: RoleCardValue;
+    constraints: RoleCardValue;
     enabled: boolean;
   }) => Promise<{ ok: boolean; item: RoleCard }> | { ok: boolean; item: RoleCard };
   updateRoleCard: (input: {
@@ -252,8 +254,8 @@ export type ServerDependencies = {
     name?: string;
     description?: string;
     system_prompt?: string;
-    tone?: Record<string, unknown>;
-    constraints?: Record<string, unknown>;
+    tone?: RoleCardValue;
+    constraints?: RoleCardValue;
     enabled?: boolean;
   }) => Promise<{ ok: boolean; item: RoleCard }> | { ok: boolean; item: RoleCard };
   disableRoleCard: (input: {
@@ -448,6 +450,60 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+function parseRoleCardValue(value: unknown): RoleCardValue {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return '';
+  }
+  try {
+    const parsed = JSON.parse(normalized);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : normalized;
+  } catch {
+    return normalized;
+  }
+}
+
+function normalizeRoleCardInputValue(value: unknown): RoleCardValue {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  return '';
+}
+
+function serializeRoleCardValue(value: RoleCardValue): string {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  return stableStringify(value);
+}
+
+function normalizeRoleCardRecord(item: Record<string, unknown>): RoleCard {
+  return {
+    id: Number(item.id ?? 0),
+    key: String(item.key ?? ''),
+    name: String(item.name ?? ''),
+    description: String(item.description ?? ''),
+    system_prompt: String(item.system_prompt ?? ''),
+    tone: parseRoleCardValue(item.tone),
+    constraints: parseRoleCardValue(item.constraints),
+    enabled: Boolean(item.enabled),
+    is_active: Boolean(item.is_active),
+    created_at: normalizeNullableIsoTimestamp(item.created_at as Date | string | null | undefined),
+    updated_at: normalizeNullableIsoTimestamp(item.updated_at as Date | string | null | undefined),
+  };
 }
 
 function extractRiskFlagLabels(value: unknown): string[] {
@@ -1085,68 +1141,120 @@ async function defaultSetRoleProfile(input: { roleProfile: string }): Promise<{ 
   };
 }
 
-function defaultListRoleCards(input: { limit: number; offset: number }): { ok: boolean; active_role_card_key: string | null; items: RoleCard[] } {
+async function defaultListRoleCards(input: { limit: number; offset: number }): Promise<{ ok: boolean; active_role_card_key: string | null; items: RoleCard[] }> {
+  const prisma = getPrisma();
+  const items = await prisma.roleCard.findMany({
+    orderBy: [{ is_active: 'desc' }, { updated_at: 'desc' }, { id: 'desc' }],
+    skip: input.offset,
+    take: input.limit,
+  });
+  const normalizedItems = items.map((item) => normalizeRoleCardRecord(item as unknown as Record<string, unknown>));
+
   return {
     ok: true,
-    active_role_card_key: null,
-    items: [],
+    active_role_card_key: normalizedItems.find((item) => item.is_active)?.key ?? null,
+    items: normalizedItems,
   };
 }
 
-function defaultCreateRoleCard(input: { key: string; name: string; description: string; system_prompt: string; tone: Record<string, unknown>; constraints: Record<string, unknown>; enabled: boolean }): { ok: boolean; item: RoleCard } {
-  return {
-    ok: true,
-    item: {
-      id: 1,
+async function defaultCreateRoleCard(input: { key: string; name: string; description: string; system_prompt: string; tone: RoleCardValue; constraints: RoleCardValue; enabled: boolean }): Promise<{ ok: boolean; item: RoleCard }> {
+  const prisma = getPrisma();
+  const item = await prisma.roleCard.create({
+    data: {
       key: input.key,
       name: input.name,
       description: input.description,
       system_prompt: input.system_prompt,
-      tone: input.tone,
-      constraints: input.constraints,
+      tone: serializeRoleCardValue(input.tone),
+      constraints: serializeRoleCardValue(input.constraints),
       enabled: input.enabled,
       is_active: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     },
+  });
+
+  return {
+    ok: true,
+    item: normalizeRoleCardRecord(item as unknown as Record<string, unknown>),
   };
 }
 
-function defaultUpdateRoleCard(input: { cardKey: string; name?: string; description?: string; system_prompt?: string; tone?: Record<string, unknown>; constraints?: Record<string, unknown>; enabled?: boolean }): { ok: boolean; item: RoleCard } {
+async function defaultUpdateRoleCard(input: { cardKey: string; name?: string; description?: string; system_prompt?: string; tone?: RoleCardValue; constraints?: RoleCardValue; enabled?: boolean }): Promise<{ ok: boolean; item: RoleCard }> {
+  const prisma = getPrisma();
+  const data: Record<string, unknown> = {
+    updated_at: new Date(),
+  };
+
+  if (input.name !== undefined) {
+    data.name = input.name;
+  }
+  if (input.description !== undefined) {
+    data.description = input.description;
+  }
+  if (input.system_prompt !== undefined) {
+    data.system_prompt = input.system_prompt;
+  }
+  if (input.tone !== undefined) {
+    data.tone = serializeRoleCardValue(input.tone);
+  }
+  if (input.constraints !== undefined) {
+    data.constraints = serializeRoleCardValue(input.constraints);
+  }
+  if (input.enabled !== undefined) {
+    data.enabled = input.enabled;
+  }
+
+  const item = await prisma.roleCard.update({
+    where: { key: input.cardKey },
+    data,
+  });
+
   return {
     ok: true,
-    item: {
-      id: 1,
-      key: input.cardKey,
-      name: input.name ?? '',
-      description: input.description ?? '',
-      system_prompt: input.system_prompt ?? '',
-      tone: input.tone ?? {},
-      constraints: input.constraints ?? {},
-      enabled: input.enabled ?? true,
-      is_active: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    },
+    item: normalizeRoleCardRecord(item as unknown as Record<string, unknown>),
   };
 }
 
-function defaultDisableRoleCard(input: { cardKey: string }): { ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } } {
-  return {
-    ok: true,
-    item: {
-      key: input.cardKey,
+async function defaultDisableRoleCard(input: { cardKey: string }): Promise<{ ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } }> {
+  const prisma = getPrisma();
+  const item = await prisma.roleCard.update({
+    where: { key: input.cardKey },
+    data: {
       enabled: false,
       is_active: false,
-      updated_at: new Date().toISOString(),
+      updated_at: new Date(),
+    },
+  });
+
+  return {
+    ok: true,
+    item: {
+      key: item.key,
+      enabled: item.enabled,
+      is_active: item.is_active,
+      updated_at: normalizeNullableIsoTimestamp(item.updated_at),
     },
   };
 }
 
-function defaultActivateRoleCard(input: { cardKey: string }): { ok: boolean; active_role_card_key: string } {
+async function defaultActivateRoleCard(input: { cardKey: string }): Promise<{ ok: boolean; active_role_card_key: string }> {
+  const prisma = getPrisma();
+  await prisma.roleCard.updateMany({
+    data: {
+      is_active: false,
+    },
+  });
+  const item = await prisma.roleCard.update({
+    where: { key: input.cardKey },
+    data: {
+      enabled: true,
+      is_active: true,
+      updated_at: new Date(),
+    },
+  });
+
   return {
     ok: true,
-    active_role_card_key: input.cardKey,
+    active_role_card_key: item.key,
   };
 }
 
@@ -2370,8 +2478,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     const name = String(body.name ?? '').trim().slice(0, 128);
     const description = String(body.description ?? '').trim().slice(0, 65535);
     const systemPrompt = String(body.system_prompt ?? '').trim().slice(0, 65535);
-    const tone = (typeof body.tone === 'object' && body.tone !== null ? body.tone : {}) as Record<string, unknown>;
-    const constraints = (typeof body.constraints === 'object' && body.constraints !== null ? body.constraints : {}) as Record<string, unknown>;
+    const tone = normalizeRoleCardInputValue(body.tone);
+    const constraints = normalizeRoleCardInputValue(body.constraints);
     const enabled = Boolean(body.enabled ?? true);
 
     if (!key) {
@@ -2411,8 +2519,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       name?: string;
       description?: string;
       system_prompt?: string;
-      tone?: Record<string, unknown>;
-      constraints?: Record<string, unknown>;
+      tone?: RoleCardValue;
+      constraints?: RoleCardValue;
       enabled?: boolean;
     } = { cardKey };
 
@@ -2429,10 +2537,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       updateData.system_prompt = String(body.system_prompt ?? '').trim().slice(0, 65535);
     }
     if ('tone' in body) {
-      updateData.tone = (typeof body.tone === 'object' && body.tone !== null ? body.tone : {}) as Record<string, unknown>;
+      updateData.tone = normalizeRoleCardInputValue(body.tone);
     }
     if ('constraints' in body) {
-      updateData.constraints = (typeof body.constraints === 'object' && body.constraints !== null ? body.constraints : {}) as Record<string, unknown>;
+      updateData.constraints = normalizeRoleCardInputValue(body.constraints);
     }
     if ('enabled' in body) {
       updateData.enabled = Boolean(body.enabled);

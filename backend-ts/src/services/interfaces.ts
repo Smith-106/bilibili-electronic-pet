@@ -3,7 +3,7 @@
  * Each service matches Python implementation semantics
  */
 
-import type { Comment, ReplyJob, KnowledgeEntry, RoleCard } from '../models/entities.js';
+import type { Comment, ReplyJob, KnowledgeEntry, RoleCard, RoleCardValue } from '../models/entities.js';
 
 /**
  * Decision service: should_reply
@@ -53,15 +53,15 @@ export type GenerateReplyService = (params: {
     key: string;
     enabled: boolean;
     system_prompt: string;
-    tone: Record<string, unknown>;
-    constraints: Record<string, unknown>;
+    tone: RoleCardValue;
+    constraints: RoleCardValue;
   };
   active_role_card?: {
     key: string;
     enabled: boolean;
     system_prompt: string;
-    tone: Record<string, unknown>;
-    constraints: Record<string, unknown>;
+    tone: RoleCardValue;
+    constraints: RoleCardValue;
   };
 }) => Promise<{
   reply_text: string;

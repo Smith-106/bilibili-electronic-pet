@@ -13,6 +13,12 @@ const mockPrisma = {
     create: vi.fn(),
     update: vi.fn(),
   },
+  roleCard: {
+    findMany: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    updateMany: vi.fn(),
+  },
   replyJob: {
     count: vi.fn(),
     findMany: vi.fn(),
@@ -717,6 +723,269 @@ describe('default knowledge providers', () => {
         enabled: false,
         updated_at: '2026-04-04T14:20:00.000Z',
       },
+    });
+
+    await app.close();
+  });
+});
+
+describe('default role card providers', () => {
+  it('lists role cards from prisma with parsed tone and constraints', async () => {
+    mockPrisma.roleCard.findMany.mockResolvedValue([
+      {
+        id: 51,
+        key: 'default',
+        name: '默认角色卡',
+        description: '默认说明',
+        system_prompt: 'Be helpful',
+        tone: 'friendly',
+        constraints: JSON.stringify({ max_length: 120 }),
+        enabled: true,
+        is_active: true,
+        created_at: new Date('2026-04-04T15:00:00.000Z'),
+        updated_at: new Date('2026-04-04T15:10:00.000Z'),
+      },
+      {
+        id: 52,
+        key: 'backup',
+        name: '备用角色卡',
+        description: '备用说明',
+        system_prompt: 'Be concise',
+        tone: JSON.stringify({ style: 'formal' }),
+        constraints: 'plain text',
+        enabled: false,
+        is_active: false,
+        created_at: new Date('2026-04-04T14:00:00.000Z'),
+        updated_at: new Date('2026-04-04T14:10:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/role-cards?limit=100&offset=5',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.roleCard.findMany).toHaveBeenCalledWith({
+      orderBy: [{ is_active: 'desc' }, { updated_at: 'desc' }, { id: 'desc' }],
+      skip: 5,
+      take: 100,
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      active_role_card_key: 'default',
+      items: [
+        {
+          id: 51,
+          key: 'default',
+          name: '默认角色卡',
+          description: '默认说明',
+          system_prompt: 'Be helpful',
+          tone: 'friendly',
+          constraints: { max_length: 120 },
+          enabled: true,
+          is_active: true,
+          created_at: '2026-04-04T15:00:00.000Z',
+          updated_at: '2026-04-04T15:10:00.000Z',
+        },
+        {
+          id: 52,
+          key: 'backup',
+          name: '备用角色卡',
+          description: '备用说明',
+          system_prompt: 'Be concise',
+          tone: { style: 'formal' },
+          constraints: 'plain text',
+          enabled: false,
+          is_active: false,
+          created_at: '2026-04-04T14:00:00.000Z',
+          updated_at: '2026-04-04T14:10:00.000Z',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('creates role cards through prisma while preserving string tone inputs', async () => {
+    mockPrisma.roleCard.create.mockResolvedValue({
+      id: 53,
+      key: 'new-card',
+      name: '新角色卡',
+      description: '新描述',
+      system_prompt: 'Stay warm',
+      tone: 'playful',
+      constraints: 'keep short',
+      enabled: true,
+      is_active: false,
+      created_at: new Date('2026-04-04T15:20:00.000Z'),
+      updated_at: new Date('2026-04-04T15:20:00.000Z'),
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/role-cards',
+      payload: {
+        key: '  NEW-CARD  ',
+        name: '  新角色卡  ',
+        description: '新描述',
+        system_prompt: 'Stay warm',
+        tone: '  playful  ',
+        constraints: 'keep short',
+        enabled: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.roleCard.create).toHaveBeenCalledWith({
+      data: {
+        key: 'new-card',
+        name: '新角色卡',
+        description: '新描述',
+        system_prompt: 'Stay warm',
+        tone: 'playful',
+        constraints: 'keep short',
+        enabled: true,
+        is_active: false,
+      },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 53,
+        key: 'new-card',
+        name: '新角色卡',
+        description: '新描述',
+        system_prompt: 'Stay warm',
+        tone: 'playful',
+        constraints: 'keep short',
+        enabled: true,
+        is_active: false,
+        created_at: '2026-04-04T15:20:00.000Z',
+        updated_at: '2026-04-04T15:20:00.000Z',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('updates role cards through prisma and serializes object constraints', async () => {
+    mockPrisma.roleCard.update.mockResolvedValue({
+      id: 53,
+      key: 'new-card',
+      name: '更新后角色卡',
+      description: '更新描述',
+      system_prompt: 'Stay warmer',
+      tone: 'serious',
+      constraints: JSON.stringify({ max_length: 80 }),
+      enabled: true,
+      is_active: false,
+      created_at: new Date('2026-04-04T15:20:00.000Z'),
+      updated_at: new Date('2026-04-04T15:30:00.000Z'),
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/role-cards/new-card',
+      payload: {
+        name: '  更新后角色卡  ',
+        tone: '  serious  ',
+        constraints: { max_length: 80 },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.roleCard.update).toHaveBeenCalledWith({
+      where: { key: 'new-card' },
+      data: {
+        name: '更新后角色卡',
+        tone: 'serious',
+        constraints: JSON.stringify({ max_length: 80 }),
+        updated_at: expect.any(Date),
+      },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 53,
+        key: 'new-card',
+        name: '更新后角色卡',
+        description: '更新描述',
+        system_prompt: 'Stay warmer',
+        tone: 'serious',
+        constraints: { max_length: 80 },
+        enabled: true,
+        is_active: false,
+        created_at: '2026-04-04T15:20:00.000Z',
+        updated_at: '2026-04-04T15:30:00.000Z',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('disables and activates role cards through prisma by default', async () => {
+    mockPrisma.roleCard.update
+      .mockResolvedValueOnce({
+        id: 53,
+        key: 'new-card',
+        name: '更新后角色卡',
+        description: '更新描述',
+        system_prompt: 'Stay warmer',
+        tone: 'serious',
+        constraints: '{}',
+        enabled: false,
+        is_active: false,
+        created_at: new Date('2026-04-04T15:20:00.000Z'),
+        updated_at: new Date('2026-04-04T15:40:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 53,
+        key: 'new-card',
+        name: '更新后角色卡',
+        description: '更新描述',
+        system_prompt: 'Stay warmer',
+        tone: 'serious',
+        constraints: '{}',
+        enabled: true,
+        is_active: true,
+        created_at: new Date('2026-04-04T15:20:00.000Z'),
+        updated_at: new Date('2026-04-04T15:41:00.000Z'),
+      });
+    mockPrisma.roleCard.updateMany.mockResolvedValue({ count: 2 });
+
+    const app = createServer(buildDeps());
+    const disableResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/role-cards/new-card/disable',
+    });
+    const activateResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/role-cards/new-card/activate',
+    });
+
+    expect(disableResponse.statusCode).toBe(200);
+    expect(disableResponse.json()).toEqual({
+      ok: true,
+      item: {
+        key: 'new-card',
+        enabled: false,
+        is_active: false,
+        updated_at: '2026-04-04T15:40:00.000Z',
+      },
+    });
+    expect(mockPrisma.roleCard.updateMany).toHaveBeenCalledWith({
+      data: {
+        is_active: false,
+      },
+    });
+    expect(activateResponse.statusCode).toBe(200);
+    expect(activateResponse.json()).toEqual({
+      ok: true,
+      active_role_card_key: 'new-card',
     });
 
     await app.close();
