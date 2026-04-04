@@ -167,11 +167,15 @@ export async function render(container) {
 
       wrapper.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>名称</th><th>SESSDATA</th><th>激活</th><th>过期</th><th>操作</th></tr></thead>
+          <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期</th><th>操作</th></tr></thead>
           <tbody>
             ${items.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
               <td>${escapeHtml(c.name || '-')}</td>
-              <td class="cell-id">${escapeHtml(c.sessdata?.substring(0, 12))}...</td>
+              <td class="cell-id">${escapeHtml([
+                c.has_sessdata ? 'SESSDATA' : '',
+                c.has_bili_jct ? 'bili_jct' : '',
+                c.buvid3 ? `buvid3:${c.buvid3}` : '',
+              ].filter(Boolean).join(' / ') || '-')}</td>
               <td>${renderBoolBadge(c.is_active || c.active)}</td>
               <td class="cell-time">${escapeHtml(c.expires_at ? formatIsoDateTime(c.expires_at) : '-')}</td>
               <td class="cell-actions">
