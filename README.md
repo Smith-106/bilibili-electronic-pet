@@ -395,6 +395,7 @@ curl -X POST http://127.0.0.1:18000/gateway/publish \
 - `GET /api/admin/metrics/overview`
 - `GET /api/admin/observability/summary`
 - `GET /api/metrics/overview`
+- `GET /api/metrics/daily`
 - `GET /metrics/daily`
 
 补充说明：
@@ -403,7 +404,8 @@ curl -X POST http://127.0.0.1:18000/gateway/publish \
 - `/api/admin/overview` 响应形如 `{ ok: true, ...overview }`，用于前端登录后探测 API Key 是否可用
 - `/api/admin/metrics/overview` 返回的是纯 overview 对象，不额外包 `ok: true`
 - `overview` 中通常包含 `totals` 与 `generated_at`；`totals` 会汇总评论、任务、发布、队列、依赖状态等多类计数
-- `/metrics/daily` 返回 `{ ok, days, totals, items }`，适合日报与趋势图
+- 管理后台前端当前优先使用 `/api/admin/*` 与 `/api/*` 路径；`/metrics/daily` 仍保留为顶层兼容入口
+- `/api/metrics/daily` 与 `/metrics/daily` 当前返回相同的 `{ ok, days, totals, items }` 结构，适合日报与趋势图
 - `/api/admin/observability/summary`、`/api/admin/metrics/overview` 用于后台聚合统计，而 `/api/metrics/overview` 更偏通用指标查询入口
 
 调用示例：
@@ -412,7 +414,7 @@ curl -X POST http://127.0.0.1:18000/gateway/publish \
 curl http://127.0.0.1:18000/api/admin/overview \
   -H "x-api-key: your-admin-api-key"
 
-curl "http://127.0.0.1:18000/metrics/daily?days=7" \
+curl "http://127.0.0.1:18000/api/metrics/daily?days=7" \
   -H "x-api-key: your-admin-api-key"
 ```
 
@@ -447,16 +449,27 @@ curl "http://127.0.0.1:18000/metrics/daily?days=7" \
   "ok": true,
   "days": 7,
   "totals": {
-    "comments": 128,
-    "jobs": 91,
-    "published": 58
+    "queued": 12,
+    "published": 9,
+    "manual_queue": 2,
+    "skipped": 1
   },
   "items": [
     {
       "date": "2026-04-01",
-      "comments": 18,
-      "jobs": 12,
-      "published": 9
+      "queued": 12,
+      "published": 9,
+      "manual_queue": 2,
+      "blocked": 0,
+      "dedupe_skipped": 0,
+      "skipped": 1,
+      "status_breakdown": {
+        "manual_queue": 2,
+        "published": 9,
+        "queued": 12,
+        "skipped": 1
+      },
+      "total": 24
     }
   ]
 }
@@ -473,6 +486,12 @@ curl "http://127.0.0.1:18000/metrics/daily?days=7" \
 这一组接口同时覆盖后台管理与通用查询：
 
 - `GET /api/admin/jobs`
+- `POST /api/jobs/:job_id/retry`
+- `POST /api/jobs/:job_id/approve`
+- `POST /api/jobs/approve-batch`
+- `POST /api/jobs/retry-batch`
+- `GET /api/jobs/:job_id`
+- `GET /api/comments/:comment_id`
 - `POST /jobs/:job_id/retry`
 - `POST /jobs/:job_id/approve`
 - `POST /jobs/approve-batch`
@@ -486,10 +505,10 @@ curl "http://127.0.0.1:18000/metrics/daily?days=7" \
 补充说明：
 
 - `/api/admin/jobs` 是后台任务列表接口，要求 `x-api-key`；支持 `status`、`limit`、`offset`，默认 `limit=50`，上限 `1000`
-- `/jobs`、`/jobs/:job_id`、`/comments`、`/comments/:comment_id`、`/export/jobs.csv` 更偏通用查询/排查接口，适合脚本、联调工具和临时排障
-- `/jobs/:job_id/retry` 支持在请求体中覆盖 `force_long`、`style_profile`、`role_profile`、`role_card_key`
-- `/jobs/:job_id/approve` 支持在审批时附带 `style_profile`、`role_profile`、`role_card_key`
-- `/jobs/approve-batch` 需要 `job_ids` 数组；`/jobs/retry-batch` 需要 `job_ids`，并支持 `force_long`
+- `/api/jobs/:job_id`、`/api/jobs/:job_id/retry`、`/api/jobs/:job_id/approve`、`/api/jobs/approve-batch`、`/api/jobs/retry-batch`、`/api/comments/:comment_id` 是为当前管理后台前端保留的兼容入口；对应的顶层 `/jobs/*`、`/comments/:comment_id` 仍可继续用于脚本和联调
+- `/jobs/:job_id/retry` 与 `/api/jobs/:job_id/retry` 都支持在请求体中覆盖 `force_long`、`style_profile`、`role_profile`、`role_card_key`
+- `/jobs/:job_id/approve` 与 `/api/jobs/:job_id/approve` 都支持在审批时附带 `style_profile`、`role_profile`、`role_card_key`
+- `/jobs/approve-batch` 与 `/api/jobs/approve-batch` 都需要 `job_ids` 数组；`/jobs/retry-batch` 与 `/api/jobs/retry-batch` 需要 `job_ids`，并支持 `force_long`
 - `/comments` 返回 `{ ok: true, total, items }`，按 `created_at desc` 排序；分页参数默认 `limit=50`，上限 `500`
 - `/export/jobs.csv` 返回 `text/csv`，默认导出 `500` 条，最大 `5000` 条，可按 `status` 过滤
 
@@ -696,6 +715,8 @@ curl -X POST http://127.0.0.1:18000/api/admin/role-cards \
 - `GET /api/admin/audit-logs/summary`
 - `GET /api/admin/gateway/logs`
 - `GET /api/admin/gateway/publish-logs`
+- `GET /api/audit-logs`
+- `GET /api/audit-log`
 - `GET /audit-logs`
 - `GET /audit-logs/summary`
 - `GET /export/audit-logs.csv`
@@ -708,8 +729,9 @@ curl -X POST http://127.0.0.1:18000/api/admin/role-cards \
 - `/api/admin/audit/summary` 会在响应中补上 `ok: true`；`/api/admin/audit-logs/summary` 直接返回汇总结果
 - `/api/admin/gateway/logs`、`/api/admin/gateway/publish-logs` 支持 `comment_id`、`limit`；默认 `limit=50`，上限 `200`
 - `/api/admin/gateway/logs` 会返回 `ok: true`；`/api/admin/gateway/publish-logs` 更接近原始日志列表
+- `/api/audit-logs`、`/api/audit-log` 与 `/audit-logs` 当前共享同一套查询行为；其中 `/api/audit-log` 是为现有前端保留的 legacy typo 兼容入口
 - `/audit-logs` 支持 `action`、`ok`、`target_id`、`limit`、`offset`；代码会读取 `trace_id`，但当前查询条件并未使用该字段
-- `/audit-logs` 返回 `{ ok, summary, items }`，其中 `summary` 至少包含 `total`、`returned`、`limit`
+- `/api/audit-logs`、`/api/audit-log`、`/audit-logs` 返回的都是 `{ ok, summary, items }`，其中 `summary` 至少包含 `total`、`returned`、`limit`
 - `/export/audit-logs.csv` 返回 `text/csv`，CSV 表头固定为 `id,action,target_type,target_id,ok,status,trace_id,payload,created_at`
 - 顶层 `/gateway/publish-logs` 支持 `status`、`limit`、`offset`，默认 `limit=50`，上限 `500`
 
@@ -1561,5 +1583,6 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 2. `worker-main.ts` 负责消费 `comment-event` 队列，并在启用时承载 B 站轮询调度
 3. `frontend/` 提供原生模块化管理后台，构建后会打包进后端镜像的 `public/admin`
 4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis`、`db` 串成一套可启动的最小部署拓扑
+5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/api/admin.js` 与 `backend-ts/src/main.ts` 的现行契约对齐
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/` 以及 compose / Dockerfile 中的现行实现，而非旧的 Python 历史描述。

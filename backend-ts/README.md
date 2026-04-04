@@ -4,9 +4,9 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 
 ## Status
 
-✅ **Migration Complete** - All functionality migrated from Python to TypeScript
-✅ **Tests Passing** - 101/101 tests passing
-✅ **Production Ready** - Ready for deployment
+✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
+✅ **Tests Passing** - 106 tests passing in the current backend suite
+⚠️ **External Delivery Depends on Configuration** - LLM, search, webhook, and native Bilibili publishing paths still require runtime credentials and environment setup
 
 ## Tech Stack
 
@@ -23,11 +23,12 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ```
 backend-ts/
 ├── src/
-│   ├── routes/           # Fastify route handlers
+│   ├── index.ts          # Process entrypoint
+│   ├── main.ts           # Fastify service and route registration
 │   ├── services/         # Business logic services
 │   ├── workers/          # BullMQ task processors
 │   ├── models/           # TypeScript type definitions
-│   └── main.ts          # Application entry point
+│   └── lib/              # Prisma bootstrap and shared helpers
 ├── prisma/
 │   ├── schema.prisma    # Database schema
 │   └── migrations/      # Database migrations
@@ -103,24 +104,38 @@ ROLE_PROFILE_DEFAULT=doro
 
 ### Admin
 
-- `GET /admin/overview` - System overview
-- `GET /admin/jobs` - Job queue status
-- `GET /admin/audit` - Audit log
-- `GET /admin/gateway-logs` - Gateway logs
-- `GET /admin/knowledge` - Knowledge base entries
-- `GET /admin/role-cards` - Role cards
-- `POST /admin/role-cards/:key/activate` - Activate role card
+- `GET /api/admin/overview` - Admin overview probe
+- `GET /api/admin/jobs` - Admin job list
+- `GET /api/admin/audit/summary` - Audit summary for the admin UI
+- `GET /api/admin/gateway/logs` - Gateway log list
+- `GET /api/admin/knowledge` - Knowledge base entries
+- `GET /api/admin/role-cards` - Role cards
+- `GET /api/admin/bilibili/status` - Bilibili diagnostics
+
+### Query / Compatibility
+
+- `GET /api/jobs/:job_id` and `GET /jobs/:job_id` - Job detail
+- `POST /api/jobs/:job_id/retry` and `POST /jobs/:job_id/retry` - Retry one job
+- `POST /api/jobs/:job_id/approve` and `POST /jobs/:job_id/approve` - Approve one job
+- `POST /api/jobs/approve-batch` and `POST /jobs/approve-batch` - Batch approve
+- `POST /api/jobs/retry-batch` and `POST /jobs/retry-batch` - Batch retry
+- `GET /api/comments/:comment_id` and `GET /comments/:comment_id` - Comment detail
+- `GET /api/audit-logs`, `GET /api/audit-log`, and `GET /audit-logs` - Audit log list
+- `GET /api/metrics/daily` and `GET /metrics/daily` - Daily metrics
 
 ### Comments
 
-- `POST /comments/events` - Comment event webhook
-- `GET /comments/replies` - Reply history
-- `GET /comments/stats` - Comment statistics
+- `POST /events/comment` - Generic comment event ingress
+- `POST /events/comment/bilibili` - Bilibili-tagged comment ingress
+- `POST /events/comment/douyin` - Douyin-tagged comment ingress
+- `POST /events/comment/kuaishou` - Kuaishou-tagged comment ingress
 
 ### Bilibili
 
-- `GET /bilibili/video/:bvid` - Video information
-- `GET /bilibili/search` - Search videos
+- `GET /api/admin/bilibili/videos` - Video monitor list
+- `POST /api/admin/bilibili/videos` - Add monitored video
+- `POST /api/admin/bilibili/poll` - Trigger poll
+- `GET /api/admin/bilibili/credentials` - Credential list
 
 ## Database Models
 
@@ -163,7 +178,7 @@ Processes comment events and generates replies:
 - `isRecentDuplicate` / `rememberReplyPhrase` - Deduplication
 - `getPublishLogByCanonicalId` / `createPublishLog` - Publish logs
 
-### Placeholder Services (⚠️ Need Integration)
+### Runtime-Dependent Services (⚠️ Need Environment Setup)
 
 - `shouldReply` - Decision logic (needs LLM or rule engine)
 - `safetyCheck` - Safety validation (needs LLM or rules)
@@ -184,7 +199,7 @@ npm test -- --coverage
 npm test -- test/workers.test.ts
 ```
 
-**Test Coverage**: 101 tests, all passing
+**Test Coverage**: 106 tests, all passing
 
 ## Deployment
 
@@ -210,7 +225,7 @@ npx prisma migrate deploy
 npm start
 ```
 
-See [MIGRATION_SUMMARY.md](./MIGRATION_SUMMARY.md) for detailed deployment checklist.
+See the repository root [README.md](../README.md) for the current deployment and runtime checklist.
 
 ## Development
 
@@ -227,13 +242,13 @@ npx prisma migrate dev --name describe_change
 # Type check
 npm run build
 
-# Format code
-npm run format
+# Formatting / linting scripts are not wired yet in this package
+# Prefer running the build + test commands above as the current validation gate
 ```
 
 ## Migration from Python
 
-This backend is a complete migration from Python/FastAPI. See [MIGRATION_SUMMARY.md](./MIGRATION_SUMMARY.md) for:
+This backend is the active TypeScript migration target from Python/FastAPI. Refer to the repository root [README.md](../README.md) for:
 
 - Migration timeline
 - Technology changes
