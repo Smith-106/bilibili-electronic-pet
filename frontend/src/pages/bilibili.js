@@ -598,8 +598,14 @@ export async function render(container) {
   async function loadCredentials() {
     const wrapper = container.querySelector('#bili-creds-wrapper');
     const summaryEl = container.querySelector('#bili-cred-summary');
-    const activeFilterValue = container.querySelector('#bili-cred-active-filter').value;
-    const expiryFilterValue = container.querySelector('#bili-cred-expiry-filter').value;
+    const activeFilterEl = container.querySelector('#bili-cred-active-filter');
+    const expiryFilterEl = container.querySelector('#bili-cred-expiry-filter');
+    const activeFilterValue = activeFilterEl.value;
+    const expiryFilterValue = expiryFilterEl.value;
+    summaryEl.textContent = '加载中...';
+    wrapper.innerHTML = '<div class="page-loading">加载中...</div>';
+    activeFilterEl.disabled = true;
+    expiryFilterEl.disabled = true;
     try {
       const data = await api.getBilibiliCredentials();
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
@@ -666,6 +672,9 @@ export async function render(container) {
     } catch (err) {
       summaryEl.textContent = '凭证加载失败';
       wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
+    } finally {
+      activeFilterEl.disabled = false;
+      expiryFilterEl.disabled = false;
     }
   }
 
