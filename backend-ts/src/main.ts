@@ -179,6 +179,7 @@ export type BilibiliVideo = {
   title?: string | null;
   owner_mid?: number | null;
   poll_enabled: boolean;
+  comment_count?: number | null;
   last_polled_at?: string | null;
   last_poll_status?: string | null;
   last_poll_error?: string | null;
@@ -679,6 +680,27 @@ function normalizeBilibiliStatusPayload(payload: Record<string, unknown>): Recor
     poll_enabled: pollingEnabled,
     publish_enabled: publishEnabled,
     video_count: Number.isFinite(videoCount) ? videoCount : 0,
+  };
+}
+
+function normalizeBilibiliVideoRecord(
+  item: Record<string, unknown>,
+  options: { commentCount?: number } = {},
+): BilibiliVideo {
+  return {
+    id: Number(item.id ?? 0),
+    bvid: String(item.bvid ?? ''),
+    aid: typeof item.aid === 'number' ? item.aid : item.aid == null ? null : Number(item.aid),
+    title: typeof item.title === 'string' ? item.title : item.title == null ? null : String(item.title),
+    owner_mid: typeof item.owner_mid === 'number' ? item.owner_mid : item.owner_mid == null ? null : Number(item.owner_mid),
+    poll_enabled: Boolean(item.poll_enabled),
+    comment_count: options.commentCount ?? 0,
+    last_polled_at: normalizeNullableIsoTimestamp(item.last_polled_at as Date | string | null | undefined),
+    last_poll_status: typeof item.last_poll_status === 'string' ? item.last_poll_status : item.last_poll_status == null ? null : String(item.last_poll_status),
+    last_poll_error: typeof item.last_poll_error === 'string' ? item.last_poll_error : item.last_poll_error == null ? null : String(item.last_poll_error),
+    last_rpid: typeof item.last_rpid === 'number' ? item.last_rpid : item.last_rpid == null ? null : Number(item.last_rpid),
+    created_at: normalizeNullableIsoTimestamp(item.created_at as Date | string | null | undefined),
+    updated_at: normalizeNullableIsoTimestamp(item.updated_at as Date | string | null | undefined),
   };
 }
 
@@ -1731,67 +1753,99 @@ async function defaultExportJobsCsv(input: { status?: string; limit: number }): 
   return `${[header, ...rows].join('\n')}\n`;
 }
 
-function defaultGetBilibiliStatus(): { ok: boolean; config: Record<string, unknown>; credential: Record<string, unknown> | null; videos: Record<string, unknown>; diagnostics: Record<string, unknown> } {
+async function defaultGetBilibiliStatus(input: {
+  settings: RuntimeSettings;
+  buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
+}): Promise<{ ok: boolean; config: Record<string, unknown>; credential: Record<string, unknown> | null; videos: Record<string, unknown>; diagnostics: Record<string, unknown> }> {
+  const prisma = getPrisma();
+  const [credential, totalVideos, pollEnabledCount, diagnostics] = await Promise.all([
+    prisma.bilibiliCredential.findFirst({
+      where: { is_active: true },
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+    }),
+    prisma.bilibiliVideo.count({}),
+    prisma.bilibiliVideo.count({ where: { poll_enabled: true } }),
+    input.buildBilibiliDiagnostics(),
+  ]);
+
   return {
     ok: true,
     config: {
-      enabled: false,
-      poll_enabled: false,
-      publish_enabled: false,
-      poll_interval_seconds: 300,
+      enabled: input.settings.bilibiliEnabled,
+      poll_enabled: input.settings.bilibiliPollEnabled,
+      publish_enabled: input.settings.bilibiliPublishEnabled,
+      poll_interval_seconds: input.settings.bilibiliPollIntervalSeconds,
       rate_limit_per_minute: 60,
     },
-    credential: null,
+    credential: credential ? {
+      id: credential.id,
+      name: credential.name,
+      is_active: credential.is_active,
+      expires_at: credential.expires_at?.toISOString() ?? null,
+      last_used_at: credential.last_used_at?.toISOString() ?? null,
+      created_at: credential.created_at?.toISOString() ?? null,
+      updated_at: credential.updated_at?.toISOString() ?? null,
+    } : null,
     videos: {
-      poll_enabled_count: 0,
+      total: totalVideos,
+      video_count: totalVideos,
+      poll_enabled_count: pollEnabledCount,
     },
-    diagnostics: {
-      ready: false,
-      blocking_reasons: [],
-      effective_publish_mode: 'manual_queue',
-      checks: {
-        config: { ready: true, errors: [] },
-        auth: { ready: false, errors: ['no active credential'] },
-        dependency: { ready: false, errors: ['publisher not enabled'] },
-        worker_or_publish: { ready: false, errors: ['no worker or publish path ready'] },
-      },
-      release_gates: {
-        foundation_ready: true,
-        delivery_ready: false,
-        worker_or_publish_ready: false,
-        native_publish_enabled: false,
-        credential_present: false,
-        credential_complete: false,
-      },
-      signals: {
-        raw_publish_mode: 'manual_queue',
-        effective_publish_mode: 'manual_queue',
-        native_publish_enabled: false,
-        polling_worker_enabled: false,
-        credential_present: false,
-        credential_complete: false,
-        publish_mode_config_ready: true,
-      },
-    },
+    diagnostics,
   };
 }
 
-function defaultListBilibiliVideos(input: { pollEnabled?: boolean; limit: number; offset: number }): { ok: boolean; total: number; items: BilibiliVideo[] } {
+async function defaultListBilibiliVideos(input: { pollEnabled?: boolean; limit: number; offset: number }): Promise<{ ok: boolean; total: number; items: BilibiliVideo[] }> {
+  const prisma = getPrisma();
+  const where = input.pollEnabled === undefined ? {} : { poll_enabled: input.pollEnabled };
+  const [total, items] = await Promise.all([
+    prisma.bilibiliVideo.count({ where }),
+    prisma.bilibiliVideo.findMany({
+      where,
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      skip: input.offset,
+      take: input.limit,
+    }),
+  ]);
+  const bvids = items
+    .map((item) => item.bvid)
+    .filter((value): value is string => Boolean(value));
+  const comments = bvids.length === 0
+    ? []
+    : await prisma.comment.findMany({
+      where: { video_id: { in: bvids } },
+      select: { video_id: true },
+    });
+  const commentCounts = new Map<string, number>();
+  for (const comment of comments) {
+    const videoId = String(comment.video_id ?? '');
+    if (!videoId) {
+      continue;
+    }
+    commentCounts.set(videoId, (commentCounts.get(videoId) ?? 0) + 1);
+  }
+
   return {
     ok: true,
-    total: 0,
-    items: [],
+    total,
+    items: items.map((item) => normalizeBilibiliVideoRecord(item as unknown as Record<string, unknown>, {
+      commentCount: commentCounts.get(item.bvid) ?? 0,
+    })),
   };
 }
 
-function defaultAddBilibiliVideo(input: { bvid: string; pollEnabled?: boolean }): { ok: boolean; item: BilibiliVideo } {
-  return {
-    ok: true,
-    item: {
-      id: 1,
+async function defaultAddBilibiliVideo(input: { bvid: string; pollEnabled?: boolean }): Promise<{ ok: boolean; item: BilibiliVideo }> {
+  const prisma = getPrisma();
+  const item = await prisma.bilibiliVideo.create({
+    data: {
       bvid: input.bvid,
       poll_enabled: input.pollEnabled ?? true,
     },
+  });
+
+  return {
+    ok: true,
+    item: normalizeBilibiliVideoRecord(item as unknown as Record<string, unknown>),
   };
 }
 
@@ -1838,7 +1892,10 @@ function defaultDependencies(): ServerDependencies {
     getJob: (input) => defaultGetJob(input),
     listJobs: (input) => defaultListJobs(input),
     exportJobsCsv: (input) => defaultExportJobsCsv(input),
-    getBilibiliStatus: defaultGetBilibiliStatus,
+    getBilibiliStatus: () => defaultGetBilibiliStatus({
+      settings,
+      buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings),
+    }),
     listBilibiliVideos: (input) => defaultListBilibiliVideos(input),
     addBilibiliVideo: (input) => defaultAddBilibiliVideo(input),
   };
@@ -1999,7 +2056,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const getJob = overrides.getJob ?? defaults.getJob;
   const listJobs = overrides.listJobs ?? defaults.listJobs;
   const exportJobsCsv = overrides.exportJobsCsv ?? defaults.exportJobsCsv;
-  const getBilibiliStatus = overrides.getBilibiliStatus ?? defaults.getBilibiliStatus;
+  const getBilibiliStatus = overrides.getBilibiliStatus ?? (() => defaultGetBilibiliStatus({
+    settings,
+    buildBilibiliDiagnostics,
+  }));
   const listBilibiliVideos = overrides.listBilibiliVideos ?? defaults.listBilibiliVideos;
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
 
