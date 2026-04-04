@@ -327,6 +327,12 @@ function isBilibiliCredentialConfigured(item) {
   return Boolean(item?.has_sessdata && item?.has_bili_jct && item?.buvid3);
 }
 
+function formatBilibiliCredentialHealth(credentialPresent, credentialComplete) {
+  if (!credentialPresent) return '未配置凭证';
+  if (credentialComplete) return '凭证字段完整';
+  return '凭证字段缺失';
+}
+
 function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilterValue = '') {
   const activeLabel = activeFilterValue === 'active'
     ? '仅激活'
@@ -510,6 +516,15 @@ export async function render(container) {
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
       const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
       const activeCredentialName = renderBilibiliCredentialName(data?.credential, '未配置');
+      const credentialPresent = Boolean(
+        data?.diagnostics?.signals?.credential_present
+        ?? data?.diagnostics?.release_gates?.credential_present,
+      );
+      const credentialComplete = Boolean(
+        data?.diagnostics?.signals?.credential_complete
+        ?? data?.diagnostics?.release_gates?.credential_complete,
+      );
+      const credentialHealth = formatBilibiliCredentialHealth(credentialPresent, credentialComplete);
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
@@ -543,6 +558,7 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">活跃凭证</div>
           <div class="stat-value">${activeCredentialName}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialHealth)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">诊断</div>
