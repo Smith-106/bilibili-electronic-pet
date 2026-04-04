@@ -272,7 +272,7 @@ function renderBilibiliCredentialExpiry(value) {
   return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
 }
 
-function renderBilibiliCredentialName(item) {
+function renderBilibiliCredentialName(item, fallbackLabel = '-') {
   const hints = [];
   if (item?.updated_at) {
     hints.push(`更新: ${formatIsoDateTime(item.updated_at)}`);
@@ -280,7 +280,7 @@ function renderBilibiliCredentialName(item) {
   if (item?.created_at) {
     hints.push(`创建: ${formatIsoDateTime(item.created_at)}`);
   }
-  return `${escapeHtml(item?.name || '-')}${hints
+  return `${escapeHtml(item?.name || fallbackLabel)}${hints
     .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
     .join('')}`;
 }
@@ -468,7 +468,7 @@ export async function render(container) {
       const pollEnabledCount = Number(data?.videos?.poll_enabled_count ?? 0);
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
       const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
-      const activeCredentialName = data?.credential?.name ? escapeHtml(data.credential.name) : '未配置';
+      const activeCredentialName = renderBilibiliCredentialName(data?.credential, '未配置');
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
