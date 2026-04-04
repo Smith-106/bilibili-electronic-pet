@@ -139,6 +139,10 @@ function countBilibiliVideosWithPollError(items) {
   return items.filter((item) => String(item?.last_poll_status ?? '').trim().toLowerCase() === 'error').length;
 }
 
+function countBilibiliVideosNeverPolled(items) {
+  return items.filter((item) => !item?.last_polled_at).length;
+}
+
 function renderBilibiliVideoIdentity(video) {
   const hasAid = hasBilibiliVideoAid(video);
   const hint = hasAid
@@ -165,9 +169,11 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const missingAidCount = countBilibiliVideosMissingAid(items);
   const pollErrorCount = countBilibiliVideosWithPollError(items);
+  const neverPolledCount = countBilibiliVideosNeverPolled(items);
   const missingAidText = missingAidCount > 0 ? `，当前页缺少 aid ${missingAidCount} 条` : '';
   const pollErrorText = pollErrorCount > 0 ? `，轮询失败 ${pollErrorCount} 条` : '';
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${pollErrorText}`;
+  const neverPolledText = neverPolledCount > 0 ? `，尚未轮询 ${neverPolledCount} 条` : '';
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${pollErrorText}${neverPolledText}`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
