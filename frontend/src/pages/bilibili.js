@@ -365,6 +365,17 @@ function formatBilibiliDiagnosticHealth(diagnostics) {
   return `${authReady ? '鉴权已就绪' : '鉴权未就绪'}，${workerOrPublishReady ? '执行链路可用' : '执行链路阻塞'}`;
 }
 
+function formatBilibiliPublishModeHealth(diagnostics) {
+  const publishModeConfigReady = Boolean(diagnostics?.signals?.publish_mode_config_ready);
+  const nativePublishEnabled = Boolean(diagnostics?.signals?.native_publish_enabled);
+  const pollingWorkerEnabled = Boolean(diagnostics?.signals?.polling_worker_enabled);
+  return [
+    publishModeConfigReady ? '模式配置就绪' : '模式配置缺失',
+    nativePublishEnabled ? '原生发布启用' : '原生发布停用',
+    pollingWorkerEnabled ? '轮询链路启用' : '轮询链路停用',
+  ].join('，');
+}
+
 function renderBilibiliCredentialFingerprint(item) {
   const summary = [
     item?.has_sessdata ? 'SESSDATA' : '',
@@ -571,6 +582,7 @@ export async function render(container) {
       const credentialHealth = formatBilibiliCredentialHealth(credentialPresent, credentialComplete);
       const diagnosticHealth = formatBilibiliDiagnosticHealth(data?.diagnostics);
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
+      const publishModeHealth = formatBilibiliPublishModeHealth(data?.diagnostics);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
@@ -614,6 +626,7 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">发布模式</div>
           <div class="stat-value">${escapeHtml(publishMode)}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(publishModeHealth)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">轮询间隔</div>
