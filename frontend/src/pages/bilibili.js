@@ -4,6 +4,7 @@ import { renderBadge, renderBoolBadge } from '../components/badge.js';
 import { showToast } from '../components/toast.js';
 
 const api = createAdminApi();
+const bilibiliBvidPattern = /^BV[a-zA-Z0-9]{10}$/;
 const bilibiliErrorMessages = {
   unauthorized: '未授权，请检查管理 API Key。',
   bilibili_not_configured: '请先添加并激活可用的 B 站凭证。',
@@ -26,6 +27,23 @@ const bilibiliErrorMessages = {
 function getBilibiliErrorMessage(error) {
   const raw = error instanceof Error ? error.message : String(error ?? 'request_failed');
   return bilibiliErrorMessages[raw] || raw;
+}
+
+function validateBilibiliVideoInput(bvid) {
+  if (!bvid) return 'bvid_required';
+  if (!bilibiliBvidPattern.test(bvid)) return 'invalid_bvid_format';
+  return null;
+}
+
+function validateBilibiliCredentialInput(payload) {
+  if (!payload.name) return 'name_required';
+  if (!payload.sessdata) return 'sessdata_required';
+  if (!payload.bili_jct) return 'bili_jct_required';
+  if (!payload.buvid3) return 'buvid3_required';
+  if (payload.expires_at && Number.isNaN(new Date(payload.expires_at).getTime())) {
+    return 'invalid_expires_at';
+  }
+  return null;
 }
 
 export async function render(container) {
@@ -238,7 +256,11 @@ export async function render(container) {
   // Add video
   container.querySelector('#bili-video-add').addEventListener('click', async () => {
     const bvid = container.querySelector('#bili-video-bvid').value.trim();
-    if (!bvid) { showToast('BVID 不能为空', 'warning'); return; }
+    const validationError = validateBilibiliVideoInput(bvid);
+    if (validationError) {
+      showToast(getBilibiliErrorMessage(validationError), 'warning');
+      return;
+    }
     try {
       await api.addBilibiliVideo(bvid);
       showToast('添加成功', 'success');
@@ -257,8 +279,9 @@ export async function render(container) {
       buvid4: container.querySelector('#cred-buvid4').value.trim(),
       expires_at: container.querySelector('#cred-expires').value || undefined,
     };
-    if (!payload.name || !payload.sessdata) {
-      showToast('名称和 SESSDATA 不能为空', 'warning');
+    const validationError = validateBilibiliCredentialInput(payload);
+    if (validationError) {
+      showToast(getBilibiliErrorMessage(validationError), 'warning');
       return;
     }
     try {
