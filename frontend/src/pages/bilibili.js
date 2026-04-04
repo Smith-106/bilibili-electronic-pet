@@ -211,34 +211,55 @@ function renderBilibiliCredentialExpiry(value) {
   return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
 }
 
-function formatBilibiliCredentialSummary(items, filterValue = '', renderedCount = items.length) {
+function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilterValue = '') {
+  const activeLabel = activeFilterValue === 'active'
+    ? '仅激活'
+    : activeFilterValue === 'inactive'
+      ? '仅未激活'
+      : '全部';
+  const expiryLabel = expiryFilterValue === 'expired'
+    ? '已过期'
+    : expiryFilterValue === 'expiring'
+      ? '即将过期'
+      : expiryFilterValue === 'valid'
+        ? '有效'
+        : expiryFilterValue === 'unset'
+          ? '未设置过期时间'
+          : '全部';
+  return `激活: ${activeLabel}，过期: ${expiryLabel}`;
+}
+
+function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFilterValue = '', renderedCount = items.length) {
   const total = items.length;
   const active = items.filter((item) => item.is_active || item.active).length;
   const now = Date.now();
   const expiryStates = items.map((item) => getBilibiliCredentialExpiryState(item.expires_at, now));
   const expiring = expiryStates.filter((item) => item.hasExpiry).length;
   const expired = expiryStates.filter((item) => item.expired).length;
-  const filterLabel = filterValue === 'active'
-    ? '仅激活'
-    : filterValue === 'inactive'
-      ? '仅未激活'
-      : '全部';
+  const filterLabel = formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue);
   return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个，已过期 ${expired} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
 }
 
-function filterBilibiliCredentials(items, filterValue) {
-  if (filterValue === 'active') {
-    return items.filter((item) => item.is_active || item.active);
-  }
-  if (filterValue === 'inactive') {
-    return items.filter((item) => !(item.is_active || item.active));
-  }
-  return items;
+function filterBilibiliCredentials(items, activeFilterValue = '', expiryFilterValue = '') {
+  const now = Date.now();
+  return items.filter((item) => {
+    const isActive = item.is_active || item.active;
+    if (activeFilterValue === 'active' && !isActive) return false;
+    if (activeFilterValue === 'inactive' && isActive) return false;
+
+    const expiry = getBilibiliCredentialExpiryState(item.expires_at, now);
+    if (expiryFilterValue === 'expired' && !expiry.expired) return false;
+    if (expiryFilterValue === 'expiring' && !expiry.expiringSoon) return false;
+    if (expiryFilterValue === 'valid' && (!expiry.hasExpiry || expiry.expired)) return false;
+    if (expiryFilterValue === 'unset' && expiry.hasExpiry) return false;
+    return true;
+  });
 }
 
-function getBilibiliCredentialEmptyMessage(filterValue) {
-  if (filterValue === 'active') return '暂无激活中的凭证';
-  if (filterValue === 'inactive') return '暂无未激活凭证';
+function getBilibiliCredentialEmptyMessage(activeFilterValue = '', expiryFilterValue = '') {
+  if (activeFilterValue || expiryFilterValue) {
+    return `暂无匹配筛选条件的凭证（${formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue)}）`;
+  }
   return '暂无凭证';
 }
 
@@ -335,6 +356,16 @@ export async function render(container) {
             <option value="">全部</option>
             <option value="active">仅激活</option>
             <option value="inactive">仅未激活</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">过期状态</label>
+          <select id="bili-cred-expiry-filter" class="form-input">
+            <option value="">全部</option>
+            <option value="expired">已过期</option>
+            <option value="expiring">即将过期</option>
+            <option value="valid">有效</option>
+            <option value="unset">未设置</option>
           </select>
         </div>
       </div>
@@ -515,15 +546,21 @@ export async function render(container) {
   async function loadCredentials() {
     const wrapper = container.querySelector('#bili-creds-wrapper');
     const summaryEl = container.querySelector('#bili-cred-summary');
-    const filterValue = container.querySelector('#bili-cred-active-filter').value;
+    const activeFilterValue = container.querySelector('#bili-cred-active-filter').value;
+    const expiryFilterValue = container.querySelector('#bili-cred-expiry-filter').value;
     try {
       const data = await api.getBilibiliCredentials();
       const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
-      const filteredItems = filterBilibiliCredentials(items, filterValue);
-      summaryEl.textContent = formatBilibiliCredentialSummary(items, filterValue, filteredItems.length);
+      const filteredItems = filterBilibiliCredentials(items, activeFilterValue, expiryFilterValue);
+      summaryEl.textContent = formatBilibiliCredentialSummary(
+        items,
+        activeFilterValue,
+        expiryFilterValue,
+        filteredItems.length,
+      );
 
       if (filteredItems.length === 0) {
-        wrapper.innerHTML = `<div class="table-empty">${escapeHtml(getBilibiliCredentialEmptyMessage(filterValue))}</div>`;
+        wrapper.innerHTML = `<div class="table-empty">${escapeHtml(getBilibiliCredentialEmptyMessage(activeFilterValue, expiryFilterValue))}</div>`;
         return;
       }
 
@@ -674,6 +711,7 @@ export async function render(container) {
     loadVideos();
   });
   container.querySelector('#bili-cred-active-filter').addEventListener('change', loadCredentials);
+  container.querySelector('#bili-cred-expiry-filter').addEventListener('change', loadCredentials);
   bindEnterKeyToClick(container, ['#bili-video-bvid'], '#bili-video-add');
   bindEnterKeyToClick(
     container,
