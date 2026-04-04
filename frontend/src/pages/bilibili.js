@@ -151,6 +151,19 @@ function renderBilibiliVideoIdentity(video) {
   return `${escapeHtml(video?.bvid || '-')}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
 }
 
+function renderBilibiliVideoTitle(video) {
+  const hints = [];
+  if (video?.updated_at) {
+    hints.push(`更新: ${formatIsoDateTime(video.updated_at)}`);
+  }
+  if (video?.created_at) {
+    hints.push(`创建: ${formatIsoDateTime(video.created_at)}`);
+  }
+  return `${escapeHtml(video?.title || '-')}${hints
+    .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
+    .join('')}`;
+}
+
 function renderBilibiliSyncButton(video) {
   const hasAid = hasBilibiliVideoAid(video);
   const disabledAttr = hasAid ? '' : ' disabled';
@@ -559,7 +572,7 @@ export async function render(container) {
           <tbody>
             ${items.map(v => `<tr data-id="${escapeHtml(v.id || v.video_id)}">
               <td class="cell-id">${renderBilibiliVideoIdentity(v)}</td>
-              <td class="cell-truncate">${escapeHtml(v.title || '-')}</td>
+              <td class="cell-truncate">${renderBilibiliVideoTitle(v)}</td>
               <td>${renderBoolBadge(v.poll_enabled)}</td>
               <td>${v.comment_count ?? '-'}</td>
               <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
