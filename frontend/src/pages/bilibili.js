@@ -4,6 +4,29 @@ import { renderBadge, renderBoolBadge } from '../components/badge.js';
 import { showToast } from '../components/toast.js';
 
 const api = createAdminApi();
+const bilibiliErrorMessages = {
+  unauthorized: '未授权，请检查管理 API Key。',
+  bilibili_not_configured: '请先添加并激活可用的 B 站凭证。',
+  bilibili_sync_failed: '同步失败，请稍后重试。',
+  invalid_poll_enabled: '轮询开关参数无效。',
+  invalid_video_id: '视频标识无效。',
+  invalid_credential_id: '凭证标识无效。',
+  video_not_found: '视频不存在或已删除。',
+  credential_not_found: '凭证不存在或已删除。',
+  invalid_bvid_format: 'BVID 格式不正确。',
+  bvid_required: 'BVID 不能为空。',
+  name_required: '名称不能为空。',
+  sessdata_required: 'SESSDATA 不能为空。',
+  bili_jct_required: 'bili_jct 不能为空。',
+  buvid3_required: 'buvid3 不能为空。',
+  invalid_expires_at: '过期时间格式无效。',
+  request_failed: '请求失败，请稍后重试。',
+};
+
+function getBilibiliErrorMessage(error) {
+  const raw = error instanceof Error ? error.message : String(error ?? 'request_failed');
+  return bilibiliErrorMessages[raw] || raw;
+}
 
 export async function render(container) {
   container.innerHTML = `
@@ -83,8 +106,8 @@ export async function render(container) {
           <div class="stat-value">${data?.video_count ?? 0}</div>
         </div>
       `;
-    } catch {
-      el.innerHTML = '<div class="page-error">状态加载失败</div>';
+    } catch (err) {
+      el.innerHTML = `<div class="page-error">状态加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
     }
   }
 
@@ -124,7 +147,7 @@ export async function render(container) {
             await api.toggleBilibiliVideoPoll(btn.dataset.id);
             showToast('操作成功', 'success');
             loadVideos();
-          } catch (err) { showToast(`失败: ${err.message}`, 'error'); }
+          } catch (err) { showToast(`失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
 
@@ -135,7 +158,7 @@ export async function render(container) {
             await api.syncBilibiliVideo(btn.dataset.id);
             showToast('同步完成', 'success');
             loadVideos();
-          } catch (err) { showToast(`同步失败: ${err.message}`, 'error'); btn.disabled = false; }
+          } catch (err) { showToast(`同步失败: ${getBilibiliErrorMessage(err)}`, 'error'); btn.disabled = false; }
         });
       });
 
@@ -146,11 +169,11 @@ export async function render(container) {
             await api.deleteBilibiliVideo(btn.dataset.id);
             showToast('已删除', 'success');
             loadVideos();
-          } catch (err) { showToast(`删除失败: ${err.message}`, 'error'); }
+          } catch (err) { showToast(`删除失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
     } catch (err) {
-      wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(err.message)}</div>`;
+      wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
     }
   }
 
@@ -193,7 +216,7 @@ export async function render(container) {
             await api.activateBilibiliCredential(btn.dataset.id);
             showToast('已激活', 'success');
             loadCredentials();
-          } catch (err) { showToast(`激活失败: ${err.message}`, 'error'); }
+          } catch (err) { showToast(`激活失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
 
@@ -204,11 +227,11 @@ export async function render(container) {
             await api.deleteBilibiliCredential(btn.dataset.id);
             showToast('已删除', 'success');
             loadCredentials();
-          } catch (err) { showToast(`删除失败: ${err.message}`, 'error'); }
+          } catch (err) { showToast(`删除失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
         });
       });
     } catch (err) {
-      wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(err.message)}</div>`;
+      wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
     }
   }
 
@@ -221,7 +244,7 @@ export async function render(container) {
       showToast('添加成功', 'success');
       container.querySelector('#bili-video-bvid').value = '';
       loadVideos();
-    } catch (err) { showToast(`添加失败: ${err.message}`, 'error'); }
+    } catch (err) { showToast(`添加失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
   });
 
   // Add credential
@@ -248,7 +271,7 @@ export async function render(container) {
       container.querySelector('#cred-buvid4').value = '';
       container.querySelector('#cred-expires').value = '';
       loadCredentials();
-    } catch (err) { showToast(`添加失败: ${err.message}`, 'error'); }
+    } catch (err) { showToast(`添加失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
   });
 
   // Manual poll
@@ -260,7 +283,7 @@ export async function render(container) {
       await api.triggerBilibiliPoll();
       showToast('轮询完成', 'success');
       loadVideos();
-    } catch (err) { showToast(`轮询失败: ${err.message}`, 'error'); }
+    } catch (err) { showToast(`轮询失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
     finally { btn.disabled = false; btn.textContent = '触发轮询'; }
   });
 
