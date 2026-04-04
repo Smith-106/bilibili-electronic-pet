@@ -142,6 +142,20 @@ function formatBilibiliPollResultMessage(result, options = {}) {
   return `${subject}完成，暂无可处理视频。`;
 }
 
+function bindEnterKeyToClick(container, selectors, buttonSelector) {
+  const button = container.querySelector(buttonSelector);
+  selectors.forEach((selector) => {
+    const input = container.querySelector(selector);
+    input?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      if (!button.disabled) {
+        button.click();
+      }
+    });
+  });
+}
+
 export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
@@ -508,6 +522,12 @@ export async function render(container) {
   });
   container.querySelector('#bili-video-filter-btn').addEventListener('click', loadVideos);
   container.querySelector('#bili-video-poll-filter').addEventListener('change', loadVideos);
+  bindEnterKeyToClick(container, ['#bili-video-bvid'], '#bili-video-add');
+  bindEnterKeyToClick(
+    container,
+    ['#cred-name', '#cred-sessdata', '#cred-bili-jct', '#cred-buvid3', '#cred-buvid4', '#cred-expires'],
+    '#cred-add',
+  );
 
   await Promise.all([loadStatus(), loadVideos(), loadCredentials()]);
 }
