@@ -18,6 +18,7 @@ const mockPrisma = {
     findMany: vi.fn(),
   },
   operationAuditLog: {
+    count: vi.fn(),
     findMany: vi.fn(),
   },
 };
@@ -529,6 +530,63 @@ describe('default query and export providers', () => {
     expect(response.body).toBe(
       'job_id,comment_id,status,created_at\n21,comment-21,manual_queue,2026-04-04T12:00:00.000Z\n',
     );
+
+    await app.close();
+  });
+});
+
+describe('audit log list compatibility', () => {
+  it('derives detail, status, and trace_id fields from audit payloads', async () => {
+    mockPrisma.operationAuditLog.count.mockResolvedValue(1);
+    mockPrisma.operationAuditLog.findMany.mockResolvedValue([
+      {
+        id: 31,
+        action: 'approve_single',
+        target_type: 'reply_job',
+        target_id: 31,
+        ok: false,
+        payload: JSON.stringify({
+          status: 'publish_failed',
+          trace_id: 'trace-audit-31',
+          error: 'approve_publish_failed',
+        }),
+        created_at: new Date('2026-04-04T13:00:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/audit-log?limit=30',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      summary: {
+        total: 1,
+        returned: 1,
+        limit: 30,
+      },
+      items: [
+        {
+          id: 31,
+          action: 'approve_single',
+          target_type: 'reply_job',
+          target_id: 31,
+          ok: false,
+          status: 'publish_failed',
+          trace_id: 'trace-audit-31',
+          detail: 'approve_publish_failed',
+          payload: {
+            status: 'publish_failed',
+            trace_id: 'trace-audit-31',
+            error: 'approve_publish_failed',
+          },
+          created_at: '2026-04-04T13:00:00.000Z',
+        },
+      ],
+    });
 
     await app.close();
   });

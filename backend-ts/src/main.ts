@@ -612,6 +612,18 @@ function normalizeQueryJobRecord(
   };
 }
 
+function getAuditLogDetail(payload: Record<string, unknown>): string | null {
+  const candidateKeys = ['detail', 'error', 'reason', 'publish_reason', 'reply_text_preview', 'message'];
+  for (const key of candidateKeys) {
+    const value = String(payload[key] ?? '').trim();
+    if (value) {
+      return value;
+    }
+  }
+  const status = String(payload.status ?? '').trim();
+  return status || null;
+}
+
 function normalizePublishMode(mode: string): string {
   return mode.trim().toLowerCase();
 }
@@ -2868,15 +2880,21 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     return reply.send({
       ok: true,
       summary: { total, returned: items.length, limit },
-      items: items.map((item) => ({
-        id: item.id,
-        action: item.action,
-        target_type: item.target_type,
-        target_id: item.target_id,
-        ok: item.ok,
-        payload: typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload,
-        created_at: item.created_at?.toISOString() ?? null,
-      })),
+      items: items.map((item) => {
+        const payload = parseJsonRecord(item.payload);
+        return {
+          id: item.id,
+          action: item.action,
+          target_type: item.target_type,
+          target_id: item.target_id,
+          ok: item.ok,
+          status: String(payload.status ?? '').trim() || null,
+          trace_id: String(payload.trace_id ?? '').trim() || null,
+          detail: getAuditLogDetail(payload),
+          payload,
+          created_at: item.created_at?.toISOString() ?? null,
+        };
+      }),
     });
   };
 
