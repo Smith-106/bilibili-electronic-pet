@@ -110,8 +110,12 @@ export type AdminGatewayLogsResponse = {
 export type AdminAuditSummaryResponse = {
   ok: boolean;
   days: number;
+  total?: number;
+  ok_count?: number;
+  failed_count?: number;
   totals: Record<string, unknown>;
   by_action: Record<string, unknown>;
+  by_status?: Record<string, unknown>;
   by_result: Record<string, unknown>;
 };
 
@@ -394,6 +398,181 @@ function normalizeIsoTimestamp(value: Date | string | undefined): string {
   return Number.isNaN(parsed.getTime()) ? new Date(0).toISOString() : parsed.toISOString();
 }
 
+function normalizeNullableIsoTimestamp(value: Date | string | null | undefined): string | null {
+  if (value == null) {
+    return null;
+  }
+  return normalizeIsoTimestamp(value);
+}
+
+const REVIEWABLE_JOB_STATUSES = ['manual_queue', 'blocked', 'dedupe_skipped'] as const;
+
+function normalizeAdminJobStatus(status: unknown): string {
+  const normalized = String(status ?? '').trim();
+  if (!normalized) {
+    return 'queued';
+  }
+  return REVIEWABLE_JOB_STATUSES.includes(normalized as typeof REVIEWABLE_JOB_STATUSES[number])
+    ? 'pending_review'
+    : normalized;
+}
+
+function buildAdminJobStatusWhere(status?: string): Record<string, unknown> {
+  const normalized = String(status ?? '').trim();
+  if (!normalized) {
+    return {};
+  }
+  if (normalized === 'pending_review') {
+    return {
+      status: {
+        in: [...REVIEWABLE_JOB_STATUSES],
+      },
+    };
+  }
+  return { status: normalized };
+}
+
+function parseJsonRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string') {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function extractRiskFlagLabels(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => String(entry ?? '').trim())
+      .filter(Boolean);
+  }
+
+  const payload = parseJsonRecord(value);
+  const labels: string[] = [];
+  const directKeys = ['reason', 'decision', 'label', 'risk_level'];
+  for (const key of directKeys) {
+    const item = String(payload[key] ?? '').trim();
+    if (item && item !== 'ok') {
+      labels.push(item);
+    }
+  }
+
+  const arrayKeys = ['blocked_words', 'risk_labels', 'pii_types', 'flags'];
+  for (const key of arrayKeys) {
+    const items = Array.isArray(payload[key]) ? payload[key] : [];
+    for (const item of items) {
+      const normalized = String(item ?? '').trim();
+      if (normalized) {
+        labels.push(normalized);
+      }
+    }
+  }
+
+  return [...new Set(labels)];
+}
+
+function normalizeAdminJobListItem(item: Record<string, unknown>): Record<string, unknown> {
+  const rawStatus = String(item.raw_status ?? item.status ?? '').trim();
+  const normalizedStatus = normalizeAdminJobStatus(rawStatus);
+  const commentText = isNonEmptyString(item.comment_text)
+    ? item.comment_text
+    : isNonEmptyString(item.comment_content)
+      ? item.comment_content
+      : null;
+
+  return {
+    ...item,
+    id: item.id == null ? '' : String(item.id),
+    status: normalizedStatus,
+    ...(rawStatus && rawStatus !== normalizedStatus ? { raw_status: rawStatus } : {}),
+    comment_text: commentText,
+    comment_content: commentText,
+    risk_flags: extractRiskFlagLabels(item.risk_flags),
+    created_at: normalizeNullableIsoTimestamp(item.created_at as Date | string | null | undefined),
+    updated_at: normalizeNullableIsoTimestamp(item.updated_at as Date | string | null | undefined),
+    published_at: normalizeNullableIsoTimestamp(item.published_at as Date | string | null | undefined),
+  };
+}
+
+function getGroupCount(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const nested = record._all;
+    if (typeof nested === 'number' && Number.isFinite(nested)) {
+      return nested;
+    }
+  }
+  return 0;
+}
+
+function normalizeAdminOverviewPayload(overview: Record<string, unknown>): Record<string, unknown> {
+  const totals = (overview.totals && typeof overview.totals === 'object' && !Array.isArray(overview.totals))
+    ? overview.totals as Record<string, unknown>
+    : {};
+
+  const totalComments = Number(overview.total_comments ?? totals.comments ?? 0);
+  const totalJobs = Number(overview.total_jobs ?? totals.jobs ?? 0);
+  const totalPublished = Number(
+    overview.total_published
+    ?? totals.published
+    ?? totals.published_jobs
+    ?? 0,
+  );
+  const pendingReview = Number(
+    overview.pending_review
+    ?? totals.pending_review
+    ?? totals.comments_manual_queue_or_processing
+    ?? 0,
+  );
+  const totalFailed = Number(
+    overview.total_failed
+    ?? totals.failed
+    ?? totals.failed_jobs
+    ?? 0,
+  );
+
+  return {
+    ...overview,
+    total_comments: Number.isFinite(totalComments) ? totalComments : 0,
+    total_jobs: Number.isFinite(totalJobs) ? totalJobs : 0,
+    total_published: Number.isFinite(totalPublished) ? totalPublished : 0,
+    pending_review: Number.isFinite(pendingReview) ? pendingReview : 0,
+    total_failed: Number.isFinite(totalFailed) ? totalFailed : 0,
+  };
+}
+
+function normalizeAdminAuditSummaryPayload(summary: Record<string, unknown>): Record<string, unknown> {
+  const totals = (summary.totals && typeof summary.totals === 'object' && !Array.isArray(summary.totals))
+    ? summary.totals as Record<string, unknown>
+    : {};
+  const byResult = (summary.by_result && typeof summary.by_result === 'object' && !Array.isArray(summary.by_result))
+    ? summary.by_result as Record<string, unknown>
+    : {};
+
+  const total = Number(summary.total ?? totals.audit_logs ?? 0);
+  const okCount = Number(summary.ok_count ?? totals.ok ?? byResult.ok ?? byResult.success ?? 0);
+  const failedCount = Number(summary.failed_count ?? totals.failed ?? byResult.failed ?? 0);
+
+  return {
+    ...summary,
+    total: Number.isFinite(total) ? total : 0,
+    ok_count: Number.isFinite(okCount) ? okCount : 0,
+    failed_count: Number.isFinite(failedCount) ? failedCount : 0,
+  };
+}
+
 function normalizePublishMode(mode: string): string {
   return mode.trim().toLowerCase();
 }
@@ -576,136 +755,180 @@ function defaultCreateTraceId(preferred?: string): string {
   return normalized || randomUUID();
 }
 
-function defaultAdminOverview(): Record<string, unknown> {
+async function defaultAdminOverview(): Promise<Record<string, unknown>> {
+  const prisma = getPrisma();
+  const [totalComments, totalJobs, byStatusRows] = await Promise.all([
+    prisma.comment.count(),
+    prisma.replyJob.count(),
+    prisma.replyJob.groupBy({
+      by: ['status'],
+      _count: {
+        _all: true,
+      },
+    }),
+  ]);
+
+  const byStatus: Record<string, number> = {};
+  for (const row of byStatusRows) {
+    byStatus[row.status] = getGroupCount(row._count);
+  }
+
+  const totalPublished = byStatus.published ?? 0;
+  const pendingReview = REVIEWABLE_JOB_STATUSES.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0);
+  const totalFailed = byStatus.failed ?? 0;
+
   return {
+    generated_at: new Date().toISOString(),
     totals: {
-      comments: 0,
-      jobs: 0,
-      pending_jobs: 0,
-      done_jobs: 0,
-      failed_jobs: 0,
-      published_jobs: 0,
-      approved_comments: 0,
-      replied_comments: 0,
-      pending_comments: 0,
-      comments_without_jobs: 0,
-      comments_approved_pending_reply: 0,
-      comments_awaiting_approval: 0,
-      comments_approved_awaiting_reply: 0,
-      comments_published_or_replied: 0,
-      comments_manual_queue_or_processing: 0,
-      comments_failed_needing_attention: 0,
-      comments_above_threshold: 0,
-      comments_below_threshold: 0,
-      comments_queued_total: 0,
-      comments_queued_recent_window: 0,
-      comments_completed_recent_window: 0,
-      comments_failed_recent_window: 0,
-      comments_stale_pending: 0,
-      comments_stale_manual_queue: 0,
-      comments_stale_processing: 0,
-      comments_auto_reply_eligible: 0,
-      comments_auto_reply_skipped: 0,
-      comments_auto_reply_success: 0,
-      comments_auto_reply_failed: 0,
-      comments_last_24h: 0,
-      comments_last_7d: 0,
-      comments_last_30d: 0,
-      comments_high_priority: 0,
-      comments_low_priority: 0,
-      comments_with_risk_label: 0,
-      comments_with_positive_label: 0,
-      comments_with_negative_label: 0,
-      comments_with_neutral_label: 0,
-      jobs_retry_pending: 0,
-      jobs_retry_in_progress: 0,
-      jobs_retry_failed: 0,
-      jobs_retry_succeeded: 0,
-      jobs_with_gateway_trace: 0,
-      jobs_without_gateway_trace: 0,
-      jobs_published_last_24h: 0,
-      jobs_failed_last_24h: 0,
-      jobs_manual_intervention_required: 0,
-      jobs_long_running: 0,
-      jobs_stuck: 0,
-      jobs_created_today: 0,
-      jobs_updated_today: 0,
-      jobs_with_platform_bilibili: 0,
-      jobs_with_platform_douyin: 0,
-      jobs_with_platform_kuaishou: 0,
-      audit_logs_last_24h: 0,
-      audit_logs_last_7d: 0,
-      audit_logs_success_last_24h: 0,
-      audit_logs_failure_last_24h: 0,
-      gateway_publish_attempts_last_24h: 0,
-      gateway_publish_success_last_24h: 0,
-      gateway_publish_failure_last_24h: 0,
-      gateway_publish_duplicate_last_24h: 0,
-      gateway_publish_timeout_last_24h: 0,
-      gateway_publish_5xx_last_24h: 0,
-      gateway_publish_auth_last_24h: 0,
-      gateway_publish_invalid_response_last_24h: 0,
-      worker_heartbeat_missing: 0,
-      worker_last_seen_seconds: 0,
-      queue_depth_manual_queue: 0,
-      queue_depth_processing: 0,
-      queue_depth_retry: 0,
-      queue_depth_failed: 0,
-      queue_depth_completed: 0,
-      release_gate_foundation_ready: 0,
-      release_gate_delivery_ready: 0,
-      release_gate_worker_or_publish_ready: 0,
-      release_gate_real_auth_ready: 0,
-      release_gate_dependency_ready: 0,
-      release_gate_native_publish_enabled: 0,
-      release_gate_credential_present: 0,
-      release_gate_credential_complete: 0,
-      publish_mode_delivery_capable: 0,
-      publish_mode_native_bilibili: 0,
-      publish_mode_webhook: 0,
-      publish_mode_real_publish: 0,
-      publish_mode_simulated: 0,
-      kill_switch_enabled: 0,
-      bilibili_enabled: 0,
-      bilibili_publish_enabled: 0,
-      bilibili_poll_enabled: 0,
-      bilibili_poll_interval_seconds: 0,
-      database_connected: 0,
-      redis_connected: 0,
-      api_key_set: 0,
-      gateway_token_set: 0,
-      gateway_hmac_set: 0,
+      comments: totalComments,
+      jobs: totalJobs,
+      published: totalPublished,
+      pending_review: pendingReview,
+      failed: totalFailed,
     },
-    generated_at: new Date(0).toISOString(),
+    by_status: byStatus,
+    total_comments: totalComments,
+    total_jobs: totalJobs,
+    total_published: totalPublished,
+    pending_review: pendingReview,
+    total_failed: totalFailed,
   };
 }
 
-function defaultAdminJobs(input: { status?: string; limit: number; offset: number }): AdminJobsResponse {
+async function defaultAdminJobs(input: { status?: string; limit: number; offset: number }): Promise<AdminJobsResponse> {
+  const prisma = getPrisma();
+  const where = buildAdminJobStatusWhere(input.status);
+  const [total, items] = await Promise.all([
+    prisma.replyJob.count({ where }),
+    prisma.replyJob.findMany({
+      where,
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      skip: input.offset,
+      take: input.limit,
+    }),
+  ]);
+
+  const commentIds = [...new Set(
+    items
+      .map((item) => item.comment_id)
+      .filter((value): value is string => Boolean(value)),
+  )];
+  const canonicalCommentIds = [...new Set(
+    items
+      .map((item) => item.canonical_comment_id)
+      .filter((value): value is string => Boolean(value)),
+  )];
+  const comments = commentIds.length === 0 && canonicalCommentIds.length === 0
+    ? []
+    : await prisma.comment.findMany({
+      where: {
+        OR: [
+          ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
+          ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
+        ],
+      },
+    });
+
+  const commentByCanonicalId = new Map(comments.map((item) => [item.canonical_comment_id, item]));
+  const commentByCommentId = new Map(comments.map((item) => [item.comment_id, item]));
+
   return {
-    items: [],
-    total: 0,
+    items: items.map((item) => {
+      const comment = (item.canonical_comment_id && commentByCanonicalId.get(item.canonical_comment_id))
+        || commentByCommentId.get(item.comment_id);
+      return {
+        id: String(item.id),
+        comment_id: item.comment_id,
+        canonical_comment_id: item.canonical_comment_id,
+        status: normalizeAdminJobStatus(item.status),
+        raw_status: item.status,
+        reply_text: item.reply_text,
+        risk_flags: extractRiskFlagLabels(item.risk_flags),
+        published_at: normalizeNullableIsoTimestamp(item.published_at),
+        created_at: normalizeNullableIsoTimestamp(item.created_at),
+        comment_text: comment?.content ?? null,
+        comment_content: comment?.content ?? null,
+      };
+    }),
+    total,
     limit: input.limit,
     offset: input.offset,
   };
 }
 
-function defaultAdminGatewayLogs(): AdminGatewayLogsResponse {
+async function defaultAdminGatewayLogs(input: { commentId?: string; limit: number }): Promise<AdminGatewayLogsResponse> {
+  const prisma = getPrisma();
+  const where: Record<string, unknown> = {};
+  if (input.commentId) {
+    where.comment_id = input.commentId;
+  }
+
+  const items = await prisma.publishLog.findMany({
+    where,
+    orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    take: input.limit,
+  });
+
   return {
-    items: [],
+    items: items.map((item) => ({
+      id: item.id,
+      platform: item.platform,
+      canonical_comment_id: item.canonical_comment_id,
+      comment_id: item.comment_id,
+      reply_hash: item.reply_hash,
+      source: item.source,
+      status: item.status,
+      published_at: normalizeNullableIsoTimestamp(item.published_at),
+      failure_reason: item.failure_reason,
+      created_at: normalizeNullableIsoTimestamp(item.created_at),
+    })),
   };
 }
 
-function defaultAdminAuditSummary(input: { days: number }): AdminAuditSummaryResponse {
+async function defaultAdminAuditSummary(input: { days: number; action?: string; ok?: boolean }): Promise<AdminAuditSummaryResponse> {
+  const prisma = getPrisma();
+  const startUtc = new Date(Date.now() - input.days * 24 * 3600 * 1000);
+  const where: Record<string, unknown> = { created_at: { gte: startUtc } };
+  if (input.action) {
+    where.action = input.action;
+  }
+  if (input.ok !== undefined) {
+    where.ok = input.ok;
+  }
+
+  const items = await prisma.operationAuditLog.findMany({ where });
+  const byAction: Record<string, number> = {};
+  const byStatus: Record<string, number> = {};
+  const byResult = { ok: 0, failed: 0 };
+
+  for (const item of items) {
+    byAction[item.action] = (byAction[item.action] ?? 0) + 1;
+    const payload = parseJsonRecord(item.payload);
+    const statusValue = String(payload.status ?? '').trim();
+    if (statusValue) {
+      byStatus[statusValue] = (byStatus[statusValue] ?? 0) + 1;
+    }
+    if (item.ok) {
+      byResult.ok++;
+    } else {
+      byResult.failed++;
+    }
+  }
+
   return {
     ok: true,
     days: input.days,
+    total: items.length,
+    ok_count: byResult.ok,
+    failed_count: byResult.failed,
     totals: {
-      audit_logs: 0,
-      ok: 0,
-      failed: 0,
+      audit_logs: items.length,
+      ok: byResult.ok,
+      failed: byResult.failed,
     },
-    by_action: {},
-    by_result: {},
+    by_action: Object.fromEntries(Object.entries(byAction).sort()),
+    by_status: Object.fromEntries(Object.entries(byStatus).sort()),
+    by_result: byResult,
   };
 }
 
@@ -1206,7 +1429,7 @@ function defaultDependencies(): ServerDependencies {
     createTraceId: defaultCreateTraceId,
     getAdminOverview: defaultAdminOverview,
     listAdminJobs: (input) => defaultAdminJobs(input),
-    listAdminGatewayLogs: () => defaultAdminGatewayLogs(),
+    listAdminGatewayLogs: (input) => defaultAdminGatewayLogs(input),
     summarizeAdminAuditLogs: (input) => defaultAdminAuditSummary(input),
     listKnowledgeEntries: (input) => defaultListKnowledgeEntries(input),
     createKnowledgeEntry: (input) => defaultCreateKnowledgeEntry(input),
@@ -1672,7 +1895,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const overview = await getAdminOverview();
-    return reply.send({ ok: true, ...overview });
+    return reply.send({ ok: true, ...normalizeAdminOverviewPayload(overview) });
   });
 
   app.get('/api/admin/metrics/overview', async (request, reply) => {
@@ -1703,7 +1926,11 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       limit: parseAdminLimit(query.limit, 50, 1, 1000),
       offset: parseAdminOffset(query.offset, 0, 0, 100000),
     });
-    return reply.send({ ok: true, ...response });
+    return reply.send({
+      ok: true,
+      ...response,
+      items: response.items.map((item) => normalizeAdminJobListItem(item)),
+    });
   });
 
   app.get('/api/admin/audit/summary', async (request, reply) => {
@@ -1721,7 +1948,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       action: parseAdminString(query.action),
       ok: parseAdminBoolean(query.ok),
     });
-    return reply.send({ ...response, ok: true });
+    return reply.send({ ...normalizeAdminAuditSummaryPayload(response), ok: true });
   });
 
   app.get('/api/admin/audit-logs/summary', async (request, reply) => {
