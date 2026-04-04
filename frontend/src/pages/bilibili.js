@@ -242,6 +242,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const missingAidCount = countBilibiliVideosMissingAid(items);
+  const syncReadyCount = Math.max(0, items.length - missingAidCount);
   const pollErrorCount = countBilibiliVideosWithPollError(items);
   const healthyPollCount = countBilibiliVideosWithHealthyPoll(items);
   const neverPolledCount = countBilibiliVideosNeverPolled(items);
@@ -254,6 +255,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const incompleteMetadataCount = Math.max(0, items.length - completeMetadataCount);
   const commentCount = sumBilibiliVideoCommentCount(items);
   const missingAidText = missingAidCount > 0 ? `，当前页缺少 aid ${missingAidCount} 条` : '';
+  const syncReadyText = syncReadyCount > 0 ? `，可同步 ${syncReadyCount} 条` : '';
   const healthyPollText = healthyPollCount > 0 ? `，正常轮询 ${healthyPollCount} 条` : '';
   const pollErrorText = pollErrorCount > 0 ? `，轮询失败 ${pollErrorCount} 条` : '';
   const polledCountText = polledCount > 0 ? `，已有轮询记录 ${polledCount} 条` : '';
@@ -265,7 +267,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const commentedVideoText = videosWithComments > 0 ? `，已有评论视频 ${videosWithComments} 条` : '';
   const cursorVideoText = videosWithCursor > 0 ? `，已有评论游标 ${videosWithCursor} 条` : '';
   const commentCountText = commentCount > 0 ? `，关联评论 ${commentCount} 条` : '';
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${healthyPollText}${pollErrorText}${polledCountText}${neverPolledText}${ownerCountText}${titledCountText}${completeMetadataText}${incompleteMetadataText}${commentedVideoText}${cursorVideoText}${commentCountText}`;
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${syncReadyText}${healthyPollText}${pollErrorText}${polledCountText}${neverPolledText}${ownerCountText}${titledCountText}${completeMetadataText}${incompleteMetadataText}${commentedVideoText}${cursorVideoText}${commentCountText}`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
