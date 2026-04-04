@@ -419,6 +419,7 @@ export async function render(container) {
 
   async function loadStatus() {
     const el = container.querySelector('#bili-status-cards');
+    el.innerHTML = '<div class="page-loading">加载中...</div>';
     try {
       const data = await api.getBilibiliStatus();
       const pollEnabledCount = Number(data?.videos?.poll_enabled_count ?? 0);

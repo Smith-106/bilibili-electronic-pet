@@ -519,7 +519,7 @@
         <div class="page-loading">加载中...</div>
       </div>
     </div>
-  `;async function i(){var a,u,n,b,c,f,y,g;const s=e.querySelector("#bili-status-cards");try{const o=await w.getBilibiliStatus(),p=Number(((a=o==null?void 0:o.videos)==null?void 0:a.poll_enabled_count)??0),x=!!((u=o==null?void 0:o.diagnostics)!=null&&u.ready),L=Ee((n=o==null?void 0:o.diagnostics)==null?void 0:n.blocking_reasons),se=(b=o==null?void 0:o.credential)!=null&&b.name?d(o.credential.name):"未配置",le=Te((c=o==null?void 0:o.diagnostics)==null?void 0:c.effective_publish_mode),re=Ce((f=o==null?void 0:o.config)==null?void 0:f.poll_interval_seconds),B=H((y=o==null?void 0:o.credential)==null?void 0:y.expires_at),ae=Me((g=o==null?void 0:o.credential)==null?void 0:g.last_used_at);s.innerHTML=`
+  `;async function i(){var a,u,n,b,c,f,y,g;const s=e.querySelector("#bili-status-cards");s.innerHTML='<div class="page-loading">加载中...</div>';try{const o=await w.getBilibiliStatus(),p=Number(((a=o==null?void 0:o.videos)==null?void 0:a.poll_enabled_count)??0),x=!!((u=o==null?void 0:o.diagnostics)!=null&&u.ready),L=Ee((n=o==null?void 0:o.diagnostics)==null?void 0:n.blocking_reasons),se=(b=o==null?void 0:o.credential)!=null&&b.name?d(o.credential.name):"未配置",le=Te((c=o==null?void 0:o.diagnostics)==null?void 0:c.effective_publish_mode),re=Ce((f=o==null?void 0:o.config)==null?void 0:f.poll_interval_seconds),B=H((y=o==null?void 0:o.credential)==null?void 0:y.expires_at),ae=Me((g=o==null?void 0:o.credential)==null?void 0:g.last_used_at);s.innerHTML=`
         <div class="stat-card mini">
           <div class="stat-label">启用</div>
           <div class="stat-value">${o!=null&&o.enabled?"✅":"❌"}</div>
