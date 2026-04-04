@@ -44,6 +44,7 @@ const bilibiliPollErrorMessages = {
   retry_exhausted: '评论抓取重试耗尽。',
 };
 const bilibiliVideoPageSize = 50;
+const bilibiliCredentialExpiringSoonMs = 7 * 24 * 60 * 60 * 1000;
 
 function getBilibiliErrorMessage(error) {
   const raw = error instanceof Error ? error.message : String(error ?? 'request_failed');
@@ -145,16 +146,84 @@ function formatBilibiliPollResultMessage(result, options = {}) {
   return `${subject}完成，暂无可处理视频。`;
 }
 
+function getBilibiliCredentialExpiryState(value, now = Date.now()) {
+  if (!value) {
+    return {
+      hasExpiry: false,
+      expired: false,
+      expiringSoon: false,
+      label: '未设置',
+      cls: 'badge-muted',
+      detail: '',
+    };
+  }
+
+  const expiresAt = new Date(value);
+  if (Number.isNaN(expiresAt.getTime())) {
+    return {
+      hasExpiry: true,
+      expired: false,
+      expiringSoon: false,
+      label: '时间异常',
+      cls: 'badge-danger',
+      detail: String(value),
+    };
+  }
+
+  const diffMs = expiresAt.getTime() - now;
+  if (diffMs <= 0) {
+    return {
+      hasExpiry: true,
+      expired: true,
+      expiringSoon: false,
+      label: '已过期',
+      cls: 'badge-danger',
+      detail: formatIsoDateTime(value),
+    };
+  }
+
+  if (diffMs <= bilibiliCredentialExpiringSoonMs) {
+    return {
+      hasExpiry: true,
+      expired: false,
+      expiringSoon: true,
+      label: '即将过期',
+      cls: 'badge-warning',
+      detail: formatIsoDateTime(value),
+    };
+  }
+
+  return {
+    hasExpiry: true,
+    expired: false,
+    expiringSoon: false,
+    label: '有效',
+    cls: 'badge-success',
+    detail: formatIsoDateTime(value),
+  };
+}
+
+function renderBilibiliCredentialExpiry(value) {
+  const info = getBilibiliCredentialExpiryState(value);
+  const detail = info.detail
+    ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(info.detail)}</div>`
+    : '';
+  return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
+}
+
 function formatBilibiliCredentialSummary(items, filterValue = '', renderedCount = items.length) {
   const total = items.length;
   const active = items.filter((item) => item.is_active || item.active).length;
-  const expiring = items.filter((item) => item.expires_at).length;
+  const now = Date.now();
+  const expiryStates = items.map((item) => getBilibiliCredentialExpiryState(item.expires_at, now));
+  const expiring = expiryStates.filter((item) => item.hasExpiry).length;
+  const expired = expiryStates.filter((item) => item.expired).length;
   const filterLabel = filterValue === 'active'
     ? '仅激活'
     : filterValue === 'inactive'
       ? '仅未激活'
       : '全部';
-  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
+  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个，已过期 ${expired} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
 }
 
 function filterBilibiliCredentials(items, filterValue) {
@@ -460,7 +529,7 @@ export async function render(container) {
 
       wrapper.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期</th><th>最近使用</th><th>操作</th></tr></thead>
+          <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期状态</th><th>最近使用</th><th>操作</th></tr></thead>
           <tbody>
             ${filteredItems.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
               <td>${escapeHtml(c.name || '-')}</td>
@@ -470,7 +539,7 @@ export async function render(container) {
                 c.buvid3 ? `buvid3:${c.buvid3}` : '',
               ].filter(Boolean).join(' / ') || '-')}</td>
               <td>${renderBoolBadge(c.is_active || c.active)}</td>
-              <td class="cell-time">${escapeHtml(c.expires_at ? formatIsoDateTime(c.expires_at) : '-')}</td>
+              <td>${renderBilibiliCredentialExpiry(c.expires_at)}</td>
               <td class="cell-time">${c.last_used_at ? renderTimestamp(c.last_used_at) : '-'}</td>
               <td class="cell-actions">
                 ${!(c.is_active || c.active) ? `<button class="btn btn-sm cred-activate" data-id="${escapeHtml(c.id || c.credential_id)}">激活</button>` : ''}
