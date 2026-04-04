@@ -2021,6 +2021,10 @@ describe('bilibili integration parity', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({
       ok: true,
+      enabled: true,
+      polling_enabled: true,
+      publish_enabled: false,
+      video_count: 5,
       config: {
         enabled: true,
         poll_enabled: true,

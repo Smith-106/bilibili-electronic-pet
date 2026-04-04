@@ -648,6 +648,40 @@ function normalizeRoleProfilePayload(payload: Record<string, unknown>): Record<s
   };
 }
 
+function normalizeBilibiliStatusPayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const config = (payload.config && typeof payload.config === 'object' && !Array.isArray(payload.config))
+    ? payload.config as Record<string, unknown>
+    : {};
+  const videos = (payload.videos && typeof payload.videos === 'object' && !Array.isArray(payload.videos))
+    ? payload.videos as Record<string, unknown>
+    : {};
+
+  const enabled = Boolean(payload.enabled ?? config.enabled);
+  const pollingEnabled = Boolean(
+    payload.polling_enabled
+    ?? payload.poll_enabled
+    ?? config.polling_enabled
+    ?? config.poll_enabled,
+  );
+  const publishEnabled = Boolean(payload.publish_enabled ?? config.publish_enabled);
+  const videoCount = Number(
+    payload.video_count
+    ?? videos.video_count
+    ?? videos.total
+    ?? videos.poll_enabled_count
+    ?? 0,
+  );
+
+  return {
+    ...payload,
+    enabled,
+    polling_enabled: pollingEnabled,
+    poll_enabled: pollingEnabled,
+    publish_enabled: publishEnabled,
+    video_count: Number.isFinite(videoCount) ? videoCount : 0,
+  };
+}
+
 function inferPlatformFromCanonicalCommentId(canonicalCommentId: string | null | undefined): string | null {
   if (!canonicalCommentId) {
     return null;
@@ -2843,7 +2877,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const response = await getBilibiliStatus();
-    return reply.send(response);
+    return reply.send(normalizeBilibiliStatusPayload(response as unknown as Record<string, unknown>));
   });
 
   app.get('/api/admin/bilibili/videos', async (request, reply) => {
