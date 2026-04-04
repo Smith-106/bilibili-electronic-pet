@@ -976,9 +976,53 @@ async function defaultAdminGatewayLogs(input: { commentId?: string; limit: numbe
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     take: input.limit,
   });
+  const commentIds = [...new Set(
+    items
+      .map((item) => item.comment_id)
+      .filter((value): value is string => Boolean(value)),
+  )];
+  const canonicalCommentIds = [...new Set(
+    items
+      .map((item) => item.canonical_comment_id)
+      .filter((value): value is string => Boolean(value)),
+  )];
+  const jobs = commentIds.length === 0 && canonicalCommentIds.length === 0
+    ? []
+    : await prisma.replyJob.findMany({
+      where: {
+        OR: [
+          ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
+          ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
+        ],
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
+  const jobByCanonicalId = new Map<string, typeof jobs[number]>();
+  const jobByCommentId = new Map<string, typeof jobs[number]>();
+  for (const job of jobs) {
+    if (job.canonical_comment_id && !jobByCanonicalId.has(job.canonical_comment_id)) {
+      jobByCanonicalId.set(job.canonical_comment_id, job);
+    }
+    if (job.comment_id && !jobByCommentId.has(job.comment_id)) {
+      jobByCommentId.set(job.comment_id, job);
+    }
+  }
 
   return {
     items: items.map((item) => ({
+      ...((
+        (item.canonical_comment_id && jobByCanonicalId.get(item.canonical_comment_id))
+        || jobByCommentId.get(item.comment_id)
+      )
+        ? {
+          reply_text: ((
+            (item.canonical_comment_id && jobByCanonicalId.get(item.canonical_comment_id))
+            || jobByCommentId.get(item.comment_id)
+          )?.reply_text ?? null),
+        }
+        : {
+          reply_text: null,
+        }),
       id: item.id,
       platform: item.platform,
       canonical_comment_id: item.canonical_comment_id,

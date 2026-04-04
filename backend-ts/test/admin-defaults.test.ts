@@ -299,6 +299,16 @@ describe('default admin data providers', () => {
         created_at: new Date('2026-04-04T10:59:00.000Z'),
       },
     ]);
+    mockPrisma.replyJob.findMany.mockResolvedValue([
+      {
+        id: 21,
+        comment_id: 'comment-9',
+        canonical_comment_id: 'bilibili:comment-9',
+        status: 'published',
+        reply_text: '这是一条网关回复摘要',
+        created_at: new Date('2026-04-04T10:58:00.000Z'),
+      },
+    ]);
 
     const app = createServer(buildDeps());
     const response = await app.inject({
@@ -314,6 +324,15 @@ describe('default admin data providers', () => {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: 5,
     });
+    expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { comment_id: { in: ['comment-9'] } },
+          { canonical_comment_id: { in: ['bilibili:comment-9'] } },
+        ],
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+    });
     expect(response.json()).toEqual({
       ok: true,
       items: [
@@ -325,6 +344,7 @@ describe('default admin data providers', () => {
           reply_hash: 'hash-1',
           source: 'manual',
           status: 'published',
+          reply_text: '这是一条网关回复摘要',
           published_at: '2026-04-04T11:00:00.000Z',
           failure_reason: null,
           created_at: '2026-04-04T10:59:00.000Z',
