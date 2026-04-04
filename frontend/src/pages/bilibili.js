@@ -333,6 +333,14 @@ function isBilibiliCredentialConfigured(item) {
   return Boolean(item?.has_sessdata && item?.has_bili_jct && item?.buvid3);
 }
 
+function getBilibiliCredentialMissingFields(item) {
+  const missing = [];
+  if (!item?.has_sessdata) missing.push('SESSDATA');
+  if (!item?.has_bili_jct) missing.push('bili_jct');
+  if (!item?.buvid3) missing.push('buvid3');
+  return missing;
+}
+
 function formatBilibiliCredentialHealth(credentialPresent, credentialComplete) {
   if (!credentialPresent) return '未配置凭证';
   if (credentialComplete) return '凭证字段完整';
@@ -349,6 +357,18 @@ function formatBilibiliDiagnosticHealth(diagnostics) {
     return '当前无需鉴权';
   }
   return `${authReady ? '鉴权已就绪' : '鉴权未就绪'}，${workerOrPublishReady ? '执行链路可用' : '执行链路阻塞'}`;
+}
+
+function renderBilibiliCredentialFingerprint(item) {
+  const summary = [
+    item?.has_sessdata ? 'SESSDATA' : '',
+    item?.has_bili_jct ? 'bili_jct' : '',
+    item?.buvid3 ? `buvid3:${item.buvid3}` : '',
+  ].filter(Boolean).join(' / ') || '-';
+  const hint = isBilibiliCredentialConfigured(item)
+    ? '字段完整'
+    : `缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`;
+  return `${escapeHtml(summary)}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
 }
 
 function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilterValue = '') {
@@ -759,11 +779,7 @@ export async function render(container) {
           <tbody>
             ${filteredItems.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
               <td>${renderBilibiliCredentialName(c)}</td>
-              <td class="cell-id">${escapeHtml([
-                c.has_sessdata ? 'SESSDATA' : '',
-                c.has_bili_jct ? 'bili_jct' : '',
-                c.buvid3 ? `buvid3:${c.buvid3}` : '',
-              ].filter(Boolean).join(' / ') || '-')}</td>
+              <td class="cell-id">${renderBilibiliCredentialFingerprint(c)}</td>
               <td>${renderBoolBadge(c.is_active || c.active)}</td>
               <td>${renderBilibiliCredentialExpiry(c.expires_at)}</td>
               <td class="cell-time">${c.last_used_at ? renderTimestamp(c.last_used_at) : '-'}</td>
