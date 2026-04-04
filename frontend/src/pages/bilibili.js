@@ -281,7 +281,7 @@ export async function render(container) {
 
       wrapper.innerHTML = `
         <table class="data-table">
-          <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期</th><th>操作</th></tr></thead>
+          <thead><tr><th>名称</th><th>凭证摘要</th><th>激活</th><th>过期</th><th>最近使用</th><th>操作</th></tr></thead>
           <tbody>
             ${items.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
               <td>${escapeHtml(c.name || '-')}</td>
@@ -292,6 +292,7 @@ export async function render(container) {
               ].filter(Boolean).join(' / ') || '-')}</td>
               <td>${renderBoolBadge(c.is_active || c.active)}</td>
               <td class="cell-time">${escapeHtml(c.expires_at ? formatIsoDateTime(c.expires_at) : '-')}</td>
+              <td class="cell-time">${c.last_used_at ? renderTimestamp(c.last_used_at) : '-'}</td>
               <td class="cell-actions">
                 ${!(c.is_active || c.active) ? `<button class="btn btn-sm cred-activate" data-id="${escapeHtml(c.id || c.credential_id)}">激活</button>` : ''}
                 <button class="btn btn-sm btn-danger cred-delete" data-id="${escapeHtml(c.id || c.credential_id)}">删除</button>
