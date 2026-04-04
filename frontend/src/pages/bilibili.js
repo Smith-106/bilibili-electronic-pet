@@ -44,10 +44,16 @@ function validateBilibiliCredentialInput(payload) {
   if (!payload.sessdata) return 'sessdata_required';
   if (!payload.bili_jct) return 'bili_jct_required';
   if (!payload.buvid3) return 'buvid3_required';
-  if (payload.expires_at && Number.isNaN(new Date(payload.expires_at).getTime())) {
+  if (payload.expires_at === null) {
     return 'invalid_expires_at';
   }
   return null;
+}
+
+function normalizeOptionalDateTimeValue(value) {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 function formatBilibiliBlockingReasons(reasons) {
@@ -307,13 +313,14 @@ export async function render(container) {
   // Add credential
   container.querySelector('#cred-add').addEventListener('click', async () => {
     const btn = container.querySelector('#cred-add');
+    const expiresAt = normalizeOptionalDateTimeValue(container.querySelector('#cred-expires').value);
     const payload = {
       name: container.querySelector('#cred-name').value.trim(),
       sessdata: container.querySelector('#cred-sessdata').value.trim(),
       bili_jct: container.querySelector('#cred-bili-jct').value.trim(),
       buvid3: container.querySelector('#cred-buvid3').value.trim(),
       buvid4: container.querySelector('#cred-buvid4').value.trim(),
-      expires_at: container.querySelector('#cred-expires').value || undefined,
+      expires_at: expiresAt,
     };
     const validationError = validateBilibiliCredentialInput(payload);
     if (validationError) {
