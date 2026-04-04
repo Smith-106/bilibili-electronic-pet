@@ -474,7 +474,9 @@ export async function render(container) {
     el.innerHTML = '<div class="page-loading">加载中...</div>';
     try {
       const data = await api.getBilibiliStatus();
+      const totalVideoCount = Number(data?.video_count ?? 0);
       const pollEnabledCount = Number(data?.videos?.poll_enabled_count ?? 0);
+      const disabledVideoCount = Math.max(0, totalVideoCount - pollEnabledCount);
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
       const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
       const activeCredentialName = renderBilibiliCredentialName(data?.credential, '未配置');
@@ -497,11 +499,15 @@ export async function render(container) {
         </div>
         <div class="stat-card mini">
           <div class="stat-label">视频数</div>
-          <div class="stat-value">${data?.video_count ?? 0}</div>
+          <div class="stat-value">${totalVideoCount}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">轮询视频</div>
           <div class="stat-value">${pollEnabledCount}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">停用视频</div>
+          <div class="stat-value">${disabledVideoCount}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">活跃凭证</div>
