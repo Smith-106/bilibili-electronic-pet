@@ -120,16 +120,28 @@ function getBilibiliVideoEmptyMessage(filterValue) {
   return '暂无视频';
 }
 
+function hasBilibiliVideoAid(video) {
+  return typeof video?.aid === 'number' && Number.isFinite(video.aid);
+}
+
 function countBilibiliVideosMissingAid(items) {
-  return items.filter((item) => !(typeof item?.aid === 'number' && Number.isFinite(item.aid))).length;
+  return items.filter((item) => !hasBilibiliVideoAid(item)).length;
 }
 
 function renderBilibiliVideoIdentity(video) {
-  const hasAid = typeof video?.aid === 'number' && Number.isFinite(video.aid);
+  const hasAid = hasBilibiliVideoAid(video);
   const hint = hasAid
     ? `aid: ${video.aid}`
     : bilibiliPollErrorMessages.no_aid;
   return `${escapeHtml(video?.bvid || '-')}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
+}
+
+function renderBilibiliSyncButton(video) {
+  const hasAid = hasBilibiliVideoAid(video);
+  const disabledAttr = hasAid ? '' : ' disabled';
+  const titleAttr = hasAid ? '' : ` title="${escapeHtml(bilibiliPollErrorMessages.no_aid)}"`;
+  const id = escapeHtml(video.id || video.video_id);
+  return `<button class="btn btn-sm bili-sync" data-id="${id}" data-has-aid="${hasAid ? 'true' : 'false'}"${disabledAttr}${titleAttr}>同步</button>`;
 }
 
 function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize, items = []) {
@@ -515,7 +527,7 @@ export async function render(container) {
               <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error)}</td>
               <td class="cell-actions">
                 <button class="btn btn-sm bili-toggle-poll" data-id="${escapeHtml(v.id || v.video_id)}">${v.poll_enabled ? '禁用轮询' : '启用轮询'}</button>
-                <button class="btn btn-sm bili-sync" data-id="${escapeHtml(v.id || v.video_id)}">同步</button>
+                ${renderBilibiliSyncButton(v)}
                 <button class="btn btn-sm btn-danger bili-delete" data-id="${escapeHtml(v.id || v.video_id)}">删除</button>
               </td>
             </tr>`).join('')}
@@ -537,6 +549,10 @@ export async function render(container) {
 
       wrapper.querySelectorAll('.bili-sync').forEach(btn => {
         btn.addEventListener('click', async () => {
+          if (btn.dataset.hasAid === 'false') {
+            showToast(bilibiliPollErrorMessages.no_aid, 'warning');
+            return;
+          }
           const originalText = btn.textContent;
           btn.disabled = true;
           btn.textContent = '同步中...';
