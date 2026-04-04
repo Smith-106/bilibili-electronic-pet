@@ -23,6 +23,10 @@ const bilibiliErrorMessages = {
   invalid_expires_at: '过期时间格式无效。',
   request_failed: '请求失败，请稍后重试。',
 };
+const bilibiliBlockingReasonMessages = {
+  'auth:no active credential': '缺少可用的激活凭证。',
+  'dependency:diagnostics_unavailable': '诊断信息暂时不可用。',
+};
 
 function getBilibiliErrorMessage(error) {
   const raw = error instanceof Error ? error.message : String(error ?? 'request_failed');
@@ -44,6 +48,13 @@ function validateBilibiliCredentialInput(payload) {
     return 'invalid_expires_at';
   }
   return null;
+}
+
+function formatBilibiliBlockingReasons(reasons) {
+  const items = Array.isArray(reasons) ? reasons.filter(Boolean) : [];
+  return items
+    .map((reason) => bilibiliBlockingReasonMessages[reason] || reason)
+    .join('；');
 }
 
 export async function render(container) {
@@ -106,6 +117,10 @@ export async function render(container) {
     const el = container.querySelector('#bili-status-cards');
     try {
       const data = await api.getBilibiliStatus();
+      const pollEnabledCount = Number(data?.videos?.poll_enabled_count ?? 0);
+      const diagnosticsReady = Boolean(data?.diagnostics?.ready);
+      const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
+      const activeCredentialName = data?.credential?.name ? escapeHtml(data.credential.name) : '未配置';
       el.innerHTML = `
         <div class="stat-card mini">
           <div class="stat-label">启用</div>
@@ -123,6 +138,19 @@ export async function render(container) {
           <div class="stat-label">视频数</div>
           <div class="stat-value">${data?.video_count ?? 0}</div>
         </div>
+        <div class="stat-card mini">
+          <div class="stat-label">轮询视频</div>
+          <div class="stat-value">${pollEnabledCount}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">活跃凭证</div>
+          <div class="stat-value">${activeCredentialName}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">诊断</div>
+          <div class="stat-value" style="color:${diagnosticsReady ? 'var(--success-color)' : 'var(--danger-color)'}">${diagnosticsReady ? '就绪' : '阻塞'}</div>
+        </div>
+        ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
       `;
     } catch (err) {
       el.innerHTML = `<div class="page-error">状态加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
