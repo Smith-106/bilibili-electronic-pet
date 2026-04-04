@@ -9,6 +9,7 @@ const mockPrisma = {
   bilibiliVideo: {
     count: vi.fn(),
     findMany: vi.fn(),
+    findUnique: vi.fn(),
     create: vi.fn(),
   },
   comment: {
@@ -42,9 +43,17 @@ const mockPrisma = {
   },
 };
 
+const mockPollAllVideos = vi.fn();
+const mockPollVideoById = vi.fn();
+
 vi.mock('../src/lib/prisma.js', () => ({
   DEFAULT_DATABASE_URL: 'file:./test.db',
   getPrisma: () => mockPrisma,
+}));
+
+vi.mock('../src/services/bilibili-poller.js', () => ({
+  pollAllVideos: mockPollAllVideos,
+  pollVideoById: mockPollVideoById,
 }));
 
 const { createServer } = await import('../src/main.js');
@@ -109,6 +118,8 @@ function resetMockPrisma(): void {
 
 beforeEach(() => {
   resetMockPrisma();
+  mockPollAllVideos.mockReset();
+  mockPollVideoById.mockReset();
 });
 
 describe('default admin data providers', () => {
@@ -695,6 +706,103 @@ describe('default admin data providers', () => {
         last_rpid: 0,
         created_at: '2026-04-04T11:00:00.000Z',
         updated_at: '2026-04-04T11:00:00.000Z',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('syncs bilibili videos through the poller and returns refreshed video data', async () => {
+    mockPrisma.bilibiliVideo.findUnique
+      .mockResolvedValueOnce({
+        id: 31,
+        bvid: 'BV1GJ411x7fD',
+        aid: 1001,
+        title: '同步前',
+        owner_mid: 99,
+        poll_enabled: true,
+        last_polled_at: null,
+        last_poll_status: null,
+        last_poll_error: null,
+        last_rpid: 0,
+        created_at: new Date('2026-04-03T09:00:00.000Z'),
+        updated_at: new Date('2026-04-04T09:05:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 31,
+        bvid: 'BV1GJ411x7fD',
+        aid: 1001,
+        title: '同步后',
+        owner_mid: 99,
+        poll_enabled: true,
+        last_polled_at: new Date('2026-04-04T12:00:00.000Z'),
+        last_poll_status: 'ok',
+        last_poll_error: null,
+        last_rpid: 888,
+        created_at: new Date('2026-04-03T09:00:00.000Z'),
+        updated_at: new Date('2026-04-04T12:00:00.000Z'),
+      });
+    mockPrisma.comment.count.mockResolvedValue(4);
+    mockPollVideoById.mockResolvedValue({
+      status: 'completed',
+      videos: 1,
+      comments: 4,
+      events_injected: 4,
+      details: [
+        {
+          bvid: 'BV1GJ411x7fD',
+          comments: 4,
+          status: 'success',
+        },
+      ],
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/videos/31/sync',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPollVideoById).toHaveBeenCalledWith(31);
+    expect(mockPrisma.bilibiliVideo.findUnique).toHaveBeenNthCalledWith(1, {
+      where: { id: 31 },
+    });
+    expect(mockPrisma.bilibiliVideo.findUnique).toHaveBeenNthCalledWith(2, {
+      where: { id: 31 },
+    });
+    expect(mockPrisma.comment.count).toHaveBeenCalledWith({
+      where: { video_id: 'BV1GJ411x7fD' },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 31,
+        bvid: 'BV1GJ411x7fD',
+        aid: 1001,
+        title: '同步后',
+        owner_mid: 99,
+        poll_enabled: true,
+        comment_count: 4,
+        last_polled_at: '2026-04-04T12:00:00.000Z',
+        last_poll_status: 'ok',
+        last_poll_error: null,
+        last_rpid: 888,
+        created_at: '2026-04-03T09:00:00.000Z',
+        updated_at: '2026-04-04T12:00:00.000Z',
+      },
+      result: {
+        status: 'completed',
+        videos: 1,
+        comments: 4,
+        events_injected: 4,
+        details: [
+          {
+            bvid: 'BV1GJ411x7fD',
+            comments: 4,
+            status: 'success',
+          },
+        ],
       },
     });
 

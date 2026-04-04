@@ -3027,17 +3027,21 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
     if (!video) return reply.code(404).send({ detail: 'video_not_found' });
 
-    // Sync: return current video info (Bilibili API sync requires configured client)
+    const { pollVideoById } = await import('./services/bilibili-poller.js');
+    const result = await pollVideoById(videoId);
+    const refreshedVideo = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
+    const resolvedVideo = refreshedVideo ?? video;
+    const commentCount = await prisma.comment.count({
+      where: { video_id: resolvedVideo.bvid },
+    });
+
     return reply.send({
       ok: true,
-      item: {
-        id: video.id,
-        bvid: video.bvid,
-        aid: video.aid,
-        title: video.title,
-        owner_mid: video.owner_mid,
-        note: 'sync_from_db',
-      },
+      item: normalizeBilibiliVideoRecord(
+        resolvedVideo as unknown as Record<string, unknown>,
+        { commentCount },
+      ),
+      result,
     });
   });
 
