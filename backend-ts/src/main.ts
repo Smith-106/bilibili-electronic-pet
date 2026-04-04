@@ -3130,6 +3130,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     if (!sessdata) return reply.code(400).send({ detail: 'sessdata_required' });
     if (!biliJct) return reply.code(400).send({ detail: 'bili_jct_required' });
     if (!buvid3) return reply.code(400).send({ detail: 'buvid3_required' });
+    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
+      return reply.code(400).send({ detail: 'invalid_expires_at' });
+    }
 
     const prisma = getPrisma();
     const existingCount = await prisma.bilibiliCredential.count();

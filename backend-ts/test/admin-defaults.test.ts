@@ -5,6 +5,13 @@ import type { RuntimeSettings, ServerDependencies } from '../src/main.js';
 const mockPrisma = {
   bilibiliCredential: {
     findFirst: vi.fn(),
+    findMany: vi.fn(),
+    count: vi.fn(),
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    updateMany: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   },
   bilibiliVideo: {
     count: vi.fn(),
@@ -938,6 +945,196 @@ describe('default admin data providers', () => {
         events_injected: 0,
         details: [],
       },
+    });
+
+    await app.close();
+  });
+
+  it('lists bilibili credentials with safe summaries from prisma defaults', async () => {
+    mockPrisma.bilibiliCredential.findMany.mockResolvedValue([
+      {
+        id: 7,
+        name: '主账号',
+        is_active: true,
+        sessdata: 'stored-sess',
+        bili_jct: 'stored-jct',
+        buvid3: 'abcdefghi12345',
+        expires_at: new Date('2026-12-31T00:00:00.000Z'),
+        last_used_at: new Date('2026-04-04T08:30:00.000Z'),
+        created_at: new Date('2026-04-01T08:00:00.000Z'),
+        updated_at: new Date('2026-04-04T08:35:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/bilibili/credentials',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.bilibiliCredential.findMany).toHaveBeenCalledWith({
+      orderBy: { updated_at: 'desc' },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      items: [
+        {
+          id: 7,
+          name: '主账号',
+          is_active: true,
+          has_sessdata: true,
+          has_bili_jct: true,
+          buvid3: 'abcdefgh...',
+          expires_at: '2026-12-31T00:00:00.000Z',
+          last_used_at: '2026-04-04T08:30:00.000Z',
+          created_at: '2026-04-01T08:00:00.000Z',
+          updated_at: '2026-04-04T08:35:00.000Z',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('creates bilibili credentials through prisma defaults and auto-activates the first credential', async () => {
+    mockPrisma.bilibiliCredential.count.mockResolvedValue(0);
+    mockPrisma.bilibiliCredential.create.mockResolvedValue({
+      id: 8,
+      name: '副账号',
+      is_active: true,
+      expires_at: new Date('2026-12-31T00:00:00.000Z'),
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/credentials',
+      payload: {
+        name: '副账号',
+        sessdata: 'sess-1',
+        bili_jct: 'jct-1',
+        buvid3: 'buvid-1',
+        buvid4: 'buvid-4',
+        expires_at: '2026-12-31T00:00:00.000Z',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.bilibiliCredential.count).toHaveBeenCalledWith();
+    expect(mockPrisma.bilibiliCredential.create).toHaveBeenCalledTimes(1);
+    const credentialCreateArgs = mockPrisma.bilibiliCredential.create.mock.calls[0][0];
+    expect(credentialCreateArgs).toMatchObject({
+      data: {
+        name: '副账号',
+        buvid3: 'buvid-1',
+        buvid4: 'buvid-4',
+        is_active: true,
+        expires_at: new Date('2026-12-31T00:00:00.000Z'),
+      },
+    });
+    expect(typeof credentialCreateArgs.data.sessdata).toBe('string');
+    expect(typeof credentialCreateArgs.data.bili_jct).toBe('string');
+    expect(credentialCreateArgs.data.sessdata.length).toBeGreaterThan(0);
+    expect(credentialCreateArgs.data.bili_jct.length).toBeGreaterThan(0);
+    expect(response.json()).toEqual({
+      ok: true,
+      item: {
+        id: 8,
+        name: '副账号',
+        is_active: true,
+        expires_at: '2026-12-31T00:00:00.000Z',
+      },
+    });
+
+    await app.close();
+  });
+
+  it('rejects invalid bilibili credential expiry timestamps', async () => {
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/credentials',
+      payload: {
+        name: '副账号',
+        sessdata: 'sess-1',
+        bili_jct: 'jct-1',
+        buvid3: 'buvid-1',
+        expires_at: 'not-a-date',
+      },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(mockPrisma.bilibiliCredential.count).not.toHaveBeenCalled();
+    expect(mockPrisma.bilibiliCredential.create).not.toHaveBeenCalled();
+    expect(response.json()).toEqual({ detail: 'invalid_expires_at' });
+
+    await app.close();
+  });
+
+  it('activates bilibili credentials through prisma defaults', async () => {
+    mockPrisma.bilibiliCredential.findUnique.mockResolvedValue({
+      id: 8,
+      name: '副账号',
+      is_active: false,
+    });
+    mockPrisma.bilibiliCredential.updateMany.mockResolvedValue({ count: 2 });
+    mockPrisma.bilibiliCredential.update.mockResolvedValue({
+      id: 8,
+      is_active: true,
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/credentials/8/activate',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.bilibiliCredential.findUnique).toHaveBeenCalledWith({
+      where: { id: 8 },
+    });
+    expect(mockPrisma.bilibiliCredential.updateMany).toHaveBeenCalledWith({
+      data: { is_active: false },
+    });
+    expect(mockPrisma.bilibiliCredential.update).toHaveBeenCalledWith({
+      where: { id: 8 },
+      data: { is_active: true },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      active_credential_id: 8,
+    });
+
+    await app.close();
+  });
+
+  it('deletes bilibili credentials through prisma defaults', async () => {
+    mockPrisma.bilibiliCredential.findUnique.mockResolvedValue({
+      id: 8,
+      name: '副账号',
+      is_active: false,
+    });
+    mockPrisma.bilibiliCredential.delete.mockResolvedValue({
+      id: 8,
+    });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/bilibili/credentials/8',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(mockPrisma.bilibiliCredential.findUnique).toHaveBeenCalledWith({
+      where: { id: 8 },
+    });
+    expect(mockPrisma.bilibiliCredential.delete).toHaveBeenCalledWith({
+      where: { id: 8 },
+    });
+    expect(response.json()).toEqual({
+      ok: true,
+      deleted_id: 8,
     });
 
     await app.close();
