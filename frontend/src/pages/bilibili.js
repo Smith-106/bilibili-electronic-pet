@@ -93,7 +93,7 @@ function formatBilibiliPollInterval(seconds) {
   return `${value} 秒`;
 }
 
-function renderBilibiliPollStatus(status, error) {
+function renderBilibiliPollStatus(status, error, lastRpid) {
   const normalized = String(status ?? '').trim().toLowerCase();
   if (!normalized) return '-';
   const info = bilibiliPollStatusMessages[normalized] || { label: normalized, cls: 'badge-muted' };
@@ -101,7 +101,14 @@ function renderBilibiliPollStatus(status, error) {
     ? bilibiliPollErrorMessages[String(error).trim().toLowerCase()] || String(error)
     : '';
   const titleAttr = errorText ? ` title="${escapeHtml(errorText)}"` : '';
-  return `<span class="status-badge ${info.cls}"${titleAttr}>${escapeHtml(info.label)}</span>${errorText ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(errorText)}</div>` : ''}`;
+  const cursorText = typeof lastRpid === 'number' && Number.isFinite(lastRpid)
+    ? `评论游标: ${lastRpid}`
+    : '';
+  const hints = [errorText, cursorText]
+    .filter(Boolean)
+    .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
+    .join('');
+  return `<span class="status-badge ${info.cls}"${titleAttr}>${escapeHtml(info.label)}</span>${hints}`;
 }
 
 function formatBilibiliStatusTime(value) {
@@ -524,7 +531,7 @@ export async function render(container) {
               <td>${renderBoolBadge(v.poll_enabled)}</td>
               <td>${v.comment_count ?? '-'}</td>
               <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
-              <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error)}</td>
+              <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error, v.last_rpid)}</td>
               <td class="cell-actions">
                 <button class="btn btn-sm bili-toggle-poll" data-id="${escapeHtml(v.id || v.video_id)}">${v.poll_enabled ? '禁用轮询' : '启用轮询'}</button>
                 ${renderBilibiliSyncButton(v)}
