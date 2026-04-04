@@ -195,33 +195,43 @@ export async function render(container) {
 
       wrapper.querySelectorAll('.bili-toggle-poll').forEach(btn => {
         btn.addEventListener('click', async () => {
+          btn.disabled = true;
           try {
             await api.toggleBilibiliVideoPoll(btn.dataset.id);
             showToast('操作成功', 'success');
             await Promise.all([loadStatus(), loadVideos()]);
           } catch (err) { showToast(`失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+          finally { btn.disabled = false; }
         });
       });
 
       wrapper.querySelectorAll('.bili-sync').forEach(btn => {
         btn.addEventListener('click', async () => {
+          const originalText = btn.textContent;
           btn.disabled = true;
+          btn.textContent = '同步中...';
           try {
             await api.syncBilibiliVideo(btn.dataset.id);
             showToast('同步完成', 'success');
-            loadVideos();
-          } catch (err) { showToast(`同步失败: ${getBilibiliErrorMessage(err)}`, 'error'); btn.disabled = false; }
+            await Promise.all([loadStatus(), loadVideos()]);
+          } catch (err) { showToast(`同步失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+          finally {
+            btn.disabled = false;
+            btn.textContent = originalText;
+          }
         });
       });
 
       wrapper.querySelectorAll('.bili-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm('确定删除此视频？')) return;
+          btn.disabled = true;
           try {
             await api.deleteBilibiliVideo(btn.dataset.id);
             showToast('已删除', 'success');
             await Promise.all([loadStatus(), loadVideos()]);
           } catch (err) { showToast(`删除失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+          finally { btn.disabled = false; }
         });
       });
     } catch (err) {
@@ -264,22 +274,26 @@ export async function render(container) {
 
       wrapper.querySelectorAll('.cred-activate').forEach(btn => {
         btn.addEventListener('click', async () => {
+          btn.disabled = true;
           try {
             await api.activateBilibiliCredential(btn.dataset.id);
             showToast('已激活', 'success');
             await Promise.all([loadStatus(), loadCredentials()]);
           } catch (err) { showToast(`激活失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+          finally { btn.disabled = false; }
         });
       });
 
       wrapper.querySelectorAll('.cred-delete').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm('确定删除此凭证？')) return;
+          btn.disabled = true;
           try {
             await api.deleteBilibiliCredential(btn.dataset.id);
             showToast('已删除', 'success');
             await Promise.all([loadStatus(), loadCredentials()]);
           } catch (err) { showToast(`删除失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
+          finally { btn.disabled = false; }
         });
       });
     } catch (err) {
@@ -354,7 +368,7 @@ export async function render(container) {
     try {
       await api.triggerBilibiliPoll();
       showToast('轮询完成', 'success');
-      loadVideos();
+      await Promise.all([loadStatus(), loadVideos()]);
     } catch (err) { showToast(`轮询失败: ${getBilibiliErrorMessage(err)}`, 'error'); }
     finally { btn.disabled = false; btn.textContent = '触发轮询'; }
   });
