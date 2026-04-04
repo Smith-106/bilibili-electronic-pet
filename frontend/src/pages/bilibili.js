@@ -276,8 +276,9 @@ function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFi
   const expiryStates = items.map((item) => getBilibiliCredentialExpiryState(item.expires_at, now));
   const expiring = expiryStates.filter((item) => item.hasExpiry).length;
   const expired = expiryStates.filter((item) => item.expired).length;
+  const expiringSoon = expiryStates.filter((item) => item.expiringSoon).length;
   const filterLabel = formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue);
-  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个，已过期 ${expired} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
+  return `共 ${total} 个凭证，激活中 ${active} 个，设置过期时间 ${expiring} 个，已过期 ${expired} 个，即将过期 ${expiringSoon} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
 }
 
 function filterBilibiliCredentials(items, activeFilterValue = '', expiryFilterValue = '') {
