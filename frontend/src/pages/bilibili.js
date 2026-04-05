@@ -357,8 +357,27 @@ function formatBilibiliHintTime(label, value) {
   return `${label}: ${exact}`;
 }
 
+function getBilibiliVideoMissingMetadataFields(video) {
+  const missing = [];
+  if (!hasBilibiliVideoAid(video)) {
+    missing.push('aid');
+  }
+  if (!String(video?.title ?? '').trim()) {
+    missing.push('标题');
+  }
+  if (!(typeof video?.owner_mid === 'number' && Number.isFinite(video.owner_mid))) {
+    missing.push('UP主 MID');
+  }
+  return missing;
+}
+
 function renderBilibiliVideoTitle(video) {
   const hints = [];
+  const title = String(video?.title ?? '').trim();
+  const missingMetadataFields = getBilibiliVideoMissingMetadataFields(video);
+  if (missingMetadataFields.length > 0) {
+    hints.push(`缺少 ${missingMetadataFields.join(' / ')}`);
+  }
   if (typeof video?.owner_mid === 'number' && Number.isFinite(video.owner_mid)) {
     hints.push(`UP主 MID: ${video.owner_mid}`);
   }
@@ -368,7 +387,7 @@ function renderBilibiliVideoTitle(video) {
   if (video?.created_at) {
     hints.push(formatBilibiliHintTime('创建', video.created_at));
   }
-  return `${escapeHtml(video?.title || '-')}${hints
+  return `${escapeHtml(title || '未同步标题')}${hints
     .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
     .join('')}`;
 }
