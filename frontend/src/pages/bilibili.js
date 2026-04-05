@@ -78,7 +78,7 @@ function normalizeOptionalDateTimeValue(value) {
 function formatBilibiliBlockingReasons(reasons) {
   const items = Array.isArray(reasons) ? reasons.filter(Boolean) : [];
   return items
-    .map((reason) => bilibiliBlockingReasonMessages[reason] || reason)
+    .map((reason) => bilibiliBlockingReasonMessages[reason] || `未识别阻塞原因: ${reason}`)
     .join('；');
 }
 
