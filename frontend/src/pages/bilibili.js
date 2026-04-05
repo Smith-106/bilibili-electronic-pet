@@ -24,9 +24,9 @@ const bilibiliErrorMessages = {
   request_failed: '请求失败，请稍后重试。',
 };
 const bilibiliBlockingReasonMessages = {
-  'auth:no active credential': '缺少可用的激活凭证。',
-  'config:bilibili_enabled is false': 'B 站集成总开关已关闭。',
-  'dependency:diagnostics_unavailable': '诊断信息暂时不可用。',
+  'auth:no active credential': '缺少可用的激活凭证，请先添加并激活。',
+  'config:bilibili_enabled is false': 'B 站集成总开关已关闭，请先启用配置。',
+  'dependency:diagnostics_unavailable': '诊断信息暂时不可用，请稍后刷新重试。',
 };
 const bilibiliPublishModeMessages = {
   manual_queue: '人工队列',
