@@ -177,6 +177,10 @@ function countBilibiliVideosNeverPolled(items) {
   return items.filter((item) => !item?.last_polled_at).length;
 }
 
+function countBilibiliVideosSyncReadyButNeverPolled(items) {
+  return items.filter((item) => hasBilibiliVideoAid(item) && !item?.last_polled_at).length;
+}
+
 function countBilibiliVideosWithOwner(items) {
   return items.filter((item) => typeof item?.owner_mid === 'number' && Number.isFinite(item.owner_mid)).length;
 }
@@ -271,6 +275,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const successfulPollCount = countBilibiliVideosWithSuccessfulPoll(items);
   const noNewPollCount = countBilibiliVideosWithNoNewPoll(items);
   const neverPolledCount = countBilibiliVideosNeverPolled(items);
+  const syncReadyNeverPolledCount = countBilibiliVideosSyncReadyButNeverPolled(items);
   const polledCount = Math.max(0, items.length - neverPolledCount);
   const ownerCount = countBilibiliVideosWithOwner(items);
   const missingOwnerCount = Math.max(0, items.length - ownerCount);
@@ -293,6 +298,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const pollErrorText = pollErrorCount > 0 ? `，轮询失败 ${pollErrorCount} 条` : '';
   const polledCountText = polledCount > 0 ? `，已有轮询记录 ${polledCount} 条` : '';
   const neverPolledText = neverPolledCount > 0 ? `，尚未轮询 ${neverPolledCount} 条` : '';
+  const syncReadyNeverPolledText = syncReadyNeverPolledCount > 0 ? `，可同步但尚未轮询 ${syncReadyNeverPolledCount} 条` : '';
   const ownerCountText = ownerCount > 0 ? `，已识别 UP 主 ${ownerCount} 条` : '';
   const missingOwnerText = missingOwnerCount > 0 ? `，缺少 UP 主 ${missingOwnerCount} 条` : '';
   const titledCountText = titledCount > 0 ? `，已抓取标题 ${titledCount} 条` : '';
@@ -306,7 +312,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const cursorWithoutCommentsText = cursorWithoutCommentsCount > 0 ? `，无评论但有游标 ${cursorWithoutCommentsCount} 条` : '';
   const missingCursorVideoText = videosWithoutCursor > 0 ? `，无评论游标 ${videosWithoutCursor} 条` : '';
   const commentCountText = commentCount > 0 ? `，关联评论 ${commentCount} 条` : '';
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${syncReadyText}${healthyPollText}${successfulPollText}${noNewPollText}${pollErrorText}${polledCountText}${neverPolledText}${ownerCountText}${missingOwnerText}${titledCountText}${missingTitleText}${completeMetadataText}${incompleteMetadataText}${commentedVideoText}${uncommentedVideoText}${cursorVideoText}${commentedWithoutCursorText}${cursorWithoutCommentsText}${missingCursorVideoText}${commentCountText}`;
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${syncReadyText}${healthyPollText}${successfulPollText}${noNewPollText}${pollErrorText}${polledCountText}${neverPolledText}${syncReadyNeverPolledText}${ownerCountText}${missingOwnerText}${titledCountText}${missingTitleText}${completeMetadataText}${incompleteMetadataText}${commentedVideoText}${uncommentedVideoText}${cursorVideoText}${commentedWithoutCursorText}${cursorWithoutCommentsText}${missingCursorVideoText}${commentCountText}`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
