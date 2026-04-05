@@ -163,7 +163,7 @@ function formatBilibiliVideoSplit(totalCount, pollEnabledCount) {
 function renderBilibiliPollStatus(status, error, lastRpid) {
   const normalized = String(status ?? '').trim().toLowerCase();
   if (!normalized) return '-';
-  const info = bilibiliPollStatusMessages[normalized] || { label: normalized, cls: 'badge-muted' };
+  const info = bilibiliPollStatusMessages[normalized] || { label: '未知状态', cls: 'badge-muted' };
   const errorText = normalized === 'error' && error
     ? bilibiliPollErrorMessages[String(error).trim().toLowerCase()] || String(error)
     : '';
@@ -175,6 +175,8 @@ function renderBilibiliPollStatus(status, error, lastRpid) {
     ? (cursorText ? '轮询完成，评论游标已推进' : '轮询完成')
     : normalized === 'no_new'
       ? (cursorText ? '本次未发现新评论，评论游标已保留' : '本次未发现新评论')
+      : !bilibiliPollStatusMessages[normalized]
+        ? `原始状态: ${normalized}`
       : '';
   const hints = [statusHint, errorText, cursorText]
     .filter(Boolean)
