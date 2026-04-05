@@ -510,7 +510,7 @@
             <option value="expired">已过期</option>
             <option value="expiring">即将过期</option>
             <option value="valid">有效</option>
-            <option value="unset">未设置</option>
+            <option value="unset">未设置过期时间</option>
           </select>
         </div>
       </div>
