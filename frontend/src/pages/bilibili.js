@@ -443,7 +443,7 @@ function renderBilibiliVideoCommentCount(video) {
   if (safeCount > 0) {
     hint = hasCursor ? '已有评论，游标已记录' : '已有评论，缺少游标';
   } else if (video?.last_polled_at) {
-    hint = hasCursor ? '已轮询无评论，保留游标' : '已轮询无评论';
+    hint = hasCursor ? '已轮询无评论，保留游标' : '已轮询无评论，未记录游标';
   }
   return `${escapeHtml(safeCount)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
@@ -452,7 +452,7 @@ function renderBilibiliLastPolledCell(video) {
   if (video?.last_polled_at) {
     const cursorHint = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid)
       ? `评论游标: ${video.last_rpid}`
-      : '未记录评论游标';
+      : '未记录评论游标，可在下次轮询后补齐';
     return `${renderTimestamp(video.last_polled_at)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(cursorHint)}</div>`;
   }
   return `从未轮询<div class="form-hint" style="margin-top:4px;">${escapeHtml(getBilibiliVideoNeverPolledHint(video))}</div>`;
