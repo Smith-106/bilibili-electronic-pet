@@ -814,7 +814,7 @@ function renderBilibiliCredentialFingerprint(item) {
     isBilibiliCredentialConfigured(item)
       ? '字段完整，可用于鉴权'
       : `缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`,
-    item?.buvid3 ? '仅展示指纹摘要' : '',
+    item?.buvid3 ? '仅展示指纹摘要' : '未记录 buvid3 指纹摘要',
   ].filter(Boolean).join('，');
   return `${escapeHtml(summary)}${hints ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hints)}</div>` : ''}`;
 }
