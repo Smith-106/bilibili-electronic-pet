@@ -835,7 +835,7 @@ function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilte
         : expiryFilterValue === 'unset'
           ? '未设置过期时间'
           : '全部';
-  return `激活: ${activeLabel}，过期: ${expiryLabel}`;
+  return `激活筛选: ${activeLabel}，过期筛选: ${expiryLabel}`;
 }
 
 function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFilterValue = '', renderedCount = items.length) {
