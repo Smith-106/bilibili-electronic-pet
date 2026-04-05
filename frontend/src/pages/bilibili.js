@@ -674,7 +674,7 @@ function getBilibiliCredentialUsageState(item) {
   if (!item) {
     return {
       label: '未配置',
-      detail: '',
+      detail: '请先添加并激活凭证',
     };
   }
   if (item?.last_used_at) {
