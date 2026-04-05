@@ -165,7 +165,7 @@ function formatBilibiliVideoSplit(totalCount, pollEnabledCount) {
 function renderBilibiliPollStatus(status, error, lastRpid) {
   const normalized = String(status ?? '').trim().toLowerCase();
   if (!normalized) return '-';
-  const info = bilibiliPollStatusMessages[normalized] || { label: '未知状态', cls: 'badge-muted' };
+  const info = bilibiliPollStatusMessages[normalized] || { label: '未识别轮询状态', cls: 'badge-muted' };
   const errorText = normalized === 'error' && error
     ? bilibiliPollErrorMessages[String(error).trim().toLowerCase()] || String(error)
     : '';
@@ -178,7 +178,7 @@ function renderBilibiliPollStatus(status, error, lastRpid) {
     : normalized === 'no_new'
       ? (cursorText ? '本次未发现新评论，评论游标已保留' : '本次未发现新评论')
       : !bilibiliPollStatusMessages[normalized]
-        ? `原始状态: ${normalized}`
+        ? `原始状态值: ${normalized}`
       : '';
   const hints = [statusHint, errorText, cursorText]
     .filter(Boolean)
@@ -198,7 +198,7 @@ function renderBilibiliVideoPollResult(video) {
   const detail = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid)
     ? '已轮询但未记录结果，评论游标已保留'
     : '已轮询但未记录结果';
-  return `<span class="status-badge badge-muted">无状态</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(detail)}</div>`;
+  return `<span class="status-badge badge-muted">未记录结果</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(detail)}</div>`;
 }
 
 function parseBilibiliPollFilter(value) {
