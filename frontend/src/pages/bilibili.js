@@ -658,6 +658,8 @@ function getBilibiliCredentialUsageState(item) {
     };
   }
   const hints = [];
+  const active = Boolean(item?.is_active || item?.active);
+  hints.push(active ? '当前生效，等待首次使用' : '待激活后使用');
   if (item?.updated_at) {
     hints.push(formatBilibiliHintTime('更新', item.updated_at));
   }
