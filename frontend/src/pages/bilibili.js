@@ -1109,18 +1109,18 @@ export async function render(container) {
       const publishModeHealth = formatBilibiliPublishModeHealth(data?.diagnostics);
       const enabledHint = formatBilibiliToggleState(
         data?.enabled,
-        'B 站集成已启用',
-        'B 站集成已停用',
+        'B 站集成已启用，可管理凭证与视频',
+        'B 站集成已停用，当前不会触发轮询或发布',
       );
       const pollingHint = formatBilibiliToggleState(
         data?.polling_enabled,
-        '评论轮询已启用',
-        '评论轮询已停用',
+        '评论轮询已启用，会按配置自动抓取评论',
+        '评论轮询已停用，仅支持手动同步',
       );
       const publishHint = formatBilibiliToggleState(
         data?.publish_enabled,
-        '发布链路已启用',
-        '发布链路已停用',
+        '发布链路已启用，满足条件后可进入发布流程',
+        '发布链路已停用，不会进入自动发布流程',
       );
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const pollIntervalHint = formatBilibiliPollIntervalHint(data?.config?.poll_interval_seconds);
