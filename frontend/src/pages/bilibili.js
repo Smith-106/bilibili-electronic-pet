@@ -386,6 +386,14 @@ function renderBilibiliVideoCommentCount(video) {
   return `${escapeHtml(safeCount)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
 
+function renderBilibiliLastPolledCell(video) {
+  if (video?.last_polled_at) {
+    return renderTimestamp(video.last_polled_at);
+  }
+  const hint = hasBilibiliVideoAid(video) ? '可立即同步' : bilibiliPollErrorMessages.no_aid;
+  return `从未轮询<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+}
+
 function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize, items = []) {
   const filterLabel = filterValue === 'true'
     ? '轮询中'
@@ -1136,7 +1144,7 @@ export async function render(container) {
               <td class="cell-truncate">${renderBilibiliVideoTitle(v)}</td>
               <td>${renderBilibiliVideoPollState(v)}</td>
               <td>${renderBilibiliVideoCommentCount(v)}</td>
-              <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
+              <td class="cell-time">${renderBilibiliLastPolledCell(v)}</td>
               <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error, v.last_rpid)}</td>
               <td class="cell-actions">
                 <button class="btn btn-sm bili-toggle-poll" data-id="${escapeHtml(v.id || v.video_id)}">${v.poll_enabled ? '禁用轮询' : '启用轮询'}</button>
