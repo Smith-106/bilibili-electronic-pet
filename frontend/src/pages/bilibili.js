@@ -99,7 +99,7 @@ function formatBilibiliPollInterval(seconds) {
 
 function formatBilibiliPollIntervalHint(seconds) {
   const value = Number(seconds);
-  if (!Number.isFinite(value) || value <= 0) return '';
+  if (!Number.isFinite(value) || value <= 0) return '未设置轮询间隔';
   if (value < 60) {
     const perMinute = 60 / value;
     const formatted = perMinute.toFixed(perMinute >= 10 ? 0 : 1).replace(/\.0$/, '');
