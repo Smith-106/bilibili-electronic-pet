@@ -432,7 +432,10 @@ function renderBilibiliVideoCommentCount(video) {
 
 function renderBilibiliLastPolledCell(video) {
   if (video?.last_polled_at) {
-    return renderTimestamp(video.last_polled_at);
+    const cursorHint = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid)
+      ? `评论游标: ${video.last_rpid}`
+      : '未记录评论游标';
+    return `${renderTimestamp(video.last_polled_at)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(cursorHint)}</div>`;
   }
   const hint = hasBilibiliVideoAid(video) ? '可立即同步' : bilibiliPollErrorMessages.no_aid;
   return `从未轮询<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
