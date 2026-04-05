@@ -746,11 +746,14 @@ function renderBilibiliCredentialFingerprint(item) {
     item?.has_sessdata ? 'SESSDATA' : '',
     item?.has_bili_jct ? 'bili_jct' : '',
     item?.buvid3 ? `buvid3:${maskBilibiliIdentifier(item.buvid3)}` : '',
-  ].filter(Boolean).join(' / ') || '-';
-  const hint = isBilibiliCredentialConfigured(item)
-    ? '字段完整'
-    : `缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`;
-  return `${escapeHtml(summary)}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
+  ].filter(Boolean).join(' / ') || '未配置指纹';
+  const hints = [
+    isBilibiliCredentialConfigured(item)
+      ? '字段完整'
+      : `缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`,
+    item?.buvid3 ? '仅展示指纹摘要' : '',
+  ].filter(Boolean).join('，');
+  return `${escapeHtml(summary)}${hints ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hints)}</div>` : ''}`;
 }
 
 function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilterValue = '') {
