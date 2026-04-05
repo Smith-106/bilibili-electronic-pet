@@ -93,6 +93,24 @@ function formatBilibiliPollInterval(seconds) {
   return `${value} 秒`;
 }
 
+function formatBilibiliPollIntervalHint(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value < 60) {
+    const perMinute = 60 / value;
+    const formatted = perMinute.toFixed(perMinute >= 10 ? 0 : 1).replace(/\.0$/, '');
+    return `约每分钟 ${formatted} 轮`;
+  }
+  if (value < 3600) {
+    const perHour = 3600 / value;
+    const formatted = perHour.toFixed(perHour >= 10 ? 0 : 1).replace(/\.0$/, '');
+    return `约每小时 ${formatted} 轮`;
+  }
+  const hoursPerPoll = value / 3600;
+  const formatted = hoursPerPoll.toFixed(hoursPerPoll >= 10 ? 0 : 1).replace(/\.0$/, '');
+  return `约每 ${formatted} 小时 1 轮`;
+}
+
 function formatBilibiliRateLimit(limitPerMinute) {
   const value = Number(limitPerMinute);
   if (!Number.isFinite(value) || value <= 0) return '-';
@@ -893,6 +911,7 @@ export async function render(container) {
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const publishModeHealth = formatBilibiliPublishModeHealth(data?.diagnostics);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
+      const pollIntervalHint = formatBilibiliPollIntervalHint(data?.config?.poll_interval_seconds);
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
       const rateLimitHint = formatBilibiliRateLimitHint(data?.config?.rate_limit_per_minute);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
@@ -943,6 +962,7 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">轮询间隔</div>
           <div class="stat-value">${escapeHtml(pollInterval)}</div>
+          ${pollIntervalHint ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(pollIntervalHint)}</div>` : ''}
         </div>
         <div class="stat-card mini">
           <div class="stat-label">速率限制</div>
