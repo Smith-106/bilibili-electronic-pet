@@ -700,11 +700,18 @@ function formatBilibiliPublishModeHealth(diagnostics) {
   ].join('，');
 }
 
+function maskBilibiliIdentifier(value, visibleSuffix = 4) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  if (text.length <= visibleSuffix) return text;
+  return `...${text.slice(-visibleSuffix)}`;
+}
+
 function renderBilibiliCredentialFingerprint(item) {
   const summary = [
     item?.has_sessdata ? 'SESSDATA' : '',
     item?.has_bili_jct ? 'bili_jct' : '',
-    item?.buvid3 ? `buvid3:${item.buvid3}` : '',
+    item?.buvid3 ? `buvid3:${maskBilibiliIdentifier(item.buvid3)}` : '',
   ].filter(Boolean).join(' / ') || '-';
   const hint = isBilibiliCredentialConfigured(item)
     ? '字段完整'
