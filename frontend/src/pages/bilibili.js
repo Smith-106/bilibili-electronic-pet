@@ -37,7 +37,7 @@ const bilibiliPublishModeMessages = {
 };
 const bilibiliPollStatusMessages = {
   ok: { label: '成功', cls: 'badge-success' },
-  no_new: { label: '无新增', cls: 'badge-muted' },
+  no_new: { label: '无新增评论', cls: 'badge-muted' },
   error: { label: '失败', cls: 'badge-danger' },
 };
 const bilibiliPollErrorMessages = {
@@ -513,7 +513,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const syncReadyText = syncReadyCount > 0 ? `，可同步 ${syncReadyCount} 条` : '';
   const healthyPollText = healthyPollCount > 0 ? `，正常轮询 ${healthyPollCount} 条` : '';
   const successfulPollText = successfulPollCount > 0 ? `，成功轮询 ${successfulPollCount} 条` : '';
-  const noNewPollText = noNewPollCount > 0 ? `，无新增 ${noNewPollCount} 条` : '';
+  const noNewPollText = noNewPollCount > 0 ? `，无新增评论 ${noNewPollCount} 条` : '';
   const pollErrorText = pollErrorCount > 0 ? `，轮询失败 ${pollErrorCount} 条` : '';
   const polledCountText = polledCount > 0 ? `，已有轮询记录 ${polledCount} 条` : '';
   const neverPolledText = neverPolledCount > 0 ? `，尚未轮询 ${neverPolledCount} 条` : '';
