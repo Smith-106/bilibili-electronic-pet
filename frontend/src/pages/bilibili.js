@@ -29,10 +29,10 @@ const bilibiliBlockingReasonMessages = {
   'dependency:diagnostics_unavailable': '诊断信息暂时不可用，请稍后刷新重试。',
 };
 const bilibiliPublishModeMessages = {
-  manual_queue: '人工队列',
-  simulated: '模拟发布',
+  manual_queue: '人工队列发布',
+  simulated: '模拟发布流程',
   webhook: 'Webhook 推送',
-  real_publish: '真实发布',
+  real_publish: '真实发布流程',
   native_bilibili: '原生 B 站发布',
 };
 const bilibiliPollStatusMessages = {
