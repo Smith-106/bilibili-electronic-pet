@@ -734,6 +734,7 @@ function formatBilibiliPublishModeHealth(diagnostics) {
 function maskBilibiliIdentifier(value, visibleSuffix = 4) {
   const text = String(value ?? '').trim();
   if (!text) return '';
+  if (text.endsWith('...')) return text;
   if (text.length <= visibleSuffix) return text;
   return `...${text.slice(-visibleSuffix)}`;
 }
