@@ -208,9 +208,9 @@ function parseBilibiliPollFilter(value) {
 }
 
 function getBilibiliVideoEmptyMessage(filterValue) {
-  if (filterValue === 'true') return '暂无轮询中视频';
-  if (filterValue === 'false') return '暂无已停用视频';
-  return '暂无视频';
+  if (filterValue === 'true') return '当前筛选暂无轮询中视频';
+  if (filterValue === 'false') return '当前筛选暂无已停用视频';
+  return '暂无监控视频，请先添加 BVID';
 }
 
 function hasBilibiliVideoAid(video) {
