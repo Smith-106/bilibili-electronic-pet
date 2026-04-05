@@ -639,7 +639,7 @@ function formatBilibiliCredentialExpiryHint(info, hasCredential = true) {
     return '当前无活跃凭证';
   }
   const stateHint = !info.hasExpiry
-    ? '需手动确认有效性'
+    ? '需手动确认有效性并定期轮换'
     : info.label === '时间异常'
       ? '请检查过期时间格式'
       : info.expired
