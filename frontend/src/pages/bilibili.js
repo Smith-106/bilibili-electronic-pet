@@ -753,8 +753,8 @@ function getBilibiliCredentialMissingFields(item) {
 
 function formatBilibiliCredentialHealth(credentialPresent, credentialComplete) {
   if (!credentialPresent) return '当前无活跃凭证，请先添加并激活';
-  if (credentialComplete) return '活跃凭证字段完整';
-  return '活跃凭证缺少关键字段，请检查凭证配置';
+  if (credentialComplete) return '活跃凭证字段完整，可用于鉴权';
+  return '活跃凭证已激活，但缺少关键字段，请检查凭证配置';
 }
 
 function formatBilibiliDiagnosticHealth(diagnostics) {
