@@ -790,8 +790,8 @@ function formatBilibiliPublishModeHealth(diagnostics) {
   const pollingWorkerEnabled = Boolean(diagnostics?.signals?.polling_worker_enabled);
   return [
     publishModeConfigReady ? '模式配置就绪' : '模式配置缺失，请检查发布配置',
-    nativePublishEnabled ? '原生发布启用' : '原生发布停用',
-    pollingWorkerEnabled ? '轮询链路启用' : '轮询链路停用',
+    nativePublishEnabled ? '原生发布启用，可直接进入 B 站发布链路' : '原生发布停用，当前不会直接走 B 站发布',
+    pollingWorkerEnabled ? '轮询链路启用，可配合自动处理评论侧流程' : '轮询链路停用，评论侧仅支持手动同步',
   ].join('，');
 }
 
