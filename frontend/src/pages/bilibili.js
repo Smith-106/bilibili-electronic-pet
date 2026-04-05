@@ -36,9 +36,9 @@ const bilibiliPublishModeMessages = {
   native_bilibili: '原生 B 站发布',
 };
 const bilibiliPollStatusMessages = {
-  ok: { label: '成功', cls: 'badge-success' },
+  ok: { label: '轮询成功', cls: 'badge-success' },
   no_new: { label: '无新增评论', cls: 'badge-muted' },
-  error: { label: '失败', cls: 'badge-danger' },
+  error: { label: '轮询失败', cls: 'badge-danger' },
 };
 const bilibiliPollErrorMessages = {
   no_aid: '缺少视频 aid，暂时无法轮询评论。',
