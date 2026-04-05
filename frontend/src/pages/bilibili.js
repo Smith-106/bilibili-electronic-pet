@@ -701,7 +701,7 @@ function getBilibiliCredentialUsageState(item) {
     const relative = timeAgo(item.last_used_at);
     return {
       label: relative || '已使用',
-      detail: `${formatIsoDateTime(item.last_used_at)}，${active ? '当前生效' : '当前未激活'}${configured ? '，字段完整' : `，${missingFieldsText}`}`,
+      detail: `${formatIsoDateTime(item.last_used_at)}，${active ? '当前生效' : '当前未激活，历史使用记录保留'}${configured ? '，字段完整' : `，${missingFieldsText}`}`,
     };
   }
   const hints = [];
