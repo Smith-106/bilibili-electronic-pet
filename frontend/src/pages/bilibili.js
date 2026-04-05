@@ -150,7 +150,7 @@ function formatBilibiliCoverage(enabledCount, totalCount, label = '覆盖率') {
 function formatBilibiliVideoSplit(totalCount, pollEnabledCount) {
   const total = Number(totalCount ?? 0);
   if (!Number.isFinite(total) || total <= 0) {
-    return '暂无视频';
+    return '暂无视频，等待添加监控对象';
   }
   const enabled = Number(pollEnabledCount ?? 0);
   const safeEnabled = Number.isFinite(enabled)
