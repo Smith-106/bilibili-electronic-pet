@@ -689,7 +689,7 @@ function getBilibiliCredentialExpiryColor(expiryState) {
 function getBilibiliCredentialUsageState(item) {
   if (!item) {
     return {
-      label: '未配置',
+      label: '未配置凭证',
       detail: '请先添加并激活凭证用于鉴权',
     };
   }
