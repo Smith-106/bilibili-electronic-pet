@@ -130,10 +130,6 @@ function renderBilibiliPollStatus(status, error, lastRpid) {
   return `<span class="status-badge ${info.cls}"${titleAttr}>${escapeHtml(info.label)}</span>${hints}`;
 }
 
-function formatBilibiliStatusTime(value) {
-  return value ? formatIsoDateTime(value) : '-';
-}
-
 function parseBilibiliPollFilter(value) {
   if (value === 'true') return true;
   if (value === 'false') return false;
@@ -486,6 +482,32 @@ function getBilibiliCredentialExpiryColor(expiryState) {
   if (expiryState?.cls === 'badge-warning') return 'var(--warning-color)';
   if (expiryState?.cls === 'badge-success') return 'var(--success-color)';
   return 'var(--grey-2)';
+}
+
+function getBilibiliCredentialUsageState(item) {
+  if (!item) {
+    return {
+      label: '未配置',
+      detail: '',
+    };
+  }
+  if (item?.last_used_at) {
+    return {
+      label: formatIsoDateTime(item.last_used_at),
+      detail: '',
+    };
+  }
+  const hints = [];
+  if (item?.updated_at) {
+    hints.push(`更新: ${formatIsoDateTime(item.updated_at)}`);
+  }
+  if (item?.created_at) {
+    hints.push(`创建: ${formatIsoDateTime(item.created_at)}`);
+  }
+  return {
+    label: '从未使用',
+    detail: hints.join('，'),
+  };
 }
 
 function isBilibiliCredentialConfigured(item) {
@@ -846,7 +868,7 @@ export async function render(container) {
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
-      const credentialLastUsedAt = formatBilibiliStatusTime(data?.credential?.last_used_at);
+      const credentialUsage = getBilibiliCredentialUsageState(data?.credential);
       el.innerHTML = `
         <div class="stat-card mini">
           <div class="stat-label">启用</div>
@@ -904,7 +926,8 @@ export async function render(container) {
         </div>
         <div class="stat-card mini">
           <div class="stat-label">最近使用</div>
-          <div class="stat-value" style="font-size:14px;">${escapeHtml(credentialLastUsedAt)}</div>
+          <div class="stat-value" style="font-size:14px;">${escapeHtml(credentialUsage.label)}</div>
+          ${credentialUsage.detail ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialUsage.detail)}</div>` : ''}
         </div>
         ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
       `;
