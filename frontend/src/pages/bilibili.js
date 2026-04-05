@@ -99,6 +99,19 @@ function formatBilibiliRateLimit(limitPerMinute) {
   return `${value} 次/分钟`;
 }
 
+function formatBilibiliRateLimitHint(limitPerMinute) {
+  const value = Number(limitPerMinute);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const perSecond = value / 60;
+  if (perSecond >= 1) {
+    const formatted = perSecond.toFixed(perSecond >= 10 ? 0 : 1).replace(/\.0$/, '');
+    return `约每秒 ${formatted} 次`;
+  }
+  const secondsPerRequest = 60 / value;
+  const formatted = secondsPerRequest.toFixed(secondsPerRequest >= 10 ? 0 : 1).replace(/\.0$/, '');
+  return `约每 ${formatted} 秒 1 次`;
+}
+
 function formatBilibiliCoverage(enabledCount, totalCount, label = '覆盖率') {
   const total = Number(totalCount ?? 0);
   if (!Number.isFinite(total) || total <= 0) {
@@ -881,6 +894,7 @@ export async function render(container) {
       const publishModeHealth = formatBilibiliPublishModeHealth(data?.diagnostics);
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
+      const rateLimitHint = formatBilibiliRateLimitHint(data?.config?.rate_limit_per_minute);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
       const credentialUsage = getBilibiliCredentialUsageState(data?.credential);
       el.innerHTML = `
@@ -933,6 +947,7 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">速率限制</div>
           <div class="stat-value">${escapeHtml(rateLimit)}</div>
+          ${rateLimitHint ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(rateLimitHint)}</div>` : ''}
         </div>
         <div class="stat-card mini">
           <div class="stat-label">凭证过期</div>
