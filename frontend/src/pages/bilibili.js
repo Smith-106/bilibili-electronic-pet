@@ -170,6 +170,10 @@ function countBilibiliVideosWithPollDisabledAndNeverPolled(items) {
   return items.filter((item) => !item?.poll_enabled && !item?.last_polled_at).length;
 }
 
+function countBilibiliVideosWithPollDisabledAndPolled(items) {
+  return items.filter((item) => !item?.poll_enabled && item?.last_polled_at).length;
+}
+
 function countBilibiliVideosWithPollEnabledButNeverPolled(items) {
   return items.filter((item) => item?.poll_enabled && !item?.last_polled_at).length;
 }
@@ -320,6 +324,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const pollEnabledMissingAidCount = countBilibiliVideosWithPollEnabledButMissingAid(items);
   const pollDisabledSyncReadyCount = countBilibiliVideosWithPollDisabledButSyncReady(items);
   const pollDisabledNeverPolledCount = countBilibiliVideosWithPollDisabledAndNeverPolled(items);
+  const pollDisabledPolledCount = countBilibiliVideosWithPollDisabledAndPolled(items);
   const pollEnabledNeverPolledCount = countBilibiliVideosWithPollEnabledButNeverPolled(items);
   const pollEnabledPolledCount = countBilibiliVideosWithPollEnabledAndPolled(items);
   const missingAidCount = countBilibiliVideosMissingAid(items);
@@ -353,6 +358,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const pollEnabledMissingAidText = filterValue === '' && pollEnabledMissingAidCount > 0 ? `，轮询开启但缺少 aid ${pollEnabledMissingAidCount} 条` : '';
   const pollDisabledSyncReadyText = filterValue === '' && pollDisabledSyncReadyCount > 0 ? `，轮询停用但可同步 ${pollDisabledSyncReadyCount} 条` : '';
   const pollDisabledNeverPolledText = filterValue === '' && pollDisabledNeverPolledCount > 0 ? `，轮询停用且从未轮询 ${pollDisabledNeverPolledCount} 条` : '';
+  const pollDisabledPolledText = filterValue === '' && pollDisabledPolledCount > 0 ? `，轮询停用且已有轮询记录 ${pollDisabledPolledCount} 条` : '';
   const pollEnabledNeverPolledText = filterValue === '' && pollEnabledNeverPolledCount > 0 ? `，轮询开启但尚未轮询 ${pollEnabledNeverPolledCount} 条` : '';
   const pollEnabledPolledText = filterValue === '' && pollEnabledPolledCount > 0 ? `，轮询开启且已有轮询记录 ${pollEnabledPolledCount} 条` : '';
   const syncReadyText = syncReadyCount > 0 ? `，可同步 ${syncReadyCount} 条` : '';
@@ -379,7 +385,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const missingCursorVideoText = videosWithoutCursor > 0 ? `，无评论游标 ${videosWithoutCursor} 条` : '';
   const polledWithoutCursorText = polledWithoutCursorCount > 0 ? `，已轮询但无游标 ${polledWithoutCursorCount} 条` : '';
   const commentCountText = commentCount > 0 ? `，关联评论 ${commentCount} 条` : '';
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${pollEnabledText}${pollDisabledText}${missingAidText}${pollEnabledMissingAidText}${pollDisabledSyncReadyText}${pollDisabledNeverPolledText}${pollEnabledNeverPolledText}${pollEnabledPolledText}${syncReadyText}${healthyPollText}${successfulPollText}${noNewPollText}${pollErrorText}${polledCountText}${neverPolledText}${syncReadyNeverPolledText}${ownerCountText}${missingOwnerText}${titledCountText}${missingTitleText}${completeMetadataText}${incompleteMetadataText}${polledIncompleteMetadataText}${commentedVideoText}${uncommentedVideoText}${polledWithoutCommentsText}${cursorVideoText}${commentedWithoutCursorText}${cursorWithoutCommentsText}${missingCursorVideoText}${polledWithoutCursorText}${commentCountText}`;
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${pollEnabledText}${pollDisabledText}${missingAidText}${pollEnabledMissingAidText}${pollDisabledSyncReadyText}${pollDisabledNeverPolledText}${pollDisabledPolledText}${pollEnabledNeverPolledText}${pollEnabledPolledText}${syncReadyText}${healthyPollText}${successfulPollText}${noNewPollText}${pollErrorText}${polledCountText}${neverPolledText}${syncReadyNeverPolledText}${ownerCountText}${missingOwnerText}${titledCountText}${missingTitleText}${completeMetadataText}${incompleteMetadataText}${polledIncompleteMetadataText}${commentedVideoText}${uncommentedVideoText}${polledWithoutCommentsText}${cursorVideoText}${commentedWithoutCursorText}${cursorWithoutCommentsText}${missingCursorVideoText}${polledWithoutCursorText}${commentCountText}`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
