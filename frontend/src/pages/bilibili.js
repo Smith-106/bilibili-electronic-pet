@@ -593,6 +593,7 @@ function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFi
   const filteredConfigured = filteredItems.filter((item) => isBilibiliCredentialConfigured(item)).length;
   const filteredIncomplete = Math.max(0, filteredItems.length - filteredConfigured);
   const filteredConfiguredUsed = filteredItems.filter((item) => isBilibiliCredentialConfigured(item) && item.last_used_at).length;
+  const filteredIncompleteUsed = filteredItems.filter((item) => !isBilibiliCredentialConfigured(item) && item.last_used_at).length;
   const filteredActive = filteredItems.filter((item) => item.is_active || item.active).length;
   const filteredInactive = Math.max(0, filteredItems.length - filteredActive);
   const filteredUsed = filteredItems.filter((item) => item.last_used_at).length;
@@ -608,7 +609,7 @@ function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFi
     ? ''
     : `，激活 ${filteredActive} 个，未激活 ${filteredInactive} 个`;
   const filteredSummaryText = activeFilterValue || expiryFilterValue
-    ? `，筛选结果完整 ${filteredConfigured} 个，完整且已使用 ${filteredConfiguredUsed} 个，缺字段 ${filteredIncomplete} 个${filteredActiveStateText}，已使用 ${filteredUsed} 个，从未使用 ${filteredNeverUsed} 个，有效 ${filteredValid} 个，已过期 ${filteredExpired} 个，即将过期 ${filteredExpiringSoon} 个，未设置过期 ${filteredUnsetExpiry} 个`
+    ? `，筛选结果完整 ${filteredConfigured} 个，完整且已使用 ${filteredConfiguredUsed} 个，缺字段 ${filteredIncomplete} 个，缺字段但已使用 ${filteredIncompleteUsed} 个${filteredActiveStateText}，已使用 ${filteredUsed} 个，从未使用 ${filteredNeverUsed} 个，有效 ${filteredValid} 个，已过期 ${filteredExpired} 个，即将过期 ${filteredExpiringSoon} 个，未设置过期 ${filteredUnsetExpiry} 个`
     : '';
   return `共 ${total} 个凭证，激活中 ${active} 个，未激活 ${inactive} 个，激活且完整 ${activeConfigured} 个，未激活但完整 ${inactiveConfigured} 个，激活但缺字段 ${activeIncomplete} 个，未激活且缺字段 ${inactiveIncomplete} 个，激活且已使用 ${activeUsed} 个，激活但从未使用 ${activeNeverUsed} 个，未激活且已使用 ${inactiveUsed} 个，未激活但从未使用 ${inactiveNeverUsed} 个，激活且有效 ${activeValid} 个，未激活且有效 ${inactiveValid} 个，激活已过期 ${activeExpired} 个，未激活已过期 ${inactiveExpired} 个，激活即将过期 ${activeExpiringSoon} 个，未激活即将过期 ${inactiveExpiringSoon} 个，激活未设置过期 ${activeUnsetExpiry} 个，未激活未设置过期 ${inactiveUnsetExpiry} 个，字段完整 ${configured} 个，完整且有效 ${configuredValid} 个，完整且已过期 ${configuredExpired} 个，完整即将过期 ${configuredExpiringSoon} 个，完整未设置过期 ${configuredUnsetExpiry} 个，完整且已使用 ${configuredUsed} 个，完整但未使用 ${configuredUnused} 个，字段缺失 ${incomplete} 个，缺字段但已使用 ${incompleteUsed} 个，缺字段且未使用 ${incompleteNeverUsed} 个，缺字段但有效 ${incompleteValid} 个，缺字段且已过期 ${incompleteExpired} 个，缺字段即将过期 ${incompleteExpiringSoon} 个，缺字段未设置过期 ${incompleteUnsetExpiry} 个，已使用 ${used} 个，从未使用 ${neverUsed} 个，设置过期时间 ${expiring} 个，有效 ${valid} 个，已过期 ${expired} 个，即将过期 ${expiringSoon} 个，未设置 ${unsetExpiry} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个${filteredSummaryText}`;
 }
