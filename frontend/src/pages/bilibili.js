@@ -800,7 +800,7 @@ function renderBilibiliCredentialFingerprint(item) {
   ].filter(Boolean).join(' / ') || '未配置指纹';
   const hints = [
     isBilibiliCredentialConfigured(item)
-      ? '字段完整'
+      ? '字段完整，可用于鉴权'
       : `缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`,
     item?.buvid3 ? '仅展示指纹摘要' : '',
   ].filter(Boolean).join('，');
