@@ -112,6 +112,19 @@ function formatBilibiliCoverage(enabledCount, totalCount, label = '覆盖率') {
   return `${label} ${percentage}%`;
 }
 
+function formatBilibiliVideoSplit(totalCount, pollEnabledCount) {
+  const total = Number(totalCount ?? 0);
+  if (!Number.isFinite(total) || total <= 0) {
+    return '暂无视频';
+  }
+  const enabled = Number(pollEnabledCount ?? 0);
+  const safeEnabled = Number.isFinite(enabled)
+    ? Math.min(total, Math.max(0, enabled))
+    : 0;
+  const disabled = Math.max(0, total - safeEnabled);
+  return `轮询中 ${safeEnabled}，停用 ${disabled}`;
+}
+
 function renderBilibiliPollStatus(status, error, lastRpid) {
   const normalized = String(status ?? '').trim().toLowerCase();
   if (!normalized) return '-';
@@ -848,6 +861,7 @@ export async function render(container) {
       const totalVideoCount = Number(data?.video_count ?? 0);
       const pollEnabledCount = Number(data?.videos?.poll_enabled_count ?? 0);
       const disabledVideoCount = Math.max(0, totalVideoCount - pollEnabledCount);
+      const videoSplit = formatBilibiliVideoSplit(totalVideoCount, pollEnabledCount);
       const pollCoverage = formatBilibiliCoverage(pollEnabledCount, totalVideoCount);
       const disabledVideoShare = formatBilibiliCoverage(disabledVideoCount, totalVideoCount, '占比');
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
@@ -885,6 +899,7 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">视频数</div>
           <div class="stat-value">${totalVideoCount}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(videoSplit)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">轮询视频</div>
