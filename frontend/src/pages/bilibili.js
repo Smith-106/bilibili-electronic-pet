@@ -144,7 +144,7 @@ function formatBilibiliCoverage(enabledCount, totalCount, label = '覆盖率') {
     ? Math.min(total, Math.max(0, enabled))
     : 0;
   const percentage = ((safeEnabled / total) * 100).toFixed(1).replace(/\.0$/, '');
-  return `${label} ${percentage}%`;
+  return `${label} ${percentage}%（${safeEnabled}/${total}）`;
 }
 
 function formatBilibiliVideoSplit(totalCount, pollEnabledCount) {
