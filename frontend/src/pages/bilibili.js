@@ -188,7 +188,10 @@ function renderBilibiliVideoPollResult(video) {
   if (normalized) {
     return renderBilibiliPollStatus(video?.last_poll_status, video?.last_poll_error, video?.last_rpid);
   }
-  const hint = video?.poll_enabled ? '等待首次轮询' : '轮询未启用';
+  let hint = video?.poll_enabled ? '等待首次轮询' : '轮询未启用';
+  if (!video?.poll_enabled) {
+    hint = hasBilibiliVideoAid(video) ? '轮询未启用，可手动同步' : bilibiliPollErrorMessages.no_aid;
+  }
   if (!video?.last_polled_at) {
     return `<span class="status-badge badge-muted">未轮询</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
   }
