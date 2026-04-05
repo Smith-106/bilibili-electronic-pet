@@ -447,6 +447,29 @@ function formatBilibiliPollResultMessage(result, options = {}) {
   return `${subject}完成，暂无可处理视频。`;
 }
 
+function formatBilibiliExpiryDistance(value, now = Date.now()) {
+  const expiresAt = new Date(value);
+  if (Number.isNaN(expiresAt.getTime())) return '';
+  const diffMs = expiresAt.getTime() - now;
+  const absMs = Math.abs(diffMs);
+  const minuteMs = 60 * 1000;
+  const hourMs = 60 * minuteMs;
+  const dayMs = 24 * hourMs;
+  let amount;
+  let unit;
+  if (absMs < hourMs) {
+    amount = Math.max(1, Math.round(absMs / minuteMs));
+    unit = '分钟';
+  } else if (absMs < dayMs) {
+    amount = Math.max(1, Math.round(absMs / hourMs));
+    unit = '小时';
+  } else {
+    amount = Math.max(1, Math.round(absMs / dayMs));
+    unit = '天';
+  }
+  return diffMs <= 0 ? `${amount}${unit}前` : `${amount}${unit}后`;
+}
+
 function getBilibiliCredentialExpiryState(value, now = Date.now()) {
   if (!value) {
     return {
@@ -473,34 +496,37 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
 
   const diffMs = expiresAt.getTime() - now;
   if (diffMs <= 0) {
+    const distance = formatBilibiliExpiryDistance(value, now);
     return {
       hasExpiry: true,
       expired: true,
       expiringSoon: false,
       label: '已过期',
       cls: 'badge-danger',
-      detail: formatIsoDateTime(value),
+      detail: distance ? `${distance}过期，${formatIsoDateTime(value)}` : formatIsoDateTime(value),
     };
   }
 
   if (diffMs <= bilibiliCredentialExpiringSoonMs) {
+    const distance = formatBilibiliExpiryDistance(value, now);
     return {
       hasExpiry: true,
       expired: false,
       expiringSoon: true,
       label: '即将过期',
       cls: 'badge-warning',
-      detail: formatIsoDateTime(value),
+      detail: distance ? `${distance}到期，${formatIsoDateTime(value)}` : formatIsoDateTime(value),
     };
   }
 
+  const distance = formatBilibiliExpiryDistance(value, now);
   return {
     hasExpiry: true,
     expired: false,
     expiringSoon: false,
     label: '有效',
     cls: 'badge-success',
-    detail: formatIsoDateTime(value),
+    detail: distance ? `${distance}到期，${formatIsoDateTime(value)}` : formatIsoDateTime(value),
   };
 }
 
