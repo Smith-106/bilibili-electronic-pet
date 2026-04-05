@@ -629,7 +629,7 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
     hasExpiry: true,
     expired: false,
     expiringSoon: false,
-    label: '有效',
+    label: '有效期内',
     cls: 'badge-success',
     detail: distance ? `${distance}到期，${formatIsoDateTime(value)}` : formatIsoDateTime(value),
   };
@@ -831,7 +831,7 @@ function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilte
     : expiryFilterValue === 'expiring'
       ? '即将过期'
       : expiryFilterValue === 'valid'
-        ? '有效'
+        ? '有效期内'
         : expiryFilterValue === 'unset'
           ? '未设置过期时间'
           : '全部';
@@ -1085,7 +1085,7 @@ export async function render(container) {
             <option value="">全部</option>
             <option value="expired">已过期</option>
             <option value="expiring">即将过期</option>
-            <option value="valid">有效</option>
+            <option value="valid">有效期内</option>
             <option value="unset">未设置过期时间</option>
           </select>
         </div>
