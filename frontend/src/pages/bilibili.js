@@ -41,7 +41,7 @@ const bilibiliPollStatusMessages = {
   error: { label: '失败', cls: 'badge-danger' },
 };
 const bilibiliPollErrorMessages = {
-  no_aid: '缺少视频 aid，暂时无法轮询。',
+  no_aid: '缺少视频 aid，暂时无法轮询评论。',
   retry_exhausted: '评论抓取重试耗尽。',
 };
 const bilibiliVideoPageSize = 50;
