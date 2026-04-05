@@ -430,7 +430,7 @@ function renderBilibiliVideoPollState(video) {
   const hasAid = hasBilibiliVideoAid(video);
   let hint = bilibiliPollErrorMessages.no_aid;
   if (hasAid) {
-    hint = video?.poll_enabled ? '自动轮询中' : '轮询停用，可手动同步';
+    hint = video?.poll_enabled ? '自动轮询中，等待计划任务执行' : '轮询停用，可手动同步评论';
   }
   return `${renderBoolBadge(video?.poll_enabled)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
