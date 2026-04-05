@@ -200,6 +200,14 @@ function countBilibiliVideosWithCommentsButNoCursor(items) {
   )).length;
 }
 
+function countBilibiliVideosWithoutCommentsButWithCursor(items) {
+  return items.filter((item) => (
+    Number(item?.comment_count ?? 0) <= 0
+    && typeof item?.last_rpid === 'number'
+    && Number.isFinite(item.last_rpid)
+  )).length;
+}
+
 function countBilibiliVideosWithCompleteMetadata(items) {
   return items.filter((item) => (
     hasBilibiliVideoAid(item)
@@ -272,6 +280,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const videosWithoutComments = Math.max(0, items.length - videosWithComments);
   const videosWithCursor = countBilibiliVideosWithCursor(items);
   const commentedWithoutCursorCount = countBilibiliVideosWithCommentsButNoCursor(items);
+  const cursorWithoutCommentsCount = countBilibiliVideosWithoutCommentsButWithCursor(items);
   const videosWithoutCursor = Math.max(0, items.length - videosWithCursor);
   const completeMetadataCount = countBilibiliVideosWithCompleteMetadata(items);
   const incompleteMetadataCount = Math.max(0, items.length - completeMetadataCount);
@@ -294,9 +303,10 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
   const uncommentedVideoText = videosWithoutComments > 0 ? `，无评论视频 ${videosWithoutComments} 条` : '';
   const cursorVideoText = videosWithCursor > 0 ? `，已有评论游标 ${videosWithCursor} 条` : '';
   const commentedWithoutCursorText = commentedWithoutCursorCount > 0 ? `，有评论但无游标 ${commentedWithoutCursorCount} 条` : '';
+  const cursorWithoutCommentsText = cursorWithoutCommentsCount > 0 ? `，无评论但有游标 ${cursorWithoutCommentsCount} 条` : '';
   const missingCursorVideoText = videosWithoutCursor > 0 ? `，无评论游标 ${videosWithoutCursor} 条` : '';
   const commentCountText = commentCount > 0 ? `，关联评论 ${commentCount} 条` : '';
-  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${syncReadyText}${healthyPollText}${successfulPollText}${noNewPollText}${pollErrorText}${polledCountText}${neverPolledText}${ownerCountText}${missingOwnerText}${titledCountText}${missingTitleText}${completeMetadataText}${incompleteMetadataText}${commentedVideoText}${uncommentedVideoText}${cursorVideoText}${commentedWithoutCursorText}${missingCursorVideoText}${commentCountText}`;
+  return `筛选: ${filterLabel}，共 ${total} 条，当前展示 ${renderedCount} 条，第 ${currentPage}/${totalPages} 页${missingAidText}${syncReadyText}${healthyPollText}${successfulPollText}${noNewPollText}${pollErrorText}${polledCountText}${neverPolledText}${ownerCountText}${missingOwnerText}${titledCountText}${missingTitleText}${completeMetadataText}${incompleteMetadataText}${commentedVideoText}${uncommentedVideoText}${cursorVideoText}${commentedWithoutCursorText}${cursorWithoutCommentsText}${missingCursorVideoText}${commentCountText}`;
 }
 
 function formatBilibiliPollResultMessage(result, options = {}) {
