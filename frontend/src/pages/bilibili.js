@@ -775,7 +775,7 @@ function formatBilibiliPublishModeHealth(diagnostics) {
   const nativePublishEnabled = Boolean(diagnostics?.signals?.native_publish_enabled);
   const pollingWorkerEnabled = Boolean(diagnostics?.signals?.polling_worker_enabled);
   return [
-    publishModeConfigReady ? '模式配置就绪' : '模式配置缺失',
+    publishModeConfigReady ? '模式配置就绪' : '模式配置缺失，请检查发布配置',
     nativePublishEnabled ? '原生发布启用' : '原生发布停用',
     pollingWorkerEnabled ? '轮询链路启用' : '轮询链路停用',
   ].join('，');
