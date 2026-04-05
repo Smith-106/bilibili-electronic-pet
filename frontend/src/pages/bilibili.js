@@ -756,9 +756,18 @@ function formatBilibiliDiagnosticHealth(diagnostics) {
   if (!authRequired) {
     return blockingReasons.length > 0
       ? `当前无需鉴权，但诊断仍受阻${blockingText}`
-      : '轮询与发布链路均未启用';
+      : '轮询与发布链路均未启用，可按需开启';
   }
-  return `${authReady ? '鉴权已就绪' : '鉴权未就绪'}，${workerOrPublishReady ? '执行链路可用' : '执行链路阻塞'}${blockingText}`;
+  if (authReady && workerOrPublishReady) {
+    return `鉴权已就绪，执行链路可用${blockingText}`;
+  }
+  if (authReady) {
+    return `鉴权已就绪，但执行链路阻塞${blockingText}`;
+  }
+  if (workerOrPublishReady) {
+    return `执行链路可用，但鉴权未就绪${blockingText}`;
+  }
+  return `鉴权未就绪，执行链路阻塞${blockingText}`;
 }
 
 function formatBilibiliPublishModeHealth(diagnostics) {
