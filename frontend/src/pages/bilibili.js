@@ -609,11 +609,17 @@ function formatBilibiliDiagnosticHealth(diagnostics) {
   const workerOrPublishReady = Boolean(diagnostics?.checks?.worker_or_publish?.ready);
   const pollingWorkerEnabled = Boolean(diagnostics?.signals?.polling_worker_enabled);
   const nativePublishEnabled = Boolean(diagnostics?.signals?.native_publish_enabled);
+  const blockingReasons = Array.isArray(diagnostics?.blocking_reasons)
+    ? diagnostics.blocking_reasons.filter(Boolean)
+    : [];
+  const blockingText = blockingReasons.length > 0 ? `，阻塞 ${blockingReasons.length} 项` : '';
   const authRequired = pollingWorkerEnabled || nativePublishEnabled;
   if (!authRequired) {
-    return '当前无需鉴权';
+    return blockingReasons.length > 0
+      ? `当前无需鉴权，但诊断仍受阻${blockingText}`
+      : '轮询与发布链路均未启用';
   }
-  return `${authReady ? '鉴权已就绪' : '鉴权未就绪'}，${workerOrPublishReady ? '执行链路可用' : '执行链路阻塞'}`;
+  return `${authReady ? '鉴权已就绪' : '鉴权未就绪'}，${workerOrPublishReady ? '执行链路可用' : '执行链路阻塞'}${blockingText}`;
 }
 
 function formatBilibiliPublishModeHealth(diagnostics) {
