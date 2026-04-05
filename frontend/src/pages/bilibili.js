@@ -341,10 +341,18 @@ function sumBilibiliVideoCommentCount(items) {
 
 function renderBilibiliVideoIdentity(video) {
   const hasAid = hasBilibiliVideoAid(video);
-  const hint = hasAid
-    ? `aid: ${video.aid}`
-    : bilibiliPollErrorMessages.no_aid;
-  return `${escapeHtml(video?.bvid || '-')}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
+  const bvid = String(video?.bvid ?? '').trim();
+  const recordId = String(video?.id ?? video?.video_id ?? '').trim();
+  const hints = [
+    hasAid ? `aid: ${video.aid}` : bilibiliPollErrorMessages.no_aid,
+  ];
+  if (!bvid) {
+    hints.push(recordId ? `记录 ID: ${recordId}` : '未同步 BVID');
+  }
+  return `${escapeHtml(bvid || '未同步 BVID')}${hints
+    .filter(Boolean)
+    .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
+    .join('')}`;
 }
 
 function formatBilibiliHintTime(label, value) {
