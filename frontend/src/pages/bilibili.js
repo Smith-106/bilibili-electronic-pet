@@ -157,7 +157,7 @@ function formatBilibiliVideoSplit(totalCount, pollEnabledCount) {
     ? Math.min(total, Math.max(0, enabled))
     : 0;
   const disabled = Math.max(0, total - safeEnabled);
-  return `轮询中 ${safeEnabled}，停用 ${disabled}`;
+  return `共 ${total} 个视频，轮询中 ${safeEnabled}，停用 ${disabled}`;
 }
 
 function renderBilibiliPollStatus(status, error, lastRpid) {
