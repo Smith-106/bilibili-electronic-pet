@@ -99,7 +99,7 @@ function formatBilibiliPollInterval(seconds) {
 
 function formatBilibiliPollIntervalHint(seconds) {
   const value = Number(seconds);
-  if (!Number.isFinite(value) || value <= 0) return '未设置轮询间隔';
+  if (!Number.isFinite(value) || value <= 0) return '未设置轮询间隔，请检查轮询配置';
   if (value < 60) {
     const perMinute = 60 / value;
     const formatted = perMinute.toFixed(perMinute >= 10 ? 0 : 1).replace(/\.0$/, '');
@@ -123,7 +123,7 @@ function formatBilibiliRateLimit(limitPerMinute) {
 
 function formatBilibiliRateLimitHint(limitPerMinute) {
   const value = Number(limitPerMinute);
-  if (!Number.isFinite(value) || value <= 0) return '未设置速率限制';
+  if (!Number.isFinite(value) || value <= 0) return '未设置速率限制，请检查抓取配置';
   const perSecond = value / 60;
   if (perSecond >= 1) {
     const formatted = perSecond.toFixed(perSecond >= 10 ? 0 : 1).replace(/\.0$/, '');
