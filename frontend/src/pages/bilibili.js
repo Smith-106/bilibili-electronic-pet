@@ -171,7 +171,12 @@ function renderBilibiliPollStatus(status, error, lastRpid) {
   const cursorText = typeof lastRpid === 'number' && Number.isFinite(lastRpid)
     ? `评论游标: ${lastRpid}`
     : '';
-  const hints = [errorText, cursorText]
+  const statusHint = normalized === 'ok'
+    ? (cursorText ? '轮询完成，评论游标已推进' : '轮询完成')
+    : normalized === 'no_new'
+      ? (cursorText ? '本次未发现新评论，评论游标已保留' : '本次未发现新评论')
+      : '';
+  const hints = [statusHint, errorText, cursorText]
     .filter(Boolean)
     .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
     .join('');
