@@ -84,7 +84,7 @@ function formatBilibiliBlockingReasons(reasons) {
 
 function formatBilibiliPublishMode(mode) {
   const normalized = String(mode ?? '').trim().toLowerCase();
-  if (!normalized) return '未设置';
+  if (!normalized) return '未设置发布模式';
   return bilibiliPublishModeMessages[normalized] || `未识别模式: ${normalized}`;
 }
 
@@ -94,7 +94,7 @@ function formatBilibiliToggleState(enabled, enabledLabel, disabledLabel) {
 
 function formatBilibiliPollInterval(seconds) {
   const value = Number(seconds);
-  if (!Number.isFinite(value) || value <= 0) return '未设置';
+  if (!Number.isFinite(value) || value <= 0) return '未设置轮询间隔';
   if (value % 60 === 0) return `${value / 60} 分钟`;
   return `${value} 秒`;
 }
@@ -119,7 +119,7 @@ function formatBilibiliPollIntervalHint(seconds) {
 
 function formatBilibiliRateLimit(limitPerMinute) {
   const value = Number(limitPerMinute);
-  if (!Number.isFinite(value) || value <= 0) return '未设置';
+  if (!Number.isFinite(value) || value <= 0) return '未设置速率限制';
   return `${value} 次/分钟`;
 }
 
