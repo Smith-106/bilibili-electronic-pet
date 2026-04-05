@@ -666,7 +666,7 @@ function renderBilibiliCredentialName(item, fallbackLabel = '未命名凭证') {
   const hints = [];
   const name = String(item?.name ?? '').trim();
   if (!name && item) {
-    hints.push('未填写凭证名称');
+    hints.push('未填写凭证名称，当前展示默认标签');
   }
   if (item?.updated_at) {
     hints.push(formatBilibiliHintTime('更新', item.updated_at));
