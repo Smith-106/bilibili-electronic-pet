@@ -626,8 +626,10 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
   };
 }
 
-function renderBilibiliCredentialExpiry(value) {
-  const info = getBilibiliCredentialExpiryState(value);
+function formatBilibiliCredentialExpiryHint(info, hasCredential = true) {
+  if (!hasCredential) {
+    return '当前无活跃凭证';
+  }
   const stateHint = !info.hasExpiry
     ? '需手动确认有效性'
     : info.label === '时间异常'
@@ -637,9 +639,14 @@ function renderBilibiliCredentialExpiry(value) {
         : info.expiringSoon
           ? '建议提前轮换'
           : '当前仍可使用';
-  const detailText = [info.detail || (!info.hasExpiry ? '未设置过期时间' : ''), stateHint]
+  return [info.detail || (!info.hasExpiry ? '未设置过期时间' : ''), stateHint]
     .filter(Boolean)
     .join('，');
+}
+
+function renderBilibiliCredentialExpiry(value) {
+  const info = getBilibiliCredentialExpiryState(value);
+  const detailText = formatBilibiliCredentialExpiryHint(info);
   const detail = detailText
     ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(detailText)}</div>`
     : '';
@@ -1111,7 +1118,7 @@ export async function render(container) {
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
       const rateLimitHint = formatBilibiliRateLimitHint(data?.config?.rate_limit_per_minute);
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
-      const credentialExpiryDetail = credentialExpiry.detail || (data?.credential ? '未设置过期时间' : '当前无活跃凭证');
+      const credentialExpiryDetail = formatBilibiliCredentialExpiryHint(credentialExpiry, Boolean(data?.credential));
       const credentialUsage = getBilibiliCredentialUsageState(data?.credential);
       el.innerHTML = `
         <div class="stat-card mini">
