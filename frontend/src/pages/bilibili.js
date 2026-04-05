@@ -607,6 +607,14 @@ function getBilibiliCredentialUsageState(item) {
   };
 }
 
+function renderBilibiliCredentialUsageCell(item) {
+  const usage = getBilibiliCredentialUsageState(item);
+  const detail = usage.detail
+    ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(usage.detail)}</div>`
+    : '';
+  return `${escapeHtml(usage.label)}${detail}`;
+}
+
 function isBilibiliCredentialConfigured(item) {
   return Boolean(item?.has_sessdata && item?.has_bili_jct && item?.buvid3);
 }
@@ -1218,7 +1226,7 @@ export async function render(container) {
               <td class="cell-id">${renderBilibiliCredentialFingerprint(c)}</td>
               <td>${renderBoolBadge(c.is_active || c.active)}</td>
               <td>${renderBilibiliCredentialExpiry(c.expires_at)}</td>
-              <td class="cell-time">${c.last_used_at ? renderTimestamp(c.last_used_at) : '-'}</td>
+              <td class="cell-time">${renderBilibiliCredentialUsageCell(c)}</td>
               <td class="cell-actions">
                 ${!(c.is_active || c.active) ? `<button class="btn btn-sm cred-activate" data-id="${escapeHtml(c.id || c.credential_id)}">激活</button>` : ''}
                 <button class="btn btn-sm btn-danger cred-delete" data-id="${escapeHtml(c.id || c.credential_id)}">删除</button>
