@@ -86,6 +86,10 @@ function formatBilibiliPublishMode(mode) {
   return bilibiliPublishModeMessages[normalized] || normalized || '-';
 }
 
+function formatBilibiliToggleState(enabled, enabledLabel, disabledLabel) {
+  return enabled ? enabledLabel : disabledLabel;
+}
+
 function formatBilibiliPollInterval(seconds) {
   const value = Number(seconds);
   if (!Number.isFinite(value) || value <= 0) return '-';
@@ -911,6 +915,21 @@ export async function render(container) {
       const diagnosticHealth = formatBilibiliDiagnosticHealth(data?.diagnostics);
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const publishModeHealth = formatBilibiliPublishModeHealth(data?.diagnostics);
+      const enabledHint = formatBilibiliToggleState(
+        data?.enabled,
+        'B 站集成已启用',
+        'B 站集成已停用',
+      );
+      const pollingHint = formatBilibiliToggleState(
+        data?.polling_enabled,
+        '评论轮询已启用',
+        '评论轮询已停用',
+      );
+      const publishHint = formatBilibiliToggleState(
+        data?.publish_enabled,
+        '发布链路已启用',
+        '发布链路已停用',
+      );
       const pollInterval = formatBilibiliPollInterval(data?.config?.poll_interval_seconds);
       const pollIntervalHint = formatBilibiliPollIntervalHint(data?.config?.poll_interval_seconds);
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
@@ -922,14 +941,17 @@ export async function render(container) {
         <div class="stat-card mini">
           <div class="stat-label">启用</div>
           <div class="stat-value">${data?.enabled ? '✅' : '❌'}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(enabledHint)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">轮询</div>
           <div class="stat-value">${data?.polling_enabled ? '✅' : '❌'}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(pollingHint)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">发布</div>
           <div class="stat-value">${data?.publish_enabled ? '✅' : '❌'}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(publishHint)}</div>
         </div>
         <div class="stat-card mini">
           <div class="stat-label">视频数</div>
