@@ -693,7 +693,11 @@ function renderBilibiliCredentialUsageCell(item) {
 
 function renderBilibiliCredentialActiveState(item) {
   const active = Boolean(item?.is_active || item?.active);
-  const hint = active ? '当前生效' : '待手动激活';
+  const configured = isBilibiliCredentialConfigured(item);
+  const missingFields = configured ? '' : `，缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`;
+  const hint = active
+    ? `当前生效${configured ? '，字段完整' : missingFields}`
+    : `待手动激活${configured ? '，字段完整' : missingFields}`;
   return `${renderBoolBadge(active)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
 
