@@ -31,7 +31,7 @@ const bilibiliBlockingReasonMessages = {
 const bilibiliPublishModeMessages = {
   manual_queue: '人工队列',
   simulated: '模拟发布',
-  webhook: 'Webhook',
+  webhook: 'Webhook 推送',
   real_publish: '真实发布',
   native_bilibili: '原生 B 站发布',
 };
