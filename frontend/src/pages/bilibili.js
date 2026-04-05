@@ -479,6 +479,8 @@ function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFi
   const configuredUsed = items.filter((item) => isBilibiliCredentialConfigured(item) && item.last_used_at).length;
   const configuredUnused = Math.max(0, configured - configuredUsed);
   const incomplete = Math.max(0, total - configured);
+  const incompleteUsed = items.filter((item) => !isBilibiliCredentialConfigured(item) && item.last_used_at).length;
+  const incompleteNeverUsed = Math.max(0, incomplete - incompleteUsed);
   const neverUsed = items.filter((item) => !item.last_used_at).length;
   const used = Math.max(0, total - neverUsed);
   const now = Date.now();
@@ -499,7 +501,7 @@ function formatBilibiliCredentialSummary(items, activeFilterValue = '', expiryFi
   const inactiveUnsetExpiry = inactiveExpiryStates.filter((item) => !item.hasExpiry).length;
   const unsetExpiry = expiryStates.filter((item) => !item.hasExpiry).length;
   const filterLabel = formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue);
-  return `共 ${total} 个凭证，激活中 ${active} 个，未激活 ${inactive} 个，激活且完整 ${activeConfigured} 个，未激活但完整 ${inactiveConfigured} 个，激活但缺字段 ${activeIncomplete} 个，未激活且缺字段 ${inactiveIncomplete} 个，激活且已使用 ${activeUsed} 个，激活但从未使用 ${activeNeverUsed} 个，未激活且已使用 ${inactiveUsed} 个，未激活但从未使用 ${inactiveNeverUsed} 个，激活且有效 ${activeValid} 个，未激活且有效 ${inactiveValid} 个，激活已过期 ${activeExpired} 个，未激活已过期 ${inactiveExpired} 个，激活即将过期 ${activeExpiringSoon} 个，未激活即将过期 ${inactiveExpiringSoon} 个，激活未设置过期 ${activeUnsetExpiry} 个，未激活未设置过期 ${inactiveUnsetExpiry} 个，字段完整 ${configured} 个，完整且已使用 ${configuredUsed} 个，完整但未使用 ${configuredUnused} 个，字段缺失 ${incomplete} 个，已使用 ${used} 个，从未使用 ${neverUsed} 个，设置过期时间 ${expiring} 个，有效 ${valid} 个，已过期 ${expired} 个，即将过期 ${expiringSoon} 个，未设置 ${unsetExpiry} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
+  return `共 ${total} 个凭证，激活中 ${active} 个，未激活 ${inactive} 个，激活且完整 ${activeConfigured} 个，未激活但完整 ${inactiveConfigured} 个，激活但缺字段 ${activeIncomplete} 个，未激活且缺字段 ${inactiveIncomplete} 个，激活且已使用 ${activeUsed} 个，激活但从未使用 ${activeNeverUsed} 个，未激活且已使用 ${inactiveUsed} 个，未激活但从未使用 ${inactiveNeverUsed} 个，激活且有效 ${activeValid} 个，未激活且有效 ${inactiveValid} 个，激活已过期 ${activeExpired} 个，未激活已过期 ${inactiveExpired} 个，激活即将过期 ${activeExpiringSoon} 个，未激活即将过期 ${inactiveExpiringSoon} 个，激活未设置过期 ${activeUnsetExpiry} 个，未激活未设置过期 ${inactiveUnsetExpiry} 个，字段完整 ${configured} 个，完整且已使用 ${configuredUsed} 个，完整但未使用 ${configuredUnused} 个，字段缺失 ${incomplete} 个，缺字段但已使用 ${incompleteUsed} 个，缺字段且未使用 ${incompleteNeverUsed} 个，已使用 ${used} 个，从未使用 ${neverUsed} 个，设置过期时间 ${expiring} 个，有效 ${valid} 个，已过期 ${expired} 个，即将过期 ${expiringSoon} 个，未设置 ${unsetExpiry} 个；筛选: ${filterLabel}，当前展示 ${renderedCount} 个`;
 }
 
 function filterBilibiliCredentials(items, activeFilterValue = '', expiryFilterValue = '') {
