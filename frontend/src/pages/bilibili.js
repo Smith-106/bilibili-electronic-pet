@@ -977,9 +977,9 @@ function filterBilibiliCredentials(items, activeFilterValue = '', expiryFilterVa
 
 function getBilibiliCredentialEmptyMessage(activeFilterValue = '', expiryFilterValue = '') {
   if (activeFilterValue || expiryFilterValue) {
-    return `暂无匹配筛选条件的凭证（${formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue)}）`;
+    return `当前筛选暂无匹配凭证（${formatBilibiliCredentialFilterLabel(activeFilterValue, expiryFilterValue)}）`;
   }
-  return '暂无凭证';
+  return '暂无凭证，请先添加并激活可用凭证';
 }
 
 function bindEnterKeyToClick(container, selectors, buttonSelector) {
