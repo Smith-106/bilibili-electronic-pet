@@ -83,7 +83,7 @@ function formatBilibiliBlockingReasons(reasons) {
 
 function formatBilibiliPublishMode(mode) {
   const normalized = String(mode ?? '').trim().toLowerCase();
-  return bilibiliPublishModeMessages[normalized] || normalized || '-';
+  return bilibiliPublishModeMessages[normalized] || normalized || '未设置';
 }
 
 function formatBilibiliToggleState(enabled, enabledLabel, disabledLabel) {
