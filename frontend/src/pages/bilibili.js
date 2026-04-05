@@ -365,6 +365,11 @@ function renderBilibiliSyncButton(video) {
   return `<button class="btn btn-sm bili-sync" data-id="${id}" data-has-aid="${hasAid ? 'true' : 'false'}"${disabledAttr}${titleAttr}>同步</button>`;
 }
 
+function renderBilibiliVideoPollState(video) {
+  const hint = hasBilibiliVideoAid(video) ? '可同步' : bilibiliPollErrorMessages.no_aid;
+  return `${renderBoolBadge(video?.poll_enabled)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+}
+
 function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize, items = []) {
   const filterLabel = filterValue === 'true'
     ? '轮询中'
@@ -1103,7 +1108,7 @@ export async function render(container) {
             ${items.map(v => `<tr data-id="${escapeHtml(v.id || v.video_id)}">
               <td class="cell-id">${renderBilibiliVideoIdentity(v)}</td>
               <td class="cell-truncate">${renderBilibiliVideoTitle(v)}</td>
-              <td>${renderBoolBadge(v.poll_enabled)}</td>
+              <td>${renderBilibiliVideoPollState(v)}</td>
               <td>${v.comment_count ?? '-'}</td>
               <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
               <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error, v.last_rpid)}</td>
