@@ -581,7 +581,7 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
       hasExpiry: false,
       expired: false,
       expiringSoon: false,
-      label: '未设置',
+      label: '未设置过期时间',
       cls: 'badge-muted',
       detail: '',
     };
