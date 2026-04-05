@@ -1,5 +1,5 @@
 import { createAdminApi } from '../api/admin.js';
-import { escapeHtml, formatIsoDateTime, renderTimestamp } from '../utils/format.js';
+import { escapeHtml, formatIsoDateTime, renderTimestamp, timeAgo } from '../utils/format.js';
 import { renderBoolBadge } from '../components/badge.js';
 import { showToast } from '../components/toast.js';
 
@@ -541,9 +541,10 @@ function getBilibiliCredentialUsageState(item) {
     };
   }
   if (item?.last_used_at) {
+    const relative = timeAgo(item.last_used_at);
     return {
-      label: formatIsoDateTime(item.last_used_at),
-      detail: '',
+      label: relative || '已使用',
+      detail: formatIsoDateTime(item.last_used_at),
     };
   }
   const hints = [];
