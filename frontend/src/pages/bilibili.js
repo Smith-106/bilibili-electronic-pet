@@ -611,15 +611,19 @@ function renderBilibiliCredentialExpiry(value) {
   return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
 }
 
-function renderBilibiliCredentialName(item, fallbackLabel = '-') {
+function renderBilibiliCredentialName(item, fallbackLabel = '未命名凭证') {
   const hints = [];
+  const name = String(item?.name ?? '').trim();
+  if (!name && item) {
+    hints.push('未填写凭证名称');
+  }
   if (item?.updated_at) {
     hints.push(formatBilibiliHintTime('更新', item.updated_at));
   }
   if (item?.created_at) {
     hints.push(formatBilibiliHintTime('创建', item.created_at));
   }
-  return `${escapeHtml(item?.name || fallbackLabel)}${hints
+  return `${escapeHtml(name || fallbackLabel)}${hints
     .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
     .join('')}`;
 }
