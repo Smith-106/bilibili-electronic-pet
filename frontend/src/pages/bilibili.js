@@ -544,12 +544,12 @@ function formatBilibiliPollResultMessage(result, options = {}) {
   const subject = options.subject || (videos === 1 ? '视频' : '轮询');
 
   if (comments > 0 || events > 0) {
-    return `${subject}完成，处理 ${videos} 个视频，新增 ${comments} 条评论，注入 ${events} 个事件。`;
+    return `${subject}完成，处理 ${videos} 个视频，新增 ${comments} 条评论，已注入 ${events} 个事件。`;
   }
   if (videos > 0) {
-    return `${subject}完成，处理 ${videos} 个视频，暂无新增评论。`;
+    return `${subject}完成，处理 ${videos} 个视频，暂无新增评论，已保留当前评论状态。`;
   }
-  return `${subject}完成，暂无可处理视频。`;
+  return `${subject}完成，暂无可处理视频，请先确认监控对象已同步。`;
 }
 
 function formatBilibiliExpiryDistance(value, now = Date.now()) {
