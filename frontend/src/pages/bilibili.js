@@ -123,7 +123,7 @@ function formatBilibiliRateLimit(limitPerMinute) {
 
 function formatBilibiliRateLimitHint(limitPerMinute) {
   const value = Number(limitPerMinute);
-  if (!Number.isFinite(value) || value <= 0) return '';
+  if (!Number.isFinite(value) || value <= 0) return '未设置速率限制';
   const perSecond = value / 60;
   if (perSecond >= 1) {
     const formatted = perSecond.toFixed(perSecond >= 10 ? 0 : 1).replace(/\.0$/, '');
