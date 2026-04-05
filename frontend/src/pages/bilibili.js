@@ -416,11 +416,12 @@ function renderBilibiliVideoPollState(video) {
 function renderBilibiliVideoCommentCount(video) {
   const count = Number(video?.comment_count ?? 0);
   const safeCount = Number.isFinite(count) && count > 0 ? count : 0;
+  const hasCursor = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid);
   let hint = '尚未轮询';
   if (safeCount > 0) {
-    hint = '已有评论';
+    hint = hasCursor ? '已有评论，游标已记录' : '已有评论，缺少游标';
   } else if (video?.last_polled_at) {
-    hint = '已轮询无评论';
+    hint = hasCursor ? '已轮询无评论，保留游标' : '已轮询无评论';
   }
   return `${escapeHtml(safeCount)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
