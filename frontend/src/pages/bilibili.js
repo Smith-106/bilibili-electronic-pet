@@ -25,6 +25,7 @@ const bilibiliErrorMessages = {
 };
 const bilibiliBlockingReasonMessages = {
   'auth:no active credential': '缺少可用的激活凭证。',
+  'config:bilibili_enabled is false': 'B 站集成总开关已关闭。',
   'dependency:diagnostics_unavailable': '诊断信息暂时不可用。',
 };
 const bilibiliPublishModeMessages = {
