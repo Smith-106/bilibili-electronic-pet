@@ -463,7 +463,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
     ? '轮询中'
     : filterValue === 'false'
       ? '已停用'
-      : '全部';
+      : '全部状态';
   const currentPage = Math.floor(offset / limit) + 1;
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const pollEnabledCount = countBilibiliVideosWithPollEnabled(items);
@@ -1031,7 +1031,7 @@ export async function render(container) {
         <div class="form-group">
           <label class="form-label">轮询状态</label>
           <select id="bili-video-poll-filter" class="form-input">
-            <option value="">全部</option>
+            <option value="">全部状态</option>
             <option value="true">仅轮询中</option>
             <option value="false">仅已停用</option>
           </select>
