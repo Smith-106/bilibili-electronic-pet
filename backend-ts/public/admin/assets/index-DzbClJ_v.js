@@ -585,7 +585,7 @@
           <div class="stat-value" style="font-size:14px;">${d(Z.label)}</div>
           ${Z.detail?`<div class="form-hint" style="margin-top:6px;">${d(Z.detail)}</div>`:""}
         </div>
-        ${T?`<div class="page-error" style="grid-column: 1 / -1; margin: 0;">阻塞原因: ${d(T)}</div>`:""}
+        ${T?`<div class="page-error" style="grid-column: 1 / -1; margin: 0;">当前阻塞原因: ${d(T)}</div>`:""}
       `}catch(c){l.innerHTML=`<div class="page-error">状态加载失败: ${d(q(c))}</div>`}}async function r(){const l=e.querySelector("#bili-videos-wrapper"),a=e.querySelector("#bili-video-summary"),p=e.querySelector("#bili-video-filter-btn"),o=e.querySelector("#bili-video-poll-filter"),b=e.querySelector("#bili-video-prev"),u=e.querySelector("#bili-video-next"),y=o.value;a.textContent="加载中...",l.innerHTML='<div class="page-loading">加载中...</div>',o.disabled=!0,p.disabled=!0,b.disabled=!0,u.disabled=!0;try{const m=await L.getBilibiliVideos({limit:ue,offset:t,poll_enabled:ti(y)}),w=Array.isArray(m==null?void 0:m.items)?m.items:Array.isArray(m)?m:[],g=Number((m==null?void 0:m.total)??w.length);if(w.length===0&&g>0&&t>0){t=Math.max(0,t-ue),await r();return}if(a.textContent=Ii(g,w.length,y,t,ue,w),b.disabled=t<=0,u.disabled=t+w.length>=g,w.length===0){l.innerHTML=`<div class="table-empty">${d(ii(y))}</div>`;return}l.innerHTML=`
         <table class="data-table">
           <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>最后轮询</th><th>轮询结果</th><th>操作</th></tr></thead>

@@ -1211,7 +1211,7 @@ export async function render(container) {
           <div class="stat-value" style="font-size:14px;">${escapeHtml(credentialUsage.label)}</div>
           ${credentialUsage.detail ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialUsage.detail)}</div>` : ''}
         </div>
-        ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
+        ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">当前阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
       `;
     } catch (err) {
       el.innerHTML = `<div class="page-error">状态加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;
