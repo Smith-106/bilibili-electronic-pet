@@ -188,12 +188,8 @@ function renderBilibiliVideoPollResult(video) {
   if (normalized) {
     return renderBilibiliPollStatus(video?.last_poll_status, video?.last_poll_error, video?.last_rpid);
   }
-  let hint = video?.poll_enabled ? '等待首次轮询' : '轮询未启用';
-  if (!video?.poll_enabled) {
-    hint = hasBilibiliVideoAid(video) ? '轮询未启用，可手动同步' : bilibiliPollErrorMessages.no_aid;
-  }
   if (!video?.last_polled_at) {
-    return `<span class="status-badge badge-muted">未轮询</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+    return `<span class="status-badge badge-muted">未轮询</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(getBilibiliVideoNeverPolledHint(video))}</div>`;
   }
   const detail = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid)
     ? '已轮询但未记录结果，评论游标已保留'
@@ -215,6 +211,13 @@ function getBilibiliVideoEmptyMessage(filterValue) {
 
 function hasBilibiliVideoAid(video) {
   return typeof video?.aid === 'number' && Number.isFinite(video.aid);
+}
+
+function getBilibiliVideoNeverPolledHint(video) {
+  if (!hasBilibiliVideoAid(video)) {
+    return bilibiliPollErrorMessages.no_aid;
+  }
+  return video?.poll_enabled ? '等待首次自动轮询' : '轮询未启用，可手动同步';
 }
 
 function countBilibiliVideosMissingAid(items) {
@@ -432,7 +435,7 @@ function renderBilibiliVideoCommentCount(video) {
   const count = Number(video?.comment_count ?? 0);
   const safeCount = Number.isFinite(count) && count > 0 ? count : 0;
   const hasCursor = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid);
-  let hint = '尚未轮询';
+  let hint = getBilibiliVideoNeverPolledHint(video);
   if (safeCount > 0) {
     hint = hasCursor ? '已有评论，游标已记录' : '已有评论，缺少游标';
   } else if (video?.last_polled_at) {
@@ -448,8 +451,7 @@ function renderBilibiliLastPolledCell(video) {
       : '未记录评论游标';
     return `${renderTimestamp(video.last_polled_at)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(cursorHint)}</div>`;
   }
-  const hint = hasBilibiliVideoAid(video) ? '可立即同步' : bilibiliPollErrorMessages.no_aid;
-  return `从未轮询<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+  return `从未轮询<div class="form-hint" style="margin-top:4px;">${escapeHtml(getBilibiliVideoNeverPolledHint(video))}</div>`;
 }
 
 function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize, items = []) {
