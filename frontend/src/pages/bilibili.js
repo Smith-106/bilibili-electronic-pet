@@ -374,6 +374,18 @@ function renderBilibiliVideoPollState(video) {
   return `${renderBoolBadge(video?.poll_enabled)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
 
+function renderBilibiliVideoCommentCount(video) {
+  const count = Number(video?.comment_count ?? 0);
+  const safeCount = Number.isFinite(count) && count > 0 ? count : 0;
+  let hint = '尚未轮询';
+  if (safeCount > 0) {
+    hint = '已有评论';
+  } else if (video?.last_polled_at) {
+    hint = '已轮询无评论';
+  }
+  return `${escapeHtml(safeCount)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+}
+
 function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 0, limit = bilibiliVideoPageSize, items = []) {
   const filterLabel = filterValue === 'true'
     ? '轮询中'
@@ -1123,7 +1135,7 @@ export async function render(container) {
               <td class="cell-id">${renderBilibiliVideoIdentity(v)}</td>
               <td class="cell-truncate">${renderBilibiliVideoTitle(v)}</td>
               <td>${renderBilibiliVideoPollState(v)}</td>
-              <td>${v.comment_count ?? '-'}</td>
+              <td>${renderBilibiliVideoCommentCount(v)}</td>
               <td class="cell-time">${v.last_polled_at ? renderTimestamp(v.last_polled_at) : '-'}</td>
               <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error, v.last_rpid)}</td>
               <td class="cell-actions">
