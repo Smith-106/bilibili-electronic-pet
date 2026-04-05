@@ -92,7 +92,7 @@ function formatBilibiliToggleState(enabled, enabledLabel, disabledLabel) {
 
 function formatBilibiliPollInterval(seconds) {
   const value = Number(seconds);
-  if (!Number.isFinite(value) || value <= 0) return '-';
+  if (!Number.isFinite(value) || value <= 0) return '未设置';
   if (value % 60 === 0) return `${value / 60} 分钟`;
   return `${value} 秒`;
 }
@@ -117,7 +117,7 @@ function formatBilibiliPollIntervalHint(seconds) {
 
 function formatBilibiliRateLimit(limitPerMinute) {
   const value = Number(limitPerMinute);
-  if (!Number.isFinite(value) || value <= 0) return '-';
+  if (!Number.isFinite(value) || value <= 0) return '未设置';
   return `${value} 次/分钟`;
 }
 
