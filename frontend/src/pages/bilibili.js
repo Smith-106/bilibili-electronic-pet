@@ -663,9 +663,10 @@ function getBilibiliCredentialUsageState(item) {
   }
   if (item?.last_used_at) {
     const relative = timeAgo(item.last_used_at);
+    const active = Boolean(item?.is_active || item?.active);
     return {
       label: relative || '已使用',
-      detail: formatIsoDateTime(item.last_used_at),
+      detail: `${formatIsoDateTime(item.last_used_at)}，${active ? '当前生效' : '当前未激活'}`,
     };
   }
   const hints = [];
