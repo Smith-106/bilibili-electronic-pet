@@ -708,7 +708,7 @@ function getBilibiliCredentialUsageState(item) {
   if (active) {
     hints.push(configured ? '当前生效，等待首次使用' : `当前生效，但${missingFieldsText}`);
   } else {
-    hints.push(configured ? '待手动激活，激活后可使用' : `待补齐 ${missingFields} 后激活`);
+    hints.push(configured ? '待手动激活，激活后可用于鉴权' : `待补齐 ${missingFields} 后激活`);
   }
   if (item?.updated_at) {
     hints.push(formatBilibiliHintTime('更新', item.updated_at));
@@ -737,7 +737,7 @@ function renderBilibiliCredentialActiveState(item) {
   const missingFieldsText = configured ? '' : `缺少 ${missingFields}`;
   const hint = active
     ? (configured ? '当前生效，字段完整，可用于鉴权' : `当前生效，但${missingFieldsText}`)
-    : (configured ? '待手动激活，字段完整，可随时切换' : `待补齐 ${missingFields} 后激活`);
+    : (configured ? '待手动激活，字段完整，激活后即可切换使用' : `待补齐 ${missingFields} 后激活`);
   return `${renderBoolBadge(active)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
 
