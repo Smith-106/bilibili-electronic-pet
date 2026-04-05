@@ -221,7 +221,7 @@ function getBilibiliVideoNeverPolledHint(video) {
   if (!hasBilibiliVideoAid(video)) {
     return bilibiliPollErrorMessages.no_aid;
   }
-  return video?.poll_enabled ? '等待首次自动轮询' : '轮询未启用，可手动同步';
+  return video?.poll_enabled ? '等待首次自动轮询，可稍后刷新查看' : '轮询未启用，可手动同步评论';
 }
 
 function countBilibiliVideosMissingAid(items) {
