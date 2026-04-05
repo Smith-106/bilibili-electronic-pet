@@ -637,7 +637,7 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
 
 function formatBilibiliCredentialExpiryHint(info, hasCredential = true) {
   if (!hasCredential) {
-    return '当前无活跃凭证';
+    return '当前无活跃凭证，无法评估过期状态';
   }
   const stateHint = !info.hasExpiry
     ? '需手动确认有效性并定期轮换'
@@ -690,7 +690,7 @@ function getBilibiliCredentialUsageState(item) {
   if (!item) {
     return {
       label: '未配置',
-      detail: '请先添加并激活凭证',
+      detail: '请先添加并激活凭证用于鉴权',
     };
   }
   const active = Boolean(item?.is_active || item?.active);
