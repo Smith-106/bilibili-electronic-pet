@@ -178,6 +178,18 @@ function renderBilibiliPollStatus(status, error, lastRpid) {
   return `<span class="status-badge ${info.cls}"${titleAttr}>${escapeHtml(info.label)}</span>${hints}`;
 }
 
+function renderBilibiliVideoPollResult(video) {
+  const normalized = String(video?.last_poll_status ?? '').trim().toLowerCase();
+  if (normalized) {
+    return renderBilibiliPollStatus(video?.last_poll_status, video?.last_poll_error, video?.last_rpid);
+  }
+  const hint = video?.poll_enabled ? '等待首次轮询' : '轮询未启用';
+  if (!video?.last_polled_at) {
+    return `<span class="status-badge badge-muted">未轮询</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
+  }
+  return '<span class="status-badge badge-muted">无状态</span>';
+}
+
 function parseBilibiliPollFilter(value) {
   if (value === 'true') return true;
   if (value === 'false') return false;
@@ -1151,7 +1163,7 @@ export async function render(container) {
               <td>${renderBilibiliVideoPollState(v)}</td>
               <td>${renderBilibiliVideoCommentCount(v)}</td>
               <td class="cell-time">${renderBilibiliLastPolledCell(v)}</td>
-              <td>${renderBilibiliPollStatus(v.last_poll_status, v.last_poll_error, v.last_rpid)}</td>
+              <td>${renderBilibiliVideoPollResult(v)}</td>
               <td class="cell-actions">
                 <button class="btn btn-sm bili-toggle-poll" data-id="${escapeHtml(v.id || v.video_id)}">${v.poll_enabled ? '禁用轮询' : '启用轮询'}</button>
                 ${renderBilibiliSyncButton(v)}
