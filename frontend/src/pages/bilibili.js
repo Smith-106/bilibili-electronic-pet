@@ -689,17 +689,23 @@ function getBilibiliCredentialUsageState(item) {
       detail: '请先添加并激活凭证',
     };
   }
+  const active = Boolean(item?.is_active || item?.active);
+  const configured = isBilibiliCredentialConfigured(item);
+  const missingFields = configured ? '' : getBilibiliCredentialMissingFields(item).join(' / ');
+  const missingFieldsText = configured ? '' : `缺少 ${missingFields}`;
   if (item?.last_used_at) {
     const relative = timeAgo(item.last_used_at);
-    const active = Boolean(item?.is_active || item?.active);
     return {
       label: relative || '已使用',
-      detail: `${formatIsoDateTime(item.last_used_at)}，${active ? '当前生效' : '当前未激活'}`,
+      detail: `${formatIsoDateTime(item.last_used_at)}，${active ? '当前生效' : '当前未激活'}${configured ? '，字段完整' : `，${missingFieldsText}`}`,
     };
   }
   const hints = [];
-  const active = Boolean(item?.is_active || item?.active);
-  hints.push(active ? '当前生效，等待首次使用' : '待激活后使用');
+  if (active) {
+    hints.push(configured ? '当前生效，等待首次使用' : `当前生效，但${missingFieldsText}`);
+  } else {
+    hints.push(configured ? '待手动激活，激活后可使用' : `待补齐 ${missingFields} 后激活`);
+  }
   if (item?.updated_at) {
     hints.push(formatBilibiliHintTime('更新', item.updated_at));
   }
@@ -723,10 +729,11 @@ function renderBilibiliCredentialUsageCell(item) {
 function renderBilibiliCredentialActiveState(item) {
   const active = Boolean(item?.is_active || item?.active);
   const configured = isBilibiliCredentialConfigured(item);
-  const missingFields = configured ? '' : `，缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`;
+  const missingFields = configured ? '' : getBilibiliCredentialMissingFields(item).join(' / ');
+  const missingFieldsText = configured ? '' : `缺少 ${missingFields}`;
   const hint = active
-    ? `当前生效${configured ? '，字段完整' : missingFields}`
-    : `待手动激活${configured ? '，字段完整' : missingFields}`;
+    ? (configured ? '当前生效，字段完整，可用于鉴权' : `当前生效，但${missingFieldsText}`)
+    : (configured ? '待手动激活，字段完整，可随时切换' : `待补齐 ${missingFields} 后激活`);
   return `${renderBoolBadge(active)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
 }
 
