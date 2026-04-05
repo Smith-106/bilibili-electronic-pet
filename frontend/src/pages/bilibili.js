@@ -331,16 +331,26 @@ function renderBilibiliVideoIdentity(video) {
   return `${escapeHtml(video?.bvid || '-')}${hint ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>` : ''}`;
 }
 
+function formatBilibiliHintTime(label, value) {
+  if (!value) return '';
+  const relative = timeAgo(value);
+  const exact = formatIsoDateTime(value);
+  if (relative) {
+    return `${label}: ${relative}（${exact}）`;
+  }
+  return `${label}: ${exact}`;
+}
+
 function renderBilibiliVideoTitle(video) {
   const hints = [];
   if (typeof video?.owner_mid === 'number' && Number.isFinite(video.owner_mid)) {
     hints.push(`UP主 MID: ${video.owner_mid}`);
   }
   if (video?.updated_at) {
-    hints.push(`更新: ${formatIsoDateTime(video.updated_at)}`);
+    hints.push(formatBilibiliHintTime('更新', video.updated_at));
   }
   if (video?.created_at) {
-    hints.push(`创建: ${formatIsoDateTime(video.created_at)}`);
+    hints.push(formatBilibiliHintTime('创建', video.created_at));
   }
   return `${escapeHtml(video?.title || '-')}${hints
     .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
@@ -542,10 +552,10 @@ function renderBilibiliCredentialExpiry(value) {
 function renderBilibiliCredentialName(item, fallbackLabel = '-') {
   const hints = [];
   if (item?.updated_at) {
-    hints.push(`更新: ${formatIsoDateTime(item.updated_at)}`);
+    hints.push(formatBilibiliHintTime('更新', item.updated_at));
   }
   if (item?.created_at) {
-    hints.push(`创建: ${formatIsoDateTime(item.created_at)}`);
+    hints.push(formatBilibiliHintTime('创建', item.created_at));
   }
   return `${escapeHtml(item?.name || fallbackLabel)}${hints
     .map((text) => `<div class="form-hint" style="margin-top:4px;">${escapeHtml(text)}</div>`)
@@ -575,10 +585,10 @@ function getBilibiliCredentialUsageState(item) {
   }
   const hints = [];
   if (item?.updated_at) {
-    hints.push(`更新: ${formatIsoDateTime(item.updated_at)}`);
+    hints.push(formatBilibiliHintTime('更新', item.updated_at));
   }
   if (item?.created_at) {
-    hints.push(`创建: ${formatIsoDateTime(item.created_at)}`);
+    hints.push(formatBilibiliHintTime('创建', item.created_at));
   }
   return {
     label: '从未使用',
