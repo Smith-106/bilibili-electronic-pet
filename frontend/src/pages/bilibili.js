@@ -765,11 +765,11 @@ function formatBilibiliDiagnosticHealth(diagnostics) {
   const blockingReasons = Array.isArray(diagnostics?.blocking_reasons)
     ? diagnostics.blocking_reasons.filter(Boolean)
     : [];
-  const blockingText = blockingReasons.length > 0 ? `，阻塞 ${blockingReasons.length} 项` : '';
+  const blockingText = blockingReasons.length > 0 ? `，阻塞 ${blockingReasons.length} 项，详见下方阻塞原因` : '';
   const authRequired = pollingWorkerEnabled || nativePublishEnabled;
   if (!authRequired) {
     return blockingReasons.length > 0
-      ? `当前无需鉴权，但诊断仍受阻${blockingText}`
+      ? `当前无需鉴权，但诊断校验仍受阻${blockingText}`
       : '轮询与发布链路均未启用，可按需开启';
   }
   if (authReady && workerOrPublishReady) {
