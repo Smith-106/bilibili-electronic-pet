@@ -137,7 +137,7 @@ function formatBilibiliRateLimitHint(limitPerMinute) {
 function formatBilibiliCoverage(enabledCount, totalCount, label = '覆盖率') {
   const total = Number(totalCount ?? 0);
   if (!Number.isFinite(total) || total <= 0) {
-    return '暂无视频';
+    return `暂无视频，无法计算${label}`;
   }
   const enabled = Number(enabledCount ?? 0);
   const safeEnabled = Number.isFinite(enabled)
