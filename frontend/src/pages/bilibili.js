@@ -187,7 +187,10 @@ function renderBilibiliVideoPollResult(video) {
   if (!video?.last_polled_at) {
     return `<span class="status-badge badge-muted">未轮询</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(hint)}</div>`;
   }
-  return '<span class="status-badge badge-muted">无状态</span>';
+  const detail = typeof video?.last_rpid === 'number' && Number.isFinite(video.last_rpid)
+    ? '已轮询但未记录结果，评论游标已保留'
+    : '已轮询但未记录结果';
+  return `<span class="status-badge badge-muted">无状态</span><div class="form-hint" style="margin-top:4px;">${escapeHtml(detail)}</div>`;
 }
 
 function parseBilibiliPollFilter(value) {
