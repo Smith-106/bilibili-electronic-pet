@@ -1110,7 +1110,7 @@ export async function render(container) {
       const disabledVideoShare = formatBilibiliCoverage(disabledVideoCount, totalVideoCount, '停用占比');
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
       const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
-      const activeCredentialName = renderBilibiliCredentialName(data?.credential, '未配置');
+      const activeCredentialName = renderBilibiliCredentialName(data?.credential, '未配置活跃凭证');
       const credentialPresent = Boolean(
         data?.diagnostics?.signals?.credential_present
         ?? data?.diagnostics?.release_gates?.credential_present,
