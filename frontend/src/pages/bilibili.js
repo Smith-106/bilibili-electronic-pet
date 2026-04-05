@@ -628,7 +628,18 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
 
 function renderBilibiliCredentialExpiry(value) {
   const info = getBilibiliCredentialExpiryState(value);
-  const detailText = info.detail || (!info.hasExpiry ? '未设置过期时间' : '');
+  const stateHint = !info.hasExpiry
+    ? '需手动确认有效性'
+    : info.label === '时间异常'
+      ? '请检查过期时间格式'
+      : info.expired
+        ? '建议尽快更新'
+        : info.expiringSoon
+          ? '建议提前轮换'
+          : '当前仍可使用';
+  const detailText = [info.detail || (!info.hasExpiry ? '未设置过期时间' : ''), stateHint]
+    .filter(Boolean)
+    .join('，');
   const detail = detailText
     ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(detailText)}</div>`
     : '';
