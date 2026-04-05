@@ -593,7 +593,7 @@ function getBilibiliCredentialExpiryState(value, now = Date.now()) {
       hasExpiry: true,
       expired: false,
       expiringSoon: false,
-      label: '时间异常',
+      label: '过期时间异常',
       cls: 'badge-danger',
       detail: String(value),
     };
@@ -641,8 +641,8 @@ function formatBilibiliCredentialExpiryHint(info, hasCredential = true) {
   }
   const stateHint = !info.hasExpiry
     ? '需手动确认有效性并定期轮换'
-    : info.label === '时间异常'
-      ? '请检查过期时间格式'
+    : info.label === '过期时间异常'
+      ? '请检查过期时间格式后重试'
       : info.expired
         ? '建议尽快更新'
         : info.expiringSoon
