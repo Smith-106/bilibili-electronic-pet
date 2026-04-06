@@ -193,13 +193,32 @@ Processes comment events and generates replies:
 npm test
 
 # Run with coverage
-npm test -- --coverage
+npm run test:coverage
+
+# Run lint and formatting checks
+npm run lint
+npm run format
+
+# Apply formatting fixes
+npm run format:write
+
+# Run staging validation
+npm run staging:check -- --base-url http://127.0.0.1:18000
 
 # Run specific test file
 npm test -- test/workers.test.ts
 ```
 
 **Test Coverage**: 152 tests, all passing
+
+## Staging Validation
+
+See [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) for:
+
+- baseline / strict / pre-release real-chain validation modes
+- the staging environment variable matrix
+- `smoke.sh` / `smoke.ps1` wrapper usage
+- JSON dry-run report generation
 
 ## Deployment
 
@@ -239,11 +258,17 @@ npx prisma migrate dev --name describe_change
 ### Code Quality
 
 ```bash
-# Type check
+# Type check / build
 npm run build
 
-# Formatting / linting scripts are not wired yet in this package
-# Prefer running the build + test commands above as the current validation gate
+# Lint source and tests
+npm run lint
+
+# Check formatting
+npm run format
+
+# Rewrite files to the configured style
+npm run format:write
 ```
 
 ## Migration from Python

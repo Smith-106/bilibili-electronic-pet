@@ -25,9 +25,10 @@ const trackedEnvKeys = [
   'CREDENTIAL_ENCRYPTION_KEY',
 ] as const;
 
-const originalEnv = Object.fromEntries(
-  trackedEnvKeys.map((key) => [key, process.env[key]]),
-) as Record<(typeof trackedEnvKeys)[number], string | undefined>;
+const originalEnv = Object.fromEntries(trackedEnvKeys.map((key) => [key, process.env[key]])) as Record<
+  (typeof trackedEnvKeys)[number],
+  string | undefined
+>;
 
 function clearCredentialEnv(): void {
   for (const key of trackedEnvKeys) {

@@ -1,0 +1,455 @@
+#!/usr/bin/env node
+
+import { existsSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { config as loadDotenv } from 'dotenv';
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const backendRoot = resolve(scriptDir, '..');
+const repoRoot = resolve(backendRoot, '..');
+
+function parseBoolean(value, defaultValue = false) {
+  if (value == null || value === '') return defaultValue;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).trim().toLowerCase());
+}
+
+function hasText(value) {
+  return String(value ?? '').trim().length > 0;
+}
+
+function parseArgs(argv) {
+  const result = {
+    baseUrl: null,
+    apiKey: null,
+    envFile: null,
+    reportPath: null,
+    strict: false,
+    preReleaseRealChain: false,
+    help: false,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const current = argv[index];
+    const next = argv[index + 1];
+
+    if (current === '--help' || current === '-h') {
+      result.help = true;
+      continue;
+    }
+
+    if (current === '--strict') {
+      result.strict = true;
+      continue;
+    }
+
+    if (current === '--pre-release-real-chain') {
+      result.preReleaseRealChain = true;
+      continue;
+    }
+
+    if (current.startsWith('--base-url=')) {
+      result.baseUrl = current.slice('--base-url='.length);
+      continue;
+    }
+
+    if (current === '--base-url' && next) {
+      result.baseUrl = next;
+      index += 1;
+      continue;
+    }
+
+    if (current.startsWith('--api-key=')) {
+      result.apiKey = current.slice('--api-key='.length);
+      continue;
+    }
+
+    if (current === '--api-key' && next) {
+      result.apiKey = next;
+      index += 1;
+      continue;
+    }
+
+    if (current.startsWith('--env-file=')) {
+      result.envFile = current.slice('--env-file='.length);
+      continue;
+    }
+
+    if (current === '--env-file' && next) {
+      result.envFile = next;
+      index += 1;
+      continue;
+    }
+
+    if (current.startsWith('--report=')) {
+      result.reportPath = current.slice('--report='.length);
+      continue;
+    }
+
+    if (current === '--report' && next) {
+      result.reportPath = next;
+      index += 1;
+    }
+  }
+
+  return result;
+}
+
+function loadEnvFiles(explicitEnvFile) {
+  const loaded = [];
+
+  const candidates = explicitEnvFile
+    ? [resolve(process.cwd(), explicitEnvFile)]
+    : [resolve(backendRoot, '.env'), resolve(repoRoot, '.env')];
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    loadDotenv({ path: candidate, override: false });
+    loaded.push(candidate);
+  }
+
+  return loaded;
+}
+
+function usage() {
+  return `Usage:
+  node scripts/staging-check.mjs [options]
+
+Options:
+  --base-url <url>               API base URL, default http://127.0.0.1:18000
+  --api-key <key>                Admin API key used for authenticated checks
+  --env-file <path>              Explicit env file to load before checks
+  --strict                       Require delivery-capable diagnostics checks
+  --pre-release-real-chain       Require native Bilibili pre-release gates
+  --report <path>                Write JSON report to the given path
+  --help                         Show this help
+
+Environment fallbacks:
+  BASE_URL, API_KEY, ENV_FILE, STRICT_SMOKE, PRE_RELEASE_REAL_CHAIN, REPORT_PATH
+`;
+}
+
+function logPass(message) {
+  console.log(`[PASS] ${message}`);
+}
+
+function logWarn(message) {
+  console.warn(`[WARN] ${message}`);
+}
+
+function logInfo(message) {
+  console.log(`[INFO] ${message}`);
+}
+
+function normalizeBaseUrl(value) {
+  const base = hasText(value) ? String(value).trim() : 'http://127.0.0.1:18000';
+  return base.endsWith('/') ? base : `${base}/`;
+}
+
+function buildUrl(baseUrl, relativePath) {
+  return new URL(relativePath, baseUrl).toString();
+}
+
+function extractAssetPaths(html) {
+  const matches = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:css|js))["']/gi)];
+  const assets = new Set();
+  for (const match of matches) {
+    const rawPath = String(match[1] ?? '').trim();
+    if (!rawPath) continue;
+    assets.add(rawPath);
+  }
+  return [...assets];
+}
+
+function buildEnvMatrix(env, options) {
+  const nativeRealChain = options.preReleaseRealChain;
+  const strict = options.strict;
+  const publisherMode = String(env.PUBLISHER_MODE ?? 'manual_queue').trim().toLowerCase();
+  const webhookMode = publisherMode === 'webhook';
+  const envCredentialPresent =
+    hasText(env.BILIBILI_SESSDATA) &&
+    hasText(env.BILIBILI_BILI_JCT) &&
+    hasText(env.BILIBILI_BUVID3);
+
+  return [
+    { name: 'API_KEY', required: strict || nativeRealChain, present: hasText(options.apiKey) },
+    { name: 'DATABASE_URL', required: false, present: hasText(env.DATABASE_URL) },
+    { name: 'REDIS_HOST', required: false, present: hasText(env.REDIS_HOST) },
+    { name: 'REDIS_PORT', required: false, present: hasText(env.REDIS_PORT) },
+    { name: 'CELERY_BROKER_URL', required: false, present: hasText(env.CELERY_BROKER_URL) },
+    { name: 'CELERY_RESULT_BACKEND', required: false, present: hasText(env.CELERY_RESULT_BACKEND) },
+    { name: 'GATEWAY_TOKEN', required: false, present: hasText(env.GATEWAY_TOKEN) },
+    { name: 'GATEWAY_HMAC_SECRET', required: false, present: hasText(env.GATEWAY_HMAC_SECRET) },
+    { name: 'LLM_PROVIDER', required: false, present: hasText(env.LLM_PROVIDER) },
+    { name: 'LLM_API_KEY', required: String(env.LLM_PROVIDER ?? '').trim().toLowerCase() !== 'mock', present: hasText(env.LLM_API_KEY) },
+    { name: 'PUBLISHER_MODE', required: strict, present: hasText(env.PUBLISHER_MODE) },
+    { name: 'PUBLISHER_WEBHOOK_URL', required: strict && webhookMode, present: hasText(env.PUBLISHER_WEBHOOK_URL) },
+    { name: 'BILIBILI_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_ENABLED) },
+    { name: 'BILIBILI_PUBLISH_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_PUBLISH_ENABLED) },
+    { name: 'BILIBILI_POLL_ENABLED', required: false, present: hasText(env.BILIBILI_POLL_ENABLED) },
+    {
+      name: 'BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3',
+      required: nativeRealChain,
+      present: envCredentialPresent,
+      note: 'May be replaced by an active DB credential at runtime',
+    },
+    {
+      name: 'BILIBILI_COOKIE_ENCRYPTION_KEY',
+      required: false,
+      present: hasText(env.BILIBILI_COOKIE_ENCRYPTION_KEY),
+      note: 'Required when runtime credentials are stored in the database',
+    },
+  ];
+}
+
+async function fetchText(url, options = {}) {
+  const response = await fetch(url, options);
+  const body = await response.text();
+  return { response, body };
+}
+
+async function fetchJson(url, options = {}) {
+  const { response, body } = await fetchText(url, options);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    parsed = null;
+  }
+  return { response, body, parsed };
+}
+
+function buildAdminHeaders(apiKey) {
+  return apiKey ? { 'x-api-key': apiKey } : {};
+}
+
+function summarizeDiagnostics(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== 'object') return 'missing diagnostics';
+  const mode = String(diagnostics.effective_publish_mode ?? '').trim() || 'unknown';
+  const ready = diagnostics.ready === true;
+  const blocking = Array.isArray(diagnostics.blocking_reasons)
+    ? diagnostics.blocking_reasons.map((item) => String(item)).filter(Boolean)
+    : [];
+  return `mode=${mode}, ready=${ready}, blocking=${blocking.join(',') || 'none'}`;
+}
+
+async function main() {
+  const parsedArgs = parseArgs(process.argv.slice(2));
+  if (parsedArgs.help) {
+    console.log(usage());
+    return;
+  }
+
+  const envFiles = loadEnvFiles(parsedArgs.envFile ?? process.env.ENV_FILE);
+  const baseUrl = normalizeBaseUrl(parsedArgs.baseUrl ?? process.env.BASE_URL);
+  const apiKey = String(parsedArgs.apiKey ?? process.env.API_KEY ?? '').trim();
+  const strict = parsedArgs.strict || parseBoolean(process.env.STRICT_SMOKE, false);
+  const preReleaseRealChain =
+    parsedArgs.preReleaseRealChain || parseBoolean(process.env.PRE_RELEASE_REAL_CHAIN, false);
+  const reportPath = parsedArgs.reportPath ?? process.env.REPORT_PATH ?? null;
+
+  if (preReleaseRealChain && !strict) {
+    throw new Error('--pre-release-real-chain requires --strict');
+  }
+
+  const report = {
+    started_at: new Date().toISOString(),
+    base_url: baseUrl.replace(/\/$/, ''),
+    strict,
+    pre_release_real_chain: preReleaseRealChain,
+    env_files: envFiles,
+    env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, apiKey }),
+    checks: [],
+    warnings: [],
+  };
+
+  const record = (name, status, details = {}) => {
+    report.checks.push({ name, status, ...details });
+  };
+
+  const fail = (name, message, details = {}) => {
+    record(name, 'failed', { message, ...details });
+    throw new Error(`${name}: ${message}`);
+  };
+
+  logInfo(`BASE_URL=${report.base_url}`);
+  if (envFiles.length > 0) {
+    logInfo(`Loaded env files: ${envFiles.join(', ')}`);
+  }
+
+  for (const entry of report.env_matrix) {
+    if (entry.required && !entry.present) {
+      const note = entry.note ? ` (${entry.note})` : '';
+      logWarn(`Missing required staging input: ${entry.name}${note}`);
+      report.warnings.push(`missing:${entry.name}`);
+    }
+  }
+
+  const healthUrl = buildUrl(baseUrl, '/health');
+  const { response: healthResponse, parsed: healthPayload } = await fetchJson(healthUrl);
+  if (healthResponse.status !== 200 || healthPayload?.ok !== true) {
+    fail('health', `expected 200 and {ok:true}, got status=${healthResponse.status}`);
+  }
+  record('health', 'passed', { http_status: healthResponse.status });
+  logPass('health');
+
+  const adminUrl = buildUrl(baseUrl, '/admin');
+  const { response: adminResponse, body: adminHtml } = await fetchText(adminUrl);
+  if (adminResponse.status !== 200 || !adminHtml.includes('<!doctype html>')) {
+    fail('admin_html', `expected admin HTML, got status=${adminResponse.status}`);
+  }
+  const assetPaths = extractAssetPaths(adminHtml);
+  if (assetPaths.length === 0) {
+    fail('admin_assets', 'no CSS/JS asset references found in /admin HTML');
+  }
+  record('admin_html', 'passed', { asset_count: assetPaths.length });
+  logPass(`admin HTML (${assetPaths.length} assets)`);
+
+  for (const assetPath of assetPaths) {
+    const assetUrl = buildUrl(baseUrl, assetPath);
+    const { response: assetResponse } = await fetchText(assetUrl);
+    if (assetResponse.status !== 200) {
+      fail('admin_asset', `asset ${assetPath} returned status=${assetResponse.status}`, {
+        asset: assetPath,
+      });
+    }
+    record('admin_asset', 'passed', { asset: assetPath, http_status: assetResponse.status });
+    logPass(`asset ${assetPath}`);
+  }
+
+  if (!apiKey) {
+    if (strict || preReleaseRealChain) {
+      fail('api_key', 'API key is required for strict/admin staging checks');
+    }
+
+    record('degraded_mode', 'passed', { reason: 'API key not provided; only basic health/admin checks executed' });
+    logWarn('API key not provided. Finished in degraded mode after health + admin asset checks.');
+  } else {
+    const headers = buildAdminHeaders(apiKey);
+
+    const readinessUrl = buildUrl(baseUrl, '/readiness');
+    const { response: readinessResponse, parsed: readinessPayload } = await fetchJson(readinessUrl);
+    if (readinessResponse.status !== 200 || readinessPayload?.ready !== true) {
+      fail(
+        'readiness',
+        `expected readiness.ready=true, got status=${readinessResponse.status}, ready=${String(
+          readinessPayload?.ready,
+        )}`,
+        { payload: readinessPayload },
+      );
+    }
+    record('readiness', 'passed', {
+      foundation_ready: readinessPayload.foundation_ready,
+      delivery_ready: readinessPayload.delivery_ready,
+      delivery_blockers: readinessPayload.delivery_blockers ?? [],
+    });
+    logPass('readiness');
+
+    const overviewUrl = buildUrl(baseUrl, '/api/admin/overview');
+    const { response: overviewResponse, parsed: overviewPayload } = await fetchJson(overviewUrl, { headers });
+    if (overviewResponse.status !== 200 || overviewPayload?.ok !== true) {
+      fail('admin_overview', `expected ok=true, got status=${overviewResponse.status}`);
+    }
+    record('admin_overview', 'passed', { http_status: overviewResponse.status });
+    logPass('admin overview');
+
+    const bilibiliStatusUrl = buildUrl(baseUrl, '/api/admin/bilibili/status');
+    const { response: bilibiliResponse, parsed: bilibiliPayload } = await fetchJson(bilibiliStatusUrl, { headers });
+    if (bilibiliResponse.status !== 200 || bilibiliPayload?.ok !== true) {
+      fail('bilibili_status', `expected ok=true, got status=${bilibiliResponse.status}`);
+    }
+    record('bilibili_status', 'passed', {
+      diagnostics: summarizeDiagnostics(bilibiliPayload.diagnostics),
+    });
+    logPass('bilibili status');
+
+    if (strict) {
+      const diagnostics = bilibiliPayload?.diagnostics;
+      const checks = diagnostics?.checks ?? {};
+      const releaseGates = diagnostics?.release_gates ?? {};
+      const effectivePublishMode = String(diagnostics?.effective_publish_mode ?? '').trim();
+      const workerOrPublishReady = Boolean(
+        releaseGates.worker_or_publish_ready ?? checks.worker_or_publish?.ready ?? false,
+      );
+
+      if (effectivePublishMode === 'native_bilibili') {
+        if (diagnostics?.ready !== true) {
+          fail('strict_delivery', `native bilibili diagnostics are not ready (${summarizeDiagnostics(diagnostics)})`);
+        }
+      } else if (effectivePublishMode === 'webhook' || effectivePublishMode === 'real_publish') {
+        if (!workerOrPublishReady) {
+          fail(
+            'strict_delivery',
+            `${effectivePublishMode} mode is not delivery-ready (${summarizeDiagnostics(diagnostics)})`,
+          );
+        }
+      } else {
+        fail(
+          'strict_delivery',
+          `effective publish mode ${effectivePublishMode || 'unknown'} is not delivery-capable`,
+        );
+      }
+
+      record('strict_delivery', 'passed', {
+        effective_publish_mode: effectivePublishMode,
+        worker_or_publish_ready: workerOrPublishReady,
+      });
+      logPass(`strict delivery contract (${effectivePublishMode})`);
+
+      if (preReleaseRealChain) {
+        const diagnostics = bilibiliPayload?.diagnostics ?? {};
+        const releaseGates = diagnostics.release_gates ?? {};
+        const requiredTrueFields = [
+          'pre_release_real_chain_ready',
+          'real_auth_ready',
+          'dependency_ready',
+          'worker_or_publish_ready',
+          'native_publish_enabled',
+          'credential_present',
+          'credential_complete',
+        ];
+
+        const fieldFailures = requiredTrueFields.filter((field) => releaseGates[field] !== true);
+        if (String(diagnostics.effective_publish_mode ?? '').trim() !== 'native_bilibili') {
+          fieldFailures.push(
+            `effective_publish_mode=${String(diagnostics.effective_publish_mode ?? '').trim() || 'unknown'}`,
+          );
+        }
+        if (readinessPayload?.delivery_ready !== true) {
+          fieldFailures.push(`delivery_ready=${String(readinessPayload?.delivery_ready)}`);
+        }
+        if (Array.isArray(releaseGates.blocking_reasons) && releaseGates.blocking_reasons.length > 0) {
+          fieldFailures.push(`blocking_reasons=${releaseGates.blocking_reasons.join(',')}`);
+        }
+
+        if (fieldFailures.length > 0) {
+          fail('pre_release_real_chain', fieldFailures.join('; '), {
+            diagnostics: summarizeDiagnostics(diagnostics),
+          });
+        }
+
+        record('pre_release_real_chain', 'passed', {
+          effective_publish_mode: diagnostics.effective_publish_mode,
+        });
+        logPass('pre-release real chain contract');
+      }
+    }
+  }
+
+  report.completed_at = new Date().toISOString();
+  report.status = 'passed';
+
+  if (reportPath) {
+    const outputPath = resolve(process.cwd(), reportPath);
+    writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    logInfo(`Report written to ${outputPath}`);
+  }
+
+  console.log('== STAGING CHECK PASS ==');
+}
+
+main().catch((error) => {
+  console.error(`== STAGING CHECK FAIL ==\n${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+});

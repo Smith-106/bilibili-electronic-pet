@@ -10,7 +10,7 @@ process.env.LLM_PROVIDER = 'ollama';
 process.env.LLM_BASE_URL = 'http://127.0.0.1:1';
 
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { createCommentEventWorker, createCommentEventQueue } from '../src/workers/tasks/comment-event.task.js';
+import { createCommentEventQueue } from '../src/workers/tasks/comment-event.task.js';
 import { buildWorkerServices } from '../src/services/index.js';
 import type { WorkerServices } from '../src/services/interfaces.js';
 import type { CommentEventPayload } from '../src/workers/tasks/comment-event.task.js';
@@ -151,8 +151,11 @@ describe('worker integration tests', () => {
       delete process.env.PUBLISHER_MODE;
 
       try {
-        const [published, reason, publishedAt, result] =
-          await mockServices.publishReplyWithResult(commentId, 'test reply', 'test-trace');
+        const [published, reason, publishedAt] = await mockServices.publishReplyWithResult(
+          commentId,
+          'test reply',
+          'test-trace',
+        );
 
         expect(published).toBe(true);
         expect(reason).toBe('manual_queued');
@@ -172,8 +175,11 @@ describe('worker integration tests', () => {
       process.env.PUBLISHER_MODE = 'real_publish';
 
       try {
-        const [published, reason, publishedAt, result] =
-          await mockServices.publishReplyWithResult(commentId, 'test reply', 'test-trace');
+        const [published, reason, publishedAt] = await mockServices.publishReplyWithResult(
+          commentId,
+          'test reply',
+          'test-trace',
+        );
 
         expect(published).toBe(false);
         // Without real Bilibili credentials, the API call fails
@@ -194,10 +200,7 @@ describe('worker integration tests', () => {
     });
 
     it('builds knowledge context', () => {
-      const context = mockServices.buildKnowledgeContext([
-        { category: 'test' },
-        { category: 'example' },
-      ]);
+      const context = mockServices.buildKnowledgeContext([{ category: 'test' }, { category: 'example' }]);
       expect(context).toContain('Knowledge Context');
       expect(context).toContain('Category: test');
       expect(context).toContain('Category: example');
@@ -210,9 +213,7 @@ describe('worker integration tests', () => {
     });
 
     it('builds search context', () => {
-      const context = mockServices.buildSearchContext([
-        { source: 'test', title: 'Test', snippet: 'Test snippet' },
-      ]);
+      const context = mockServices.buildSearchContext([{ source: 'test', title: 'Test', snippet: 'Test snippet' }]);
       expect(context).toContain('Search Context');
     });
 
@@ -222,9 +223,7 @@ describe('worker integration tests', () => {
     });
 
     it('remembers phrase (placeholder)', async () => {
-      await expect(
-        mockServices.rememberReplyPhrase('user-123', 'test phrase')
-      ).resolves.toBeUndefined();
+      await expect(mockServices.rememberReplyPhrase('user-123', 'test phrase')).resolves.toBeUndefined();
     });
   });
 });

@@ -77,9 +77,7 @@ describe('bilibili-client runtime config integration', () => {
   });
 
   it('reports whether a runtime credential is available', async () => {
-    loadBilibiliRuntimeConfig
-      .mockResolvedValueOnce(runtimeConfig)
-      .mockResolvedValueOnce(null);
+    loadBilibiliRuntimeConfig.mockResolvedValueOnce(runtimeConfig).mockResolvedValueOnce(null);
 
     await expect(isBilibiliConfigured()).resolves.toBe(true);
     await expect(isBilibiliConfigured()).resolves.toBe(false);

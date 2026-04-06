@@ -33,10 +33,7 @@ export type SafetyCheckService = (text: string) => Promise<[boolean, Record<stri
  * Decision service: decide_safety_action
  * Maps to: app.services.decider.decide_safety_action
  */
-export type DecideSafetyActionService = (
-  safe: boolean,
-  riskFlags: Record<string, unknown>
-) => string; // 'ok' | 'blocked' | 'manual_queue'
+export type DecideSafetyActionService = (safe: boolean, riskFlags: Record<string, unknown>) => string; // 'ok' | 'blocked' | 'manual_queue'
 
 /**
  * Generation service: generate_reply_with_meta
@@ -77,19 +74,13 @@ export type GenerateReplyService = (params: {
  * Deduplication service: is_recent_duplicate
  * Maps to: app.services.dedupe.is_recent_duplicate
  */
-export type IsRecentDuplicateService = (
-  userId: string,
-  replyText: string
-) => Promise<boolean>;
+export type IsRecentDuplicateService = (userId: string, replyText: string) => Promise<boolean>;
 
 /**
  * Deduplication service: remember_reply_phrase
  * Maps to: app.services.dedupe.remember_reply_phrase
  */
-export type RememberReplyPhraseService = (
-  userId: string,
-  replyText: string
-) => Promise<void>;
+export type RememberReplyPhraseService = (userId: string, replyText: string) => Promise<void>;
 
 /**
  * Publish service: publish_reply_with_result
@@ -98,7 +89,7 @@ export type RememberReplyPhraseService = (
 export type PublishReplyService = (
   commentId: string,
   replyText: string,
-  traceId?: string
+  traceId?: string,
 ) => Promise<[boolean, string, Date | null, Record<string, unknown> | null]>;
 // [published, reason, published_at, result]
 
@@ -106,17 +97,13 @@ export type PublishReplyService = (
  * Knowledge service: search_knowledge
  * Maps to: app.services.knowledge.search_knowledge
  */
-export type SearchKnowledgeService = (
-  query: string
-) => Promise<Array<Partial<KnowledgeEntry>>>;
+export type SearchKnowledgeService = (query: string) => Promise<Array<Partial<KnowledgeEntry>>>;
 
 /**
  * Knowledge service: build_knowledge_context
  * Maps to: app.services.knowledge.build_knowledge_context
  */
-export type BuildKnowledgeContextService = (
-  entries: Array<Partial<KnowledgeEntry>>
-) => string;
+export type BuildKnowledgeContextService = (entries: Array<Partial<KnowledgeEntry>>) => string;
 
 /**
  * Search service: search_web
@@ -132,9 +119,7 @@ export type SearchWebService = (query: string) => Promise<{
  * Search service: build_search_context
  * Maps to: app.services.search_provider.build_search_context
  */
-export type BuildSearchContextService = (
-  items: Array<{ source: string; title?: string; snippet?: string }>
-) => string;
+export type BuildSearchContextService = (items: Array<{ source: string; title?: string; snippet?: string }>) => string;
 
 /**
  * Observability service: ensure_trace_id

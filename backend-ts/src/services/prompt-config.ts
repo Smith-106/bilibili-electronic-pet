@@ -7,8 +7,7 @@
  */
 
 import { readFileSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 
 // ── Defaults (matching Python) ────────────────────────────
 
@@ -163,7 +162,9 @@ export function getPromptBannedWords(): string[] {
 }
 
 export function getPromptDefaultLength(): PromptLengthMode {
-  const raw = String(loadPromptConfig().default_length ?? '').trim().toLowerCase();
+  const raw = String(loadPromptConfig().default_length ?? '')
+    .trim()
+    .toLowerCase();
   if (raw in DEFAULT_LENGTH_DISTRIBUTION) return raw as PromptLengthMode;
   return DEFAULT_LENGTH_MODE;
 }

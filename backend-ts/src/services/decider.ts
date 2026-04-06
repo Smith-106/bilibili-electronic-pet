@@ -54,14 +54,23 @@ const DEFAULT_RULES: ReplyRules = {
   minContentLength: 1,
   maxContentLength: 1000,
   triggerKeywords: [
-    '你好', '在吗', '问题', '求助', '请问', '怎么', '为什么',
-    'help', '请问', '谢谢', '感谢', '大佬', '大神'
+    '你好',
+    '在吗',
+    '问题',
+    '求助',
+    '请问',
+    '怎么',
+    '为什么',
+    'help',
+    '请问',
+    '谢谢',
+    '感谢',
+    '大佬',
+    '大神',
   ],
-  blockKeywords: [
-    '广告', '推广', '加群', '加微', '加QQ', '私聊'
-  ],
+  blockKeywords: ['广告', '推广', '加群', '加微', '加QQ', '私聊'],
 
-  userCooldownMinutes: {}
+  userCooldownMinutes: {},
 };
 
 /**
@@ -108,12 +117,12 @@ function isInQuietHours(rules: ReplyRules): boolean {
  */
 async function checkUserCooldown(
   userId: string,
-  rules: ReplyRules
+  rules: ReplyRules,
 ): Promise<{ inCooldown: boolean; remainingMinutes: number }> {
   try {
     const prisma = getPrisma();
     const userState = await prisma.userState.findUnique({
-      where: { user_id: userId }
+      where: { user_id: userId },
     });
 
     if (!userState || !userState.cooldown_enabled) {
@@ -144,7 +153,7 @@ async function checkUserCooldown(
  */
 function analyzeContent(
   content: string,
-  rules: ReplyRules
+  rules: ReplyRules,
 ): {
   valid: boolean;
   hasTriggerKeywords: boolean;
@@ -159,19 +168,15 @@ function analyzeContent(
   const valid = length >= rules.minContentLength && length <= rules.maxContentLength;
 
   // Check keywords
-  const hasTriggerKeywords = rules.triggerKeywords.some(keyword =>
-    normalizedContent.includes(keyword.toLowerCase())
-  );
+  const hasTriggerKeywords = rules.triggerKeywords.some((keyword) => normalizedContent.includes(keyword.toLowerCase()));
 
-  const hasBlockKeywords = rules.blockKeywords.some(keyword =>
-    normalizedContent.includes(keyword.toLowerCase())
-  );
+  const hasBlockKeywords = rules.blockKeywords.some((keyword) => normalizedContent.includes(keyword.toLowerCase()));
 
   // Calculate length penalty (reduces probability for very long comments)
   let lengthPenalty = 0;
   if (length > rules.lengthPenaltyThreshold) {
     const excess = length - rules.lengthPenaltyThreshold;
-    lengthPenalty = Math.min(excess * rules.lengthPenaltyFactor / 100, 0.5);
+    lengthPenalty = Math.min((excess * rules.lengthPenaltyFactor) / 100, 0.5);
   }
 
   return {
@@ -179,7 +184,7 @@ function analyzeContent(
     hasTriggerKeywords,
     hasBlockKeywords,
     length,
-    lengthPenalty
+    lengthPenalty,
   };
 }
 
@@ -189,7 +194,7 @@ function analyzeContent(
 function calculateReplyProbability(
   contentAnalysis: ReturnType<typeof analyzeContent>,
   isQuietHours: boolean,
-  rules: ReplyRules
+  rules: ReplyRules,
 ): number {
   let probability = rules.baseReplyProbability;
 
@@ -245,9 +250,7 @@ export const shouldReply: ShouldReplyService = async (event) => {
   if (event.user_id) {
     const cooldown = await checkUserCooldown(event.user_id, rules);
     if (cooldown.inCooldown) {
-      console.log(
-        `[shouldReply] User ${event.user_id} in cooldown for ${cooldown.remainingMinutes} more minutes`
-      );
+      console.log(`[shouldReply] User ${event.user_id} in cooldown for ${cooldown.remainingMinutes} more minutes`);
       return [false, event.style_profile || 'doro', 'medium'];
     }
   }
@@ -259,7 +262,7 @@ export const shouldReply: ShouldReplyService = async (event) => {
   // Reject if content length invalid
   if (!contentAnalysis.valid) {
     console.log(
-      `[shouldReply] Content length ${contentAnalysis.length} outside bounds [${rules.minContentLength}, ${rules.maxContentLength}]`
+      `[shouldReply] Content length ${contentAnalysis.length} outside bounds [${rules.minContentLength}, ${rules.maxContentLength}]`,
     );
     return [false, event.style_profile || 'doro', 'medium'];
   }
@@ -279,8 +282,8 @@ export const shouldReply: ShouldReplyService = async (event) => {
 
   console.log(
     `[shouldReply] Decision: ${shouldReplyFlag} (probability: ${(probability * 100).toFixed(1)}%, ` +
-    `quiet hours: ${isQuietHours}, trigger keywords: ${contentAnalysis.hasTriggerKeywords}, ` +
-    `block keywords: ${contentAnalysis.hasBlockKeywords})`
+      `quiet hours: ${isQuietHours}, trigger keywords: ${contentAnalysis.hasTriggerKeywords}, ` +
+      `block keywords: ${contentAnalysis.hasBlockKeywords})`,
   );
 
   return [shouldReplyFlag, styleMode, lengthMode];

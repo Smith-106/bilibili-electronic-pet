@@ -3,7 +3,6 @@
  * Migrated from Python: app/services/knowledge.py
  */
 
-import type { KnowledgeEntry } from '../models/entities.js';
 import type { SearchKnowledgeService, BuildKnowledgeContextService } from './interfaces.js';
 import { searchKnowledge as dbSearchKnowledge } from './db-queries.js';
 

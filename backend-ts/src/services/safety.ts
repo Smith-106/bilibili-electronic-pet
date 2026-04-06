@@ -24,7 +24,10 @@ const DEFAULT_KEYWORD_BLACKLIST = ['政治', '仇恨', '身份证', '手机号',
 function loadKeywordBlacklist(): string[] {
   const envList = process.env.SAFETY_KEYWORD_BLACKLIST;
   if (envList) {
-    return envList.split(',').map(w => w.trim()).filter(Boolean);
+    return envList
+      .split(',')
+      .map((w) => w.trim())
+      .filter(Boolean);
   }
   return DEFAULT_KEYWORD_BLACKLIST;
 }
@@ -76,7 +79,23 @@ const DEFAULT_CONFIG: SafetyConfig = {
 
 const CONTENT_CATEGORIES: Record<string, { keywords: string[]; weight: number }> = {
   politics: {
-    keywords: ['政治', '政府', '领导', '党', '国家政策', '敏感', '六四', '天安门', '台独', '藏独', '疆独', '法轮功', '反华', '游行', '示威'],
+    keywords: [
+      '政治',
+      '政府',
+      '领导',
+      '党',
+      '国家政策',
+      '敏感',
+      '六四',
+      '天安门',
+      '台独',
+      '藏独',
+      '疆独',
+      '法轮功',
+      '反华',
+      '游行',
+      '示威',
+    ],
     weight: 0.8,
   },
   adult: {
@@ -84,7 +103,22 @@ const CONTENT_CATEGORIES: Record<string, { keywords: string[]; weight: number }>
     weight: 0.9,
   },
   advertising: {
-    keywords: ['广告', '推广', '加群', '加微', '加QQ', '微信号', 'QQ群', '优惠', '促销', '折扣', '代购', '兼职', '赚钱', '刷单'],
+    keywords: [
+      '广告',
+      '推广',
+      '加群',
+      '加微',
+      '加QQ',
+      '微信号',
+      'QQ群',
+      '优惠',
+      '促销',
+      '折扣',
+      '代购',
+      '兼职',
+      '赚钱',
+      '刷单',
+    ],
     weight: 0.5,
   },
   violence: {
@@ -98,16 +132,23 @@ const CONTENT_CATEGORIES: Record<string, { keywords: string[]; weight: number }>
 };
 
 const PROFANITY_PATTERNS = [
-  /傻[比逼笔B]/i, /操[你那]/i, /妈的/i, /他妈/i, /草泥马/i, /王八蛋/i, /滚蛋/i, /废物/i, /智障/i, /脑残/i, /fuck/i, /shit/i, /damn/i, /bitch/i,
+  /傻[比逼笔B]/i,
+  /操[你那]/i,
+  /妈的/i,
+  /他妈/i,
+  /草泥马/i,
+  /王八蛋/i,
+  /滚蛋/i,
+  /废物/i,
+  /智障/i,
+  /脑残/i,
+  /fuck/i,
+  /shit/i,
+  /damn/i,
+  /bitch/i,
 ];
 
-const SPAM_PATTERNS = [
-  /(.)\1{5,}/g,
-  /(.{2,})\1{2,}/g,
-  /[A-Z]{10,}/g,
-  /[!！]{5,}/g,
-  /[?？]{5,}/g,
-];
+const SPAM_PATTERNS = [/(.)\1{5,}/g, /(.{2,})\1{2,}/g, /[A-Z]{10,}/g, /[!！]{5,}/g, /[?？]{5,}/g];
 
 // ── Internal helpers ────────────────────────────────────────
 
@@ -153,7 +194,7 @@ function checkProfanity(text: string, config: SafetyConfig): number {
     if (matches) score += 0.3 * matches.length;
   }
   return Math.min(score, 1.0);
- }
+}
 
 function checkSpam(text: string, config: SafetyConfig): number {
   if (!config.enableSpamCheck) return 0;
@@ -179,7 +220,7 @@ function checkUrls(text: string, config: SafetyConfig): number {
 function checkKeywordBlacklist(text: string): { blocked: boolean; words: string[] } {
   if (!isKeywordBlacklistEnabled()) return { blocked: false, words: [] };
   const blacklist = loadKeywordBlacklist();
-  const found = blacklist.filter(word => word && text.includes(word));
+  const found = blacklist.filter((word) => word && text.includes(word));
   return { blocked: found.length > 0, words: found };
 }
 
@@ -264,28 +305,27 @@ export const safetyCheck: SafetyCheckService = async (text) => {
   const urlScore = checkUrls(text, config);
 
   let maxCategoryScore = 0;
-  let dominantCategory = '';
-  for (const [category, score] of categoryScores.entries()) {
+  for (const [, score] of categoryScores.entries()) {
     if (score > maxCategoryScore) {
       maxCategoryScore = score;
-      dominantCategory = category;
     }
   }
 
   const weights = { categories: 0.5, profanity: 0.3, spam: 0.1, urls: 0.1 };
   const totalScore = Math.min(
     maxCategoryScore * weights.categories +
-    profanityScore * weights.profanity +
-    spamScore * weights.spam +
-    urlScore * weights.urls,
+      profanityScore * weights.profanity +
+      spamScore * weights.spam +
+      urlScore * weights.urls,
     1.0,
   );
 
-  const decision = totalScore >= config.mediumRiskThreshold
-    ? 'blocked'
-    : totalScore >= config.lowRiskThreshold
-      ? 'manual_review'
-      : 'ok';
+  const decision =
+    totalScore >= config.mediumRiskThreshold
+      ? 'blocked'
+      : totalScore >= config.lowRiskThreshold
+        ? 'manual_review'
+        : 'ok';
 
   riskFlags.risk_score = totalScore;
   riskFlags.sensitivity_level = config.sensitivityLevel;

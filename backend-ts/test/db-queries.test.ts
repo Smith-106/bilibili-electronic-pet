@@ -87,10 +87,7 @@ describe('role card db queries', () => {
         enabled: true,
         is_active: true,
       },
-      orderBy: [
-        { updated_at: 'desc' },
-        { id: 'desc' },
-      ],
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
     });
   });
 });

@@ -3,8 +3,6 @@
  * Phase 2 of Enhancement Plan
  */
 
-import type { GenerateReplyService } from './interfaces.js';
-
 // ============================================================
 // Configuration
 // ============================================================
@@ -96,10 +94,7 @@ interface LLMResponse {
   model: string;
 }
 
-async function callLLM(
-  messages: LLMMessage[],
-  config: LLMConfig
-): Promise<LLMResponse> {
+async function callLLM(messages: LLMMessage[], config: LLMConfig): Promise<LLMResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeoutMs);
 
@@ -129,7 +124,7 @@ async function callLLM(
       };
       body = JSON.stringify({
         model: config.model,
-        messages: messages.map(m => ({
+        messages: messages.map((m) => ({
           role: (m.role === 'system' ? 'user' : m.role) as 'user' | 'assistant',
           content: m.content,
         })),
@@ -163,10 +158,7 @@ async function callLLM(
   }
 }
 
-function parseLLMResponse(
-  data: Record<string, unknown>,
-  config: LLMConfig
-): LLMResponse {
+function parseLLMResponse(data: Record<string, unknown>, config: LLMConfig): LLMResponse {
   // OpenAI format
   const choices = data.choices as Array<Record<string, unknown>> | undefined;
   if (choices && choices.length > 0) {
@@ -188,7 +180,7 @@ function parseLLMResponse(
     return {
       content: textBlocks,
       provider: config.provider,
-      model: config.model
+      model: config.model,
     };
   }
 
@@ -198,7 +190,7 @@ function parseLLMResponse(
     return {
       content: msg.content as string,
       provider: config.provider,
-      model: config.model
+      model: config.model,
     };
   }
 
@@ -221,24 +213,23 @@ function buildMessages(
   searchContext: string,
   roleProfile: string,
   roleCardPrompt: string | undefined,
-  lengthMode: string
+  lengthMode: string,
 ): LLMMessage[] {
   const lengthInstruction =
     lengthMode === 'long'
       ? '请详细展开回复，提供更多信息和细节。'
       : lengthMode === 'short'
-      ? '简洁精炼地回复。保持简短友好。'
-      : '请控制在2-3句话以内。回复像日常聊天一样自然。';
+        ? '简洁精炼地回复。保持简短友好。'
+        : '请控制在2-3句话以内。回复像日常聊天一样自然。';
 
-  const roleInstruction = roleCardPrompt
-      ? `角色设定: ${roleCardPrompt}，不要跳出角色。`
-      : '';
+  const roleInstruction = roleCardPrompt ? `角色设定: ${roleCardPrompt}，不要跳出角色。` : '';
 
   const systemParts: LLMMessage[] = [
     {
       role: 'system',
       content:
-        systemPrompt || `你是 ${roleProfile}，一个B站用户。你要自然地回复评论，永远保持角色设定，不要跳出角色。`
+        systemPrompt ||
+        `你是 ${roleProfile}，一个B站用户。你要自然地回复评论，永远保持角色设定，不要跳出角色。${roleInstruction}`,
     },
   ];
 
@@ -274,10 +265,7 @@ function buildMessages(
 // Retry wrapper
 // ============================================================
 
-async function callLLMWithRetry(
-  messages: LLMMessage[],
-  config: LLMConfig
-): Promise<LLMResponse> {
+async function callLLMWithRetry(messages: LLMMessage[], config: LLMConfig): Promise<LLMResponse> {
   let lastError: Error | undefined;
 
   for (let attempt = 0; attempt < config.retries; attempt++) {
@@ -313,15 +301,8 @@ export async function generateWithLLM(params: {
   used_fallback: boolean;
 }> {
   const config = loadLLMConfig();
-  const {
-    systemPrompt,
-    userComment,
-    knowledgeContext,
-    searchContext,
-    roleProfile,
-    roleCardPrompt,
-    lengthMode
-  } = params;
+  const { systemPrompt, userComment, knowledgeContext, searchContext, roleProfile, roleCardPrompt, lengthMode } =
+    params;
   const messages = buildMessages(
     systemPrompt,
     userComment,
@@ -329,7 +310,7 @@ export async function generateWithLLM(params: {
     searchContext,
     roleProfile,
     roleCardPrompt,
-    lengthMode
+    lengthMode,
   );
 
   try {
@@ -349,15 +330,7 @@ export async function generateWithLLM(params: {
   }
 }
 
-function generateFallbackReply(
-  _comment: string,
-  _roleProfile: string,
-  _lengthMode: string
-): string {
-  const templates = [
-    '收到你的评论了!谢谢支持~',
-    '你好呀,感谢关注~',
-    '哈哈, 有意思~',
-  ];
+function generateFallbackReply(_comment: string, _roleProfile: string, _lengthMode: string): string {
+  const templates = ['收到你的评论了!谢谢支持~', '你好呀,感谢关注~', '哈哈, 有意思~'];
   return templates[Math.floor(Math.random() * templates.length)];
 }

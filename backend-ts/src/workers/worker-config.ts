@@ -4,7 +4,7 @@
 
 export type WorkerRetryConfig = {
   maxRetries: number;
-  retryBackoff: number;  // seconds
+  retryBackoff: number; // seconds
   retryJitter: boolean;
 };
 
@@ -23,12 +23,8 @@ export type WorkerConfig = WorkerRetryConfig & WorkerKillSwitchConfig;
  */
 export function buildDefaultWorkerRetryConfig(): WorkerRetryConfig {
   return {
-    maxRetries: process.env.WORKER_MAX_RETRIES
-      ? Number(process.env.WORKER_MAX_RETRIES)
-      : 3,
-    retryBackoff: process.env.WORKER_RETRY_BACKOFF
-      ? Number(process.env.WORKER_RETRY_BACKOFF)
-      : 2,
+    maxRetries: process.env.WORKER_MAX_RETRIES ? Number(process.env.WORKER_MAX_RETRIES) : 3,
+    retryBackoff: process.env.WORKER_RETRY_BACKOFF ? Number(process.env.WORKER_RETRY_BACKOFF) : 2,
     retryJitter: process.env.WORKER_RETRY_JITTER !== 'false',
   };
 }

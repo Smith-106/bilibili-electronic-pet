@@ -20,7 +20,7 @@ function parseRoleCardValue(value: unknown): RoleCardValue {
   try {
     const parsed = JSON.parse(normalized);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : normalized;
   } catch {
     return normalized;
@@ -30,9 +30,7 @@ function parseRoleCardValue(value: unknown): RoleCardValue {
 /**
  * Get comment by canonical ID
  */
-export async function getCommentByCanonicalId(
-  canonicalId: string
-): Promise<Comment | null> {
+export async function getCommentByCanonicalId(canonicalId: string): Promise<Comment | null> {
   const prisma = getPrisma();
   const result = await prisma.comment.findUnique({
     where: { canonical_comment_id: canonicalId },
@@ -56,9 +54,7 @@ export async function getCommentByCanonicalId(
 /**
  * Create reply job
  */
-export async function createReplyJob(
-  job: Partial<Omit<ReplyJob, 'id' | 'created_at'>>
-): Promise<number> {
+export async function createReplyJob(job: Partial<Omit<ReplyJob, 'id' | 'created_at'>>): Promise<number> {
   const prisma = getPrisma();
   const result = await prisma.replyJob.create({
     data: {
@@ -111,10 +107,7 @@ export async function getActiveRoleCard(): Promise<RoleCard | null> {
       enabled: true,
       is_active: true,
     },
-    orderBy: [
-      { updated_at: 'desc' },
-      { id: 'desc' },
-    ],
+    orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
   });
 
   if (!result) return null;
@@ -135,18 +128,12 @@ export async function getActiveRoleCard(): Promise<RoleCard | null> {
 /**
  * Search knowledge
  */
-export async function searchKnowledge(
-  query: string
-): Promise<Array<Partial<KnowledgeEntry>>> {
+export async function searchKnowledge(query: string): Promise<Array<Partial<KnowledgeEntry>>> {
   const prisma = getPrisma();
   const results = await prisma.knowledgeEntry.findMany({
     where: {
       enabled: true,
-      OR: [
-        { title: { contains: query } },
-        { content: { contains: query } },
-        { category: { contains: query } },
-      ],
+      OR: [{ title: { contains: query } }, { content: { contains: query } }, { category: { contains: query } }],
     },
     take: 10,
   });
@@ -181,9 +168,8 @@ export async function getUserState(userId: string): Promise<{
   return {
     id: result.id,
     user_id: result.user_id,
-    recent_phrases: typeof result.recent_phrases === 'string'
-      ? JSON.parse(result.recent_phrases)
-      : result.recent_phrases,
+    recent_phrases:
+      typeof result.recent_phrases === 'string' ? JSON.parse(result.recent_phrases) : result.recent_phrases,
     cooldown_enabled: result.cooldown_enabled,
     updated_at: result.updated_at,
   };
@@ -197,7 +183,7 @@ export async function updateUserState(
   updates: Partial<{
     recent_phrases: Record<string, unknown>;
     cooldown_enabled: boolean;
-  }>
+  }>,
 ): Promise<{
   id: number;
   user_id: string;
@@ -222,9 +208,8 @@ export async function updateUserState(
   return {
     id: result.id,
     user_id: result.user_id,
-    recent_phrases: typeof result.recent_phrases === 'string'
-      ? JSON.parse(result.recent_phrases)
-      : result.recent_phrases,
+    recent_phrases:
+      typeof result.recent_phrases === 'string' ? JSON.parse(result.recent_phrases) : result.recent_phrases,
     cooldown_enabled: result.cooldown_enabled,
     updated_at: result.updated_at,
   };
@@ -235,7 +220,7 @@ export async function updateUserState(
  */
 export async function getPublishLogByCanonicalId(
   canonicalId: string,
-  replyHash: string
+  replyHash: string,
 ): Promise<{
   id: number;
   platform: string;
@@ -329,9 +314,7 @@ export async function createPublishLog(log: {
 /**
  * Create comment
  */
-export async function createComment(
-  comment: Omit<Comment, 'id' | 'created_at'>
-): Promise<Comment> {
+export async function createComment(comment: Omit<Comment, 'id' | 'created_at'>): Promise<Comment> {
   const prisma = getPrisma();
   const result = await prisma.comment.create({
     data: {
@@ -361,10 +344,7 @@ export async function createComment(
 /**
  * Get reply jobs by status
  */
-export async function getReplyJobsByStatus(
-  status: string,
-  limit?: number
-): Promise<ReplyJob[]> {
+export async function getReplyJobsByStatus(status: string, limit?: number): Promise<ReplyJob[]> {
   const prisma = getPrisma();
   const results = await prisma.replyJob.findMany({
     where: { status },
@@ -380,9 +360,7 @@ export async function getReplyJobsByStatus(
     length_mode: result.length_mode,
     style_mode: result.style_mode,
     reply_text: result.reply_text,
-    risk_flags: typeof result.risk_flags === 'string'
-      ? JSON.parse(result.risk_flags)
-      : result.risk_flags,
+    risk_flags: typeof result.risk_flags === 'string' ? JSON.parse(result.risk_flags) : result.risk_flags,
     attempts: result.attempts,
     published_at: result.published_at,
     created_at: result.created_at,
@@ -392,10 +370,7 @@ export async function getReplyJobsByStatus(
 /**
  * Update reply job status
  */
-export async function updateReplyJobStatus(
-  id: number,
-  status: string
-): Promise<void> {
+export async function updateReplyJobStatus(id: number, status: string): Promise<void> {
   const prisma = getPrisma();
   await prisma.replyJob.update({
     where: { id },
@@ -422,9 +397,7 @@ export async function getReplyJobById(id: number): Promise<ReplyJob | null> {
     length_mode: result.length_mode,
     style_mode: result.style_mode,
     reply_text: result.reply_text,
-    risk_flags: typeof result.risk_flags === 'string'
-      ? JSON.parse(result.risk_flags)
-      : result.risk_flags,
+    risk_flags: typeof result.risk_flags === 'string' ? JSON.parse(result.risk_flags) : result.risk_flags,
     attempts: result.attempts,
     published_at: result.published_at,
     created_at: result.created_at,

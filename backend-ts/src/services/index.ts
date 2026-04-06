@@ -17,10 +17,7 @@ import * as dbQueries from './db-queries.js';
 /**
  * Build worker services with configuration
  */
-export function buildWorkerServices(config: {
-  killSwitch: boolean;
-  roleProfileDefault: string;
-}): WorkerServices {
+export function buildWorkerServices(config: { killSwitch: boolean; roleProfileDefault: string }): WorkerServices {
   return {
     // Database
     getCommentByCanonicalId: dbQueries.getCommentByCanonicalId,

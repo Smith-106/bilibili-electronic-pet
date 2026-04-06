@@ -53,7 +53,9 @@ async function main(): Promise<void> {
       try {
         const { pollAllVideos } = await import('../services/bilibili-poller.js');
         const result = await pollAllVideos();
-        console.log(`[worker] Bilibili poll completed: ${result.videos} videos, ${result.events_injected} events injected`);
+        console.log(
+          `[worker] Bilibili poll completed: ${result.videos} videos, ${result.events_injected} events injected`,
+        );
       } catch (error) {
         console.error('[worker] Bilibili poll failed:', error);
       } finally {
@@ -63,7 +65,9 @@ async function main(): Promise<void> {
 
     // Initial delay of 10s to let worker warm up
     const initialDelayMs = 10_000;
-    console.log(`[worker] Bilibili polling scheduled every ${pollIntervalSeconds}s (initial delay: ${initialDelayMs / 1000}s)`);
+    console.log(
+      `[worker] Bilibili polling scheduled every ${pollIntervalSeconds}s (initial delay: ${initialDelayMs / 1000}s)`,
+    );
 
     setTimeout(() => {
       // Run first poll immediately after delay

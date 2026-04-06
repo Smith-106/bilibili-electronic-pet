@@ -1054,13 +1054,14 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
   - `PUBLISHER_MODE`
   - `PUBLISHER_WEBHOOK_URL`
   - `PUBLISHER_WEBHOOK_TOKEN`
-  - `PUBLISHER_REAL_PUBLISH_URL`
-  - `PUBLISHER_REAL_PUBLISH_TOKEN`
   - `PUBLISHER_TIMEOUT_SECONDS`
   - `PUBLISHER_HMAC_SECRET`
 - 当前 `backend-ts/src/main.ts:443` 在主服务启动时直接读取 `PUBLISHER_MODE`
-
-其余 Publisher 变量虽出现在 `.env.example` 中，但是否生效仍应结合具体发布链路判断。
+- `real_publish` 当前直接复用 B 站运行时凭证，不再单独读取 `PUBLISHER_REAL_PUBLISH_URL` / `PUBLISHER_REAL_PUBLISH_TOKEN`
+- Publisher 变量是否生效仍应结合具体发布链路判断：
+  - `webhook` 依赖 `PUBLISHER_WEBHOOK_URL`
+  - `real_publish` 依赖 B 站运行时凭证
+  - `manual_queue` / `simulated` 不要求额外外部发布地址
 
 ### 8.5 B 站集成
 
@@ -1294,6 +1295,32 @@ curl http://127.0.0.1:18000/health
 curl http://127.0.0.1:18000/readiness
 ```
 
+### Staging 验证入口
+
+当前仓库提供了一个跨平台 staging 验证脚本，能够串联 `/health`、`/readiness`、管理后台资产、`/api/admin/overview`、`/api/admin/bilibili/status` 以及 pre-release real chain 合同检查。
+
+常用方式：
+
+```bash
+cd backend-ts
+npm run staging:check -- --base-url http://127.0.0.1:18000
+
+cd backend-ts
+npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" --strict
+
+cd backend-ts
+npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" --strict --pre-release-real-chain --report ../staging-report.json
+```
+
+也可以直接使用仓库根目录包装脚本：
+
+```bash
+bash smoke.sh --base-url http://127.0.0.1:18000
+pwsh ./smoke.ps1 --base-url http://127.0.0.1:18000
+```
+
+完整说明与环境变量矩阵见 [backend-ts/STAGING_VALIDATION.md](backend-ts/STAGING_VALIDATION.md)。
+
 ### GHCR 镜像部署变体
 
 `docker-compose.ghcr.yml:1` 是一个 **override 文件**，用于覆盖默认 compose 中 `migrate` / `api` / `worker` 的镜像来源；它本身不是完整编排，需要和根目录 `docker-compose.yml` 组合使用：
@@ -1361,7 +1388,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `GATEWAY_TOKEN`
 - `GATEWAY_HMAC_SECRET`
 - `PUBLISHER_MODE`
-- `PUBLISHER_WEBHOOK_URL` / `PUBLISHER_REAL_PUBLISH_URL`
+- `PUBLISHER_WEBHOOK_URL`
 - `BILIBILI_ENABLED`
 - `BILIBILI_POLL_ENABLED`
 - `BILIBILI_PUBLISH_ENABLED`

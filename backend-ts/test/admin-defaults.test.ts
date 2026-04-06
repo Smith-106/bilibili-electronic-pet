@@ -354,10 +354,7 @@ describe('default admin data providers', () => {
     });
     expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
       where: {
-        OR: [
-          { comment_id: { in: ['comment-9'] } },
-          { canonical_comment_id: { in: ['bilibili:comment-9'] } },
-        ],
+        OR: [{ comment_id: { in: ['comment-9'] } }, { canonical_comment_id: { in: ['bilibili:comment-9'] } }],
       },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });
@@ -501,31 +498,31 @@ describe('default admin data providers', () => {
       created_at: new Date('2026-04-01T08:00:00.000Z'),
       updated_at: new Date('2026-04-04T08:35:00.000Z'),
     });
-    mockPrisma.bilibiliVideo.count
-      .mockResolvedValueOnce(3)
-      .mockResolvedValueOnce(2);
+    mockPrisma.bilibiliVideo.count.mockResolvedValueOnce(3).mockResolvedValueOnce(2);
 
-    const app = createServer(buildDeps({
-      settings: buildSettings({
-        bilibiliEnabled: true,
-        bilibiliPollEnabled: true,
-        bilibiliPublishEnabled: false,
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          bilibiliEnabled: true,
+          bilibiliPollEnabled: true,
+          bilibiliPublishEnabled: false,
+        }),
+        buildBilibiliDiagnostics: async () => ({
+          ready: true,
+          blocking_reasons: [],
+          effective_publish_mode: 'manual_queue',
+          checks: {
+            worker_or_publish: { ready: true, errors: [] },
+          },
+          release_gates: {
+            worker_or_publish_ready: true,
+          },
+          signals: {
+            credential_present: true,
+          },
+        }),
       }),
-      buildBilibiliDiagnostics: async () => ({
-        ready: true,
-        blocking_reasons: [],
-        effective_publish_mode: 'manual_queue',
-        checks: {
-          worker_or_publish: { ready: true, errors: [] },
-        },
-        release_gates: {
-          worker_or_publish_ready: true,
-        },
-        signals: {
-          credential_present: true,
-        },
-      }),
-    }));
+    );
     const response = await app.inject({
       method: 'GET',
       url: '/api/admin/bilibili/status',
@@ -584,9 +581,7 @@ describe('default admin data providers', () => {
       created_at: new Date('2026-04-01T08:00:00.000Z'),
       updated_at: new Date('2026-04-04T08:35:00.000Z'),
     });
-    mockPrisma.bilibiliVideo.count
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(1);
+    mockPrisma.bilibiliVideo.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
 
     const app = createServer({
       settings: buildSettings({
@@ -626,6 +621,75 @@ describe('default admin data providers', () => {
     });
 
     await app.close();
+  });
+
+  it('derives native real-chain diagnostics when native publish is enabled', async () => {
+    const originalEnv = {
+      BILIBILI_SESSDATA: process.env.BILIBILI_SESSDATA,
+      BILIBILI_BILI_JCT: process.env.BILIBILI_BILI_JCT,
+      BILIBILI_BUVID3: process.env.BILIBILI_BUVID3,
+      PUBLISHER_WEBHOOK_URL: process.env.PUBLISHER_WEBHOOK_URL,
+    };
+
+    process.env.BILIBILI_SESSDATA = 'env-sess';
+    process.env.BILIBILI_BILI_JCT = 'env-jct';
+    process.env.BILIBILI_BUVID3 = 'env-buvid3';
+    delete process.env.PUBLISHER_WEBHOOK_URL;
+    mockPrisma.bilibiliCredential.findFirst.mockResolvedValue(null);
+    mockPrisma.bilibiliVideo.count.mockResolvedValueOnce(1).mockResolvedValueOnce(1);
+
+    try {
+      const app = createServer({
+        settings: buildSettings({
+          publisherMode: 'manual_queue',
+          bilibiliEnabled: true,
+          bilibiliPollEnabled: true,
+          bilibiliPublishEnabled: true,
+        }),
+        checkDatabaseConnection: async () => ({ connected: true }),
+        checkRedisConnection: async () => ({ connected: true }),
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/bilibili/status',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        diagnostics: {
+          ready: true,
+          blocking_reasons: [],
+          effective_publish_mode: 'native_bilibili',
+          release_gates: {
+            worker_or_publish_ready: true,
+            native_publish_enabled: true,
+            credential_present: true,
+            credential_complete: true,
+            real_auth_ready: true,
+            dependency_ready: true,
+            pre_release_real_chain_ready: true,
+          },
+          signals: {
+            effective_publish_mode: 'native_bilibili',
+            native_publish_enabled: true,
+            credential_present: true,
+            credential_complete: true,
+            pre_release_real_chain_ready: true,
+          },
+        },
+      });
+
+      await app.close();
+    } finally {
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
   });
 
   it('lists bilibili videos from prisma defaults with comment counts', async () => {
@@ -1263,10 +1327,7 @@ describe('default query and export providers', () => {
     expect(response.statusCode).toBe(200);
     expect(mockPrisma.comment.findFirst).toHaveBeenCalledWith({
       where: {
-        OR: [
-          { comment_id: 'comment-2' },
-          { canonical_comment_id: 'comment-2' },
-        ],
+        OR: [{ comment_id: 'comment-2' }, { canonical_comment_id: 'comment-2' }],
       },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     });

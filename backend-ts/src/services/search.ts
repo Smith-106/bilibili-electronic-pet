@@ -108,10 +108,7 @@ function cleanQuery(query: string): string {
 // Reranking (migrated from Python _rerank_items)
 // ============================================================
 
-function rerankItems(
-  items: RawSearchItem[],
-  query: string,
-): RawSearchItem[] {
+function rerankItems(items: RawSearchItem[], query: string): RawSearchItem[] {
   if (items.length === 0) return items;
 
   const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -164,10 +161,7 @@ function truncateSnippet(snippet: string | undefined): string | undefined {
 // Provider implementations
 // ============================================================
 
-async function searchSerpAPI(
-  query: string,
-  config: SearchConfig,
-): Promise<RawSearchItem[]> {
+async function searchSerpAPI(query: string, config: SearchConfig): Promise<RawSearchItem[]> {
   try {
     const url = `${config.baseUrl}?api_key=${config.apiKey}&q=${encodeURIComponent(query)}&num=${config.maxResults}`;
     const controller = new AbortController();
@@ -178,13 +172,11 @@ async function searchSerpAPI(
       clearTimeout(timeoutId);
       if (!response.ok) return [];
       const data = await response.json();
-      return (data.organic_results || []).map(
-        (r: { link: string; title?: string; snippet?: string }) => ({
-          source: r.link,
-          title: r.title,
-          snippet: r.snippet,
-        }),
-      );
+      return (data.organic_results || []).map((r: { link: string; title?: string; snippet?: string }) => ({
+        source: r.link,
+        title: r.title,
+        snippet: r.snippet,
+      }));
     } catch (error) {
       clearTimeout(timeoutId);
       throw error;
@@ -195,10 +187,7 @@ async function searchSerpAPI(
   }
 }
 
-async function searchBing(
-  query: string,
-  config: SearchConfig,
-): Promise<RawSearchItem[]> {
+async function searchBing(query: string, config: SearchConfig): Promise<RawSearchItem[]> {
   try {
     const url = `${config.baseUrl}?q=${encodeURIComponent(query)}&count=${config.maxResults}`;
     const controller = new AbortController();
@@ -213,13 +202,11 @@ async function searchBing(
       if (!response.ok) return [];
       const data = await response.json();
       if (data.webPages?.value) {
-        return data.webPages.value.map(
-          (item: { url: string; name?: string; snippet?: string }) => ({
-            source: item.url,
-            title: item.name,
-            snippet: item.snippet,
-          }),
-        );
+        return data.webPages.value.map((item: { url: string; name?: string; snippet?: string }) => ({
+          source: item.url,
+          title: item.name,
+          snippet: item.snippet,
+        }));
       }
       return [];
     } catch (error) {
@@ -232,10 +219,7 @@ async function searchBing(
   }
 }
 
-async function searchGoogle(
-  query: string,
-  config: SearchConfig,
-): Promise<RawSearchItem[]> {
+async function searchGoogle(query: string, config: SearchConfig): Promise<RawSearchItem[]> {
   try {
     const cx = process.env.SEARCH_CX || '';
     const url = `${config.baseUrl}?key=${config.apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=${config.maxResults}`;
@@ -248,13 +232,11 @@ async function searchGoogle(
       if (!response.ok) return [];
       const data = await response.json();
       if (data.items) {
-        return data.items.map(
-          (item: { link: string; title?: string; snippet?: string }) => ({
-            source: item.link,
-            title: item.title,
-            snippet: item.snippet,
-          }),
-        );
+        return data.items.map((item: { link: string; title?: string; snippet?: string }) => ({
+          source: item.link,
+          title: item.title,
+          snippet: item.snippet,
+        }));
       }
       return [];
     } catch (error) {
@@ -271,10 +253,7 @@ async function searchGoogle(
 // Unified search dispatch
 // ============================================================
 
-async function dispatchSearch(
-  query: string,
-  config: SearchConfig,
-): Promise<RawSearchItem[]> {
+async function dispatchSearch(query: string, config: SearchConfig): Promise<RawSearchItem[]> {
   switch (config.provider) {
     case 'serpapi':
       return searchSerpAPI(query, config);

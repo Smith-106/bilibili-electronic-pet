@@ -34,7 +34,10 @@ function readIntegerEnv(name: string, fallback: number): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function buildCommonConfig(): Omit<BilibiliRuntimeConfig, 'sessdata' | 'biliJct' | 'buvid' | 'buvid4' | 'source' | 'credentialId' | 'credentialName'> {
+function buildCommonConfig(): Omit<
+  BilibiliRuntimeConfig,
+  'sessdata' | 'biliJct' | 'buvid' | 'buvid4' | 'source' | 'credentialId' | 'credentialName'
+> {
   return {
     dedeuserid: process.env.BILIBILI_DEDEUSERID || '',
     baseUrl: process.env.BILIBILI_BASE_URL || 'https://api.bilibili.com',

@@ -4,7 +4,7 @@ import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply }
 import { PrismaClient } from '@prisma/client';
 import { collectCommentEvent } from './services/collector.js';
 import { loadBilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
-import { encrypt, decrypt } from './services/credential-crypto.js';
+import { encrypt } from './services/credential-crypto.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 
 export type ConnectionStatus = {
@@ -229,19 +229,27 @@ export type ServerDependencies = {
   }) => Promise<{ ok: boolean; item: KnowledgeEntry }> | { ok: boolean; item: KnowledgeEntry };
   disableKnowledgeEntry: (input: {
     entryId: number;
-  }) => Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }> | { ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } };
-  getStyleProfile: () => Promise<{ ok: boolean; style_profile: string; preset_profiles: string[] }> | { ok: boolean; style_profile: string; preset_profiles: string[] };
+  }) =>
+    | Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }>
+    | { ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } };
+  getStyleProfile: () =>
+    | Promise<{ ok: boolean; style_profile: string; preset_profiles: string[] }>
+    | { ok: boolean; style_profile: string; preset_profiles: string[] };
   setStyleProfile: (input: {
     styleProfile: string;
   }) => Promise<{ ok: boolean; style_profile: string }> | { ok: boolean; style_profile: string };
-  getRoleProfile: () => Promise<{ ok: boolean; role_profile: string; preset_profiles: string[] }> | { ok: boolean; role_profile: string; preset_profiles: string[] };
+  getRoleProfile: () =>
+    | Promise<{ ok: boolean; role_profile: string; preset_profiles: string[] }>
+    | { ok: boolean; role_profile: string; preset_profiles: string[] };
   setRoleProfile: (input: {
     roleProfile: string;
   }) => Promise<{ ok: boolean; role_profile: string }> | { ok: boolean; role_profile: string };
   listRoleCards: (input: {
     limit: number;
     offset: number;
-  }) => Promise<{ ok: boolean; active_role_card_key: string | null; items: RoleCard[] }> | { ok: boolean; active_role_card_key: string | null; items: RoleCard[] };
+  }) =>
+    | Promise<{ ok: boolean; active_role_card_key: string | null; items: RoleCard[] }>
+    | { ok: boolean; active_role_card_key: string | null; items: RoleCard[] };
   createRoleCard: (input: {
     key: string;
     name: string;
@@ -262,7 +270,9 @@ export type ServerDependencies = {
   }) => Promise<{ ok: boolean; item: RoleCard }> | { ok: boolean; item: RoleCard };
   disableRoleCard: (input: {
     cardKey: string;
-  }) => Promise<{ ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } }> | { ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } };
+  }) =>
+    | Promise<{ ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } }>
+    | { ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } };
   activateRoleCard: (input: {
     cardKey: string;
   }) => Promise<{ ok: boolean; active_role_card_key: string }> | { ok: boolean; active_role_card_key: string };
@@ -272,48 +282,86 @@ export type ServerDependencies = {
   ingestCommentEvent: (input: {
     event: CommentEvent;
     source: string;
-  }) => Promise<{ ok: boolean; comment_id: string; trace_id: string }> | { ok: boolean; comment_id: string; trace_id: string };
+  }) =>
+    | Promise<{ ok: boolean; comment_id: string; trace_id: string }>
+    | { ok: boolean; comment_id: string; trace_id: string };
   retryJob: (input: {
     jobId: number;
     forceLong?: boolean;
     styleProfile?: string;
     roleProfile?: string;
     roleCardKey?: string;
-  }) => Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }> | { ok: boolean; requeued: boolean; job_id: number; trace_id: string };
+  }) =>
+    | Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }>
+    | { ok: boolean; requeued: boolean; job_id: number; trace_id: string };
   approveJob: (input: {
     jobId: number;
     styleProfile?: string;
     roleProfile?: string;
     roleCardKey?: string;
-  }) => Promise<{ ok: boolean; job_id: number; status: string; trace_id: string }> | { ok: boolean; job_id: number; status: string; trace_id: string };
-  approveJobsBatch: (input: {
-    jobIds: number[];
-  }) => Promise<{ ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>; trace_id: string }> | { ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>; trace_id: string };
-  retryJobsBatch: (input: {
-    jobIds: number[];
-    forceLong?: boolean;
-  }) => Promise<{ ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>; trace_id: string }> | { ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>; trace_id: string };
+  }) =>
+    | Promise<{ ok: boolean; job_id: number; status: string; trace_id: string }>
+    | { ok: boolean; job_id: number; status: string; trace_id: string };
+  approveJobsBatch: (input: { jobIds: number[] }) =>
+    | Promise<{
+        ok: boolean;
+        summary: { total: number; success: number; failed: number };
+        results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>;
+        trace_id: string;
+      }>
+    | {
+        ok: boolean;
+        summary: { total: number; success: number; failed: number };
+        results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>;
+        trace_id: string;
+      };
+  retryJobsBatch: (input: { jobIds: number[]; forceLong?: boolean }) =>
+    | Promise<{
+        ok: boolean;
+        summary: { total: number; success: number; failed: number };
+        results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>;
+        trace_id: string;
+      }>
+    | {
+        ok: boolean;
+        summary: { total: number; success: number; failed: number };
+        results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>;
+        trace_id: string;
+      };
   getComment: (input: {
     commentId: string;
-  }) => Promise<{ ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] }> | { ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] };
-  getJob: (input: {
-    jobId: number;
-  }) => Promise<{ ok: boolean; item: ReplyJob }> | { ok: boolean; item: ReplyJob };
+  }) =>
+    | Promise<{ ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] }>
+    | { ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] };
+  getJob: (input: { jobId: number }) => Promise<{ ok: boolean; item: ReplyJob }> | { ok: boolean; item: ReplyJob };
   listJobs: (input: {
     status?: string;
     limit: number;
     offset: number;
   }) => Promise<{ ok: boolean; items: ReplyJob[] }> | { ok: boolean; items: ReplyJob[] };
-  exportJobsCsv: (input: {
-    status?: string;
-    limit: number;
-  }) => Promise<string> | string;
-  getBilibiliStatus: () => Promise<{ ok: boolean; config: Record<string, unknown>; credential: Record<string, unknown> | null; videos: Record<string, unknown>; diagnostics: Record<string, unknown> }> | { ok: boolean; config: Record<string, unknown>; credential: Record<string, unknown> | null; videos: Record<string, unknown>; diagnostics: Record<string, unknown> };
+  exportJobsCsv: (input: { status?: string; limit: number }) => Promise<string> | string;
+  getBilibiliStatus: () =>
+    | Promise<{
+        ok: boolean;
+        config: Record<string, unknown>;
+        credential: Record<string, unknown> | null;
+        videos: Record<string, unknown>;
+        diagnostics: Record<string, unknown>;
+      }>
+    | {
+        ok: boolean;
+        config: Record<string, unknown>;
+        credential: Record<string, unknown> | null;
+        videos: Record<string, unknown>;
+        diagnostics: Record<string, unknown>;
+      };
   listBilibiliVideos: (input: {
     pollEnabled?: boolean;
     limit: number;
     offset: number;
-  }) => Promise<{ ok: boolean; total: number; items: BilibiliVideo[] }> | { ok: boolean; total: number; items: BilibiliVideo[] };
+  }) =>
+    | Promise<{ ok: boolean; total: number; items: BilibiliVideo[] }>
+    | { ok: boolean; total: number; items: BilibiliVideo[] };
   addBilibiliVideo: (input: {
     bvid: string;
     pollEnabled?: boolean;
@@ -417,7 +465,7 @@ function normalizeAdminJobStatus(status: unknown): string {
   if (!normalized) {
     return 'queued';
   }
-  return REVIEWABLE_JOB_STATUSES.includes(normalized as typeof REVIEWABLE_JOB_STATUSES[number])
+  return REVIEWABLE_JOB_STATUSES.includes(normalized as (typeof REVIEWABLE_JOB_STATUSES)[number])
     ? 'pending_review'
     : normalized;
 }
@@ -446,9 +494,7 @@ function parseJsonRecord(value: unknown): Record<string, unknown> {
   }
   try {
     const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     return {};
   }
@@ -468,7 +514,7 @@ function parseRoleCardValue(value: unknown): RoleCardValue {
   try {
     const parsed = JSON.parse(normalized);
     return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
+      ? (parsed as Record<string, unknown>)
       : normalized;
   } catch {
     return normalized;
@@ -510,9 +556,7 @@ function normalizeRoleCardRecord(item: Record<string, unknown>): RoleCard {
 
 function extractRiskFlagLabels(value: unknown): string[] {
   if (Array.isArray(value)) {
-    return value
-      .map((entry) => String(entry ?? '').trim())
-      .filter(Boolean);
+    return value.map((entry) => String(entry ?? '').trim()).filter(Boolean);
   }
 
   const payload = parseJsonRecord(value);
@@ -577,30 +621,18 @@ function getGroupCount(value: unknown): number {
 }
 
 function normalizeAdminOverviewPayload(overview: Record<string, unknown>): Record<string, unknown> {
-  const totals = (overview.totals && typeof overview.totals === 'object' && !Array.isArray(overview.totals))
-    ? overview.totals as Record<string, unknown>
-    : {};
+  const totals =
+    overview.totals && typeof overview.totals === 'object' && !Array.isArray(overview.totals)
+      ? (overview.totals as Record<string, unknown>)
+      : {};
 
   const totalComments = Number(overview.total_comments ?? totals.comments ?? 0);
   const totalJobs = Number(overview.total_jobs ?? totals.jobs ?? 0);
-  const totalPublished = Number(
-    overview.total_published
-    ?? totals.published
-    ?? totals.published_jobs
-    ?? 0,
-  );
+  const totalPublished = Number(overview.total_published ?? totals.published ?? totals.published_jobs ?? 0);
   const pendingReview = Number(
-    overview.pending_review
-    ?? totals.pending_review
-    ?? totals.comments_manual_queue_or_processing
-    ?? 0,
+    overview.pending_review ?? totals.pending_review ?? totals.comments_manual_queue_or_processing ?? 0,
   );
-  const totalFailed = Number(
-    overview.total_failed
-    ?? totals.failed
-    ?? totals.failed_jobs
-    ?? 0,
-  );
+  const totalFailed = Number(overview.total_failed ?? totals.failed ?? totals.failed_jobs ?? 0);
 
   return {
     ...overview,
@@ -613,12 +645,14 @@ function normalizeAdminOverviewPayload(overview: Record<string, unknown>): Recor
 }
 
 function normalizeAdminAuditSummaryPayload(summary: Record<string, unknown>): Record<string, unknown> {
-  const totals = (summary.totals && typeof summary.totals === 'object' && !Array.isArray(summary.totals))
-    ? summary.totals as Record<string, unknown>
-    : {};
-  const byResult = (summary.by_result && typeof summary.by_result === 'object' && !Array.isArray(summary.by_result))
-    ? summary.by_result as Record<string, unknown>
-    : {};
+  const totals =
+    summary.totals && typeof summary.totals === 'object' && !Array.isArray(summary.totals)
+      ? (summary.totals as Record<string, unknown>)
+      : {};
+  const byResult =
+    summary.by_result && typeof summary.by_result === 'object' && !Array.isArray(summary.by_result)
+      ? (summary.by_result as Record<string, unknown>)
+      : {};
 
   const total = Number(summary.total ?? totals.audit_logs ?? 0);
   const okCount = Number(summary.ok_count ?? totals.ok ?? byResult.ok ?? byResult.success ?? 0);
@@ -633,7 +667,9 @@ function normalizeAdminAuditSummaryPayload(summary: Record<string, unknown>): Re
 }
 
 function normalizeStyleProfilePayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const styleProfile = String(payload.style_profile ?? payload.style ?? '').trim().toLowerCase();
+  const styleProfile = String(payload.style_profile ?? payload.style ?? '')
+    .trim()
+    .toLowerCase();
   return {
     ...payload,
     style_profile: styleProfile,
@@ -642,7 +678,9 @@ function normalizeStyleProfilePayload(payload: Record<string, unknown>): Record<
 }
 
 function normalizeRoleProfilePayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const roleProfile = String(payload.role_profile ?? payload.role ?? '').trim().toLowerCase();
+  const roleProfile = String(payload.role_profile ?? payload.role ?? '')
+    .trim()
+    .toLowerCase();
   return {
     ...payload,
     role_profile: roleProfile,
@@ -651,27 +689,22 @@ function normalizeRoleProfilePayload(payload: Record<string, unknown>): Record<s
 }
 
 function normalizeBilibiliStatusPayload(payload: Record<string, unknown>): Record<string, unknown> {
-  const config = (payload.config && typeof payload.config === 'object' && !Array.isArray(payload.config))
-    ? payload.config as Record<string, unknown>
-    : {};
-  const videos = (payload.videos && typeof payload.videos === 'object' && !Array.isArray(payload.videos))
-    ? payload.videos as Record<string, unknown>
-    : {};
+  const config =
+    payload.config && typeof payload.config === 'object' && !Array.isArray(payload.config)
+      ? (payload.config as Record<string, unknown>)
+      : {};
+  const videos =
+    payload.videos && typeof payload.videos === 'object' && !Array.isArray(payload.videos)
+      ? (payload.videos as Record<string, unknown>)
+      : {};
 
   const enabled = Boolean(payload.enabled ?? config.enabled);
   const pollingEnabled = Boolean(
-    payload.polling_enabled
-    ?? payload.poll_enabled
-    ?? config.polling_enabled
-    ?? config.poll_enabled,
+    payload.polling_enabled ?? payload.poll_enabled ?? config.polling_enabled ?? config.poll_enabled,
   );
   const publishEnabled = Boolean(payload.publish_enabled ?? config.publish_enabled);
   const videoCount = Number(
-    payload.video_count
-    ?? videos.video_count
-    ?? videos.total
-    ?? videos.poll_enabled_count
-    ?? 0,
+    payload.video_count ?? videos.video_count ?? videos.total ?? videos.poll_enabled_count ?? 0,
   );
 
   return {
@@ -693,13 +726,25 @@ function normalizeBilibiliVideoRecord(
     bvid: String(item.bvid ?? ''),
     aid: typeof item.aid === 'number' ? item.aid : item.aid == null ? null : Number(item.aid),
     title: typeof item.title === 'string' ? item.title : item.title == null ? null : String(item.title),
-    owner_mid: typeof item.owner_mid === 'number' ? item.owner_mid : item.owner_mid == null ? null : Number(item.owner_mid),
+    owner_mid:
+      typeof item.owner_mid === 'number' ? item.owner_mid : item.owner_mid == null ? null : Number(item.owner_mid),
     poll_enabled: Boolean(item.poll_enabled),
     comment_count: options.commentCount ?? 0,
     last_polled_at: normalizeNullableIsoTimestamp(item.last_polled_at as Date | string | null | undefined),
-    last_poll_status: typeof item.last_poll_status === 'string' ? item.last_poll_status : item.last_poll_status == null ? null : String(item.last_poll_status),
-    last_poll_error: typeof item.last_poll_error === 'string' ? item.last_poll_error : item.last_poll_error == null ? null : String(item.last_poll_error),
-    last_rpid: typeof item.last_rpid === 'number' ? item.last_rpid : item.last_rpid == null ? null : Number(item.last_rpid),
+    last_poll_status:
+      typeof item.last_poll_status === 'string'
+        ? item.last_poll_status
+        : item.last_poll_status == null
+          ? null
+          : String(item.last_poll_status),
+    last_poll_error:
+      typeof item.last_poll_error === 'string'
+        ? item.last_poll_error
+        : item.last_poll_error == null
+          ? null
+          : String(item.last_poll_error),
+    last_rpid:
+      typeof item.last_rpid === 'number' ? item.last_rpid : item.last_rpid == null ? null : Number(item.last_rpid),
     created_at: normalizeNullableIsoTimestamp(item.created_at as Date | string | null | undefined),
     updated_at: normalizeNullableIsoTimestamp(item.updated_at as Date | string | null | undefined),
   };
@@ -842,47 +887,83 @@ function buildDefaultReadinessSummary(settings: RuntimeSettings): {
 }
 
 async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<BilibiliDiagnostics> {
-  const effectivePublishMode = normalizePublishMode(settings.publisherMode);
   const nativePublishEnabled = settings.bilibiliEnabled && settings.bilibiliPublishEnabled;
+  const rawPublishMode = normalizePublishMode(settings.publisherMode);
+  const effectivePublishMode = nativePublishEnabled ? 'native_bilibili' : rawPublishMode;
   const pollingWorkerEnabled = settings.bilibiliEnabled && settings.bilibiliPollEnabled;
+  const bilibiliApiPublishEnabled =
+    effectivePublishMode === 'native_bilibili' || effectivePublishMode === 'real_publish';
+  const webhookPublishEnabled = effectivePublishMode === 'webhook';
+  const deliveryCapablePublishMode = bilibiliApiPublishEnabled || webhookPublishEnabled;
   const credential = await loadBilibiliRuntimeConfig();
   const credentialPresent = Boolean(credential);
   const credentialComplete = Boolean(credential?.sessdata && credential?.biliJct && credential?.buvid);
-  const authRequired = nativePublishEnabled || pollingWorkerEnabled;
+  const authRequired = bilibiliApiPublishEnabled || pollingWorkerEnabled;
+  const realAuthReady = authRequired ? credentialComplete : false;
+  const webhookConfigured = webhookPublishEnabled ? hasText(process.env.PUBLISHER_WEBHOOK_URL) : false;
+  const workerPathReady = pollingWorkerEnabled ? credentialComplete : false;
+  const publishPathReady = webhookPublishEnabled
+    ? webhookConfigured
+    : bilibiliApiPublishEnabled
+      ? credentialComplete
+      : false;
+  const workerOrPublishReady = workerPathReady || publishPathReady;
+  const dependencyReady = webhookPublishEnabled ? workerOrPublishReady : true;
   const authErrors = authRequired && !credentialComplete ? ['no active credential'] : [];
+  const configErrors =
+    webhookPublishEnabled && !webhookConfigured && !workerPathReady ? ['webhook_not_configured'] : [];
+  const diagnosticsReady = authRequired ? credentialComplete : publishPathReady;
+  const blockingReasons = [
+    ...configErrors.map((reason) => `publish:${reason}`),
+    ...(authRequired && !credentialComplete ? ['auth:no active credential'] : []),
+  ];
+  const preReleaseRealChainReady =
+    effectivePublishMode === 'native_bilibili' && nativePublishEnabled && realAuthReady && dependencyReady;
 
   return {
-    ready: authRequired ? credentialComplete : false,
-    blocking_reasons: authRequired && !credentialComplete ? ['auth:no active credential'] : [],
+    ready: diagnosticsReady,
+    blocking_reasons: blockingReasons,
     effective_publish_mode: effectivePublishMode,
     checks: {
-      config: { ready: true, errors: [] },
-      auth: { ready: credentialComplete, errors: authErrors },
+      config: { ready: configErrors.length === 0, errors: configErrors },
+      auth: { ready: !authRequired || credentialComplete, errors: authErrors },
       worker_or_publish: {
-        ready: authRequired ? credentialComplete : false,
-        errors: authErrors,
+        ready: workerOrPublishReady,
+        errors: [...configErrors, ...authErrors],
       },
     },
     release_gates: {
-      worker_or_publish_ready: authRequired ? credentialComplete : false,
+      worker_or_publish_ready: workerOrPublishReady,
       native_publish_enabled: nativePublishEnabled,
       credential_present: credentialPresent,
       credential_complete: credentialComplete,
+      real_auth_ready: realAuthReady,
+      dependency_ready: dependencyReady,
+      delivery_capable_publish_mode: deliveryCapablePublishMode,
+      effective_publish_mode: effectivePublishMode,
+      blocking_reasons: blockingReasons,
+      pre_release_real_chain_ready: preReleaseRealChainReady,
     },
     signals: {
-      raw_publish_mode: effectivePublishMode,
+      raw_publish_mode: rawPublishMode,
       effective_publish_mode: effectivePublishMode,
       native_publish_enabled: nativePublishEnabled,
       polling_worker_enabled: pollingWorkerEnabled,
       credential_present: credentialPresent,
       credential_complete: credentialComplete,
-      publish_mode_config_ready: true,
+      publish_mode_config_ready: configErrors.length === 0,
+      delivery_capable_publish_mode: deliveryCapablePublishMode,
+      webhook_configured: webhookConfigured,
+      real_auth_ready: realAuthReady,
+      pre_release_real_chain_ready: preReleaseRealChainReady,
     },
   };
 }
 
 function defaultNormalizePublishFailureReason(reason: string | undefined): string {
-  const normalized = String(reason ?? '').trim().toLowerCase();
+  const normalized = String(reason ?? '')
+    .trim()
+    .toLowerCase();
   if (!normalized) {
     return 'invalid_response';
   }
@@ -914,13 +995,16 @@ function defaultGetPlatformPublishSource(platform: PlatformName, settings: Runti
 }
 
 function createInMemoryLogStore() {
-  const entries = new Map<string, {
-    reservationKey: string;
-    status: 'reserved' | 'published' | 'failed';
-    source: string;
-    failureReason?: string;
-    publishedAt?: Date;
-  }>();
+  const entries = new Map<
+    string,
+    {
+      reservationKey: string;
+      status: 'reserved' | 'published' | 'failed';
+      source: string;
+      failureReason?: string;
+      publishedAt?: Date;
+    }
+  >();
 
   return {
     reserve(input: PublishReservationInput): ReservePublishLogResult {
@@ -1013,34 +1097,32 @@ async function defaultAdminJobs(input: { status?: string; limit: number; offset:
     }),
   ]);
 
-  const commentIds = [...new Set(
-    items
-      .map((item) => item.comment_id)
-      .filter((value): value is string => Boolean(value)),
-  )];
-  const canonicalCommentIds = [...new Set(
-    items
-      .map((item) => item.canonical_comment_id)
-      .filter((value): value is string => Boolean(value)),
-  )];
-  const comments = commentIds.length === 0 && canonicalCommentIds.length === 0
-    ? []
-    : await prisma.comment.findMany({
-      where: {
-        OR: [
-          ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
-          ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
-        ],
-      },
-    });
+  const commentIds = [
+    ...new Set(items.map((item) => item.comment_id).filter((value): value is string => Boolean(value))),
+  ];
+  const canonicalCommentIds = [
+    ...new Set(items.map((item) => item.canonical_comment_id).filter((value): value is string => Boolean(value))),
+  ];
+  const comments =
+    commentIds.length === 0 && canonicalCommentIds.length === 0
+      ? []
+      : await prisma.comment.findMany({
+          where: {
+            OR: [
+              ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
+              ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
+            ],
+          },
+        });
 
   const commentByCanonicalId = new Map(comments.map((item) => [item.canonical_comment_id, item]));
   const commentByCommentId = new Map(comments.map((item) => [item.comment_id, item]));
 
   return {
     items: items.map((item) => {
-      const comment = (item.canonical_comment_id && commentByCanonicalId.get(item.canonical_comment_id))
-        || commentByCommentId.get(item.comment_id);
+      const comment =
+        (item.canonical_comment_id && commentByCanonicalId.get(item.canonical_comment_id)) ||
+        commentByCommentId.get(item.comment_id);
       return {
         id: String(item.id),
         comment_id: item.comment_id,
@@ -1061,7 +1143,10 @@ async function defaultAdminJobs(input: { status?: string; limit: number; offset:
   };
 }
 
-async function defaultAdminGatewayLogs(input: { commentId?: string; limit: number }): Promise<AdminGatewayLogsResponse> {
+async function defaultAdminGatewayLogs(input: {
+  commentId?: string;
+  limit: number;
+}): Promise<AdminGatewayLogsResponse> {
   const prisma = getPrisma();
   const where: Record<string, unknown> = {};
   if (input.commentId) {
@@ -1073,29 +1158,26 @@ async function defaultAdminGatewayLogs(input: { commentId?: string; limit: numbe
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
     take: input.limit,
   });
-  const commentIds = [...new Set(
-    items
-      .map((item) => item.comment_id)
-      .filter((value): value is string => Boolean(value)),
-  )];
-  const canonicalCommentIds = [...new Set(
-    items
-      .map((item) => item.canonical_comment_id)
-      .filter((value): value is string => Boolean(value)),
-  )];
-  const jobs = commentIds.length === 0 && canonicalCommentIds.length === 0
-    ? []
-    : await prisma.replyJob.findMany({
-      where: {
-        OR: [
-          ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
-          ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
-        ],
-      },
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-    });
-  const jobByCanonicalId = new Map<string, typeof jobs[number]>();
-  const jobByCommentId = new Map<string, typeof jobs[number]>();
+  const commentIds = [
+    ...new Set(items.map((item) => item.comment_id).filter((value): value is string => Boolean(value))),
+  ];
+  const canonicalCommentIds = [
+    ...new Set(items.map((item) => item.canonical_comment_id).filter((value): value is string => Boolean(value))),
+  ];
+  const jobs =
+    commentIds.length === 0 && canonicalCommentIds.length === 0
+      ? []
+      : await prisma.replyJob.findMany({
+          where: {
+            OR: [
+              ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
+              ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
+            ],
+          },
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        });
+  const jobByCanonicalId = new Map<string, (typeof jobs)[number]>();
+  const jobByCommentId = new Map<string, (typeof jobs)[number]>();
   for (const job of jobs) {
     if (job.canonical_comment_id && !jobByCanonicalId.has(job.canonical_comment_id)) {
       jobByCanonicalId.set(job.canonical_comment_id, job);
@@ -1107,19 +1189,18 @@ async function defaultAdminGatewayLogs(input: { commentId?: string; limit: numbe
 
   return {
     items: items.map((item) => ({
-      ...((
-        (item.canonical_comment_id && jobByCanonicalId.get(item.canonical_comment_id))
-        || jobByCommentId.get(item.comment_id)
-      )
+      ...((item.canonical_comment_id && jobByCanonicalId.get(item.canonical_comment_id)) ||
+      jobByCommentId.get(item.comment_id)
         ? {
-          reply_text: ((
-            (item.canonical_comment_id && jobByCanonicalId.get(item.canonical_comment_id))
-            || jobByCommentId.get(item.comment_id)
-          )?.reply_text ?? null),
-        }
+            reply_text:
+              (
+                (item.canonical_comment_id && jobByCanonicalId.get(item.canonical_comment_id)) ||
+                jobByCommentId.get(item.comment_id)
+              )?.reply_text ?? null,
+          }
         : {
-          reply_text: null,
-        }),
+            reply_text: null,
+          }),
       id: item.id,
       platform: item.platform,
       canonical_comment_id: item.canonical_comment_id,
@@ -1134,7 +1215,11 @@ async function defaultAdminGatewayLogs(input: { commentId?: string; limit: numbe
   };
 }
 
-async function defaultAdminAuditSummary(input: { days: number; action?: string; ok?: boolean }): Promise<AdminAuditSummaryResponse> {
+async function defaultAdminAuditSummary(input: {
+  days: number;
+  action?: string;
+  ok?: boolean;
+}): Promise<AdminAuditSummaryResponse> {
   const prisma = getPrisma();
   const startUtc = new Date(Date.now() - input.days * 24 * 3600 * 1000);
   const where: Record<string, unknown> = { created_at: { gte: startUtc } };
@@ -1181,7 +1266,10 @@ async function defaultAdminAuditSummary(input: { days: number; action?: string; 
   };
 }
 
-async function defaultListKnowledgeEntries(input: { limit: number; offset: number }): Promise<{ ok: boolean; items: KnowledgeEntry[] }> {
+async function defaultListKnowledgeEntries(input: {
+  limit: number;
+  offset: number;
+}): Promise<{ ok: boolean; items: KnowledgeEntry[] }> {
   const prisma = getPrisma();
   const items = await prisma.knowledgeEntry.findMany({
     orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
@@ -1203,7 +1291,11 @@ async function defaultListKnowledgeEntries(input: { limit: number; offset: numbe
   };
 }
 
-async function defaultCreateKnowledgeEntry(input: { category: string; title: string; content: string }): Promise<{ ok: boolean; item: KnowledgeEntry }> {
+async function defaultCreateKnowledgeEntry(input: {
+  category: string;
+  title: string;
+  content: string;
+}): Promise<{ ok: boolean; item: KnowledgeEntry }> {
   const prisma = getPrisma();
   const item = await prisma.knowledgeEntry.create({
     data: {
@@ -1228,7 +1320,9 @@ async function defaultCreateKnowledgeEntry(input: { category: string; title: str
   };
 }
 
-async function defaultDisableKnowledgeEntry(input: { entryId: number }): Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }> {
+async function defaultDisableKnowledgeEntry(input: {
+  entryId: number;
+}): Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }> {
   const prisma = getPrisma();
   const item = await prisma.knowledgeEntry.update({
     where: { id: input.entryId },
@@ -1256,7 +1350,9 @@ function defaultGetStyleProfile(): { ok: boolean; style_profile: string; preset_
   };
 }
 
-async function defaultSetStyleProfile(input: { styleProfile: string }): Promise<{ ok: boolean; style_profile: string }> {
+async function defaultSetStyleProfile(input: {
+  styleProfile: string;
+}): Promise<{ ok: boolean; style_profile: string }> {
   // Update runtime setting via environment override
   process.env.STYLE_PROFILE_DEFAULT = input.styleProfile;
   return {
@@ -1282,7 +1378,10 @@ async function defaultSetRoleProfile(input: { roleProfile: string }): Promise<{ 
   };
 }
 
-async function defaultListRoleCards(input: { limit: number; offset: number }): Promise<{ ok: boolean; active_role_card_key: string | null; items: RoleCard[] }> {
+async function defaultListRoleCards(input: {
+  limit: number;
+  offset: number;
+}): Promise<{ ok: boolean; active_role_card_key: string | null; items: RoleCard[] }> {
   const prisma = getPrisma();
   const items = await prisma.roleCard.findMany({
     orderBy: [{ is_active: 'desc' }, { updated_at: 'desc' }, { id: 'desc' }],
@@ -1298,7 +1397,15 @@ async function defaultListRoleCards(input: { limit: number; offset: number }): P
   };
 }
 
-async function defaultCreateRoleCard(input: { key: string; name: string; description: string; system_prompt: string; tone: RoleCardValue; constraints: RoleCardValue; enabled: boolean }): Promise<{ ok: boolean; item: RoleCard }> {
+async function defaultCreateRoleCard(input: {
+  key: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  tone: RoleCardValue;
+  constraints: RoleCardValue;
+  enabled: boolean;
+}): Promise<{ ok: boolean; item: RoleCard }> {
   const prisma = getPrisma();
   const item = await prisma.roleCard.create({
     data: {
@@ -1319,7 +1426,15 @@ async function defaultCreateRoleCard(input: { key: string; name: string; descrip
   };
 }
 
-async function defaultUpdateRoleCard(input: { cardKey: string; name?: string; description?: string; system_prompt?: string; tone?: RoleCardValue; constraints?: RoleCardValue; enabled?: boolean }): Promise<{ ok: boolean; item: RoleCard }> {
+async function defaultUpdateRoleCard(input: {
+  cardKey: string;
+  name?: string;
+  description?: string;
+  system_prompt?: string;
+  tone?: RoleCardValue;
+  constraints?: RoleCardValue;
+  enabled?: boolean;
+}): Promise<{ ok: boolean; item: RoleCard }> {
   const prisma = getPrisma();
   const data: Record<string, unknown> = {
     updated_at: new Date(),
@@ -1355,7 +1470,9 @@ async function defaultUpdateRoleCard(input: { cardKey: string; name?: string; de
   };
 }
 
-async function defaultDisableRoleCard(input: { cardKey: string }): Promise<{ ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } }> {
+async function defaultDisableRoleCard(input: {
+  cardKey: string;
+}): Promise<{ ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } }> {
   const prisma = getPrisma();
   const item = await prisma.roleCard.update({
     where: { key: input.cardKey },
@@ -1377,7 +1494,9 @@ async function defaultDisableRoleCard(input: { cardKey: string }): Promise<{ ok:
   };
 }
 
-async function defaultActivateRoleCard(input: { cardKey: string }): Promise<{ ok: boolean; active_role_card_key: string }> {
+async function defaultActivateRoleCard(input: {
+  cardKey: string;
+}): Promise<{ ok: boolean; active_role_card_key: string }> {
   const prisma = getPrisma();
   await prisma.roleCard.updateMany({
     data: {
@@ -1399,14 +1518,20 @@ async function defaultActivateRoleCard(input: { cardKey: string }): Promise<{ ok
   };
 }
 
-function defaultGetObservabilitySummary(input: { windowMinutes: number }): { ok: boolean; summary: Record<string, unknown> } {
+function defaultGetObservabilitySummary(_input: { windowMinutes: number }): {
+  ok: boolean;
+  summary: Record<string, unknown>;
+} {
   return {
     ok: true,
     summary: {},
   };
 }
 
-async function defaultIngestCommentEvent(input: { event: CommentEvent; source: string }): Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }> {
+async function defaultIngestCommentEvent(input: {
+  event: CommentEvent;
+  source: string;
+}): Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }> {
   const traceId = input.event.trace_id || randomUUID();
   const platform = input.event.platform || 'bilibili';
   const canonicalCommentId = `${platform}:${input.event.comment_id}`;
@@ -1436,16 +1561,20 @@ async function defaultIngestCommentEvent(input: { event: CommentEvent; source: s
   try {
     const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
     const queue = createCommentEventQueue('comment-event');
-    await queue.add('comment-event', {
-      comment_id: input.event.comment_id,
-      video_id: input.event.video_id,
-      user_id: input.event.user_id,
-      content: input.event.content,
-      parent_id: input.event.parent_id,
-      platform,
-      source: input.source,
-      trace_id: traceId,
-    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+    await queue.add(
+      'comment-event',
+      {
+        comment_id: input.event.comment_id,
+        video_id: input.event.video_id,
+        user_id: input.event.user_id,
+        content: input.event.content,
+        parent_id: input.event.parent_id,
+        platform,
+        source: input.source,
+        trace_id: traceId,
+      },
+      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    );
   } catch {
     // Worker queue unavailable — comment is persisted, will be processed later
   }
@@ -1453,12 +1582,25 @@ async function defaultIngestCommentEvent(input: { event: CommentEvent; source: s
   return { ok: true, queued: true, comment_id: input.event.comment_id, trace_id: traceId };
 }
 
-async function defaultRetryJob(input: { jobId: number; forceLong?: boolean; styleProfile?: string; roleProfile?: string; roleCardKey?: string }): Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }> {
+async function defaultRetryJob(input: {
+  jobId: number;
+  forceLong?: boolean;
+  styleProfile?: string;
+  roleProfile?: string;
+  roleCardKey?: string;
+}): Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }> {
   const traceId = randomUUID();
   const prisma = getPrisma();
   const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
   if (!job) {
-    await writeAuditLog(prisma, { action: 'retry_single', targetId: input.jobId, ok: false, traceId, status: 'job_not_found', payload: { error: 'job_not_found' } });
+    await writeAuditLog(prisma, {
+      action: 'retry_single',
+      targetId: input.jobId,
+      ok: false,
+      traceId,
+      status: 'job_not_found',
+      payload: { error: 'job_not_found' },
+    });
     throw { statusCode: 404, detail: 'job_not_found' };
   }
 
@@ -1468,37 +1610,70 @@ async function defaultRetryJob(input: { jobId: number; forceLong?: boolean; styl
   try {
     const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
     const queue = createCommentEventQueue('comment-event');
-    await queue.add('comment-event', {
-      comment_id: job.comment_id,
-      platform,
-      force_long: input.forceLong,
-      style_profile: input.styleProfile,
-      role_profile: input.roleProfile,
-      role_card_key: input.roleCardKey,
-      trace_id: traceId,
-      source: 'retry',
-    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+    await queue.add(
+      'comment-event',
+      {
+        comment_id: job.comment_id,
+        platform,
+        force_long: input.forceLong,
+        style_profile: input.styleProfile,
+        role_profile: input.roleProfile,
+        role_card_key: input.roleCardKey,
+        trace_id: traceId,
+        source: 'retry',
+      },
+      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+    );
   } catch {
     // Queue unavailable — job still persisted
   }
 
-  await writeAuditLog(prisma, { action: 'retry_single', targetId: input.jobId, ok: true, traceId, commentId: job.comment_id, status: 'queued', payload: { comment_id: job.comment_id, force_long: input.forceLong } });
+  await writeAuditLog(prisma, {
+    action: 'retry_single',
+    targetId: input.jobId,
+    ok: true,
+    traceId,
+    commentId: job.comment_id,
+    status: 'queued',
+    payload: { comment_id: job.comment_id, force_long: input.forceLong },
+  });
   return { ok: true, requeued: true, job_id: input.jobId, trace_id: traceId };
 }
 
-async function defaultApproveJob(input: { jobId: number; overrideReplyText?: string; styleProfile?: string; roleProfile?: string; roleCardKey?: string }): Promise<{ ok: boolean; job_id: number; status: string; published_at: string | null; trace_id: string }> {
+async function defaultApproveJob(input: {
+  jobId: number;
+  overrideReplyText?: string;
+  styleProfile?: string;
+  roleProfile?: string;
+  roleCardKey?: string;
+}): Promise<{ ok: boolean; job_id: number; status: string; published_at: string | null; trace_id: string }> {
   const traceId = randomUUID();
   const prisma = getPrisma();
 
   const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
   if (!job) {
-    await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: false, traceId, status: 'job_not_found', payload: { error: 'job_not_found' } });
+    await writeAuditLog(prisma, {
+      action: 'approve_single',
+      targetId: input.jobId,
+      ok: false,
+      traceId,
+      status: 'job_not_found',
+      payload: { error: 'job_not_found' },
+    });
     throw { statusCode: 404, detail: 'job_not_found' };
   }
 
   const approvableStatuses = ['manual_queue', 'blocked', 'dedupe_skipped'];
   if (!approvableStatuses.includes(job.status)) {
-    await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: false, traceId, commentId: job.comment_id, status: 'not_approvable', payload: { error: 'job_status_not_approvable', current_status: job.status } });
+    await writeAuditLog(prisma, {
+      action: 'approve_single',
+      targetId: input.jobId,
+      ok: false,
+      traceId,
+      commentId: job.comment_id,
+      status: 'not_approvable',
+      payload: { error: 'job_status_not_approvable', current_status: job.status },
+    });
     throw { statusCode: 400, detail: 'job_status_not_approvable' };
   }
 
@@ -1516,15 +1691,27 @@ async function defaultApproveJob(input: { jobId: number; overrideReplyText?: str
 
   // Publish reply
   const { publishReplyWithResult } = await import('./services/publisher.js');
-  const [published, publishReason, publishedAt, publishResult] = await publishReplyWithResult(job.comment_id, replyText, traceId);
+  const [published, publishReason, publishedAt, publishResult] = await publishReplyWithResult(
+    job.comment_id,
+    replyText,
+    traceId,
+  );
 
   if (!published) {
-    await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: false, traceId, commentId: job.comment_id, status: 'publish_failed', payload: { error: 'approve_publish_failed', publish_reason: publishReason } });
+    await writeAuditLog(prisma, {
+      action: 'approve_single',
+      targetId: input.jobId,
+      ok: false,
+      traceId,
+      commentId: job.comment_id,
+      status: 'publish_failed',
+      payload: { error: 'approve_publish_failed', publish_reason: publishReason },
+    });
     throw { statusCode: 500, detail: 'approve_publish_failed' };
   }
 
   // Update job
-  const newRiskFlags = typeof job.risk_flags === 'string' ? JSON.parse(job.risk_flags) : (job.risk_flags || {});
+  const newRiskFlags = typeof job.risk_flags === 'string' ? JSON.parse(job.risk_flags) : job.risk_flags || {};
   const updatedJob = await prisma.replyJob.update({
     where: { id: input.jobId },
     data: {
@@ -1547,7 +1734,11 @@ async function defaultApproveJob(input: { jobId: number; overrideReplyText?: str
       const { prisma: prismaFromDb } = await import('./services/db-queries.js');
       const p = prismaFromDb();
       const existingState = await p.userState.findUnique({ where: { user_id: comment.user_id } });
-      const recentPhrases = existingState ? (typeof existingState.recent_phrases === 'string' ? JSON.parse(existingState.recent_phrases) : existingState.recent_phrases) : { phrases: [] };
+      const recentPhrases = existingState
+        ? typeof existingState.recent_phrases === 'string'
+          ? JSON.parse(existingState.recent_phrases)
+          : existingState.recent_phrases
+        : { phrases: [] };
       const phrases = Array.isArray(recentPhrases.phrases) ? recentPhrases.phrases : [];
       phrases.push(replyText.substring(0, 60));
       if (phrases.length > 20) phrases.shift();
@@ -1557,9 +1748,19 @@ async function defaultApproveJob(input: { jobId: number; overrideReplyText?: str
         create: { user_id: comment.user_id, recent_phrases: JSON.stringify({ phrases: [replyText.substring(0, 60)] }) },
       });
     }
-  } catch { /* non-critical */ }
+  } catch {
+    /* non-critical */
+  }
 
-  await writeAuditLog(prisma, { action: 'approve_single', targetId: input.jobId, ok: true, traceId, commentId: job.comment_id, status: 'published', payload: { reply_text_preview: replyText.substring(0, 40) } });
+  await writeAuditLog(prisma, {
+    action: 'approve_single',
+    targetId: input.jobId,
+    ok: true,
+    traceId,
+    commentId: job.comment_id,
+    status: 'published',
+    payload: { reply_text_preview: replyText.substring(0, 40) },
+  });
 
   return {
     ok: true,
@@ -1570,7 +1771,12 @@ async function defaultApproveJob(input: { jobId: number; overrideReplyText?: str
   };
 }
 
-async function defaultApproveJobsBatch(input: { jobIds: number[] }): Promise<{ ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>; trace_id: string }> {
+async function defaultApproveJobsBatch(input: { jobIds: number[] }): Promise<{
+  ok: boolean;
+  summary: { total: number; success: number; failed: number };
+  results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>;
+  trace_id: string;
+}> {
   const traceId = randomUUID();
   const results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }> = [];
   let success = 0;
@@ -1603,7 +1809,12 @@ async function defaultApproveJobsBatch(input: { jobIds: number[] }): Promise<{ o
   return { ok: true, summary, results, trace_id: traceId };
 }
 
-async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: boolean }): Promise<{ ok: boolean; summary: { total: number; success: number; failed: number }; results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>; trace_id: string }> {
+async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: boolean }): Promise<{
+  ok: boolean;
+  summary: { total: number; success: number; failed: number };
+  results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>;
+  trace_id: string;
+}> {
   const traceId = randomUUID();
   const results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }> = [];
   let success = 0;
@@ -1635,15 +1846,14 @@ async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: bool
   return { ok: true, summary, results, trace_id: traceId };
 }
 
-async function defaultGetComment(input: { commentId: string }): Promise<{ ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] }> {
+async function defaultGetComment(input: {
+  commentId: string;
+}): Promise<{ ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] }> {
   const prisma = getPrisma();
   const commentId = String(input.commentId ?? '').trim();
   const comment = await prisma.comment.findFirst({
     where: {
-      OR: [
-        { comment_id: commentId },
-        { canonical_comment_id: commentId },
-      ],
+      OR: [{ comment_id: commentId }, { canonical_comment_id: commentId }],
     },
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
   });
@@ -1654,10 +1864,7 @@ async function defaultGetComment(input: { commentId: string }): Promise<{ ok: bo
 
   const jobs = await prisma.replyJob.findMany({
     where: {
-      OR: [
-        { comment_id: comment.comment_id },
-        { canonical_comment_id: comment.canonical_comment_id },
-      ],
+      OR: [{ comment_id: comment.comment_id }, { canonical_comment_id: comment.canonical_comment_id }],
     },
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
   });
@@ -1675,10 +1882,12 @@ async function defaultGetComment(input: { commentId: string }): Promise<{ ok: bo
       parent_id: comment.parent_id,
       created_at: comment.created_at?.toISOString() ?? null,
     },
-    jobs: jobs.map((job) => normalizeQueryJobRecord(job as unknown as Record<string, unknown>, {
-      commentContent: comment.content,
-      platform: comment.platform,
-    })),
+    jobs: jobs.map((job) =>
+      normalizeQueryJobRecord(job as unknown as Record<string, unknown>, {
+        commentContent: comment.content,
+        platform: comment.platform,
+      }),
+    ),
   };
 }
 
@@ -1708,7 +1917,11 @@ async function defaultGetJob(input: { jobId: number }): Promise<{ ok: boolean; i
   };
 }
 
-async function defaultListJobs(input: { status?: string; limit: number; offset: number }): Promise<{ ok: boolean; items: ReplyJob[] }> {
+async function defaultListJobs(input: {
+  status?: string;
+  limit: number;
+  offset: number;
+}): Promise<{ ok: boolean; items: ReplyJob[] }> {
   const prisma = getPrisma();
   const where = buildAdminJobStatusWhere(input.status);
   const items = await prisma.replyJob.findMany({
@@ -1718,27 +1931,24 @@ async function defaultListJobs(input: { status?: string; limit: number; offset: 
     take: input.limit,
   });
 
-  const commentIds = [...new Set(
-    items
-      .map((item) => item.comment_id)
-      .filter((value): value is string => Boolean(value)),
-  )];
-  const canonicalCommentIds = [...new Set(
-    items
-      .map((item) => item.canonical_comment_id)
-      .filter((value): value is string => Boolean(value)),
-  )];
+  const commentIds = [
+    ...new Set(items.map((item) => item.comment_id).filter((value): value is string => Boolean(value))),
+  ];
+  const canonicalCommentIds = [
+    ...new Set(items.map((item) => item.canonical_comment_id).filter((value): value is string => Boolean(value))),
+  ];
 
-  const comments = commentIds.length === 0 && canonicalCommentIds.length === 0
-    ? []
-    : await prisma.comment.findMany({
-      where: {
-        OR: [
-          ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
-          ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
-        ],
-      },
-    });
+  const comments =
+    commentIds.length === 0 && canonicalCommentIds.length === 0
+      ? []
+      : await prisma.comment.findMany({
+          where: {
+            OR: [
+              ...(commentIds.length > 0 ? [{ comment_id: { in: commentIds } }] : []),
+              ...(canonicalCommentIds.length > 0 ? [{ canonical_comment_id: { in: canonicalCommentIds } }] : []),
+            ],
+          },
+        });
 
   const commentByCanonicalId = new Map(comments.map((item) => [item.canonical_comment_id, item]));
   const commentByCommentId = new Map(comments.map((item) => [item.comment_id, item]));
@@ -1746,8 +1956,9 @@ async function defaultListJobs(input: { status?: string; limit: number; offset: 
   return {
     ok: true,
     items: items.map((item) => {
-      const comment = (item.canonical_comment_id && commentByCanonicalId.get(item.canonical_comment_id))
-        || commentByCommentId.get(item.comment_id);
+      const comment =
+        (item.canonical_comment_id && commentByCanonicalId.get(item.canonical_comment_id)) ||
+        commentByCommentId.get(item.comment_id);
       return normalizeQueryJobRecord(item as unknown as Record<string, unknown>, {
         commentContent: comment?.content ?? null,
         platform: comment?.platform ?? null,
@@ -1766,12 +1977,11 @@ async function defaultExportJobsCsv(input: { status?: string; limit: number }): 
   });
 
   const header = 'job_id,comment_id,status,created_at';
-  const rows = items.map((item) => [
-    item.id,
-    csvEscape(item.comment_id),
-    csvEscape(item.status),
-    csvEscape(item.created_at?.toISOString() ?? ''),
-  ].join(','));
+  const rows = items.map((item) =>
+    [item.id, csvEscape(item.comment_id), csvEscape(item.status), csvEscape(item.created_at?.toISOString() ?? '')].join(
+      ',',
+    ),
+  );
 
   return `${[header, ...rows].join('\n')}\n`;
 }
@@ -1779,7 +1989,13 @@ async function defaultExportJobsCsv(input: { status?: string; limit: number }): 
 async function defaultGetBilibiliStatus(input: {
   settings: RuntimeSettings;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
-}): Promise<{ ok: boolean; config: Record<string, unknown>; credential: Record<string, unknown> | null; videos: Record<string, unknown>; diagnostics: Record<string, unknown> }> {
+}): Promise<{
+  ok: boolean;
+  config: Record<string, unknown>;
+  credential: Record<string, unknown> | null;
+  videos: Record<string, unknown>;
+  diagnostics: Record<string, unknown>;
+}> {
   const prisma = getPrisma();
   const [credential, totalVideos, pollEnabledCount, diagnostics] = await Promise.all([
     prisma.bilibiliCredential.findFirst({
@@ -1800,15 +2016,17 @@ async function defaultGetBilibiliStatus(input: {
       poll_interval_seconds: input.settings.bilibiliPollIntervalSeconds,
       rate_limit_per_minute: 60,
     },
-    credential: credential ? {
-      id: credential.id,
-      name: credential.name,
-      is_active: credential.is_active,
-      expires_at: credential.expires_at?.toISOString() ?? null,
-      last_used_at: credential.last_used_at?.toISOString() ?? null,
-      created_at: credential.created_at?.toISOString() ?? null,
-      updated_at: credential.updated_at?.toISOString() ?? null,
-    } : null,
+    credential: credential
+      ? {
+          id: credential.id,
+          name: credential.name,
+          is_active: credential.is_active,
+          expires_at: credential.expires_at?.toISOString() ?? null,
+          last_used_at: credential.last_used_at?.toISOString() ?? null,
+          created_at: credential.created_at?.toISOString() ?? null,
+          updated_at: credential.updated_at?.toISOString() ?? null,
+        }
+      : null,
     videos: {
       total: totalVideos,
       video_count: totalVideos,
@@ -1818,7 +2036,11 @@ async function defaultGetBilibiliStatus(input: {
   };
 }
 
-async function defaultListBilibiliVideos(input: { pollEnabled?: boolean; limit: number; offset: number }): Promise<{ ok: boolean; total: number; items: BilibiliVideo[] }> {
+async function defaultListBilibiliVideos(input: {
+  pollEnabled?: boolean;
+  limit: number;
+  offset: number;
+}): Promise<{ ok: boolean; total: number; items: BilibiliVideo[] }> {
   const prisma = getPrisma();
   const where = input.pollEnabled === undefined ? {} : { poll_enabled: input.pollEnabled };
   const [total, items] = await Promise.all([
@@ -1830,15 +2052,14 @@ async function defaultListBilibiliVideos(input: { pollEnabled?: boolean; limit: 
       take: input.limit,
     }),
   ]);
-  const bvids = items
-    .map((item) => item.bvid)
-    .filter((value): value is string => Boolean(value));
-  const comments = bvids.length === 0
-    ? []
-    : await prisma.comment.findMany({
-      where: { video_id: { in: bvids } },
-      select: { video_id: true },
-    });
+  const bvids = items.map((item) => item.bvid).filter((value): value is string => Boolean(value));
+  const comments =
+    bvids.length === 0
+      ? []
+      : await prisma.comment.findMany({
+          where: { video_id: { in: bvids } },
+          select: { video_id: true },
+        });
   const commentCounts = new Map<string, number>();
   for (const comment of comments) {
     const videoId = String(comment.video_id ?? '');
@@ -1851,13 +2072,18 @@ async function defaultListBilibiliVideos(input: { pollEnabled?: boolean; limit: 
   return {
     ok: true,
     total,
-    items: items.map((item) => normalizeBilibiliVideoRecord(item as unknown as Record<string, unknown>, {
-      commentCount: commentCounts.get(item.bvid) ?? 0,
-    })),
+    items: items.map((item) =>
+      normalizeBilibiliVideoRecord(item as unknown as Record<string, unknown>, {
+        commentCount: commentCounts.get(item.bvid) ?? 0,
+      }),
+    ),
   };
 }
 
-async function defaultAddBilibiliVideo(input: { bvid: string; pollEnabled?: boolean }): Promise<{ ok: boolean; item: BilibiliVideo }> {
+async function defaultAddBilibiliVideo(input: {
+  bvid: string;
+  pollEnabled?: boolean;
+}): Promise<{ ok: boolean; item: BilibiliVideo }> {
   const prisma = getPrisma();
   const item = await prisma.bilibiliVideo.create({
     data: {
@@ -1915,10 +2141,11 @@ function defaultDependencies(): ServerDependencies {
     getJob: (input) => defaultGetJob(input),
     listJobs: (input) => defaultListJobs(input),
     exportJobsCsv: (input) => defaultExportJobsCsv(input),
-    getBilibiliStatus: () => defaultGetBilibiliStatus({
-      settings,
-      buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings),
-    }),
+    getBilibiliStatus: () =>
+      defaultGetBilibiliStatus({
+        settings,
+        buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings),
+      }),
     listBilibiliVideos: (input) => defaultListBilibiliVideos(input),
     addBilibiliVideo: (input) => defaultAddBilibiliVideo(input),
   };
@@ -1972,11 +2199,7 @@ async function writeAuditLog(
 }
 
 /** Check x-api-key header; returns false and sends 401 on failure */
-function checkApiKey(
-  request: FastifyRequest,
-  reply: FastifyReply,
-  settings: RuntimeSettings,
-): boolean {
+function checkApiKey(request: FastifyRequest, reply: FastifyReply, settings: RuntimeSettings): boolean {
   const expected = settings.apiKey.trim();
   if (!expected) return true;
   const provided = getHeaderValue(request.headers['x-api-key']).trim();
@@ -2049,7 +2272,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const finalizePublishLog = overrides.finalizePublishLog ?? defaults.finalizePublishLog;
   const publishGatewayReply = overrides.publishGatewayReply ?? defaults.publishGatewayReply;
   const publishPlatformReply = overrides.publishPlatformReply ?? defaults.publishPlatformReply;
-  const normalizePublishFailureReason = overrides.normalizePublishFailureReason ?? defaults.normalizePublishFailureReason;
+  const normalizePublishFailureReason =
+    overrides.normalizePublishFailureReason ?? defaults.normalizePublishFailureReason;
   const isPlatformEnabled = overrides.isPlatformEnabled ?? defaults.isPlatformEnabled;
   const getPlatformPublishSource = overrides.getPlatformPublishSource ?? defaults.getPlatformPublishSource;
   const createTraceId = overrides.createTraceId ?? defaults.createTraceId;
@@ -2079,10 +2303,13 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const getJob = overrides.getJob ?? defaults.getJob;
   const listJobs = overrides.listJobs ?? defaults.listJobs;
   const exportJobsCsv = overrides.exportJobsCsv ?? defaults.exportJobsCsv;
-  const getBilibiliStatus = overrides.getBilibiliStatus ?? (() => defaultGetBilibiliStatus({
-    settings,
-    buildBilibiliDiagnostics,
-  }));
+  const getBilibiliStatus =
+    overrides.getBilibiliStatus ??
+    (() =>
+      defaultGetBilibiliStatus({
+        settings,
+        buildBilibiliDiagnostics,
+      }));
   const listBilibiliVideos = overrides.listBilibiliVideos ?? defaults.listBilibiliVideos;
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
 
@@ -2110,7 +2337,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
         bilibiliDiagnostics = await buildBilibiliDiagnostics();
       } catch {
         bilibiliDiagnostics = {
-          ...await defaultBilibiliDiagnostics(settings),
+          ...(await defaultBilibiliDiagnostics(settings)),
           ready: false,
           blocking_reasons: ['dependency:diagnostics_unavailable'],
         };
@@ -2119,19 +2346,20 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       bilibiliDiagnostics = await defaultBilibiliDiagnostics(settings);
     }
 
-    const checks = typeof bilibiliDiagnostics.checks === 'object' && bilibiliDiagnostics.checks !== null
-      ? bilibiliDiagnostics.checks
-      : {};
-    const workerOrPublishCheck = typeof checks.worker_or_publish === 'object' && checks.worker_or_publish !== null
-      ? checks.worker_or_publish as { ready?: unknown; errors?: unknown }
-      : {};
-    const workerOrPublishErrors = Array.isArray(workerOrPublishCheck.errors)
-      ? workerOrPublishCheck.errors
-      : [];
+    const checks =
+      typeof bilibiliDiagnostics.checks === 'object' && bilibiliDiagnostics.checks !== null
+        ? bilibiliDiagnostics.checks
+        : {};
+    const workerOrPublishCheck =
+      typeof checks.worker_or_publish === 'object' && checks.worker_or_publish !== null
+        ? (checks.worker_or_publish as { ready?: unknown; errors?: unknown })
+        : {};
+    const workerOrPublishErrors = Array.isArray(workerOrPublishCheck.errors) ? workerOrPublishCheck.errors : [];
 
-    const releaseGates = typeof bilibiliDiagnostics.release_gates === 'object' && bilibiliDiagnostics.release_gates !== null
-      ? bilibiliDiagnostics.release_gates
-      : {};
+    const releaseGates =
+      typeof bilibiliDiagnostics.release_gates === 'object' && bilibiliDiagnostics.release_gates !== null
+        ? bilibiliDiagnostics.release_gates
+        : {};
 
     const effectivePublishMode = normalizePublishMode(
       String(bilibiliDiagnostics.effective_publish_mode || settings.publisherMode),
@@ -2146,7 +2374,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const deliveryPathReady = nativePublishMode
       ? Boolean(bilibiliDiagnostics.ready)
-      : (externalPublishMode ? workerOrPublishReady : false);
+      : externalPublishMode
+        ? workerOrPublishReady
+        : false;
 
     const pollingRequested = settings.bilibiliEnabled && settings.bilibiliPollEnabled;
 
@@ -2183,10 +2413,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
         }
       }
     } else {
-      addBlocker(
-        deliveryBlockers,
-        `bilibili:publish_mode_not_delivery_capable:${effectivePublishMode || 'unknown'}`,
-      );
+      addBlocker(deliveryBlockers, `bilibili:publish_mode_not_delivery_capable:${effectivePublishMode || 'unknown'}`);
     }
 
     if (!deliveryPathReady) {
@@ -2280,19 +2507,19 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const publishResult = platform
       ? await publishPlatformReply({
-        platform,
-        commentId: payload.comment_id,
-        replyText: payload.reply_text,
-        forcePublish: payload.force_publish,
-        traceId,
-      })
+          platform,
+          commentId: payload.comment_id,
+          replyText: payload.reply_text,
+          forcePublish: payload.force_publish,
+          traceId,
+        })
       : await publishGatewayReply({
-        commentId: payload.comment_id,
-        replyText: payload.reply_text,
-        forcePublish: payload.force_publish,
-        source: payload.source,
-        traceId,
-      });
+          commentId: payload.comment_id,
+          replyText: payload.reply_text,
+          forcePublish: payload.force_publish,
+          source: payload.source,
+          traceId,
+        });
 
     if (!publishResult.published) {
       const normalizedReason = normalizePublishFailureReason(publishResult.reason);
@@ -2314,9 +2541,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       };
     }
 
-    const sourceValue = platform
-      ? getPlatformPublishSource(platform, settings)
-      : payload.source;
+    const sourceValue = platform ? getPlatformPublishSource(platform, settings) : payload.source;
 
     await finalizePublishLog({
       reservationKey: reservation.reservationKey,
@@ -2522,9 +2747,15 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const category = String(body.category ?? '').trim().slice(0, 64);
-    const title = String(body.title ?? '').trim().slice(0, 128);
-    const content = String(body.content ?? '').trim().slice(0, 65535);
+    const category = String(body.category ?? '')
+      .trim()
+      .slice(0, 64);
+    const title = String(body.title ?? '')
+      .trim()
+      .slice(0, 128);
+    const content = String(body.content ?? '')
+      .trim()
+      .slice(0, 65535);
 
     if (!category) {
       return reply.code(400).send({ detail: 'category_required' });
@@ -2583,7 +2814,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const value = String(body.style_profile ?? body.style ?? '').trim().toLowerCase();
+    const value = String(body.style_profile ?? body.style ?? '')
+      .trim()
+      .toLowerCase();
     const allowed = new Set(['auto', 'empathy', 'meme', 'normal']);
     if (!allowed.has(value)) {
       return reply.code(400).send({ detail: 'invalid_style_profile' });
@@ -2617,7 +2850,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const value = String(body.role_profile ?? body.role ?? '').trim().toLowerCase();
+    const value = String(body.role_profile ?? body.role ?? '')
+      .trim()
+      .toLowerCase();
     const allowed = new Set(['auto', 'default', 'comfort', 'playful']);
     if (!allowed.has(value)) {
       return reply.code(400).send({ detail: 'invalid_role_profile' });
@@ -2655,10 +2890,19 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const key = String(body.key ?? '').trim().toLowerCase().slice(0, 64);
-    const name = String(body.name ?? '').trim().slice(0, 128);
-    const description = String(body.description ?? '').trim().slice(0, 65535);
-    const systemPrompt = String(body.system_prompt ?? '').trim().slice(0, 65535);
+    const key = String(body.key ?? '')
+      .trim()
+      .toLowerCase()
+      .slice(0, 64);
+    const name = String(body.name ?? '')
+      .trim()
+      .slice(0, 128);
+    const description = String(body.description ?? '')
+      .trim()
+      .slice(0, 65535);
+    const systemPrompt = String(body.system_prompt ?? '')
+      .trim()
+      .slice(0, 65535);
     const tone = normalizeRoleCardInputValue(body.tone);
     const constraints = normalizeRoleCardInputValue(body.constraints);
     const enabled = Boolean(body.enabled ?? true);
@@ -2692,7 +2936,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '').trim().toLowerCase().slice(0, 64);
+    const cardKey = String(params.card_key ?? '')
+      .trim()
+      .toLowerCase()
+      .slice(0, 64);
     const body = request.body as Record<string, unknown>;
 
     const updateData: {
@@ -2706,16 +2953,22 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     } = { cardKey };
 
     if ('name' in body) {
-      updateData.name = String(body.name ?? '').trim().slice(0, 128);
+      updateData.name = String(body.name ?? '')
+        .trim()
+        .slice(0, 128);
       if (!updateData.name) {
         return reply.code(400).send({ detail: 'role_card_name_required' });
       }
     }
     if ('description' in body) {
-      updateData.description = String(body.description ?? '').trim().slice(0, 65535);
+      updateData.description = String(body.description ?? '')
+        .trim()
+        .slice(0, 65535);
     }
     if ('system_prompt' in body) {
-      updateData.system_prompt = String(body.system_prompt ?? '').trim().slice(0, 65535);
+      updateData.system_prompt = String(body.system_prompt ?? '')
+        .trim()
+        .slice(0, 65535);
     }
     if ('tone' in body) {
       updateData.tone = normalizeRoleCardInputValue(body.tone);
@@ -2741,7 +2994,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '').trim().toLowerCase();
+    const cardKey = String(params.card_key ?? '')
+      .trim()
+      .toLowerCase();
 
     const response = await disableRoleCard({ cardKey });
     return reply.send(response);
@@ -2757,7 +3012,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '').trim().toLowerCase();
+    const cardKey = String(params.card_key ?? '')
+      .trim()
+      .toLowerCase();
 
     const response = await activateRoleCard({ cardKey });
     return reply.send(response);
@@ -2855,7 +3112,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   const handleApproveJobsBatchRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const body = request.body as Record<string, unknown>;
-    const jobIds = Array.isArray(body.job_ids) ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0) : [];
+    const jobIds = Array.isArray(body.job_ids)
+      ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
 
     if (jobIds.length === 0) {
       return reply.code(400).send({ detail: 'job_ids_required' });
@@ -2870,7 +3129,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   const handleRetryJobsBatchRoute = async (request: FastifyRequest, reply: FastifyReply) => {
     const body = request.body as Record<string, unknown>;
-    const jobIds = Array.isArray(body.job_ids) ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0) : [];
+    const jobIds = Array.isArray(body.job_ids)
+      ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0)
+      : [];
 
     if (jobIds.length === 0) {
       return reply.code(400).send({ detail: 'job_ids_required' });
@@ -2922,9 +3183,15 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const response = await getJob({ jobId });
-    const item = response && typeof response === 'object' && 'item' in response && response.item && typeof response.item === 'object' && !Array.isArray(response.item)
-      ? response.item as Record<string, unknown>
-      : null;
+    const item =
+      response &&
+      typeof response === 'object' &&
+      'item' in response &&
+      response.item &&
+      typeof response.item === 'object' &&
+      !Array.isArray(response.item)
+        ? (response.item as Record<string, unknown>)
+        : null;
     return reply.send(item ? { ...response, ...item, item } : response);
   };
 
@@ -2976,7 +3243,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     const query = request.query as Record<string, unknown>;
     const pollEnabledRaw = query.poll_enabled;
-    const pollEnabled = pollEnabledRaw === 'true' || pollEnabledRaw === '1' ? true : pollEnabledRaw === 'false' || pollEnabledRaw === '0' ? false : undefined;
+    const pollEnabled =
+      pollEnabledRaw === 'true' || pollEnabledRaw === '1'
+        ? true
+        : pollEnabledRaw === 'false' || pollEnabledRaw === '0'
+          ? false
+          : undefined;
 
     const response = await listBilibiliVideos({
       pollEnabled,
@@ -2996,7 +3268,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     }
 
     const body = request.body as Record<string, unknown>;
-    const bvid = String(body.bvid ?? '').trim().slice(0, 20);
+    const bvid = String(body.bvid ?? '')
+      .trim()
+      .slice(0, 20);
     const pollEnabled = body.poll_enabled !== undefined ? parseAdminBoolean(body.poll_enabled) : undefined;
 
     if (!bvid) {
@@ -3079,10 +3353,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
     return reply.send({
       ok: true,
-      item: normalizeBilibiliVideoRecord(
-        resolvedVideo as unknown as Record<string, unknown>,
-        { commentCount },
-      ),
+      item: normalizeBilibiliVideoRecord(resolvedVideo as unknown as Record<string, unknown>, { commentCount }),
       result,
     });
   });
@@ -3126,11 +3397,19 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   app.post('/api/admin/bilibili/credentials', async (request, reply) => {
     if (!checkApiKey(request, reply, settings)) return;
     const body = request.body as Record<string, unknown>;
-    const name = String(body.name ?? '').trim().slice(0, 64);
+    const name = String(body.name ?? '')
+      .trim()
+      .slice(0, 64);
     const sessdata = String(body.sessdata ?? '').trim();
-    const biliJct = String(body.bili_jct ?? '').trim().slice(0, 128);
-    const buvid3 = String(body.buvid3 ?? '').trim().slice(0, 128);
-    const buvid4 = String(body.buvid4 ?? '').trim().slice(0, 128);
+    const biliJct = String(body.bili_jct ?? '')
+      .trim()
+      .slice(0, 128);
+    const buvid3 = String(body.buvid3 ?? '')
+      .trim()
+      .slice(0, 128);
+    const buvid4 = String(body.buvid4 ?? '')
+      .trim()
+      .slice(0, 128);
     const expiresAt = body.expires_at ? new Date(body.expires_at as string) : null;
 
     if (!name) return reply.code(400).send({ detail: 'name_required' });
@@ -3215,6 +3494,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     if (action) where.action = action;
     if (okFilter !== undefined) where.ok = okFilter;
     if (targetId >= 0) where.target_id = targetId;
+    if (traceId) where.trace_id = traceId;
 
     const limit = parseAdminLimit(query.limit, 200, 1, 5000);
     const offset = parseAdminOffset(query.offset, 0, 0, 100000);
@@ -3320,7 +3600,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : (item.payload ?? {});
       const statusValue = String(payload.status ?? '').trim();
       if (statusValue) byStatus[statusValue] = (byStatus[statusValue] ?? 0) + 1;
-      if (item.ok) byResult.ok++; else byResult.failed++;
+      if (item.ok) byResult.ok++;
+      else byResult.failed++;
     }
 
     return reply.send({
@@ -3497,23 +3778,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   // ── Serve admin SPA (Vite-built frontend) ──
 
-  app.get('/admin', async (_request, reply) => {
+  async function serveAdminAsset(request: FastifyRequest, reply: FastifyReply, relativePath: string) {
     const fs = await import('fs/promises');
     const path = await import('path');
-    const indexPath = path.join(process.cwd(), 'public', 'admin', 'index.html');
-    try {
-      const html = await fs.readFile(indexPath, 'utf-8');
-      return reply.type('text/html').send(html);
-    } catch {
-      return reply.code(404).send({ error: 'Admin SPA not found' });
-    }
-  });
-
-  // Serve Vite-built assets from /admin/assets/*
-  app.get('/admin/assets/*', async (request, reply) => {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const assetPath = path.join(process.cwd(), 'public', 'admin', 'assets', (request.params as Record<string, string>)['*']);
+    const assetPath = path.join(process.cwd(), 'public', 'admin', ...relativePath.split('/').filter(Boolean));
     try {
       const content = await fs.readFile(assetPath);
       if (assetPath.endsWith('.js')) {
@@ -3526,27 +3794,33 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     } catch {
       return reply.code(404).send({ error: 'Asset not found' });
     }
+  }
+
+  app.get('/admin', async (_request, reply) => {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const indexPath = path.join(process.cwd(), 'public', 'admin', 'index.html');
+    try {
+      const html = await fs.readFile(indexPath, 'utf-8');
+      return reply.type('text/html').send(html);
+    } catch {
+      return reply.code(404).send({ error: 'Admin SPA not found' });
+    }
   });
+
+  // Serve Vite-built assets from /admin/assets/* and /assets/*.
+  app.get('/admin/assets/*', async (request, reply) =>
+    serveAdminAsset(request, reply, `assets/${(request.params as Record<string, string>)['*']}`),
+  );
+
+  app.get('/assets/*', async (request, reply) =>
+    serveAdminAsset(request, reply, `assets/${(request.params as Record<string, string>)['*']}`),
+  );
 
   // ── Static asset aliases (smoke test compatibility: /static/admin/*) ──
   app.get('/static/admin/*', async (request, reply) => {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const filePath = path.join(process.cwd(), 'public', 'admin', (request.params as Record<string, string>)['*']);
-    try {
-      const content = await fs.readFile(filePath);
-      if (filePath.endsWith('.js')) {
-        return reply.type('application/javascript').send(content);
-      } else if (filePath.endsWith('.css')) {
-        return reply.type('text/css').send(content);
-      } else if (filePath.endsWith('.html')) {
-        return reply.type('text/html').send(content);
-      } else {
-        return reply.type('application/octet-stream').send(content);
-      }
-    } catch {
-      return reply.code(404).send({ error: 'not_found' });
-    }
+    const relativePath = (request.params as Record<string, string>)['*'];
+    return serveAdminAsset(request, reply, relativePath);
   });
 
   return app;

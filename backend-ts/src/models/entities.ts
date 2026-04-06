@@ -120,8 +120,8 @@ export type ObservabilityEvent = {
 export type BilibiliCredential = {
   id: number;
   name: string;
-  sessdata: string;  // Encrypted storage
-  bili_jct: string;  // Encrypted storage
+  sessdata: string; // Encrypted storage
+  bili_jct: string; // Encrypted storage
   buvid3: string;
   buvid4: string | null;
   is_active: boolean;

@@ -4,16 +4,8 @@
 
 import { Queue, Worker, Job, QueueOptions, WorkerOptions } from 'bullmq';
 import { RedisConnectionConfig, buildRedisConnectionConfig } from './config.js';
-import {
-  NonRetryableWorkerError,
-  RetryableWorkerError,
-  buildFailureMetadata,
-} from './errors.js';
-import {
-  WorkerConfig,
-  buildDefaultWorkerConfig,
-  secondsToMs,
-} from './worker-config.js';
+import { NonRetryableWorkerError, RetryableWorkerError } from './errors.js';
+import { WorkerConfig, buildDefaultWorkerConfig } from './worker-config.js';
 
 /**
  * Base task payload
@@ -25,16 +17,14 @@ export type BaseTaskPayload = {
 /**
  * Task processor function type
  */
-export type TaskProcessor<P extends BaseTaskPayload> = (
-  job: Job<P>
-) => Promise<Record<string, unknown>>;
+export type TaskProcessor<P extends BaseTaskPayload> = (job: Job<P>) => Promise<Record<string, unknown>>;
 
 /**
  * Task queue factory
  */
 export function createTaskQueue<P extends BaseTaskPayload>(
   queueName: string,
-  connection?: RedisConnectionConfig
+  connection?: RedisConnectionConfig,
 ): Queue<P> {
   const config = connection ?? buildRedisConnectionConfig();
   const options: QueueOptions = {
@@ -66,7 +56,7 @@ export function createTaskWorker<P extends BaseTaskPayload>(
   queueName: string,
   processor: TaskProcessor<P>,
   workerConfig?: Partial<WorkerConfig>,
-  connection?: RedisConnectionConfig
+  connection?: RedisConnectionConfig,
 ): Worker<P> {
   const config = workerConfig ?? buildDefaultWorkerConfig();
   const redisConfig = connection ?? buildRedisConnectionConfig();
@@ -107,7 +97,7 @@ export function createTaskWorker<P extends BaseTaskPayload>(
         throw new RetryableWorkerError(message);
       }
     },
-    workerOptions
+    workerOptions,
   );
 
   // Event handlers
@@ -138,7 +128,7 @@ export function createTaskWorker<P extends BaseTaskPayload>(
 export async function enqueueTask<P extends BaseTaskPayload>(
   queue: Queue<P>,
   payload: P,
-  jobId?: string
+  jobId?: string,
 ): Promise<Job<P>> {
   const options = jobId ? { jobId } : undefined;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

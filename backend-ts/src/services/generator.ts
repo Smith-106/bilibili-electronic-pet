@@ -84,16 +84,34 @@ function mockReply(
 
   let body: string;
   if (styleMode === 'empathy') {
-    body = '[Doro_Doro] ' + roleHint + ' ' + pickAction(0) +
-      ' 我看到你说"' + quote + '"，心里也跟着酸酸的。你不是一个人扛着，先慢一点喘口气没关系。' +
+    body =
+      '[Doro_Doro] ' +
+      roleHint +
+      ' ' +
+      pickAction(0) +
+      ' 我看到你说"' +
+      quote +
+      '"，心里也跟着酸酸的。你不是一个人扛着，先慢一点喘口气没关系。' +
       '如果你愿意，把今天最难受的那一刻告诉我，我，我们一起把揉小一点。';
   } else if (styleMode === 'meme') {
-    body = '[Doro_Doro] ' + roleHint + ' ' + pickAction(1) +
-      ' "' + quote + '"——这句话太有画面感啦！Doro 已经在地上打滚三圈了。' +
+    body =
+      '[Doro_Doro] ' +
+      roleHint +
+      ' ' +
+      pickAction(1) +
+      ' "' +
+      quote +
+      '"——这句话太有画面感啦！Doro 已经在地上打滚三圈了。' +
       '今天这条评论先记作一颗快乐碎片，好好收藏起来~';
   } else {
-    body = '[Doro_Doro] ' + roleHint + ' ' + pickAction(2) +
-      ' 我看到"' + quote + '"，谢谢你认真留言，这种被看见的连接很珍贵。' +
+    body =
+      '[Doro_Doro] ' +
+      roleHint +
+      ' ' +
+      pickAction(2) +
+      ' 我看到"' +
+      quote +
+      '"，谢谢你认真留言，这种被看见的连接很珍贵。' +
       '要是一下子聊不完也没关系，我一直在评论区，慢慢聊。';
   }
 
@@ -122,7 +140,8 @@ function buildMessages(
   const lengthInstruction = buildLengthHint(lengthMode);
   const bannedWordsHint = buildBannedWordsHint();
 
-  let system = systemPrompt +
+  let system =
+    systemPrompt +
     '你在B站评论区扮演 Doro_Doro。回复要温柔、有在场感，默认中等长度，偶尔长文。' +
     '必须引用用户评论中的短句。禁止辱骂、引战、暴露隐私。输出只包含最终回复文本。' +
     lengthInstruction;
@@ -141,8 +160,13 @@ function buildMessages(
 
   return [
     {
+      role: 'system',
+      content: system,
+    },
+    {
       role: 'user',
-      content: '评论内容: ' + userComment + '\n风格: ' + (roleProfile || 'auto') + '\n请生成一条可以直接发布的评论回复。',
+      content:
+        '评论内容: ' + userComment + '\n风格: ' + (roleProfile || 'auto') + '\n请生成一条可以直接发布的评论回复。',
     },
   ];
 }
@@ -150,15 +174,7 @@ function buildMessages(
 // ── Public API ──────────────────────────────────────────────
 
 export const generateReplyWithMeta: GenerateReplyService = async (params) => {
-  const {
-    content,
-    style_mode,
-    length_mode,
-    role_profile,
-    role_card,
-    knowledge_context,
-    search_context,
-  } = params;
+  const { content, style_mode, length_mode, role_profile, role_card, knowledge_context, search_context } = params;
 
   try {
     // Skip by keywords from config
@@ -172,12 +188,7 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
       };
     }
 
-    const messages = buildMessages(
-      '',
-      content,
-      length_mode || 'medium',
-      role_profile || 'auto',
-    );
+    const messages = buildMessages('', content, length_mode || 'medium', role_profile || 'auto');
 
     const result = await generateWithLLM({
       systemPrompt: messages[0].content,

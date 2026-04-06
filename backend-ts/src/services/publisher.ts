@@ -30,7 +30,7 @@ interface CircuitBreaker {
   openUntil: number;
 }
 
-let breaker: CircuitBreaker = { failureCount: 0, openUntil: 0 };
+const breaker: CircuitBreaker = { failureCount: 0, openUntil: 0 };
 
 function isCircuitBreakerOpen(): boolean {
   if (!isCircuitBreakerEnabled()) return false;
@@ -227,11 +227,7 @@ async function publishReal(
  * - webhook: Delegate to external webhook
  * - real_publish: Call Bilibili API directly
  */
-export const publishReplyWithResult: PublishReplyService = async (
-  commentId,
-  replyText,
-  traceId?: string,
-) => {
+export const publishReplyWithResult: PublishReplyService = async (commentId, replyText, _traceId?: string) => {
   try {
     // 1. Check duplicate via Publish log
     const prisma = getPrisma();

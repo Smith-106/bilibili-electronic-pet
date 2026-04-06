@@ -8,10 +8,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import { createPrismaClient } from '../lib/prisma.js';
-import {
-  loadBilibiliRuntimeConfig,
-  type BilibiliRuntimeConfig,
-} from './bilibili-runtime-config.js';
+import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibili-runtime-config.js';
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
@@ -81,7 +78,7 @@ async function fetchCommentsPage(
       throw new Error(`HTTP ${response.status}`);
     }
 
-    const data = await response.json() as Record<string, unknown>;
+    const data = (await response.json()) as Record<string, unknown>;
     const replies = (data.data as Record<string, unknown>)?.replies;
 
     if (!Array.isArray(replies)) return [];
@@ -155,7 +152,7 @@ async function pollVideoComments(
         },
       });
       if (resp.ok) {
-        const info = await resp.json() as Record<string, unknown>;
+        const info = (await resp.json()) as Record<string, unknown>;
         const data = info.data as Record<string, unknown> | undefined;
         if (data?.aid) {
           aid = Number(data.aid);
@@ -260,17 +257,13 @@ async function pollVideoComments(
         },
       });
       injected++;
-      console.info(
-        `[bilibili-poller] Injected comment rpid=${c.rpid} bvid=${video.bvid} user=${c.mid}`,
-      );
+      console.info(`[bilibili-poller] Injected comment rpid=${c.rpid} bvid=${video.bvid} user=${c.mid}`);
     } catch {
       // Duplicate comment — skip
     }
   }
 
-  console.info(
-    `[bilibili-poller] bvid=${video.bvid} total=${allComments.length} injected=${injected}`,
-  );
+  console.info(`[bilibili-poller] bvid=${video.bvid} total=${allComments.length} injected=${injected}`);
 
   return { status: 'success', new_comments: injected };
 }

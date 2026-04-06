@@ -6,7 +6,7 @@
 
 import { Job } from 'bullmq';
 import { BaseTaskPayload, createTaskQueue, createTaskWorker } from '../task-queue.js';
-import { NonRetryableWorkerError, RetryableWorkerError } from '../errors.js';
+import { NonRetryableWorkerError } from '../errors.js';
 import type { WorkerServices } from '../../services/interfaces.js';
 import type { KnowledgeEntry, RoleCardValue } from '../../models/entities.js';
 
@@ -37,10 +37,7 @@ export function createCommentEventQueue(queueName = 'comment-event') {
 /**
  * Create comment event worker with full processing logic
  */
-export function createCommentEventWorker(
-  queueName: string,
-  services: WorkerServices
-) {
+export function createCommentEventWorker(queueName: string, services: WorkerServices) {
   return createTaskWorker<CommentEventPayload>(
     queueName,
     async (job: Job<CommentEventPayload>) => {
@@ -49,7 +46,7 @@ export function createCommentEventWorker(
 
       const finishObservability = (
         status: string,
-        options?: { jobId?: number; metadata?: Record<string, unknown> }
+        options?: { jobId?: number; metadata?: Record<string, unknown> },
       ) => {
         const durationMs = Math.max(0, Date.now() - startedAt);
         services.recordObservabilityEvent({
@@ -72,7 +69,7 @@ export function createCommentEventWorker(
             trace_id: traceId,
             comment_id: job.data.comment_id,
             status: 'kill_switch_enabled',
-          })
+          }),
         );
         finishObservability('kill_switch_enabled');
         return { ok: false, reason: 'kill_switch_enabled', trace_id: traceId };
@@ -96,7 +93,7 @@ export function createCommentEventWorker(
             trace_id: traceId,
             comment_id: job.data.comment_id,
             status: 'comment_not_found',
-          })
+          }),
         );
         finishObservability('comment_not_found');
         return { ok: false, reason: 'comment_not_found', trace_id: traceId };
@@ -109,7 +106,7 @@ export function createCommentEventWorker(
           trace_id: traceId,
           comment_id: comment.comment_id,
           status: 'processing',
-        })
+        }),
       );
 
       services.recordObservabilityEvent({
@@ -158,7 +155,7 @@ export function createCommentEventWorker(
             status: 'skipped',
             style_mode: styleMode,
             length_mode: lengthMode,
-          })
+          }),
         );
 
         finishObservability('skipped', {
@@ -305,7 +302,7 @@ export function createCommentEventWorker(
             status: 'dedupe_skipped',
             style_mode: styleMode,
             length_mode: lengthMode,
-          })
+          }),
         );
 
         finishObservability('dedupe_skipped', {
@@ -347,7 +344,7 @@ export function createCommentEventWorker(
             status: safetyAction,
             style_mode: styleMode,
             length_mode: lengthMode,
-          })
+          }),
         );
 
         finishObservability(safetyAction, {
@@ -368,8 +365,11 @@ export function createCommentEventWorker(
       }
 
       // Publish reply
-      const [published, publishReason, publishedAt, publishResult] =
-        await services.publishReplyWithResult(comment.comment_id, replyText, traceId);
+      const [published, publishReason, publishedAt, publishResult] = await services.publishReplyWithResult(
+        comment.comment_id,
+        replyText,
+        traceId,
+      );
 
       const publishMetadata: Record<string, unknown> = { reason: publishReason };
       let newRpidValue: string | number | null = null;
@@ -425,7 +425,7 @@ export function createCommentEventWorker(
           style_mode: styleMode,
           length_mode: lengthMode,
           publish_reason: publishReason,
-        })
+        }),
       );
 
       finishObservability(status, {
@@ -450,6 +450,6 @@ export function createCommentEventWorker(
       retryBackoff: 2,
       retryJitter: true,
       enabled: false,
-    }
+    },
   );
 }

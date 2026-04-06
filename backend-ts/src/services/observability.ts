@@ -3,11 +3,7 @@
  * Migrated from Python: app/services/observability.py
  */
 
-import type {
-  EnsureTraceIdService,
-  RecordObservabilityEventService,
-  BuildLogContextService,
-} from './interfaces.js';
+import type { EnsureTraceIdService, RecordObservabilityEventService, BuildLogContextService } from './interfaces.js';
 import { prisma as getPrisma } from './db-queries.js';
 
 /**
@@ -42,7 +38,7 @@ export const recordObservabilityEvent: RecordObservabilityEventService = async (
       duration_ms: event.duration_ms || null,
       metadata: event.metadata || {},
       timestamp: new Date().toISOString(),
-    })
+    }),
   );
 
   try {
@@ -90,9 +86,7 @@ export const buildLogContext: BuildLogContextService = (params) => {
 
   // Add any additional fields
   for (const [key, value] of Object.entries(params)) {
-    if (
-      !['trace_id', 'comment_id', 'job_id', 'status', 'error_type', 'error_message'].includes(key)
-    ) {
+    if (!['trace_id', 'comment_id', 'job_id', 'status', 'error_type', 'error_message'].includes(key)) {
       context[key] = value;
     }
   }

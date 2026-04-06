@@ -27,10 +27,7 @@ export class RetryableWorkerError extends Error {
 /**
  * Build failure metadata for observability
  */
-export function buildFailureMetadata(
-  error: Error,
-  retryable: boolean
-): Record<string, unknown> {
+export function buildFailureMetadata(error: Error, retryable: boolean): Record<string, unknown> {
   return {
     error_type: error.constructor.name,
     error_message: error.message,

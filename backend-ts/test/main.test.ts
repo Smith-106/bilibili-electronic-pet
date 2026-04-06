@@ -64,6 +64,27 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('serves the admin HTML and referenced hashed assets', async () => {
+    const app = createServer(buildDeps());
+
+    const adminResponse = await app.inject({ method: 'GET', url: '/admin' });
+    expect(adminResponse.statusCode).toBe(200);
+
+    const cssMatch = adminResponse.body.match(/href="([^"]+\.css)"/);
+    const jsMatch = adminResponse.body.match(/src="([^"]+\.js)"/);
+
+    expect(cssMatch?.[1]).toBeTruthy();
+    expect(jsMatch?.[1]).toBeTruthy();
+
+    const cssResponse = await app.inject({ method: 'GET', url: String(cssMatch?.[1]) });
+    const jsResponse = await app.inject({ method: 'GET', url: String(jsMatch?.[1]) });
+
+    expect(cssResponse.statusCode).toBe(200);
+    expect(jsResponse.statusCode).toBe(200);
+
+    await app.close();
+  });
+
   it('returns readiness payload shape', async () => {
     const app = createServer(buildDeps());
 

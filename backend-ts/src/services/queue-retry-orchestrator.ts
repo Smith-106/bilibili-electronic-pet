@@ -4,22 +4,33 @@ import { readFileSync, existsSync } from 'node:fs';
 
 export type FailureCategory = 'channel_failure' | 'conflict_blocked' | 'logic_failure';
 
-const DISPATCH_ORDER: FailureCategory[] = [
-  'channel_failure',
-  'logic_failure',
-  'conflict_blocked',
-];
+const DISPATCH_ORDER: FailureCategory[] = ['channel_failure', 'logic_failure', 'conflict_blocked'];
 
 const CHANNEL_FAILURE_KEYWORDS = [
-  '502', '503', '504',
-  'bad gateway', 'gateway timeout', 'service unavailable',
-  'connection reset', 'connection refused',
-  'econn', 'etimedout', 'timeout', 'upstream', 'host', 'channel',
+  '502',
+  '503',
+  '504',
+  'bad gateway',
+  'gateway timeout',
+  'service unavailable',
+  'connection reset',
+  'connection refused',
+  'econn',
+  'etimedout',
+  'timeout',
+  'upstream',
+  'host',
+  'channel',
 ];
 
 const CONFLICT_BLOCKED_KEYWORDS = [
-  'conflict', 'uncommitted', 'overlap', 'working tree',
-  'workspace', 'blocked', 'lock',
+  'conflict',
+  'uncommitted',
+  'overlap',
+  'working tree',
+  'workspace',
+  'blocked',
+  'lock',
 ];
 
 const DEFAULT_COMPLETED_STATUSES = new Set(['completed']);
@@ -38,7 +49,9 @@ const TEXT_FIELD_PATTERNS: Record<string, TextOutputPattern> = {
 // ── Helpers ──────────────────────────────────────────────
 
 function toLowerText(value: unknown): string {
-  return String(value ?? '').trim().toLowerCase();
+  return String(value ?? '')
+    .trim()
+    .toLowerCase();
 }
 
 function asStringList(value: unknown): string[] {
@@ -85,7 +98,16 @@ function extractKeyFieldsFromText(outputText: string): Record<string, unknown> {
 
 function extractKeyFieldsFromJson(parsed: Record<string, unknown>): Record<string, unknown> {
   const fields: Record<string, unknown> = {};
-  for (const key of ['status', 'summary', 'error_type', 'message', 'queue_id', 'solution_id', 'completed_count', 'completed_count_delta']) {
+  for (const key of [
+    'status',
+    'summary',
+    'error_type',
+    'message',
+    'queue_id',
+    'solution_id',
+    'completed_count',
+    'completed_count_delta',
+  ]) {
     const value = parsed[key];
     if (value != null) fields[key] = value;
   }
@@ -120,10 +142,10 @@ export function classifyFailureReason(
  */
 export function classifySolutionFailure(solution: Record<string, unknown>): FailureCategory {
   const details = solution.failure_details;
-  return classifyFailureReason(
-    solution.failure_reason as string | null | undefined,
-    { failureDetails: details && typeof details === 'object' && !Array.isArray(details) ? details as Record<string, unknown> : null },
-  );
+  return classifyFailureReason(solution.failure_reason as string | null | undefined, {
+    failureDetails:
+      details && typeof details === 'object' && !Array.isArray(details) ? (details as Record<string, unknown>) : null,
+  });
 }
 
 /**
@@ -142,7 +164,7 @@ export function buildRetryBatches(
   stats: { failed_total: number; executable_total: number; blocked_total: number };
 } {
   const completedSet = new Set(
-    (options?.completedStatuses ?? ['completed']).map((s) => toLowerText(s)).filter(Boolean),
+    (options?.completedStatuses ?? [...DEFAULT_COMPLETED_STATUSES]).map((s) => toLowerText(s)).filter(Boolean),
   );
   if (completedSet.size === 0) completedSet.add('completed');
 
@@ -241,7 +263,6 @@ export function collectTaskOutputRecords(
 
     if (outputPath) {
       try {
-        const { readFileSync, existsSync } = require('node:fs') as typeof import('node:fs');
         if (existsSync(outputPath)) {
           const outputText = readFileSync(outputPath, 'utf-8');
           let keyFields: Record<string, unknown> = {};
@@ -252,7 +273,9 @@ export function collectTaskOutputRecords(
               if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
                 keyFields = extractKeyFieldsFromJson(parsed as Record<string, unknown>);
               }
-            } catch { /* not valid JSON */ }
+            } catch {
+              /* not valid JSON */
+            }
           }
 
           if (Object.keys(keyFields).length === 0) {
@@ -263,7 +286,9 @@ export function collectTaskOutputRecords(
           record.preview = outputText.substring(0, previewChars);
           record.key_fields = keyFields;
         }
-      } catch { /* file read failed */ }
+      } catch {
+        /* file read failed */
+      }
     }
 
     if (status === 'failed') {
@@ -353,10 +378,8 @@ export function buildRetryRoundSummary(options: {
   const previous = Math.floor(options.previousCompletedCount);
   const current = Math.floor(options.currentCompletedCount);
   const delta = current - previous;
-  const blocked = Array.isArray(options.retryPlan.blocked)
-    ? options.retryPlan.blocked
-    : [];
-  const progressState = delta > 0 ? 'progressed' : (blocked.length > 0 ? 'blocked' : 'stalled');
+  const blocked = Array.isArray(options.retryPlan.blocked) ? options.retryPlan.blocked : [];
+  const progressState = delta > 0 ? 'progressed' : blocked.length > 0 ? 'blocked' : 'stalled';
 
   const summary: Record<string, unknown> = {
     completed_count_before: previous,
@@ -369,9 +392,8 @@ export function buildRetryRoundSummary(options: {
   };
 
   if (delta <= 0) {
-    summary.explanation = blocked.length > 0
-      ? 'no_completed_increment_with_blocked_reasons'
-      : 'no_completed_increment_detected';
+    summary.explanation =
+      blocked.length > 0 ? 'no_completed_increment_with_blocked_reasons' : 'no_completed_increment_detected';
   }
 
   return summary;
@@ -400,10 +422,12 @@ export function orchestrateRetryRound(
 /**
  * Detect workspace file conflicts between uncommitted files and solution target files
  */
-export function detectWorkspaceConflicts(options: {
-  uncommittedFiles: string[];
-  solutionFiles: string[];
-}): { blocking: boolean; conflicts: string[]; uncommitted_count: number; solution_file_count: number } {
+export function detectWorkspaceConflicts(options: { uncommittedFiles: string[]; solutionFiles: string[] }): {
+  blocking: boolean;
+  conflicts: string[];
+  uncommitted_count: number;
+  solution_file_count: number;
+} {
   const uncommitted = new Set(options.uncommittedFiles.map((p) => p.trim()).filter(Boolean));
   const targets = new Set(options.solutionFiles.map((p) => p.trim()).filter(Boolean));
   const conflicts = [...uncommitted].filter((f) => targets.has(f)).sort();
@@ -431,18 +455,14 @@ export function planExecutionMode(options: {
     solution_id: id,
     mode,
     lock_key: blocking ? `solution:${id}` : null,
-    conflicts: Array.isArray(options.conflictReport.conflicts)
-      ? options.conflictReport.conflicts
-      : [],
+    conflicts: Array.isArray(options.conflictReport.conflicts) ? options.conflictReport.conflicts : [],
   };
 }
 
 /**
  * Evaluate channel health from a preflight check
  */
-export function evaluateChannelHealth(
-  preflight: Record<string, unknown>,
-): Record<string, unknown> {
+export function evaluateChannelHealth(preflight: Record<string, unknown>): Record<string, unknown> {
   const statusCode = Number(preflight.status_code ?? 0);
   const host = String(preflight.host ?? '').trim();
   const channel = String(preflight.channel ?? '').trim();
