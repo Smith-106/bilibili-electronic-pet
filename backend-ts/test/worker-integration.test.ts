@@ -9,6 +9,7 @@ process.env.LLM_RETRIES = '1';
 process.env.LLM_PROVIDER = 'ollama';
 process.env.LLM_BASE_URL = 'http://127.0.0.1:1';
 
+import type { Queue } from 'bullmq';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createCommentEventQueue } from '../src/workers/tasks/comment-event.task.js';
 import { buildWorkerServices } from '../src/services/index.js';
@@ -20,6 +21,7 @@ describe('worker integration tests', () => {
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  const createdQueues: Array<Queue<CommentEventPayload>> = [];
 
   beforeEach(() => {
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -32,7 +34,12 @@ describe('worker integration tests', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await Promise.all(
+      createdQueues.splice(0).map(async (queue) => {
+        await queue.close().catch(() => undefined);
+      }),
+    );
     consoleErrorSpy.mockRestore();
     consoleLogSpy.mockRestore();
     consoleWarnSpy.mockRestore();
@@ -41,6 +48,7 @@ describe('worker integration tests', () => {
   describe('comment event worker', () => {
     it('creates queue', () => {
       const queue = createCommentEventQueue('test-comment-event');
+      createdQueues.push(queue);
       expect(queue).toBeDefined();
     });
 

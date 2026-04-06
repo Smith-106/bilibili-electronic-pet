@@ -84,7 +84,6 @@ All notable changes to the TypeScript backend migration project.
 
 #### Documentation
 - README.md with quick start guide
-- MIGRATION_SUMMARY.md with complete migration details
 - CHANGELOG.md with version history
 - Inline code documentation
 - API endpoint documentation

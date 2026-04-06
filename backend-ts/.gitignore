@@ -7,7 +7,3 @@ dist/
 # Local databases
 *.db
 *.db-journal
-
-# Local databases
-*.db
-*.db-journal
