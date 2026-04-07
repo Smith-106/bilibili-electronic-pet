@@ -1299,6 +1299,26 @@ curl http://127.0.0.1:18000/readiness
 
 当前仓库提供了一个跨平台 staging 验证脚本，能够串联 `/health`、`/readiness`、管理后台资产、`/api/admin/overview`、`/api/admin/bilibili/status` 以及 pre-release real chain 合同检查。
 
+如果你还没启动服务，或者想先确认“真实交付还差哪些密钥/开关/凭证”，可以先跑 env 级 preflight：
+
+```bash
+cd backend-ts
+npm run staging:check -- --preflight-only --env-file .env.staging --report ../staging-preflight.json
+```
+
+这条命令会直接汇总 4 类外部交付前提：
+- `LLM` 实际生成
+- `search` 搜索增强
+- `webhook` 发布
+- `native Bilibili` 原生发布
+
+它能帮你尽早发现缺失项，但它**不能**证明：
+- Redis / 数据库在目标运行时里真的可达
+- `/readiness`、`/api/admin/*`、后台静态资源已经正常工作
+- 原生 B 站链路当前一定存在可用的活动 DB 凭证
+
+这些仍然要通过 `--strict` 或 `--pre-release-real-chain` 的运行时校验来确认。
+
 当前仓库的 `cloud-validate` CI 也应以 `--strict` 形式调用这条校验链，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`，避免只做浅层存活探测。
 
 如果你在本地跑 `--strict`，还需要满足两条额外前提：
@@ -1310,6 +1330,9 @@ curl http://127.0.0.1:18000/readiness
 ```bash
 cd backend-ts
 npm run staging:check -- --base-url http://127.0.0.1:18000
+
+cd backend-ts
+npm run staging:check -- --preflight-only --env-file .env.staging --report ../staging-preflight.json
 
 cd backend-ts
 npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" --strict
@@ -1324,6 +1347,12 @@ npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" 
 bash smoke.sh --base-url http://127.0.0.1:18000
 pwsh ./smoke.ps1 --base-url http://127.0.0.1:18000
 ```
+
+推荐顺序是：
+
+1. 先跑 `--preflight-only`，确认真实交付所需的 env / secret / publish mode 前提是否齐全。
+2. 再跑 baseline 或 `--strict`，确认运行中的 API、后台资源和 readiness 是否正常。
+3. 只有要做原生 B 站发布演练时，才跑 `--pre-release-real-chain`。
 
 完整说明与环境变量矩阵见 [backend-ts/STAGING_VALIDATION.md](backend-ts/STAGING_VALIDATION.md)。
 

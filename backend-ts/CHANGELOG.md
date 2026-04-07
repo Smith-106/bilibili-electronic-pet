@@ -2,6 +2,8 @@
 
 All notable changes to the TypeScript backend migration project.
 
+Entries below describe the migration snapshot that was current on each release date. They are historical release notes, not a statement of the repository's current runtime completeness.
+
 ## [1.0.0] - 2026-03-28
 
 ### Added - Complete TypeScript Migration
@@ -61,7 +63,7 @@ All notable changes to the TypeScript backend migration project.
 - Deduplication service
 - Observability service
 
-**Placeholder implementations:**
+**Historical migration snapshot limitations:**
 - Decision service
 - Safety service
 - Generator service
@@ -151,7 +153,7 @@ None - This is a complete migration, not an update.
 
 ### Known Limitations
 
-- Placeholder services need real implementations:
+- Historical note from the 2026-03-28 migration snapshot: several external integrations still depended on runtime configuration and were not yet considered production-complete:
   - shouldReply (decision logic)
   - safetyCheck (safety validation)
   - generateReplyWithMeta (LLM generation)

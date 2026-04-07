@@ -5,7 +5,8 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 152 tests passing in the current backend suite
+✅ **Tests Passing** - 161 tests passing in the current backend suite
+✅ **Preflight Diagnostics Available** - `staging-check` can now report external-delivery prerequisites before runtime validation
 ⚠️ **External Delivery Depends on Configuration** - LLM, search, webhook, and native Bilibili publishing paths still require runtime credentials and environment setup
 
 ## Tech Stack
@@ -180,11 +181,11 @@ Processes comment events and generates replies:
 
 ### Runtime-Dependent Services (⚠️ Need Environment Setup)
 
-- `shouldReply` - Decision logic (needs LLM or rule engine)
-- `safetyCheck` - Safety validation (needs LLM or rules)
-- `generateReplyWithMeta` - LLM generation (needs OpenAI/Claude API)
-- `publishReplyWithResult` - Bilibili API (needs credentials)
-- `searchWeb` - Web search (needs search API)
+- `shouldReply` - Decision logic (behavior depends on configured rules and runtime model setup)
+- `safetyCheck` - Safety validation (rule-driven by default, tunable through runtime config)
+- `generateReplyWithMeta` - Real LLM generation (OpenAI/Claude need credentials; mock fallback remains available)
+- `publishReplyWithResult` - External delivery path (webhook or native Bilibili credentials and switches required)
+- `searchWeb` - Search enhancement (needs a configured search provider)
 
 ## Testing
 
@@ -209,12 +210,13 @@ npm run staging:check -- --base-url http://127.0.0.1:18000
 npm test -- test/workers.test.ts
 ```
 
-**Test Coverage**: 152 tests, all passing
+**Test Coverage**: 161 tests, all passing
 
 ## Staging Validation
 
 See [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) for:
 
+- `--preflight-only` prerequisite inspection before runtime validation
 - baseline / strict / pre-release real-chain validation modes
 - the staging environment variable matrix
 - `smoke.sh` / `smoke.ps1` wrapper usage

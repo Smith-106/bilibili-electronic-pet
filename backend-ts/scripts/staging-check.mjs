@@ -24,6 +24,7 @@ function parseArgs(argv) {
     baseUrl: null,
     apiKey: null,
     envFile: null,
+    preflightOnly: false,
     reportPath: null,
     strict: false,
     preReleaseRealChain: false,
@@ -46,6 +47,11 @@ function parseArgs(argv) {
 
     if (current === '--pre-release-real-chain') {
       result.preReleaseRealChain = true;
+      continue;
+    }
+
+    if (current === '--preflight-only') {
+      result.preflightOnly = true;
       continue;
     }
 
@@ -120,6 +126,7 @@ Options:
   --base-url <url>               API base URL, default http://127.0.0.1:18000
   --api-key <key>                Admin API key used for authenticated checks
   --env-file <path>              Explicit env file to load before checks
+  --preflight-only               Print and optionally report external-delivery prerequisites without hitting the runtime
   --strict                       Require delivery-capable diagnostics checks
   --pre-release-real-chain       Require native Bilibili pre-release gates
   --report <path>                Write JSON report to the given path
@@ -234,6 +241,186 @@ function summarizeDiagnostics(diagnostics) {
   return `mode=${mode}, ready=${ready}, blocking=${blocking.join(',') || 'none'}`;
 }
 
+function createPreflightCapability({
+  capability,
+  active,
+  status,
+  mode,
+  requiredInputs = [],
+  optionalInputs = [],
+  missingInputs = [],
+  notes = [],
+}) {
+  return {
+    capability,
+    active,
+    status,
+    ready: status === 'configured',
+    mode,
+    required_inputs: requiredInputs,
+    optional_inputs: optionalInputs,
+    missing_inputs: missingInputs,
+    notes,
+  };
+}
+
+function buildDeliveryPreflight(env) {
+  const llmProvider = String(env.LLM_PROVIDER ?? 'mock').trim().toLowerCase() || 'mock';
+  const llmMissing = [];
+  const llmNotes = [];
+  let llmStatus = 'configured';
+
+  if (llmProvider === 'mock') {
+    llmStatus = 'fallback_only';
+    llmMissing.push('LLM_PROVIDER(non-mock)');
+    llmNotes.push('Mock mode is acceptable for local smoke but does not validate real LLM generation.');
+    llmNotes.push('OpenAI and Claude additionally require LLM_API_KEY.');
+  } else if (!['openai', 'claude', 'ollama'].includes(llmProvider)) {
+    llmStatus = 'unsupported';
+    llmMissing.push('LLM_PROVIDER=<openai|claude|ollama>');
+    llmNotes.push('Unsupported provider values will fail at runtime.');
+  } else if (llmProvider === 'openai' || llmProvider === 'claude') {
+    if (!hasText(env.LLM_API_KEY)) {
+      llmStatus = 'missing_inputs';
+      llmMissing.push('LLM_API_KEY');
+    }
+  } else {
+    llmNotes.push('Ollama does not require LLM_API_KEY but still depends on a reachable Ollama endpoint.');
+  }
+
+  const searchProvider = String(env.SEARCH_PROVIDER ?? 'serpapi').trim().toLowerCase() || 'serpapi';
+  const searchMissing = [];
+  const searchNotes = [];
+  let searchStatus = 'configured';
+
+  if (!['serpapi', 'bing', 'google'].includes(searchProvider)) {
+    searchStatus = 'unsupported';
+    searchMissing.push('SEARCH_PROVIDER=<serpapi|bing|google>');
+    searchNotes.push('Unsupported provider values will fail at runtime.');
+  } else {
+    if (!hasText(env.SEARCH_API_KEY)) {
+      searchStatus = 'missing_inputs';
+      searchMissing.push('SEARCH_API_KEY');
+    }
+    if (searchProvider === 'google' && !hasText(env.SEARCH_CX)) {
+      searchStatus = 'missing_inputs';
+      searchMissing.push('SEARCH_CX');
+    }
+  }
+
+  const publisherMode = String(env.PUBLISHER_MODE ?? 'manual_queue').trim().toLowerCase() || 'manual_queue';
+  const webhookActive = publisherMode === 'webhook';
+  const webhookMissing = [];
+  const webhookNotes = [];
+  let webhookStatus = webhookActive ? 'configured' : 'inactive';
+
+  if (webhookActive && !hasText(env.PUBLISHER_WEBHOOK_URL)) {
+    webhookStatus = 'missing_inputs';
+    webhookMissing.push('PUBLISHER_WEBHOOK_URL');
+  }
+  if (webhookActive) {
+    webhookNotes.push('PUBLISHER_WEBHOOK_TOKEN is optional unless the downstream webhook requires authentication.');
+  }
+
+  const nativePublishEnabled = parseBoolean(env.BILIBILI_ENABLED, false) && parseBoolean(env.BILIBILI_PUBLISH_ENABLED, false);
+  const nativeMissing = [];
+  const nativeNotes = [];
+  const envCredentialPresent =
+    hasText(env.BILIBILI_SESSDATA) &&
+    hasText(env.BILIBILI_BILI_JCT) &&
+    hasText(env.BILIBILI_BUVID3);
+  const encryptionKeyPresent =
+    hasText(env.CREDENTIAL_ENCRYPTION_KEY) || hasText(env.BILIBILI_COOKIE_ENCRYPTION_KEY);
+  let nativeStatus = nativePublishEnabled ? 'configured' : 'inactive';
+
+  if (!parseBoolean(env.BILIBILI_ENABLED, false)) {
+    nativeMissing.push('BILIBILI_ENABLED=true');
+  }
+  if (!parseBoolean(env.BILIBILI_PUBLISH_ENABLED, false)) {
+    nativeMissing.push('BILIBILI_PUBLISH_ENABLED=true');
+  }
+  if (nativePublishEnabled && !envCredentialPresent) {
+    nativeStatus = 'runtime_credentials_required';
+    nativeMissing.push('BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3 or active DB credential');
+    nativeNotes.push('An active database credential can satisfy runtime auth even when env cookies are absent.');
+  }
+  if (nativePublishEnabled && !encryptionKeyPresent) {
+    nativeNotes.push('Set CREDENTIAL_ENCRYPTION_KEY when runtime credentials will be stored in the database.');
+  }
+
+  const capabilities = [
+    createPreflightCapability({
+      capability: 'llm_generation',
+      active: true,
+      status: llmStatus,
+      mode: llmProvider,
+      requiredInputs: ['LLM_PROVIDER', 'LLM_API_KEY (for OpenAI/Claude)'],
+      optionalInputs: ['LLM_MODEL', 'LLM_BASE_URL', 'LLM_TIMEOUT', 'LLM_RETRIES'],
+      missingInputs: llmMissing,
+      notes: llmNotes,
+    }),
+    createPreflightCapability({
+      capability: 'search_enrichment',
+      active: true,
+      status: searchStatus,
+      mode: searchProvider,
+      requiredInputs: ['SEARCH_PROVIDER', 'SEARCH_API_KEY', 'SEARCH_CX (Google only)'],
+      optionalInputs: ['SEARCH_MAX_RESULTS', 'SEARCH_TIMEOUT'],
+      missingInputs: searchMissing,
+      notes: searchNotes,
+    }),
+    createPreflightCapability({
+      capability: 'webhook_publish',
+      active: webhookActive,
+      status: webhookStatus,
+      mode: publisherMode,
+      requiredInputs: ['PUBLISHER_MODE=webhook', 'PUBLISHER_WEBHOOK_URL'],
+      optionalInputs: ['PUBLISHER_WEBHOOK_TOKEN', 'PUBLISHER_TIMEOUT_SECONDS'],
+      missingInputs: webhookMissing,
+      notes: webhookNotes,
+    }),
+    createPreflightCapability({
+      capability: 'native_bilibili_publish',
+      active: nativePublishEnabled,
+      status: nativeStatus,
+      mode: nativePublishEnabled ? 'native_bilibili' : publisherMode,
+      requiredInputs: [
+        'BILIBILI_ENABLED=true',
+        'BILIBILI_PUBLISH_ENABLED=true',
+        'BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3 or active DB credential',
+      ],
+      optionalInputs: ['CREDENTIAL_ENCRYPTION_KEY', 'BILIBILI_BUVID4', 'BILIBILI_DEDEUSERID'],
+      missingInputs: nativeMissing,
+      notes: nativeNotes,
+    }),
+  ];
+
+  const blockers = capabilities
+    .filter((entry) => entry.status !== 'configured' && entry.status !== 'inactive')
+    .map((entry) => entry.capability);
+
+  return {
+    blockers,
+    capabilities,
+    summary: capabilities.map((entry) => ({
+      capability: entry.capability,
+      status: entry.status,
+      mode: entry.mode,
+      missing_inputs: entry.missing_inputs,
+    })),
+  };
+}
+
+function logDeliveryPreflight(preflight) {
+  logInfo('External-delivery preflight:');
+  for (const entry of preflight.capabilities) {
+    const missing = entry.missing_inputs.length > 0 ? entry.missing_inputs.join(', ') : 'none';
+    console.log(
+      `[INFO] preflight ${entry.capability}: status=${entry.status}, mode=${entry.mode || 'unknown'}, missing=${missing}`,
+    );
+  }
+}
+
 async function main() {
   const parsedArgs = parseArgs(process.argv.slice(2));
   if (parsedArgs.help) {
@@ -247,19 +434,24 @@ async function main() {
   const strict = parsedArgs.strict || parseBoolean(process.env.STRICT_SMOKE, false);
   const preReleaseRealChain =
     parsedArgs.preReleaseRealChain || parseBoolean(process.env.PRE_RELEASE_REAL_CHAIN, false);
+  const preflightOnly = parsedArgs.preflightOnly;
   const reportPath = parsedArgs.reportPath ?? process.env.REPORT_PATH ?? null;
 
   if (preReleaseRealChain && !strict) {
     throw new Error('--pre-release-real-chain requires --strict');
   }
 
+  const deliveryPreflight = buildDeliveryPreflight(process.env);
+
   const report = {
     started_at: new Date().toISOString(),
     base_url: baseUrl.replace(/\/$/, ''),
+    preflight_only: preflightOnly,
     strict,
     pre_release_real_chain: preReleaseRealChain,
     env_files: envFiles,
     env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, apiKey }),
+    delivery_preflight: deliveryPreflight,
     checks: [],
     warnings: [],
   };
@@ -278,12 +470,27 @@ async function main() {
     logInfo(`Loaded env files: ${envFiles.join(', ')}`);
   }
 
+  logDeliveryPreflight(deliveryPreflight);
+
   for (const entry of report.env_matrix) {
     if (entry.required && !entry.present) {
       const note = entry.note ? ` (${entry.note})` : '';
       logWarn(`Missing required staging input: ${entry.name}${note}`);
       report.warnings.push(`missing:${entry.name}`);
     }
+  }
+
+  if (preflightOnly) {
+    report.status = deliveryPreflight.blockers.length > 0 ? 'preflight_incomplete' : 'preflight_ready';
+
+    if (reportPath) {
+      const outputPath = resolve(process.cwd(), reportPath);
+      writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+      logInfo(`Report written to ${outputPath}`);
+    }
+
+    console.log('== STAGING PREFLIGHT COMPLETE ==');
+    return;
   }
 
   const healthUrl = buildUrl(baseUrl, '/health');

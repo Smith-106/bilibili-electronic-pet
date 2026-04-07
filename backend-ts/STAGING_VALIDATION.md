@@ -16,6 +16,31 @@ pwsh ./smoke.ps1 --base-url http://127.0.0.1:18000
 
 ## Modes
 
+### Preflight Only
+
+Checks:
+- env-driven external-delivery prerequisites for:
+  - LLM generation
+  - search enrichment
+  - webhook publish
+  - native Bilibili publish
+- optional JSON report output without contacting the running API
+
+Use when:
+- You want to see which live-secret or delivery prerequisites are still missing before starting a release rehearsal
+- You have a staging env file but do not yet want to depend on a running API process
+- You need to distinguish "env/config is incomplete" from "runtime is up but failing readiness"
+
+Example:
+
+```bash
+cd backend-ts
+npm run staging:check -- \
+  --preflight-only \
+  --env-file .env.staging \
+  --report ../staging-preflight.json
+```
+
 ### Baseline
 
 Checks:
@@ -96,6 +121,7 @@ npm run staging:check -- \
 | API readiness compatibility | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | recommended for explicit staging config | Main service still surfaces these values in readiness config |
 | Gateway publish | `GATEWAY_TOKEN`, `GATEWAY_HMAC_SECRET` | when using `/gateway/publish` | Not required for baseline admin checks |
 | LLM | `LLM_PROVIDER`, `LLM_API_KEY` | if `LLM_PROVIDER != mock` | Mock mode is acceptable for non-production smoke |
+| Search enhancement | `SEARCH_PROVIDER`, `SEARCH_API_KEY`, `SEARCH_CX` (Google only) | when validating real search augmentation | Missing search config does not block baseline, but preflight will mark search as incomplete |
 | Publisher webhook | `PUBLISHER_MODE=webhook`, `PUBLISHER_WEBHOOK_URL`, `PUBLISHER_WEBHOOK_TOKEN` | webhook delivery path | `PUBLISHER_WEBHOOK_URL` is the gating input |
 | Native / real Bilibili auth | active DB credential or env trio `BILIBILI_SESSDATA`, `BILIBILI_BILI_JCT`, `BILIBILI_BUVID3` | native / real publish and polling | The validator treats either source as acceptable at runtime |
 | Bilibili runtime tuning | `BILIBILI_BASE_URL`, `BILIBILI_USER_AGENT`, `BILIBILI_TIMEOUT`, `BILIBILI_RETRIES`, `BILIBILI_DEDEUSERID`, `BILIBILI_BUVID4` | optional tuning | Useful for staging parity with production |
@@ -109,6 +135,8 @@ npm run staging:check -- \
 - The validator loads `backend-ts/.env` and repository-root `.env` automatically when present.
 - Use `--env-file <path>` to point at a different staging env file.
 - Use `--report <path>` to write a JSON dry-run report for release records.
+- Use `--preflight-only` when you want an env-level readiness report without hitting `/health`, `/readiness`, or admin endpoints.
 - If no API key is provided, the validator exits in degraded mode after the basic health/admin asset checks.
 - The repository `cloud-validate` workflow is expected to use the strict path with an injected `API_KEY` and a migrated temporary SQLite database.
 - When running locally, start the server from `backend-ts/` (or ensure `process.cwd()` resolves to that directory) so `/admin` can locate `public/admin`, and provide a reachable Redis runtime before expecting `--strict` to pass.
+- `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.
