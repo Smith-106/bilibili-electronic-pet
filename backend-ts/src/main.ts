@@ -1,11 +1,13 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
+import { Redis } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { collectCommentEvent } from './services/collector.js';
 import { loadBilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { encrypt } from './services/credential-crypto.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
+import { buildRedisConnectionConfig } from './workers/config.js';
 
 export type ConnectionStatus = {
   connected: boolean;
@@ -283,8 +285,8 @@ export type ServerDependencies = {
     event: CommentEvent;
     source: string;
   }) =>
-    | Promise<{ ok: boolean; comment_id: string; trace_id: string }>
-    | { ok: boolean; comment_id: string; trace_id: string };
+    | Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }>
+    | { ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string };
   retryJob: (input: {
     jobId: number;
     forceLong?: boolean;
@@ -292,8 +294,8 @@ export type ServerDependencies = {
     roleProfile?: string;
     roleCardKey?: string;
   }) =>
-    | Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }>
-    | { ok: boolean; requeued: boolean; job_id: number; trace_id: string };
+    | Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string; error?: string }>
+    | { ok: boolean; requeued: boolean; job_id: number; trace_id: string; error?: string };
   approveJob: (input: {
     jobId: number;
     styleProfile?: string;
@@ -368,7 +370,7 @@ export type ServerDependencies = {
   }) => Promise<{ ok: boolean; item: BilibiliVideo }> | { ok: boolean; item: BilibiliVideo };
 };
 
-const STANDARD_PUBLISH_FAILURE_REASONS = new Set(['timeout', '5xx', 'auth', 'invalid_response']);
+const STANDARD_PUBLISH_FAILURE_REASONS = new Set(['timeout', '5xx', 'auth', 'invalid_response', 'not_configured']);
 const TIMEOUT_HINTS = ['timeout', 'timedout', 'readtimeout', 'connecttimeout'];
 const AUTH_HINTS = ['401', '403', 'unauthorized', 'forbidden', 'token', 'signature', 'auth'];
 
@@ -960,6 +962,39 @@ async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<Bi
   };
 }
 
+async function defaultCheckDatabaseConnection(): Promise<ConnectionStatus> {
+  try {
+    await getPrisma().$queryRawUnsafe('SELECT 1');
+    return { connected: true };
+  } catch (error) {
+    return {
+      connected: false,
+      error: error instanceof Error ? error.message : 'database_unavailable',
+    };
+  }
+}
+
+async function defaultCheckRedisConnection(): Promise<ConnectionStatus> {
+  const redis = new Redis({
+    ...buildRedisConnectionConfig(),
+    lazyConnect: true,
+    connectTimeout: 1000,
+  });
+
+  try {
+    await redis.connect();
+    const result = await redis.ping();
+    return { connected: result === 'PONG' };
+  } catch (error) {
+    return {
+      connected: false,
+      error: error instanceof Error ? error.message : 'redis_unavailable',
+    };
+  } finally {
+    redis.disconnect();
+  }
+}
+
 function defaultNormalizePublishFailureReason(reason: string | undefined): string {
   const normalized = String(reason ?? '')
     .trim()
@@ -1528,6 +1563,29 @@ function defaultGetObservabilitySummary(_input: { windowMinutes: number }): {
   };
 }
 
+async function enqueueCommentEventJob(
+  payload: Record<string, unknown>,
+): Promise<{ queued: boolean; error?: string }> {
+  try {
+    const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
+    const queue = createCommentEventQueue('comment-event');
+    try {
+      await queue.add('comment-event', payload as never, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      });
+    } finally {
+      await queue.close().catch(() => undefined);
+    }
+    return { queued: true };
+  } catch (error) {
+    return {
+      queued: false,
+      error: error instanceof Error ? error.message : 'queue_unavailable',
+    };
+  }
+}
+
 async function defaultIngestCommentEvent(input: {
   event: CommentEvent;
   source: string;
@@ -1557,29 +1615,36 @@ async function defaultIngestCommentEvent(input: {
     throw err;
   }
 
-  // Enqueue worker task via BullMQ
-  try {
-    const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
-    const queue = createCommentEventQueue('comment-event');
-    await queue.add(
-      'comment-event',
-      {
-        comment_id: input.event.comment_id,
-        video_id: input.event.video_id,
-        user_id: input.event.user_id,
-        content: input.event.content,
-        parent_id: input.event.parent_id,
-        platform,
-        source: input.source,
+  const queueResult = await enqueueCommentEventJob({
+    comment_id: input.event.comment_id,
+    video_id: input.event.video_id,
+    user_id: input.event.user_id,
+    content: input.event.content,
+    parent_id: input.event.parent_id,
+    platform,
+    source: input.source,
+    trace_id: traceId,
+  });
+
+  if (!queueResult.queued) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'comment_event_queue_unavailable',
         trace_id: traceId,
-      },
-      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
+        comment_id: input.event.comment_id,
+        error: queueResult.error,
+      }),
     );
-  } catch {
-    // Worker queue unavailable — comment is persisted, will be processed later
   }
 
-  return { ok: true, queued: true, comment_id: input.event.comment_id, trace_id: traceId };
+  return {
+    ok: queueResult.queued,
+    queued: queueResult.queued,
+    message: queueResult.queued ? 'queued' : 'queue_unavailable',
+    comment_id: input.event.comment_id,
+    trace_id: traceId,
+  };
 }
 
 async function defaultRetryJob(input: {
@@ -1588,7 +1653,7 @@ async function defaultRetryJob(input: {
   styleProfile?: string;
   roleProfile?: string;
   roleCardKey?: string;
-}): Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string }> {
+}): Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string; error?: string }> {
   const traceId = randomUUID();
   const prisma = getPrisma();
   const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
@@ -1606,38 +1671,33 @@ async function defaultRetryJob(input: {
 
   const platform = (job.canonical_comment_id || 'bilibili:').split(':', 1)[0] || 'bilibili';
 
-  // Enqueue worker task
-  try {
-    const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
-    const queue = createCommentEventQueue('comment-event');
-    await queue.add(
-      'comment-event',
-      {
-        comment_id: job.comment_id,
-        platform,
-        force_long: input.forceLong,
-        style_profile: input.styleProfile,
-        role_profile: input.roleProfile,
-        role_card_key: input.roleCardKey,
-        trace_id: traceId,
-        source: 'retry',
-      },
-      { attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
-    );
-  } catch {
-    // Queue unavailable — job still persisted
-  }
+  const queueResult = await enqueueCommentEventJob({
+    comment_id: job.comment_id,
+    platform,
+    force_long: input.forceLong,
+    style_profile: input.styleProfile,
+    role_profile: input.roleProfile,
+    role_card_key: input.roleCardKey,
+    trace_id: traceId,
+    source: 'retry',
+  });
 
   await writeAuditLog(prisma, {
     action: 'retry_single',
     targetId: input.jobId,
-    ok: true,
+    ok: queueResult.queued,
     traceId,
     commentId: job.comment_id,
-    status: 'queued',
-    payload: { comment_id: job.comment_id, force_long: input.forceLong },
+    status: queueResult.queued ? 'queued' : 'queue_unavailable',
+    payload: { comment_id: job.comment_id, force_long: input.forceLong, queue_error: queueResult.error ?? null },
   });
-  return { ok: true, requeued: true, job_id: input.jobId, trace_id: traceId };
+  return {
+    ok: queueResult.queued,
+    requeued: queueResult.queued,
+    job_id: input.jobId,
+    trace_id: traceId,
+    error: queueResult.queued ? undefined : 'queue_unavailable',
+  };
 }
 
 async function defaultApproveJob(input: {
@@ -1822,12 +1882,19 @@ async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: bool
 
   for (const jobId of input.jobIds) {
     try {
-      await defaultRetryJob({ jobId, forceLong: input.forceLong });
-      success++;
-      results.push({ job_id: jobId, ok: true, requeued: true });
-    } catch {
+      const result = await defaultRetryJob({ jobId, forceLong: input.forceLong });
+      if (result.requeued) {
+        success++;
+        results.push({ job_id: jobId, ok: true, requeued: true });
+      } else {
+        failed++;
+        results.push({ job_id: jobId, ok: false, requeued: false, error: result.error ?? 'queue_unavailable' });
+      }
+    } catch (error) {
       failed++;
-      results.push({ job_id: jobId, ok: false, error: 'retry_failed' });
+      const detail =
+        typeof error === 'object' && error !== null && 'detail' in error ? String(error.detail) : 'retry_failed';
+      results.push({ job_id: jobId, ok: false, error: detail });
     }
   }
 
@@ -1843,7 +1910,7 @@ async function defaultRetryJobsBatch(input: { jobIds: number[]; forceLong?: bool
     payload: { job_ids: input.jobIds, force_long: input.forceLong, summary },
   });
 
-  return { ok: true, summary, results, trace_id: traceId };
+  return { ok: failed === 0, summary, results, trace_id: traceId };
 }
 
 async function defaultGetComment(input: {
@@ -2103,14 +2170,14 @@ function defaultDependencies(): ServerDependencies {
   const logStore = createInMemoryLogStore();
   return {
     settings,
-    checkDatabaseConnection: () => ({ connected: true }),
-    checkRedisConnection: () => ({ connected: true }),
+    checkDatabaseConnection: () => defaultCheckDatabaseConnection(),
+    checkRedisConnection: () => defaultCheckRedisConnection(),
     buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings),
     verifyPayloadSignature: defaultVerifyPayloadSignature,
     reservePublishLog: (input) => logStore.reserve(input),
     finalizePublishLog: (input) => logStore.finalize(input),
-    publishGatewayReply: () => ({ published: false, reason: 'invalid_response' }),
-    publishPlatformReply: () => ({ published: false, reason: 'invalid_response' }),
+    publishGatewayReply: () => ({ published: false, reason: 'not_configured' }),
+    publishPlatformReply: () => ({ published: false, reason: 'not_configured' }),
     normalizePublishFailureReason: defaultNormalizePublishFailureReason,
     isPlatformEnabled: defaultIsPlatformEnabled,
     getPlatformPublishSource: defaultGetPlatformPublishSource,

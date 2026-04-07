@@ -195,9 +195,9 @@ function buildEnvMatrix(env, options) {
       note: 'May be replaced by an active DB credential at runtime',
     },
     {
-      name: 'BILIBILI_COOKIE_ENCRYPTION_KEY',
+      name: 'CREDENTIAL_ENCRYPTION_KEY (or legacy BILIBILI_COOKIE_ENCRYPTION_KEY)',
       required: false,
-      present: hasText(env.BILIBILI_COOKIE_ENCRYPTION_KEY),
+      present: hasText(env.CREDENTIAL_ENCRYPTION_KEY) || hasText(env.BILIBILI_COOKIE_ENCRYPTION_KEY),
       note: 'Required when runtime credentials are stored in the database',
     },
   ];

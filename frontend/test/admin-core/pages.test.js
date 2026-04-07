@@ -11,6 +11,10 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     getComment: vi.fn(),
     getJob: vi.fn(),
     publishGatewayReply: vi.fn(),
+    getRoleCards: vi.fn(),
+    activateRoleCard: vi.fn(),
+    getKnowledgeEntries: vi.fn(),
+    createKnowledgeEntry: vi.fn(),
   },
   mockShowToast: vi.fn(),
 }));
@@ -28,9 +32,18 @@ const pages = await Promise.all([
   import('../../src/pages/jobs.js'),
   import('../../src/pages/query.js'),
   import('../../src/pages/gateway.js'),
+  import('../../src/pages/role-cards.js'),
+  import('../../src/pages/knowledge.js'),
 ]);
 
-const [{ render: renderDashboard }, { render: renderJobs }, { render: renderQuery }, { render: renderGateway }] = pages;
+const [
+  { render: renderDashboard },
+  { render: renderJobs },
+  { render: renderQuery },
+  { render: renderGateway },
+  { render: renderRoleCards },
+  { render: renderKnowledge },
+] = pages;
 
 describe('admin-core frontend regression tests', () => {
   beforeEach(() => {
@@ -81,6 +94,22 @@ describe('admin-core frontend regression tests', () => {
       status: 'published',
     });
     mockApi.publishGatewayReply.mockResolvedValue({ ok: true });
+    mockApi.getRoleCards.mockResolvedValue({
+      items: [
+        {
+          key: 'disabled-card',
+          name: '已禁用角色',
+          description: 'for test',
+          system_prompt: 'prompt',
+          tone: 'gentle',
+          constraints: '{}',
+          enabled: false,
+        },
+      ],
+    });
+    mockApi.activateRoleCard.mockResolvedValue({ ok: true });
+    mockApi.getKnowledgeEntries.mockResolvedValue({ items: [] });
+    mockApi.createKnowledgeEntry.mockResolvedValue({ ok: true });
   });
 
   it('renders dashboard with summary counters', async () => {
@@ -133,5 +162,40 @@ describe('admin-core frontend regression tests', () => {
       force_publish: false,
     });
     expect(mockShowToast).toHaveBeenCalledWith('发布成功', 'success');
+  });
+
+  it('shows activate action for disabled role cards and triggers reactivation', async () => {
+    const container = createPageContainer();
+
+    await renderRoleCards(container);
+    const select = container.querySelector('#rc-select');
+    select.value = 'disabled-card';
+    select.dispatchEvent(new Event('change'));
+    await flushPromises();
+
+    const activateBtn = container.querySelector('#rc-activate');
+    const disableBtn = container.querySelector('#rc-disable');
+
+    expect(activateBtn.style.display).toBe('inline-flex');
+    expect(disableBtn.style.display).toBe('none');
+
+    activateBtn.click();
+    await flushPromises();
+
+    expect(mockApi.activateRoleCard).toHaveBeenCalledWith('disabled-card');
+    expect(mockShowToast).toHaveBeenCalledWith('已激活', 'success');
+  });
+
+  it('blocks knowledge creation when category is missing', async () => {
+    const container = createPageContainer();
+
+    await renderKnowledge(container);
+    container.querySelector('#knowledge-title').value = '标题';
+    container.querySelector('#knowledge-content').value = '内容';
+    container.querySelector('#knowledge-create').click();
+    await flushPromises();
+
+    expect(mockApi.createKnowledgeEntry).not.toHaveBeenCalled();
+    expect(mockShowToast).toHaveBeenCalledWith('分类、标题和内容不能为空', 'warning');
   });
 });

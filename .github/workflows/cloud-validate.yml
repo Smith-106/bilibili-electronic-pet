@@ -15,6 +15,11 @@ jobs:
   # TypeScript backend — primary validation gate
   backend-ts-validate:
     runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
 
     steps:
       - name: Checkout
@@ -39,24 +44,25 @@ jobs:
       - name: Build backend-ts
         run: npm --prefix backend-ts run build
 
-      - name: Smoke health and readiness
+      - name: Prepare SQLite schema for strict staging check
         env:
-          HOST: 127.0.0.1
+          DATABASE_URL: file:./ci-smoke.db
+        run: npm --prefix backend-ts run prisma:migrate:prod
+
+      - name: Strict staging smoke contract
+        env:
           PORT: 18000
+          API_KEY: ci-admin-key
+          DATABASE_URL: file:./ci-smoke.db
         run: |
-          node backend-ts/dist/index.js &
+          (
+            cd backend-ts
+            node dist/index.js
+          ) &
           APP_PID=$!
           trap 'kill $APP_PID' EXIT
 
-          for i in {1..20}; do
-            if curl -fsS http://127.0.0.1:18000/health >/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-
-          curl -fsS http://127.0.0.1:18000/health
-          curl -fsS http://127.0.0.1:18000/readiness
+          bash smoke.sh --base-url http://127.0.0.1:18000 --api-key "$API_KEY" --strict
 
   # Frontend build validation
   frontend-build:
@@ -78,7 +84,7 @@ jobs:
         run: npm --prefix frontend run build
 
       - name: Build Docker image
-        run: docker build -t bilibili-electronic-pet:ci ./backend-ts
+        run: docker build -f backend-ts/Dockerfile -t bilibili-electronic-pet:ci .
 
   # Release gate — full TS suite
   release-only-gate:

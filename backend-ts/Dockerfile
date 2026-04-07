@@ -1,3 +1,6 @@
+# Build context must be the repository root.
+# Example: docker build -f backend-ts/Dockerfile -t bilibili-pet-backend:latest .
+
 # Stage 0: Build frontend
 FROM node:20-alpine AS frontend-builder
 WORKDIR /app

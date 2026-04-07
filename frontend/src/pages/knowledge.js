@@ -90,8 +90,8 @@ export async function render(container) {
     const category = container.querySelector('#knowledge-category').value.trim();
     const title = container.querySelector('#knowledge-title').value.trim();
     const content = container.querySelector('#knowledge-content').value.trim();
-    if (!title || !content) {
-      showToast('标题和内容不能为空', 'warning');
+    if (!category || !title || !content) {
+      showToast('分类、标题和内容不能为空', 'warning');
       return;
     }
     try {

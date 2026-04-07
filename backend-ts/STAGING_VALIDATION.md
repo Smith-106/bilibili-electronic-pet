@@ -45,6 +45,7 @@ Checks:
 Use when:
 - You have an `API_KEY`
 - You want to confirm the deployed server is not just alive, but operational
+- The target runtime already has its foundation dependencies available, especially database schema and Redis connectivity, because `readiness.ready=true` is part of the strict gate
 
 Example:
 
@@ -100,7 +101,7 @@ npm run staging:check -- \
 | Bilibili runtime tuning | `BILIBILI_BASE_URL`, `BILIBILI_USER_AGENT`, `BILIBILI_TIMEOUT`, `BILIBILI_RETRIES`, `BILIBILI_DEDEUSERID`, `BILIBILI_BUVID4` | optional tuning | Useful for staging parity with production |
 | Native publish switches | `BILIBILI_ENABLED=true`, `BILIBILI_PUBLISH_ENABLED=true` | pre-release real chain | This forces `effective_publish_mode=native_bilibili` |
 | Polling | `BILIBILI_POLL_ENABLED`, `BILIBILI_POLL_INTERVAL_SECONDS`, `BILIBILI_RATE_LIMIT_PER_MINUTE` | when validating poller behavior | Polling is optional for pure publish validation |
-| Credential storage | `BILIBILI_COOKIE_ENCRYPTION_KEY` | when credentials are stored in DB | Strongly recommended in staged environments |
+| Credential storage | `CREDENTIAL_ENCRYPTION_KEY` (`BILIBILI_COOKIE_ENCRYPTION_KEY` legacy alias) | when credentials are stored in DB | Strongly recommended in staged environments |
 | Multi-platform gateway | `PLATFORM_BILIBILI_ENABLED`, `PLATFORM_DOUYIN_ENABLED`, `PLATFORM_KUAISHOU_ENABLED`, and matching `*_PUBLISH_SOURCE` | when validating `/gateway/publish/:platform` | Separate from native Bilibili publish mode |
 
 ## Notes
@@ -109,3 +110,5 @@ npm run staging:check -- \
 - Use `--env-file <path>` to point at a different staging env file.
 - Use `--report <path>` to write a JSON dry-run report for release records.
 - If no API key is provided, the validator exits in degraded mode after the basic health/admin asset checks.
+- The repository `cloud-validate` workflow is expected to use the strict path with an injected `API_KEY` and a migrated temporary SQLite database.
+- When running locally, start the server from `backend-ts/` (or ensure `process.cwd()` resolves to that directory) so `/admin` can locate `public/admin`, and provide a reachable Redis runtime before expecting `--strict` to pass.

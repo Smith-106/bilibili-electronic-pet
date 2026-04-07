@@ -15,6 +15,7 @@ import { createCommentEventQueue } from '../src/workers/tasks/comment-event.task
 import { buildWorkerServices } from '../src/services/index.js';
 import type { WorkerServices } from '../src/services/interfaces.js';
 import type { CommentEventPayload } from '../src/workers/tasks/comment-event.task.js';
+import { parseBoolean, parseInteger } from '../src/workers/worker-main.js';
 
 describe('worker integration tests', () => {
   let mockServices: WorkerServices;
@@ -63,6 +64,22 @@ describe('worker integration tests', () => {
       expect(validPayload.comment_id).toBe('test-comment-123');
       expect(validPayload.source).toBe('test');
       expect(validPayload.platform).toBe('bilibili');
+    });
+  });
+
+  describe('worker runtime config helpers', () => {
+    it('parses boolean worker flags from environment-style strings', () => {
+      expect(parseBoolean('true', false)).toBe(true);
+      expect(parseBoolean('YES', false)).toBe(true);
+      expect(parseBoolean('0', true)).toBe(false);
+      expect(parseBoolean(undefined, true)).toBe(true);
+    });
+
+    it('parses positive integers and falls back for invalid values', () => {
+      expect(parseInteger('300', 60)).toBe(300);
+      expect(parseInteger('0', 60)).toBe(60);
+      expect(parseInteger('not-a-number', 60)).toBe(60);
+      expect(parseInteger(undefined, 60)).toBe(60);
     });
   });
 

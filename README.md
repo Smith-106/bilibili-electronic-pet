@@ -911,7 +911,7 @@ curl -X POST http://127.0.0.1:18000/api/admin/bilibili/credentials \
 
 - 视频新增失败时，先确认 `bvid` 是否是标准 BV 号，而不是 aid 或短链接中的其它标识
 - 如果轮询一直没有抓到评论，先确认视频仍是 `poll_enabled=true`，再手动触发 `/api/admin/bilibili/poll` 或 `/videos/:videoId/sync`
-- 凭证写入成功但实际调用 B 站仍失败时，重点检查 Cookie 是否过期，以及 `BILIBILI_COOKIE_ENCRYPTION_KEY` 是否稳定一致
+- 凭证写入成功但实际调用 B 站仍失败时，重点检查 Cookie 是否过期，以及 `CREDENTIAL_ENCRYPTION_KEY` 是否稳定一致；旧变量 `BILIBILI_COOKIE_ENCRYPTION_KEY` 仍兼容
 - 凭证列表只会返回脱敏字段；如果你在接口响应里找不到明文 Cookie，这是预期行为
 
 ### 7.8 评论事件注入入口
@@ -1076,14 +1076,14 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
   - `BILIBILI_BILI_JCT`
   - `BILIBILI_BUVID3`
   - `BILIBILI_BUVID4`
-  - `BILIBILI_COOKIE_ENCRYPTION_KEY`
+  - `CREDENTIAL_ENCRYPTION_KEY`
 - 当前 `backend-ts/src/main.ts:444` 在主服务启动时直接读取并纳入运行时设置的字段是：
   - `BILIBILI_ENABLED`
   - `BILIBILI_POLL_ENABLED`
   - `BILIBILI_POLL_INTERVAL_SECONDS`
   - `BILIBILI_PUBLISH_ENABLED`
 
-其中 `BILIBILI_ENABLED`、`BILIBILI_POLL_ENABLED`、`BILIBILI_PUBLISH_ENABLED` 属于全局行为开关；`BILIBILI_CREDENTIAL_ID`、`BILIBILI_RATE_LIMIT_PER_MINUTE`、`BILIBILI_BUVID4`、`BILIBILI_COOKIE_ENCRYPTION_KEY` 等字段则由 B 站凭证、轮询或发布子模块分别消费。
+其中 `BILIBILI_ENABLED`、`BILIBILI_POLL_ENABLED`、`BILIBILI_PUBLISH_ENABLED` 属于全局行为开关；`BILIBILI_CREDENTIAL_ID`、`BILIBILI_RATE_LIMIT_PER_MINUTE`、`BILIBILI_BUVID4`、`CREDENTIAL_ENCRYPTION_KEY` 等字段则由 B 站凭证、轮询或发布子模块分别消费。旧变量 `BILIBILI_COOKIE_ENCRYPTION_KEY` 仍兼容，但不再作为首选命名。
 
 ### 8.6 多平台发布开关
 
@@ -1121,7 +1121,7 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
 
 - `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 使用强随机值
 - 关闭 `LLM_FALLBACK_TO_MOCK`
-- 明确配置 `BILIBILI_COOKIE_ENCRYPTION_KEY`
+- 明确配置 `CREDENTIAL_ENCRYPTION_KEY`
 - 如果启用真实发布，明确手动审核与自动发布策略
 
 ---
@@ -1255,7 +1255,7 @@ docker compose up --build
    - `GATEWAY_TOKEN`
    - `GATEWAY_HMAC_SECRET`
    - `DATABASE_URL`
-   - `BILIBILI_COOKIE_ENCRYPTION_KEY`（如果启用 B 站凭证存储）
+   - `CREDENTIAL_ENCRYPTION_KEY`（如果启用 B 站凭证存储；旧变量 `BILIBILI_COOKIE_ENCRYPTION_KEY` 仍兼容）
 3. 执行 `docker compose up -d --build`
 4. 用 `/health` 与 `/readiness` 检查服务
 5. 再访问管理后台或调用管理接口验证鉴权
@@ -1298,6 +1298,12 @@ curl http://127.0.0.1:18000/readiness
 ### Staging 验证入口
 
 当前仓库提供了一个跨平台 staging 验证脚本，能够串联 `/health`、`/readiness`、管理后台资产、`/api/admin/overview`、`/api/admin/bilibili/status` 以及 pre-release real chain 合同检查。
+
+当前仓库的 `cloud-validate` CI 也应以 `--strict` 形式调用这条校验链，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`，避免只做浅层存活探测。
+
+如果你在本地跑 `--strict`，还需要满足两条额外前提：
+- 服务进程应从 `backend-ts/` 目录启动，确保 `/admin` 能正确找到 `public/admin`
+- 本地必须有可达的 Redis 运行时，否则 `/readiness` 会保持 `ready=false`
 
 常用方式：
 
@@ -1392,7 +1398,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `BILIBILI_ENABLED`
 - `BILIBILI_POLL_ENABLED`
 - `BILIBILI_PUBLISH_ENABLED`
-- `BILIBILI_COOKIE_ENCRYPTION_KEY`
+- `CREDENTIAL_ENCRYPTION_KEY`
 
 - `.env.example:1` 中给出的 `DATABASE_URL` 仍带有 Python 时代风格的示例值，实际部署要与当前 Prisma / 运行环境匹配
 - `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时，会优先走 B 站原生发布，覆盖普通 `PUBLISHER_MODE`

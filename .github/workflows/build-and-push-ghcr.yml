@@ -91,7 +91,8 @@ jobs:
       - name: Build and push preview image
         uses: docker/build-push-action@v6
         with:
-          context: ./backend-ts
+          context: .
+          file: backend-ts/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
@@ -121,7 +122,8 @@ jobs:
       - name: Build and push release image
         uses: docker/build-push-action@v6
         with:
-          context: ./backend-ts
+          context: .
+          file: backend-ts/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:latest
@@ -152,7 +154,8 @@ jobs:
       - name: Build and push release image
         uses: docker/build-push-action@v6
         with:
-          context: ./backend-ts
+          context: .
+          file: backend-ts/Dockerfile
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:latest

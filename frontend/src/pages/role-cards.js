@@ -88,7 +88,7 @@ export async function render(container) {
     container.querySelector('#rc-tone').value = card?.tone || '';
     container.querySelector('#rc-constraints').value = typeof card?.constraints === 'string' ? card.constraints : JSON.stringify(card?.constraints || '', null, 2);
     container.querySelector('#rc-editor-title').textContent = card ? `编辑: ${card.name || card.key}` : '新建角色卡';
-    container.querySelector('#rc-activate').style.display = card && card.enabled !== false ? 'inline-flex' : 'none';
+    container.querySelector('#rc-activate').style.display = card && card.enabled === false ? 'inline-flex' : 'none';
     container.querySelector('#rc-disable').style.display = card && card.enabled !== false ? 'inline-flex' : 'none';
     editorEl.style.display = 'block';
     dirty = false;

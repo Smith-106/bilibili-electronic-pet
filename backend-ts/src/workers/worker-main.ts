@@ -6,22 +6,24 @@
  * Usage: node dist/workers/worker-main.js
  */
 
+import { pathToFileURL } from 'node:url';
+
 import { buildWorkerServices } from '../services/index.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
 const QUEUE_NAME = 'comment-event';
 
-function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
+export function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
   if (value == null) return defaultValue;
   return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
 }
 
-function parseInteger(value: string | undefined, defaultValue: number): number {
+export function parseInteger(value: string | undefined, defaultValue: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : defaultValue;
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   console.log('[worker] Starting worker process...');
 
   const killSwitch = process.env.KILL_SWITCH === 'true';
@@ -123,7 +125,11 @@ async function main(): Promise<void> {
   await new Promise<void>(() => {});
 }
 
-main().catch((error) => {
-  console.error('[worker] Fatal error:', error);
-  process.exit(1);
-});
+const isDirectRun = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectRun) {
+  main().catch((error) => {
+    console.error('[worker] Fatal error:', error);
+    process.exit(1);
+  });
+}

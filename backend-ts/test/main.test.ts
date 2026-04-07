@@ -1426,6 +1426,40 @@ describe('comments domain parity', () => {
     await app.close();
   });
 
+  it('returns degraded ingest response when event is persisted but not queued', async () => {
+    const app = createServer(
+      buildDeps({
+        ingestCommentEvent: (input) => ({
+          ok: false,
+          queued: false,
+          message: 'queue_unavailable',
+          comment_id: input.event.comment_id,
+          trace_id: 'trace-queue-down-1',
+        }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/events/comment',
+      payload: {
+        comment_id: 'comment-degraded-1',
+        content: 'Test comment',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: false,
+      queued: false,
+      message: 'queue_unavailable',
+      comment_id: 'comment-degraded-1',
+      trace_id: 'trace-queue-down-1',
+    });
+
+    await app.close();
+  });
+
   it('rejects comment event without comment_id', async () => {
     const app = createServer(buildDeps());
 
@@ -1486,6 +1520,37 @@ describe('comments domain parity', () => {
       requeued: true,
       job_id: 42,
       trace_id: 'trace-retry-1',
+    });
+
+    await app.close();
+  });
+
+  it('surfaces non-requeued single retry responses', async () => {
+    const app = createServer(
+      buildDeps({
+        retryJob: (input) => ({
+          ok: false,
+          requeued: false,
+          job_id: input.jobId,
+          trace_id: 'trace-retry-down-1',
+          error: 'queue_unavailable',
+        }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/jobs/42/retry',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: false,
+      requeued: false,
+      job_id: 42,
+      trace_id: 'trace-retry-down-1',
+      error: 'queue_unavailable',
     });
 
     await app.close();
@@ -1628,6 +1693,43 @@ describe('comments domain parity', () => {
         forceLong: true,
       },
     ]);
+
+    await app.close();
+  });
+
+  it('returns partial failure details for batch retry degradation', async () => {
+    const app = createServer(
+      buildDeps({
+        retryJobsBatch: (input) => ({
+          ok: false,
+          summary: { total: input.jobIds.length, success: 1, failed: 1 },
+          results: [
+            { job_id: input.jobIds[0], ok: true, requeued: true },
+            { job_id: input.jobIds[1], ok: false, requeued: false, error: 'queue_unavailable' },
+          ],
+          trace_id: 'trace-batch-retry-degraded-1',
+        }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/jobs/retry-batch',
+      payload: {
+        job_ids: [10, 20],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: false,
+      summary: { total: 2, success: 1, failed: 1 },
+      results: [
+        { job_id: 10, ok: true, requeued: true },
+        { job_id: 20, ok: false, requeued: false, error: 'queue_unavailable' },
+      ],
+      trace_id: 'trace-batch-retry-degraded-1',
+    });
 
     await app.close();
   });

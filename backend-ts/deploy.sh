@@ -5,6 +5,10 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+cd "${SCRIPT_DIR}"
 
 # Print colored message
 print_message() {
@@ -69,7 +73,7 @@ migrate() {
 # Build Docker image
 docker_build() {
     print_message "Building Docker image..." "$YELLOW"
-    docker build -t bilibili-pet-backend:latest .
+    docker build -f "${REPO_ROOT}/backend-ts/Dockerfile" -t bilibili-pet-backend:latest "${REPO_ROOT}"
     if [ $? -eq 0 ]; then
         print_message "Docker image built" "$GREEN"
     else
@@ -81,7 +85,7 @@ docker_build() {
 # Deploy with Docker Compose
 docker_compose_deploy() {
     print_message "Deploying with Docker Compose..." "$YELLOW"
-    docker-compose up -d
+    docker compose -f "${REPO_ROOT}/docker-compose.yml" up -d
     if [ $? -eq 0 ]; then
         print_message "Deployment successful" "$GREEN"
         print_message "Application running at http://localhost:3000" "$GREEN"

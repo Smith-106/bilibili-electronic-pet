@@ -2,5 +2,9 @@ services:
   api:
     network_mode: host
     ports: []
+    environment:
+      - REDIS_HOST=127.0.0.1
   worker:
     network_mode: host
+    environment:
+      - REDIS_HOST=127.0.0.1
