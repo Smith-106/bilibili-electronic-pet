@@ -10,6 +10,13 @@ import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibil
 // ============================================================
 
 type BilibiliConfig = BilibiliRuntimeConfig;
+const DEFAULT_AUTH_PROBE_TIMEOUT_MS = 5000;
+
+export type BilibiliAuthProbeResult = {
+  ok: boolean;
+  reason: string;
+  status?: number;
+};
 
 async function loadBilibiliConfig(): Promise<BilibiliConfig | null> {
   return loadBilibiliRuntimeConfig();
@@ -27,6 +34,19 @@ function buildHeaders(config: BilibiliConfig): Record<string, string> {
     Referer: 'https://api.bilibili.com',
     Origin: 'https://api.bilibili.com',
   };
+}
+
+function buildAbortController(timeoutMs: number): { controller: AbortController; timeoutId: ReturnType<typeof setTimeout> } {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  return { controller, timeoutId };
+}
+
+function resolveAuthProbeTimeoutMs(timeoutMs: number): number {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return DEFAULT_AUTH_PROBE_TIMEOUT_MS;
+  }
+  return Math.min(timeoutMs, DEFAULT_AUTH_PROBE_TIMEOUT_MS);
 }
 
 // ============================================================
@@ -55,8 +75,7 @@ export async function postReply(
       csrf: resolvedConfig.biliJct,
     });
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), resolvedConfig.timeout);
+    const { controller, timeoutId } = buildAbortController(resolvedConfig.timeout);
 
     try {
       const response = await fetch(url, {
@@ -84,6 +103,48 @@ export async function postReply(
   } catch (error) {
     console.error('[Bilibili] Reply failed:', error);
     return { success: false, rpid: '' };
+  }
+}
+
+export async function probeBilibiliAuth(config?: BilibiliConfig): Promise<BilibiliAuthProbeResult> {
+  const resolvedConfig = config || (await loadBilibiliConfig());
+  if (!resolvedConfig) {
+    return { ok: false, reason: 'not_configured' };
+  }
+
+  const { controller, timeoutId } = buildAbortController(resolveAuthProbeTimeoutMs(resolvedConfig.timeout));
+
+  try {
+    const response = await fetch(`${resolvedConfig.baseUrl}/x/web-interface/nav`, {
+      method: 'GET',
+      headers: buildHeaders(resolvedConfig),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      return { ok: false, reason: `http_${response.status}`, status: response.status };
+    }
+
+    const payload = await response.json();
+    if (payload?.code !== 0) {
+      return {
+        ok: false,
+        reason: typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'api_error',
+        status: response.status,
+      };
+    }
+    if (payload?.data?.isLogin !== true) {
+      return { ok: false, reason: 'not_logged_in', status: response.status };
+    }
+
+    return { ok: true, reason: 'verified', status: response.status };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    return {
+      ok: false,
+      reason: error instanceof Error && error.message ? error.message : 'probe_failed',
+    };
   }
 }
 

@@ -9,7 +9,11 @@ export type WorkerRetryConfig = {
 };
 
 export type WorkerKillSwitchConfig = {
-  enabled: boolean;
+  /**
+   * Global kill switch for task workers.
+   * When true, workers short-circuit before processing jobs.
+   */
+  killSwitch: boolean;
 };
 
 export type WorkerConfig = WorkerRetryConfig & WorkerKillSwitchConfig;
@@ -34,7 +38,7 @@ export function buildDefaultWorkerRetryConfig(): WorkerRetryConfig {
  */
 export function buildDefaultWorkerKillSwitchConfig(): WorkerKillSwitchConfig {
   return {
-    enabled: process.env.KILL_SWITCH === 'true',
+    killSwitch: process.env.KILL_SWITCH === 'true',
   };
 }
 

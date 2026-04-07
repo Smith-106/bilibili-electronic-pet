@@ -449,7 +449,7 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
       maxRetries: 3,
       retryBackoff: 2,
       retryJitter: true,
-      enabled: false,
+      killSwitch: false,
     },
   );
 }

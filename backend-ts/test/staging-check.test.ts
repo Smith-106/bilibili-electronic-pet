@@ -1,4 +1,5 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer as createHttpServer } from 'node:http';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -45,6 +46,171 @@ function runPreflight(envText) {
     result,
     report: JSON.parse(readFileSync(reportPath, 'utf8')),
   };
+}
+
+async function runStrictWithStubRuntime(envText) {
+  const tempDir = mkdtempSync(join(tmpdir(), 'staging-check-strict-'));
+  const envFile = join(tempDir, 'strict.env');
+  const reportPath = join(tempDir, 'report.json');
+  tempDirs.push(tempDir);
+
+  writeFileSync(envFile, envText, 'utf8');
+
+  const sockets = new Set();
+  const server = createHttpServer((request, response) => {
+    const url = request.url ?? '/';
+    response.setHeader('Connection', 'close');
+    if (url === '/health') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url === '/admin') {
+      response.writeHead(200, { 'Content-Type': 'text/html' });
+      response.end('<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"></head><body><script src="/assets/app.js"></script></body></html>');
+      return;
+    }
+    if (url === '/assets/app.js') {
+      response.writeHead(200, { 'Content-Type': 'application/javascript' });
+      response.end('console.log("ok");');
+      return;
+    }
+    if (url === '/assets/app.css') {
+      response.writeHead(200, { 'Content-Type': 'text/css' });
+      response.end('body { color: #000; }');
+      return;
+    }
+    if (url === '/readiness') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ready: true,
+          foundation_ready: true,
+          delivery_ready: true,
+          foundation_blockers: [],
+          delivery_blockers: [],
+          delivery_capability_blockers: [],
+          delivery_capabilities: {
+            blockers: [],
+            capabilities: [
+              { capability: 'llm_generation', status: 'configured', mode: 'openai', missing_inputs: [] },
+              { capability: 'search_enrichment', status: 'configured', mode: 'serpapi', missing_inputs: [] },
+              { capability: 'webhook_publish', status: 'configured', mode: 'webhook', missing_inputs: [] },
+              { capability: 'native_bilibili_publish', status: 'inactive', mode: 'webhook', missing_inputs: [] },
+            ],
+            summary: [
+              { capability: 'llm_generation', status: 'configured', mode: 'openai', missing_inputs: [] },
+              { capability: 'search_enrichment', status: 'configured', mode: 'serpapi', missing_inputs: [] },
+              { capability: 'webhook_publish', status: 'configured', mode: 'webhook', missing_inputs: [] },
+              { capability: 'native_bilibili_publish', status: 'inactive', mode: 'webhook', missing_inputs: [] },
+            ],
+          },
+          config: {
+            llm_provider: 'openai',
+            llm_api_key_configured: true,
+            search_provider: 'serpapi',
+            search_api_key_configured: true,
+            search_cx_configured: false,
+          },
+          publish: {
+            mode: 'webhook',
+            webhook_url_configured: true,
+            bilibili_enabled: false,
+            bilibili_publish_enabled: false,
+            bilibili_env_credential_configured: false,
+          },
+          kill_switch: false,
+        }),
+      );
+      return;
+    }
+    if (url === '/api/admin/overview') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url === '/api/admin/bilibili/status') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ok: true,
+          diagnostics: {
+            ready: true,
+            effective_publish_mode: 'webhook',
+            blocking_reasons: [],
+            checks: {
+              worker_or_publish: {
+                ready: true,
+                errors: [],
+              },
+            },
+            release_gates: {
+              worker_or_publish_ready: true,
+            },
+            signals: {
+              effective_publish_mode: 'webhook',
+            },
+          },
+        }),
+      );
+      return;
+    }
+
+    response.writeHead(404, { 'Content-Type': 'text/plain' });
+    response.end('not found');
+  });
+  server.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const result = await new Promise((resolve, reject) => {
+      const child = spawn(
+        process.execPath,
+        [scriptPath, '--strict', '--base-url', baseUrl, '--api-key', 'runtime-key', '--env-file', envFile, '--report', reportPath],
+        {
+          cwd: backendRoot,
+          env: buildSpawnEnv(),
+          stdio: ['ignore', 'pipe', 'pipe'],
+        },
+      );
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout.on('data', (chunk) => {
+        stdout += chunk.toString();
+      });
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+      });
+      child.on('error', reject);
+      child.on('close', (code, signal) => {
+        resolve({
+          status: code,
+          signal,
+          stdout,
+          stderr,
+        });
+      });
+    });
+
+    return {
+      result,
+      report: JSON.parse(readFileSync(reportPath, 'utf8')),
+    };
+  } finally {
+    for (const socket of sockets) {
+      socket.destroy();
+    }
+    await new Promise((resolve) => server.close(resolve));
+  }
 }
 
 afterEach(() => {
@@ -135,6 +301,40 @@ PUBLISHER_MODE=real_publish
       active: true,
       mode: 'real_publish',
       status: 'runtime_credentials_required',
+    });
+  });
+
+  it('records runtime summary and warns when checker env differs from the target runtime', async () => {
+    const { result, report } = await runStrictWithStubRuntime(`
+LLM_PROVIDER=mock
+SEARCH_PROVIDER=serpapi
+PUBLISHER_MODE=manual_queue
+`);
+
+    if (result.status !== 0) {
+      throw new Error(`strict stub failed: status=${String(result.status)}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    }
+    expect(result.stdout).toContain('== STAGING CHECK PASS ==');
+    expect(result.stderr).toContain('Checker env suggests missing or fallback delivery inputs');
+    expect(report.status).toBe('passed');
+    expect(report.warnings).toContain('checker_env_differs_from_target_runtime');
+    expect(report.runtime_summary).toMatchObject({
+      source: 'target_runtime',
+      readiness: {
+        ready: true,
+        foundation_ready: true,
+        delivery_ready: true,
+      },
+      publish: {
+        mode: 'webhook',
+      },
+      bilibili: {
+        effective_publish_mode: 'webhook',
+      },
+    });
+    expect(report.input_scopes).toMatchObject({
+      checker_env: expect.stringContaining('staging-check itself'),
+      target_runtime: expect.stringContaining('/readiness'),
     });
   });
 });

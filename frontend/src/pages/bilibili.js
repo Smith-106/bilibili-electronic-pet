@@ -130,6 +130,23 @@ function formatCapabilityIssueLine(entry) {
   return `${capabilityLabel} [${entry.capability}] (${statusLabel}, ${modeLabel}): ${missing}`;
 }
 
+function formatAuthProbeReason(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== 'object' || Array.isArray(diagnostics)) return '';
+  const releaseGates = diagnostics.release_gates;
+  const signals = diagnostics.signals;
+  const realAuthReady =
+    Boolean(releaseGates && typeof releaseGates === 'object' && releaseGates.real_auth_ready)
+    || Boolean(signals && typeof signals === 'object' && signals.real_auth_ready);
+  if (realAuthReady) return '';
+
+  const reason =
+    typeof signals === 'object' && signals && !Array.isArray(signals) && typeof signals.auth_probe_reason === 'string'
+      ? signals.auth_probe_reason.trim()
+      : '';
+  if (!reason || reason === 'not_required' || reason === 'verified') return '';
+  return reason;
+}
+
 export async function render(container) {
   let videoOffset = 0;
 
@@ -318,6 +335,7 @@ export async function render(container) {
           : 'readiness_unavailable';
       const capabilityIssueClass =
         readinessError || capabilityIssues.length > 0 ? 'page-error' : 'form-hint';
+      const authProbeReason = formatAuthProbeReason(data?.diagnostics);
 
       el.innerHTML = `
         <div class="stat-card mini">
@@ -401,6 +419,7 @@ export async function render(container) {
           ${credentialUsage.detail ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialUsage.detail)}</div>` : ''}
         </div>
         ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">当前阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
+        ${authProbeReason ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">原生认证探针: ${escapeHtml(authProbeReason)}</div>` : ''}
         ${readinessError ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">Readiness 状态加载失败: ${escapeHtml(readinessError)}</div>` : ''}
         <div class="${capabilityIssueClass}" style="grid-column: 1 / -1; margin: 0;">
           关键缺失项: ${escapeHtml(capabilityIssueText)}

@@ -190,6 +190,74 @@ describe('bilibili admin critical-path regression tests', () => {
     expect(container.textContent).not.toContain('关键缺失项: 无');
   });
 
+  it('surfaces auth probe details when native auth validation fails', async () => {
+    const container = createPageContainer();
+    mockApi.getBilibiliStatus.mockResolvedValueOnce({
+      ok: true,
+      enabled: true,
+      polling_enabled: false,
+      publish_enabled: true,
+      video_count: 0,
+      config: {
+        poll_interval_seconds: 300,
+        rate_limit_per_minute: 30,
+      },
+      videos: {
+        poll_enabled_count: 0,
+      },
+      credential: {
+        id: 7,
+        name: '主账号',
+        is_active: true,
+        expires_at: '2026-12-31T00:00:00.000Z',
+      },
+      diagnostics: {
+        ready: false,
+        blocking_reasons: ['auth:credential_validation_failed'],
+        effective_publish_mode: 'native_bilibili',
+        signals: {
+          credential_present: true,
+          credential_complete: true,
+          native_publish_enabled: true,
+          polling_worker_enabled: false,
+          auth_probe_reason: '账号未登录',
+          real_auth_ready: false,
+        },
+        release_gates: {
+          credential_present: true,
+          credential_complete: true,
+          worker_or_publish_ready: false,
+          real_auth_ready: false,
+        },
+      },
+    });
+    mockApi.getReadinessStatus.mockResolvedValueOnce({
+      foundation_ready: true,
+      delivery_ready: false,
+      foundation_blockers: [],
+      delivery_blockers: ['bilibili:auth:credential_validation_failed'],
+      delivery_capability_blockers: ['native_bilibili_publish'],
+      delivery_capabilities: {
+        summary: [
+          {
+            capability: 'native_bilibili_publish',
+            status: 'runtime_credentials_required',
+            mode: 'native_bilibili',
+            missing_inputs: ['BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3 or active DB credential'],
+          },
+        ],
+      },
+    });
+    mockApi.getBilibiliVideos.mockResolvedValueOnce({ total: 0, items: [] });
+    mockApi.getBilibiliCredentials.mockResolvedValueOnce({ items: [] });
+
+    await render(container);
+
+    expect(container.textContent).toContain('当前阻塞原因: 凭证字段存在，但运行时认证失败，请检查登录状态或凭证是否失效。');
+    expect(container.textContent).toContain('原生认证探针: 账号未登录');
+    expect(container.textContent).toContain('native_bilibili_publish');
+  });
+
   it('refetches videos when poll filter changes', async () => {
     const container = createPageContainer();
 

@@ -5,9 +5,10 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 172 tests passing in the current backend suite
+✅ **Tests Passing** - 176 tests passing in the current backend suite
 ✅ **Preflight Diagnostics Available** - `staging-check` can now report external-delivery prerequisites before runtime validation
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
+✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
 ⚠️ **External Delivery Depends on Configuration** - LLM, search, webhook, and native Bilibili publishing paths still require runtime credentials and environment setup
 
 ## Tech Stack
@@ -212,7 +213,7 @@ npm run staging:check -- --base-url http://127.0.0.1:18000
 npm test -- test/workers.test.ts
 ```
 
-**Test Coverage**: 172 tests, all passing
+**Test Coverage**: 176 tests, all passing
 
 ## Staging Validation
 
@@ -223,7 +224,8 @@ See [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) for:
 - the staging environment variable matrix
 - `smoke.sh` / `smoke.ps1` wrapper usage
 - mode aliases in wrappers: `preflight`, `strict`, `real-chain`
-- JSON dry-run report generation
+- JSON reports for preflight / pass / fail outcomes
+- `runtime_summary` and `input_scopes` in strict/real-chain reports so checker-env context is separated from target-runtime state
 
 ## Deployment
 

@@ -253,6 +253,14 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 
 以下接口来自 `backend-ts/src/main.ts` 的实际路由定义。
 
+### 7.0 交付模式与环境变量
+
+- 本地默认（mock/manual_queue）：`LLM_PROVIDER=mock`、`PUBLISHER_MODE=manual_queue`，不需要外部密钥，`/readiness.delivery_ready` 预期为 false。
+- Preflight（仅检查配置，不请求运行时）：准备一份 env 文件，包含真实链路所需的密钥；运行 `npm run staging:check -- --preflight-only --env-file <file>` 可看到缺失项。关键字段：`LLM_PROVIDER`(非 mock 时需要 `LLM_API_KEY`)、`SEARCH_API_KEY`/`SEARCH_CX`、`PUBLISHER_MODE=webhook` 时的 `PUBLISHER_WEBHOOK_URL`/`PUBLISHER_WEBHOOK_TOKEN`，或开启原生发布时的 `BILIBILI_*` 凭证与开关。
+- Strict（运行时就绪 + 管理面）：需要 API 进程可访问，`API_KEY` 可用；检查 `/health`、`/admin`、`/readiness`、`/api/admin/*`，并验证交付能力矩阵。仍可在无真实密钥时运行，但会暴露缺失项。
+- Webhook 交付（strict 基础上）：`PUBLISHER_MODE=webhook`，且 `PUBLISHER_WEBHOOK_URL`、`PUBLISHER_WEBHOOK_TOKEN` 已配置；`delivery_capabilities` 中 webhook 应为 configured。
+- 原生 B 站交付 / real-chain：`BILIBILI_ENABLED=true`、`BILIBILI_PUBLISH_ENABLED=true`，并提供凭证（DB 记录或环境三件套 `BILIBILI_SESSDATA`/`BILIBILI_BILI_JCT`/`BILIBILI_BUVID3`，可选 `BILIBILI_BUVID4`）和加密钥 `CREDENTIAL_ENCRYPTION_KEY`；`staging:check -- --strict --pre-release-real-chain` 会要求 `delivery_ready=true` 与各 release_gates 为 true。这里的 `real_auth_ready` 现在依赖运行时 auth probe，不再把“字段齐全”直接视为通过。
+
 ### 7.1 基础检查
 
 - `GET /health`
@@ -1369,6 +1377,18 @@ pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
 pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
+
+如果用 wrapper 模式（`preflight` / `strict` / `real-chain`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
+
+- `./.artifacts/staging/<mode>-<UTC timestamp>.json`
+
+可通过 `SMOKE_REPORT_DIR` 覆盖这个默认目录。若显式传入 `--report`（或环境变量 `REPORT_PATH`），`staging-check` 会在 preflight、通过、失败三种结果下都写出 JSON 报告，便于 CI 与人工留档。
+
+strict / real-chain 报告里现在还会额外写出：
+
+- `runtime_summary`：目标运行时通过 `/readiness` 与 `/api/admin/bilibili/status` 暴露出来的真实状态
+- `input_scopes`：说明 checker 进程自身看到的 env/preflight 和 target runtime 状态是两个不同视角
+- `checker_env_differs_from_target_runtime`：当 checker 侧 preflight 仍显示缺项，但目标运行时 strict 已通过时，会给出显式 warning，避免把报告误读成“自相矛盾”
 
 推荐顺序是：
 

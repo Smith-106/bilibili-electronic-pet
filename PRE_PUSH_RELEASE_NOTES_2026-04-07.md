@@ -99,8 +99,8 @@ Primary files:
 
 Validated on the current branch:
 
-- Backend tests: `172` passed
-- Frontend tests: `26` passed
+- Backend tests: `176` passed
+- Frontend tests: `27` passed
 - Backend build: passed
 - Frontend build: passed
 

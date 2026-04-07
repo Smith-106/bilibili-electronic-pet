@@ -4,9 +4,13 @@ import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply }
 import { Redis } from 'ioredis';
 import { PrismaClient } from '@prisma/client';
 import { collectCommentEvent } from './services/collector.js';
-import { loadBilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
-import { encrypt } from './services/credential-crypto.js';
+import { probeBilibiliAuth as probeBilibiliRuntimeAuth, type BilibiliAuthProbeResult } from './services/bilibili-client.js';
+import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
+import { registerAdminCoreRoutes } from './routes/admin-core.js';
+import { registerAdminStaticRoutes } from './routes/admin-static.js';
+import { registerBilibiliAdminRoutes } from './routes/bilibili-admin.js';
+import { registerReadinessRoute } from './routes/readiness.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
 
 export type ConnectionStatus = {
@@ -235,6 +239,9 @@ export type ServerDependencies = {
   settings: RuntimeSettings;
   checkDatabaseConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
   checkRedisConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
+  probeBilibiliAuth: (
+    config: BilibiliRuntimeConfig,
+  ) => Promise<BilibiliAuthProbeResult> | BilibiliAuthProbeResult;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
   verifyPayloadSignature: (payload: Record<string, unknown>, secret: string, signature: string) => boolean;
   reservePublishLog: (input: PublishReservationInput) => Promise<ReservePublishLogResult> | ReservePublishLogResult;
@@ -1055,7 +1062,12 @@ function buildDeliveryCapabilityMatrix(
   };
 }
 
-async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<BilibiliDiagnostics> {
+async function defaultBilibiliDiagnostics(
+  settings: RuntimeSettings,
+  probeBilibiliAuth: (
+    config: BilibiliRuntimeConfig,
+  ) => Promise<BilibiliAuthProbeResult> | BilibiliAuthProbeResult = probeBilibiliRuntimeAuth,
+): Promise<BilibiliDiagnostics> {
   const nativePublishEnabled = settings.bilibiliEnabled && settings.bilibiliPublishEnabled;
   const rawPublishMode = normalizePublishMode(settings.publisherMode);
   const effectivePublishMode = nativePublishEnabled ? 'native_bilibili' : rawPublishMode;
@@ -1068,23 +1080,30 @@ async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<Bi
   const credentialPresent = Boolean(credential);
   const credentialComplete = Boolean(credential?.sessdata && credential?.biliJct && credential?.buvid);
   const authRequired = bilibiliApiPublishEnabled || pollingWorkerEnabled;
-  const realAuthReady = authRequired ? credentialComplete : false;
+  const authProbe =
+    authRequired && credentialComplete && credential
+      ? await probeBilibiliAuth(credential)
+      : { ok: false, reason: 'no_active_credential' };
+  const realAuthReady = authRequired ? authProbe.ok : false;
   const webhookConfigured = webhookPublishEnabled ? hasText(process.env.PUBLISHER_WEBHOOK_URL) : false;
-  const workerPathReady = pollingWorkerEnabled ? credentialComplete : false;
+  const workerPathReady = pollingWorkerEnabled ? realAuthReady : false;
   const publishPathReady = webhookPublishEnabled
     ? webhookConfigured
     : bilibiliApiPublishEnabled
-      ? credentialComplete
+      ? realAuthReady
       : false;
   const workerOrPublishReady = workerPathReady || publishPathReady;
   const dependencyReady = webhookPublishEnabled ? workerOrPublishReady : true;
-  const authErrors = authRequired && !credentialComplete ? ['no active credential'] : [];
+  const authErrors =
+    authRequired && !realAuthReady
+      ? [credentialComplete ? 'credential_validation_failed' : 'no active credential']
+      : [];
   const configErrors =
     webhookPublishEnabled && !webhookConfigured && !workerPathReady ? ['webhook_not_configured'] : [];
-  const diagnosticsReady = authRequired ? credentialComplete : publishPathReady;
+  const diagnosticsReady = authRequired ? realAuthReady : publishPathReady;
   const blockingReasons = [
     ...configErrors.map((reason) => `publish:${reason}`),
-    ...(authRequired && !credentialComplete ? ['auth:no active credential'] : []),
+    ...authErrors.map((reason) => `auth:${reason}`),
   ];
   const preReleaseRealChainReady =
     effectivePublishMode === 'native_bilibili' && nativePublishEnabled && realAuthReady && dependencyReady;
@@ -1095,7 +1114,7 @@ async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<Bi
     effective_publish_mode: effectivePublishMode,
     checks: {
       config: { ready: configErrors.length === 0, errors: configErrors },
-      auth: { ready: !authRequired || credentialComplete, errors: authErrors },
+      auth: { ready: !authRequired || realAuthReady, errors: authErrors },
       worker_or_publish: {
         ready: workerOrPublishReady,
         errors: [...configErrors, ...authErrors],
@@ -1120,6 +1139,7 @@ async function defaultBilibiliDiagnostics(settings: RuntimeSettings): Promise<Bi
       polling_worker_enabled: pollingWorkerEnabled,
       credential_present: credentialPresent,
       credential_complete: credentialComplete,
+      auth_probe_reason: authRequired ? authProbe.reason : 'not_required',
       publish_mode_config_ready: configErrors.length === 0,
       delivery_capable_publish_mode: deliveryCapablePublishMode,
       webhook_configured: webhookConfigured,
@@ -2339,7 +2359,8 @@ function defaultDependencies(): ServerDependencies {
     settings,
     checkDatabaseConnection: () => defaultCheckDatabaseConnection(),
     checkRedisConnection: () => defaultCheckRedisConnection(),
-    buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings),
+    probeBilibiliAuth: (config) => probeBilibiliRuntimeAuth(config),
+    buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings, (config) => probeBilibiliRuntimeAuth(config)),
     verifyPayloadSignature: defaultVerifyPayloadSignature,
     reservePublishLog: (input) => logStore.reserve(input),
     finalizePublishLog: (input) => logStore.finalize(input),
@@ -2378,7 +2399,8 @@ function defaultDependencies(): ServerDependencies {
     getBilibiliStatus: () =>
       defaultGetBilibiliStatus({
         settings,
-        buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings),
+        buildBilibiliDiagnostics: () =>
+          defaultBilibiliDiagnostics(settings, (config) => probeBilibiliRuntimeAuth(config)),
       }),
     listBilibiliVideos: (input) => defaultListBilibiliVideos(input),
     addBilibiliVideo: (input) => defaultAddBilibiliVideo(input),
@@ -2500,7 +2522,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const settings = overrides.settings ?? defaults.settings;
   const checkDatabaseConnection = overrides.checkDatabaseConnection ?? defaults.checkDatabaseConnection;
   const checkRedisConnection = overrides.checkRedisConnection ?? defaults.checkRedisConnection;
-  const buildBilibiliDiagnostics = overrides.buildBilibiliDiagnostics ?? (() => defaultBilibiliDiagnostics(settings));
+  const probeBilibiliAuth = overrides.probeBilibiliAuth ?? defaults.probeBilibiliAuth;
+  const buildBilibiliDiagnostics =
+    overrides.buildBilibiliDiagnostics ?? (() => defaultBilibiliDiagnostics(settings, probeBilibiliAuth));
   const verifyPayloadSignature = overrides.verifyPayloadSignature ?? defaults.verifyPayloadSignature;
   const reservePublishLog = overrides.reservePublishLog ?? defaults.reservePublishLog;
   const finalizePublishLog = overrides.finalizePublishLog ?? defaults.finalizePublishLog;
@@ -2551,130 +2575,16 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   app.get('/health', async () => ({ ok: true }));
 
-  app.get('/readiness', async () => {
-    const dbStatus = await checkDatabaseConnection();
-    const redisStatus = await checkRedisConnection();
-    const configStatus = buildDefaultReadinessSummary(settings);
-
-    const foundationBlockers: string[] = [];
-    if (!dbStatus.connected) {
-      addBlocker(foundationBlockers, `database:${dbStatus.error ?? 'unavailable'}`);
-    }
-    if (!redisStatus.connected) {
-      addBlocker(foundationBlockers, `redis:${redisStatus.error ?? 'unavailable'}`);
-    }
-    const foundationReady = foundationBlockers.length === 0;
-
-    let bilibiliDiagnostics: BilibiliDiagnostics;
-    if (dbStatus.connected) {
-      try {
-        bilibiliDiagnostics = await buildBilibiliDiagnostics();
-      } catch {
-        bilibiliDiagnostics = {
-          ...(await defaultBilibiliDiagnostics(settings)),
-          ready: false,
-          blocking_reasons: ['dependency:diagnostics_unavailable'],
-        };
-      }
-    } else {
-      bilibiliDiagnostics = await defaultBilibiliDiagnostics(settings);
-    }
-
-    const checks =
-      typeof bilibiliDiagnostics.checks === 'object' && bilibiliDiagnostics.checks !== null
-        ? bilibiliDiagnostics.checks
-        : {};
-    const workerOrPublishCheck =
-      typeof checks.worker_or_publish === 'object' && checks.worker_or_publish !== null
-        ? (checks.worker_or_publish as { ready?: unknown; errors?: unknown })
-        : {};
-    const workerOrPublishErrors = Array.isArray(workerOrPublishCheck.errors) ? workerOrPublishCheck.errors : [];
-
-    const releaseGates =
-      typeof bilibiliDiagnostics.release_gates === 'object' && bilibiliDiagnostics.release_gates !== null
-        ? bilibiliDiagnostics.release_gates
-        : {};
-
-    const effectivePublishMode = normalizePublishMode(
-      String(bilibiliDiagnostics.effective_publish_mode || settings.publisherMode),
-    );
-    const nativePublishMode = effectivePublishMode === 'native_bilibili';
-    const externalPublishMode = effectivePublishMode === 'webhook' || effectivePublishMode === 'real_publish';
-    const deliveryCapablePublishMode = nativePublishMode || externalPublishMode;
-
-    const workerOrPublishReady = Boolean(
-      (releaseGates as Record<string, unknown>).worker_or_publish_ready ?? workerOrPublishCheck.ready ?? false,
-    );
-
-    const deliveryPathReady = nativePublishMode
-      ? Boolean(bilibiliDiagnostics.ready)
-      : externalPublishMode
-        ? workerOrPublishReady
-        : false;
-
-    const deliveryCapabilities = buildDeliveryCapabilityMatrix(settings, bilibiliDiagnostics, effectivePublishMode);
-
-    const pollingRequested = settings.bilibiliEnabled && settings.bilibiliPollEnabled;
-
-    const deliverySignals = {
-      kill_switch_enabled: settings.killSwitch,
-      polling_requested: pollingRequested,
-      poll_interval_seconds: settings.bilibiliPollIntervalSeconds,
-      worker_schedule_configured: pollingRequested && settings.bilibiliPollIntervalSeconds >= 60,
-      bilibili_diagnostics_ready: Boolean(bilibiliDiagnostics.ready),
-      delivery_path_ready: deliveryPathReady,
-      delivery_capable_publish_mode: deliveryCapablePublishMode,
-      worker_or_publish_ready: workerOrPublishReady,
-      raw_publish_mode: normalizePublishMode(settings.publisherMode),
-      effective_publish_mode: effectivePublishMode,
-    };
-
-    const deliveryBlockers = [...foundationBlockers];
-
-    if (settings.killSwitch) {
-      addBlocker(deliveryBlockers, 'control:kill_switch_enabled');
-    }
-    if (pollingRequested && !redisStatus.connected) {
-      addBlocker(deliveryBlockers, 'worker:redis_unavailable_for_polling');
-    }
-
-    if (nativePublishMode) {
-      for (const reason of bilibiliDiagnostics.blocking_reasons ?? []) {
-        addBlocker(deliveryBlockers, `bilibili:${reason}`);
-      }
-    } else if (externalPublishMode) {
-      if (!workerOrPublishReady) {
-        for (const reason of workerOrPublishErrors) {
-          addBlocker(deliveryBlockers, `bilibili:worker_or_publish:${String(reason)}`);
-        }
-      }
-    } else {
-      addBlocker(deliveryBlockers, `bilibili:publish_mode_not_delivery_capable:${effectivePublishMode || 'unknown'}`);
-    }
-
-    if (!deliveryPathReady) {
-      addBlocker(deliveryBlockers, 'bilibili:delivery_diagnostics_not_ready');
-    }
-
-    const deliveryReady = deliveryBlockers.length === 0 && deliveryCapabilities.blockers.length === 0;
-
-    return {
-      ready: foundationReady,
-      database: dbStatus,
-      redis: redisStatus,
-      config: configStatus.config,
-      publish: configStatus.publish,
-      kill_switch: configStatus.kill_switch,
-      foundation_ready: foundationReady,
-      delivery_ready: deliveryReady,
-      foundation_blockers: foundationBlockers,
-      delivery_blockers: deliveryBlockers,
-      blocking_reasons: deliveryBlockers,
-      delivery_capability_blockers: deliveryCapabilities.blockers,
-      delivery_capabilities: deliveryCapabilities,
-      delivery_signals: deliverySignals,
-      bilibili_diagnostics: bilibiliDiagnostics,
-    };
+  registerReadinessRoute(app, {
+    settings,
+    checkDatabaseConnection,
+    checkRedisConnection,
+    buildBilibiliDiagnostics,
+    buildDefaultReadinessSummary,
+    defaultBilibiliDiagnostics,
+    normalizePublishMode,
+    addBlocker,
+    buildDeliveryCapabilityMatrix,
   });
 
   const publishCore = async (
@@ -2818,52 +2728,16 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     });
   }
 
-  app.get('/api/admin/overview', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const overview = await getAdminOverview();
-    return reply.send({ ok: true, ...normalizeAdminOverviewPayload(overview) });
-  });
-
-  app.get('/api/admin/metrics/overview', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const overview = await getAdminOverview();
-    return reply.send(overview);
-  });
-
-  app.get('/api/admin/jobs', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await listAdminJobs({
-      status: parseAdminString(query.status),
-      limit: parseAdminLimit(query.limit, 50, 1, 1000),
-      offset: parseAdminOffset(query.offset, 0, 0, 100000),
-    });
-    return reply.send({
-      ok: true,
-      ...response,
-      items: response.items.map((item) => normalizeAdminJobListItem(item)),
-    });
+  registerAdminCoreRoutes(app, {
+    settings,
+    getHeaderValue,
+    getAdminOverview,
+    normalizeAdminOverviewPayload,
+    listAdminJobs,
+    parseAdminString,
+    parseAdminLimit,
+    parseAdminOffset,
+    normalizeAdminJobListItem,
   });
 
   app.get('/api/admin/audit/summary', async (request, reply) => {
@@ -3456,265 +3330,17 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     return reply.type('text/csv').send(csv);
   });
 
-  // Bilibili integration
-  app.get('/api/admin/bilibili/status', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const response = await getBilibiliStatus();
-    return reply.send(normalizeBilibiliStatusPayload(response as unknown as Record<string, unknown>));
-  });
-
-  app.get('/api/admin/bilibili/videos', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const pollEnabledRaw = query.poll_enabled;
-    const pollEnabled =
-      pollEnabledRaw === 'true' || pollEnabledRaw === '1'
-        ? true
-        : pollEnabledRaw === 'false' || pollEnabledRaw === '0'
-          ? false
-          : undefined;
-
-    const response = await listBilibiliVideos({
-      pollEnabled,
-      limit: parseAdminLimit(query.limit, 50, 1, 200),
-      offset: parseAdminOffset(query.offset, 0, 0, 100000),
-    });
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/bilibili/videos', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const bvid = String(body.bvid ?? '')
-      .trim()
-      .slice(0, 20);
-    const pollEnabled = body.poll_enabled !== undefined ? parseAdminBoolean(body.poll_enabled) : undefined;
-
-    if (!bvid) {
-      return reply.code(400).send({ detail: 'bvid_required' });
-    }
-    if (body.poll_enabled !== undefined && pollEnabled === undefined) {
-      return reply.code(400).send({ detail: 'invalid_poll_enabled' });
-    }
-
-    // Basic BVID format validation (BV + 10 alphanumeric characters)
-    if (!/^BV[a-zA-Z0-9]{10}$/.test(bvid)) {
-      return reply.code(400).send({ detail: 'invalid_bvid_format' });
-    }
-
-    const response = await addBilibiliVideo({ bvid, pollEnabled: pollEnabled ?? true });
-    return reply.send(response);
-  });
-
-  // ── Bilibili video management (toggle-poll / delete / sync) ──
-
-  app.post('/api/admin/bilibili/videos/:videoId/toggle-poll', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const videoId = Number((request.params as Record<string, string>).videoId);
-    if (!Number.isFinite(videoId)) return reply.code(400).send({ detail: 'invalid_video_id' });
-
-    const prisma = getPrisma();
-    const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
-    if (!video) return reply.code(404).send({ detail: 'video_not_found' });
-
-    const body = request.body as Record<string, unknown> | undefined;
-    const requestedPollEnabled = body?.poll_enabled !== undefined ? parseAdminBoolean(body.poll_enabled) : undefined;
-    if (body?.poll_enabled !== undefined && requestedPollEnabled === undefined) {
-      return reply.code(400).send({ detail: 'invalid_poll_enabled' });
-    }
-    const pollEnabled = requestedPollEnabled ?? !video.poll_enabled;
-    await prisma.bilibiliVideo.update({ where: { id: videoId }, data: { poll_enabled: pollEnabled } });
-
-    return reply.send({ ok: true, item: { id: videoId, bvid: video.bvid, poll_enabled: pollEnabled } });
-  });
-
-  app.delete('/api/admin/bilibili/videos/:videoId', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const videoId = Number((request.params as Record<string, string>).videoId);
-    if (!Number.isFinite(videoId)) return reply.code(400).send({ detail: 'invalid_video_id' });
-
-    const prisma = getPrisma();
-    const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
-    if (!video) return reply.code(404).send({ detail: 'video_not_found' });
-
-    await prisma.bilibiliVideo.delete({ where: { id: videoId } });
-    return reply.send({ ok: true, deleted_id: videoId });
-  });
-
-  app.post('/api/admin/bilibili/videos/:videoId/sync', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const videoId = Number((request.params as Record<string, string>).videoId);
-    if (!Number.isFinite(videoId)) return reply.code(400).send({ detail: 'invalid_video_id' });
-
-    const prisma = getPrisma();
-    const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
-    if (!video) return reply.code(404).send({ detail: 'video_not_found' });
-
-    const { pollVideoById } = await import('./services/bilibili-poller.js');
-    const result = await pollVideoById(videoId);
-    if (result.status === 'disabled') {
-      return reply.code(409).send({ detail: 'bilibili_not_configured', result });
-    }
-    if (result.status === 'not_found') {
-      return reply.code(404).send({ detail: 'video_not_found', result });
-    }
-    if (result.status === 'error') {
-      return reply.code(502).send({ detail: 'bilibili_sync_failed', result });
-    }
-
-    const refreshedVideo = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
-    const resolvedVideo = refreshedVideo ?? video;
-    const commentCount = await prisma.comment.count({
-      where: { video_id: resolvedVideo.bvid },
-    });
-
-    return reply.send({
-      ok: true,
-      item: normalizeBilibiliVideoRecord(resolvedVideo as unknown as Record<string, unknown>, { commentCount }),
-      result,
-    });
-  });
-
-  // ── Bilibili poll trigger ──
-
-  app.post('/api/admin/bilibili/poll', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const { pollAllVideos } = await import('./services/bilibili-poller.js');
-    const result = await pollAllVideos();
-    if (result.status === 'disabled') {
-      return reply.code(409).send({ detail: 'bilibili_not_configured', result });
-    }
-    return reply.send({ ok: true, result });
-  });
-
-  // ── Bilibili credentials CRUD ──
-
-  app.get('/api/admin/bilibili/credentials', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const prisma = getPrisma();
-    const items = await prisma.bilibiliCredential.findMany({ orderBy: { updated_at: 'desc' } });
-
-    return reply.send({
-      ok: true,
-      items: items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        is_active: item.is_active,
-        has_sessdata: Boolean(item.sessdata),
-        has_bili_jct: Boolean(item.bili_jct),
-        buvid3: item.buvid3 && item.buvid3.length > 8 ? item.buvid3.slice(0, 8) + '...' : item.buvid3,
-        expires_at: item.expires_at?.toISOString() ?? null,
-        last_used_at: item.last_used_at?.toISOString() ?? null,
-        created_at: item.created_at?.toISOString() ?? null,
-        updated_at: item.updated_at?.toISOString() ?? null,
-      })),
-    });
-  });
-
-  app.post('/api/admin/bilibili/credentials', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const body = request.body as Record<string, unknown>;
-    const name = String(body.name ?? '')
-      .trim()
-      .slice(0, 64);
-    const sessdata = String(body.sessdata ?? '').trim();
-    const biliJct = String(body.bili_jct ?? '')
-      .trim()
-      .slice(0, 128);
-    const buvid3 = String(body.buvid3 ?? '')
-      .trim()
-      .slice(0, 128);
-    const buvid4 = String(body.buvid4 ?? '')
-      .trim()
-      .slice(0, 128);
-    const expiresAt = body.expires_at ? new Date(body.expires_at as string) : null;
-
-    if (!name) return reply.code(400).send({ detail: 'name_required' });
-    if (!sessdata) return reply.code(400).send({ detail: 'sessdata_required' });
-    if (!biliJct) return reply.code(400).send({ detail: 'bili_jct_required' });
-    if (!buvid3) return reply.code(400).send({ detail: 'buvid3_required' });
-    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
-      return reply.code(400).send({ detail: 'invalid_expires_at' });
-    }
-
-    const prisma = getPrisma();
-    const existingCount = await prisma.bilibiliCredential.count();
-    const isActive = existingCount === 0;
-
-    // Encrypt sensitive fields before storage
-    const encSessdata = encrypt(sessdata);
-    const encBiliJct = encrypt(biliJct);
-
-    const credential = await prisma.bilibiliCredential.create({
-      data: {
-        name,
-        sessdata: encSessdata,
-        bili_jct: encBiliJct,
-        buvid3,
-        buvid4: buvid4 || null,
-        is_active: isActive,
-        expires_at: expiresAt,
-      },
-    });
-
-    return reply.send({
-      ok: true,
-      item: {
-        id: credential.id,
-        name: credential.name,
-        is_active: credential.is_active,
-        expires_at: credential.expires_at?.toISOString() ?? null,
-      },
-    });
-  });
-
-  app.post('/api/admin/bilibili/credentials/:credentialId/activate', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const credentialId = Number((request.params as Record<string, string>).credentialId);
-    if (!Number.isFinite(credentialId)) return reply.code(400).send({ detail: 'invalid_credential_id' });
-
-    const prisma = getPrisma();
-    const credential = await prisma.bilibiliCredential.findUnique({ where: { id: credentialId } });
-    if (!credential) return reply.code(404).send({ detail: 'credential_not_found' });
-
-    await prisma.bilibiliCredential.updateMany({ data: { is_active: false } });
-    await prisma.bilibiliCredential.update({ where: { id: credentialId }, data: { is_active: true } });
-
-    return reply.send({ ok: true, active_credential_id: credentialId });
-  });
-
-  app.delete('/api/admin/bilibili/credentials/:credentialId', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const credentialId = Number((request.params as Record<string, string>).credentialId);
-    if (!Number.isFinite(credentialId)) return reply.code(400).send({ detail: 'invalid_credential_id' });
-
-    const prisma = getPrisma();
-    const credential = await prisma.bilibiliCredential.findUnique({ where: { id: credentialId } });
-    if (!credential) return reply.code(404).send({ detail: 'credential_not_found' });
-
-    await prisma.bilibiliCredential.delete({ where: { id: credentialId } });
-    return reply.send({ ok: true, deleted_id: credentialId });
+  registerBilibiliAdminRoutes(app, {
+    settings,
+    checkApiKey,
+    parseAdminBoolean,
+    parseAdminLimit,
+    parseAdminOffset,
+    getBilibiliStatus,
+    listBilibiliVideos,
+    addBilibiliVideo,
+    normalizeBilibiliStatusPayload,
+    normalizeBilibiliVideoRecord,
   });
 
   // ── Audit logs ──
@@ -4014,52 +3640,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     return reply.send({ ok: true, days, total });
   });
 
-  // ── Serve admin SPA (Vite-built frontend) ──
-
-  async function serveAdminAsset(request: FastifyRequest, reply: FastifyReply, relativePath: string) {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const assetPath = path.join(process.cwd(), 'public', 'admin', ...relativePath.split('/').filter(Boolean));
-    try {
-      const content = await fs.readFile(assetPath);
-      if (assetPath.endsWith('.js')) {
-        return reply.type('application/javascript').send(content);
-      } else if (assetPath.endsWith('.css')) {
-        return reply.type('text/css').send(content);
-      } else {
-        return reply.type('application/octet-stream').send(content);
-      }
-    } catch {
-      return reply.code(404).send({ error: 'Asset not found' });
-    }
-  }
-
-  app.get('/admin', async (_request, reply) => {
-    const fs = await import('fs/promises');
-    const path = await import('path');
-    const indexPath = path.join(process.cwd(), 'public', 'admin', 'index.html');
-    try {
-      const html = await fs.readFile(indexPath, 'utf-8');
-      return reply.type('text/html').send(html);
-    } catch {
-      return reply.code(404).send({ error: 'Admin SPA not found' });
-    }
-  });
-
-  // Serve Vite-built assets from /admin/assets/* and /assets/*.
-  app.get('/admin/assets/*', async (request, reply) =>
-    serveAdminAsset(request, reply, `assets/${(request.params as Record<string, string>)['*']}`),
-  );
-
-  app.get('/assets/*', async (request, reply) =>
-    serveAdminAsset(request, reply, `assets/${(request.params as Record<string, string>)['*']}`),
-  );
-
-  // ── Static asset aliases (smoke test compatibility: /static/admin/*) ──
-  app.get('/static/admin/*', async (request, reply) => {
-    const relativePath = (request.params as Record<string, string>)['*'];
-    return serveAdminAsset(request, reply, relativePath);
-  });
+  registerAdminStaticRoutes(app);
 
   return app;
 }

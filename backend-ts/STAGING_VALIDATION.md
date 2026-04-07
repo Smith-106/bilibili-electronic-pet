@@ -19,6 +19,12 @@ pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KE
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
 
+When wrapper modes (`preflight`, `strict`, `real-chain`) run without `--report`, wrappers now auto-write evidence JSON to:
+
+- `./.artifacts/staging/<mode>-<UTC timestamp>.json`
+
+Override the output directory with `SMOKE_REPORT_DIR`.
+
 ## Modes
 
 ### Preflight Only
@@ -30,6 +36,13 @@ Checks:
   - webhook publish
   - native Bilibili publish
 - optional JSON report output without contacting the running API
+Environment focus (no runtime needed):
+- LLM real chain: `LLM_PROVIDER` ≠ `mock` → require `LLM_API_KEY`
+- Search: `SEARCH_API_KEY` (and `SEARCH_CX` when `SEARCH_PROVIDER=google`)
+- Webhook: `PUBLISHER_MODE=webhook` → require `PUBLISHER_WEBHOOK_URL` (+ optional `PUBLISHER_WEBHOOK_TOKEN`)
+- Native Bilibili: `BILIBILI_ENABLED=true` AND `BILIBILI_PUBLISH_ENABLED=true` → require DB credential or env trio `BILIBILI_SESSDATA` / `BILIBILI_BILI_JCT` / `BILIBILI_BUVID3` (+ optional `BILIBILI_BUVID4`) and `CREDENTIAL_ENCRYPTION_KEY`
+- Admin key is not required; runtime does not have to be up
+
 
 Use when:
 - You want to see which live-secret or delivery prerequisites are still missing before starting a release rehearsal
@@ -104,6 +117,7 @@ Checks:
 
 Use when:
 - You are validating the native Bilibili publish path before release
+- `real_auth_ready` should now be read as “runtime auth probe succeeded”, not merely “credential fields are populated”
 
 Example:
 
@@ -119,23 +133,25 @@ npm run staging:check -- \
 
 ## Environment Matrix
 
-| Area | Variables | When required | Notes |
-|------|-----------|---------------|-------|
-| Admin API | `API_KEY` | strict / pre-release real chain | Used for admin route validation |
-| Database | `DATABASE_URL` | deployment-specific | Validator reports it from env when present |
-| Worker Redis | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_DB` | when Worker runs against Redis | Worker queue config reads these directly |
-| API readiness compatibility | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | recommended for explicit staging config | Main service still surfaces these values in readiness config |
-| Gateway publish | `GATEWAY_TOKEN`, `GATEWAY_HMAC_SECRET` | when using `/gateway/publish` | Not required for baseline admin checks |
-| LLM | `LLM_PROVIDER`, `LLM_API_KEY` | if `LLM_PROVIDER != mock` | Mock mode is acceptable for non-production smoke |
-| Search enhancement | `SEARCH_PROVIDER`, `SEARCH_API_KEY`, `SEARCH_CX` (Google only) | when validating real search augmentation | Missing search config does not block baseline, but preflight will mark search as incomplete |
-| Publisher webhook | `PUBLISHER_MODE=webhook`, `PUBLISHER_WEBHOOK_URL`, `PUBLISHER_WEBHOOK_TOKEN` | webhook delivery path | `PUBLISHER_WEBHOOK_URL` is the gating input |
-| Native / real Bilibili auth | active DB credential or env trio `BILIBILI_SESSDATA`, `BILIBILI_BILI_JCT`, `BILIBILI_BUVID3` | native / real publish and polling | The validator treats either source as acceptable at runtime |
-| Bilibili runtime tuning | `BILIBILI_BASE_URL`, `BILIBILI_USER_AGENT`, `BILIBILI_TIMEOUT`, `BILIBILI_RETRIES`, `BILIBILI_DEDEUSERID`, `BILIBILI_BUVID4` | optional tuning | Useful for staging parity with production |
-| Native publish switches | `BILIBILI_ENABLED=true`, `BILIBILI_PUBLISH_ENABLED=true` | pre-release real chain | This forces `effective_publish_mode=native_bilibili` |
-| Polling | `BILIBILI_POLL_ENABLED`, `BILIBILI_POLL_INTERVAL_SECONDS`, `BILIBILI_RATE_LIMIT_PER_MINUTE` | when validating poller behavior | Polling is optional for pure publish validation |
-| Credential storage | `CREDENTIAL_ENCRYPTION_KEY` (`BILIBILI_COOKIE_ENCRYPTION_KEY` legacy alias) | when credentials are stored in DB | Strongly recommended in staged environments |
-| Multi-platform gateway | `PLATFORM_BILIBILI_ENABLED`, `PLATFORM_DOUYIN_ENABLED`, `PLATFORM_KUAISHOU_ENABLED`, and matching `*_PUBLISH_SOURCE` | when validating `/gateway/publish/:platform` | Separate from native Bilibili publish mode |
+### Validation inputs by capability
 
+| Capability | Minimal (mock/manual) | Preflight required | Strict required | Real-chain required |
+|------------|-----------------------|--------------------|-----------------|---------------------|
+| LLM generation | `LLM_PROVIDER=mock` | `LLM_PROVIDER` ≠ `mock` + `LLM_API_KEY` | runtime running | runtime running |
+| Search enrichment | `SEARCH_PROVIDER=serpapi` | `SEARCH_API_KEY` (+ `SEARCH_CX` if Google) | runtime running | runtime running |
+| Webhook publish | `PUBLISHER_MODE=manual_queue` | `PUBLISHER_MODE=webhook` + `PUBLISHER_WEBHOOK_URL` (+ `PUBLISHER_WEBHOOK_TOKEN`) | runtime running | runtime running |
+| Native Bilibili publish | switches off | `BILIBILI_ENABLED=true`, `BILIBILI_PUBLISH_ENABLED=true`, native credential (DB or env trio) + `CREDENTIAL_ENCRYPTION_KEY` | runtime running | `delivery_ready=true`, release gates true, and runtime auth probe must succeed |
+
+### Runtime and admin requirements
+
+- Admin API auth: `API_KEY` (strict / real-chain)
+- Foundation: `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB` (strict expects readiness to be true)
+- Readiness compatibility: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` (reported for parity, still accepted)
+- Gateway publish: `GATEWAY_TOKEN`, `GATEWAY_HMAC_SECRET` (only for `/gateway/publish`)
+- Poller tuning: `BILIBILI_POLL_ENABLED`, `BILIBILI_POLL_INTERVAL_SECONDS`, `BILIBILI_RATE_LIMIT_PER_MINUTE` (optional)
+- Credential storage: `CREDENTIAL_ENCRYPTION_KEY` (alias `BILIBILI_COOKIE_ENCRYPTION_KEY`)
+- Multi-platform gateway: `PLATFORM_*_ENABLED`, `PLATFORM_*_PUBLISH_SOURCE` (independent of native Bilibili publish)
+- Release smoke flags (wrappers): `BASE_URL`, `API_KEY`, `ENV_FILE`, `REPORT_PATH`, `STRICT_SMOKE`, `PRE_RELEASE_REAL_CHAIN`
 ## Notes
 
 - The validator loads `backend-ts/.env` and repository-root `.env` automatically when present.
@@ -144,9 +160,16 @@ npm run staging:check -- \
   - `smoke.sh strict` / `smoke.ps1 strict` => `--strict`
   - `smoke.sh real-chain` / `smoke.ps1 real-chain` => `--strict --pre-release-real-chain`
 - Use `--env-file <path>` to point at a different staging env file.
-- Use `--report <path>` to write a JSON dry-run report for release records.
+- Use `--report <path>` to write a JSON report for release records.
+- If wrapper mode is used without `--report`, `smoke.sh` / `smoke.ps1` auto-generate report paths under `./.artifacts/staging/`.
+- If `--report` (or `REPORT_PATH`) is set, the validator writes report JSON for preflight, pass, and fail outcomes.
+- Strict/real-chain reports now include:
+  - `runtime_summary`: target-runtime state derived from `/readiness` and `/api/admin/bilibili/status`
+  - `input_scopes`: explains the difference between checker-env inputs and target-runtime observations
+  - `checker_env_differs_from_target_runtime`: warning emitted when checker-side preflight/env inputs disagree with a passing target runtime
 - Use `--preflight-only` when you want an env-level readiness report without hitting `/health`, `/readiness`, or admin endpoints.
 - If no API key is provided, the validator exits in degraded mode after the basic health/admin asset checks.
 - The repository `cloud-validate` workflow now treats `preflight_ready` as a blocking gate before strict checks. It injects CI placeholder inputs so the wrapper/workflow/env contract must remain complete even in CI.
 - When running locally, start the server from `backend-ts/` (or ensure `process.cwd()` resolves to that directory) so `/admin` can locate `public/admin`, and provide a reachable Redis runtime before expecting `--strict` to pass.
 - `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.
+- `--pre-release-real-chain` is now harder to satisfy with placeholder native credentials alone; the target runtime must surface a successful native auth probe before `real_auth_ready=true`.

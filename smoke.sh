@@ -14,6 +14,12 @@ Modes:
   strict      => --strict
   real-chain  => --strict --pre-release-real-chain
 
+Report behavior:
+  If mode is preflight/strict/real-chain and no --report is provided,
+  smoke.sh auto-writes JSON evidence to:
+    ./.artifacts/staging/<mode>-<UTC timestamp>.json
+  Override directory via SMOKE_REPORT_DIR.
+
 Examples:
   bash smoke.sh preflight --report ./preflight.json
   bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
@@ -22,24 +28,47 @@ EOF
 }
 
 args=("$@")
+mode=""
 case "${1:-}" in
   -h|--help)
     usage
     exit 0
     ;;
   preflight)
+    mode="preflight"
     shift
     args=(--preflight-only "$@")
     ;;
   strict)
+    mode="strict"
     shift
     args=(--strict "$@")
     ;;
   real-chain)
+    mode="real-chain"
     shift
     args=(--strict --pre-release-real-chain "$@")
     ;;
 esac
+
+has_report_arg=0
+for arg in "${args[@]}"; do
+  case "$arg" in
+    --report|--report=*)
+      has_report_arg=1
+      break
+      ;;
+  esac
+done
+
+if [[ -n "$mode" && "$has_report_arg" -eq 0 ]]; then
+  report_dir="${SMOKE_REPORT_DIR:-$SCRIPT_DIR/.artifacts/staging}"
+  mkdir -p "$report_dir"
+  timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  report_path="$report_dir/${mode}-${timestamp}.json"
+  args+=(--report "$report_path")
+  echo "[smoke] auto report path: $report_path"
+fi
 
 script_path_for_node="$SCRIPT_PATH"
 

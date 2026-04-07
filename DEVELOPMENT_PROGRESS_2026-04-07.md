@@ -11,8 +11,8 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 
 ## Verified Status
 
-- Backend tests passed locally: 172 tests
-- Frontend tests passed locally: 26 tests
+- Backend tests passed locally: 176 tests
+- Frontend tests passed locally: 27 tests
 - Backend build passed locally
 - Frontend build passed locally
 
@@ -27,6 +27,9 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
   - `foundation_blockers` / `delivery_blockers`
   - `delivery_capability_blockers`
   - `delivery_capabilities`
+- Native Bilibili runtime readiness is now stricter:
+  - `real_auth_ready` depends on a runtime auth probe, not just complete-looking credential fields
+  - placeholder native credentials no longer satisfy `pre_release_real_chain_ready`
 - Staging validator and readiness contract are aligned on canonical capability names:
   - `llm_generation`
   - `search_enrichment`
@@ -38,7 +41,7 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 - Admin UI has 10 routed pages and is integrated with backend APIs.
 - Bilibili operations page now includes consolidated delivery diagnostics by combining `/api/admin/bilibili/status` and `/readiness`, with explicit `foundation` vs `delivery` visibility and capability blocker hints.
 - Utility pages (`profiles`, `query`, `daily-metrics`) were strengthened with practical operator behaviors (dirty-state, refresh feedback, query history/copy, input normalization, summary feedback, and expanded error/empty handling).
-- Frontend regression coverage expanded from prior 19 to 26 tests.
+- Frontend regression coverage expanded from prior 19 to 27 tests.
 
 ### Delivery Rehearsal and CI Tooling
 
@@ -47,6 +50,9 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
   - `preflight`
   - `strict`
   - `real-chain`
+- Strict/real-chain reports now distinguish:
+  - checker-side env/preflight context
+  - target-runtime readiness and diagnostics via `runtime_summary`
 - `.env.example`, wrappers, and CI workflows are aligned on rehearsal inputs and mode behavior.
 - `cloud-validate` now treats preflight readiness as a blocking gate before enforcing strict runtime checks.
 - Release-path workflows now also fail closed when pre-release real-chain secrets are absent, instead of silently skipping the gate.
@@ -62,7 +68,7 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 
 ### Validation Scope Boundaries
 
-- Repository tests now cover configured vs fallback branches more explicitly, but they still use deterministic mock/fake paths rather than proving a live production external chain.
+- Repository tests now cover configured vs fallback branches more explicitly, and native real-chain readiness now resists placeholder credential fields, but the suite still does not prove a live production external chain.
 - CI-level static/workflow alignment has been validated; full GitHub-hosted runner execution is still an environment-level concern.
 
 ## Documentation State

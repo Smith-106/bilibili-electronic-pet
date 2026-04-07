@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -129,7 +129,7 @@ Options:
   --preflight-only               Print and optionally report external-delivery prerequisites without hitting the runtime
   --strict                       Require delivery-capable diagnostics checks
   --pre-release-real-chain       Require native Bilibili pre-release gates
-  --report <path>                Write JSON report to the given path
+  --report <path>                Write JSON report to the given path (preflight/pass/fail)
   --help                         Show this help
 
 Environment fallbacks:
@@ -148,6 +148,46 @@ function logWarn(message) {
 function logInfo(message) {
   console.log(`[INFO] ${message}`);
 }
+
+function writeReport(reportPath, report) {
+  if (!reportPath) {
+    return null;
+  }
+  const outputPath = resolve(process.cwd(), reportPath);
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  return outputPath;
+}
+
+function summarizeRuntimeState(readinessPayload, bilibiliPayload) {
+  const capabilityBlockers =
+    readinessPayload?.delivery_capability_blockers ?? readinessPayload?.delivery_capabilities?.blockers ?? [];
+  const diagnostics = bilibiliPayload?.diagnostics ?? {};
+
+  return {
+    source: 'target_runtime',
+    readiness: {
+      ready: readinessPayload?.ready === true,
+      foundation_ready: readinessPayload?.foundation_ready === true,
+      delivery_ready: readinessPayload?.delivery_ready === true,
+      foundation_blockers: readinessPayload?.foundation_blockers ?? [],
+      delivery_blockers: readinessPayload?.delivery_blockers ?? [],
+      delivery_capability_blockers: capabilityBlockers,
+    },
+    config: readinessPayload?.config ?? {},
+    publish: readinessPayload?.publish ?? {},
+    bilibili: {
+      diagnostics_ready: diagnostics?.ready === true,
+      effective_publish_mode: diagnostics?.effective_publish_mode ?? null,
+      blocking_reasons: diagnostics?.blocking_reasons ?? [],
+      release_gates: diagnostics?.release_gates ?? {},
+      signals: diagnostics?.signals ?? {},
+    },
+  };
+}
+
+let activeReportPath = null;
+let activeReport = null;
 
 function normalizeBaseUrl(value) {
   const base = hasText(value) ? String(value).trim() : 'http://127.0.0.1:18000';
@@ -489,10 +529,6 @@ async function main() {
   const preflightOnly = parsedArgs.preflightOnly;
   const reportPath = parsedArgs.reportPath ?? process.env.REPORT_PATH ?? null;
 
-  if (preReleaseRealChain && !strict) {
-    throw new Error('--pre-release-real-chain requires --strict');
-  }
-
   const deliveryPreflight = buildDeliveryPreflight(process.env);
 
   const report = {
@@ -504,9 +540,16 @@ async function main() {
     env_files: envFiles,
     env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, apiKey }),
     delivery_preflight: deliveryPreflight,
+    input_scopes: {
+      checker_env: 'env_matrix and delivery_preflight describe the environment seen by staging-check itself',
+      target_runtime: 'runtime_summary describes the target service responses returned by /readiness and /api/admin/bilibili/status',
+    },
     checks: [],
     warnings: [],
   };
+
+  activeReportPath = reportPath;
+  activeReport = report;
 
   const record = (name, status, details = {}) => {
     report.checks.push({ name, status, ...details });
@@ -516,6 +559,10 @@ async function main() {
     record(name, 'failed', { message, ...details });
     throw new Error(`${name}: ${message}`);
   };
+
+  if (preReleaseRealChain && !strict) {
+    fail('arguments', '--pre-release-real-chain requires --strict');
+  }
 
   logInfo(`BASE_URL=${report.base_url}`);
   if (envFiles.length > 0) {
@@ -533,11 +580,11 @@ async function main() {
   }
 
   if (preflightOnly) {
+    report.completed_at = new Date().toISOString();
     report.status = deliveryPreflight.blockers.length > 0 ? 'preflight_incomplete' : 'preflight_ready';
 
-    if (reportPath) {
-      const outputPath = resolve(process.cwd(), reportPath);
-      writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+    const outputPath = writeReport(reportPath, report);
+    if (outputPath) {
       logInfo(`Report written to ${outputPath}`);
     }
 
@@ -636,10 +683,22 @@ async function main() {
     if (bilibiliResponse.status !== 200 || bilibiliPayload?.ok !== true) {
       fail('bilibili_status', `expected ok=true, got status=${bilibiliResponse.status}`);
     }
+    report.runtime_summary = summarizeRuntimeState(readinessPayload, bilibiliPayload);
     record('bilibili_status', 'passed', {
       diagnostics: summarizeDiagnostics(bilibiliPayload.diagnostics),
     });
     logPass('bilibili status');
+
+    const checkerEnvHasRequiredGaps = report.env_matrix.some((entry) => entry.required && !entry.present);
+    if ((checkerEnvHasRequiredGaps || deliveryPreflight.blockers.length > 0) && readinessPayload?.delivery_ready === true) {
+      const warningCode = 'checker_env_differs_from_target_runtime';
+      if (!report.warnings.includes(warningCode)) {
+        report.warnings.push(warningCode);
+      }
+      logWarn(
+        'Checker env suggests missing or fallback delivery inputs, but the target runtime reports delivery-ready. Treat env_matrix/delivery_preflight as checker-side context and runtime_summary as the target-service view.',
+      );
+    }
 
     if (strict) {
       const diagnostics = bilibiliPayload?.diagnostics;
@@ -749,9 +808,8 @@ async function main() {
   report.completed_at = new Date().toISOString();
   report.status = 'passed';
 
-  if (reportPath) {
-    const outputPath = resolve(process.cwd(), reportPath);
-    writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  const outputPath = writeReport(reportPath, report);
+  if (outputPath) {
     logInfo(`Report written to ${outputPath}`);
   }
 
@@ -759,6 +817,17 @@ async function main() {
 }
 
 main().catch((error) => {
+  if (activeReport) {
+    activeReport.completed_at = new Date().toISOString();
+    if (!activeReport.status || activeReport.status === 'passed') {
+      activeReport.status = 'failed';
+    }
+    activeReport.error = error instanceof Error ? error.message : String(error);
+    const outputPath = writeReport(activeReportPath, activeReport);
+    if (outputPath) {
+      logInfo(`Report written to ${outputPath}`);
+    }
+  }
   console.error(`== STAGING CHECK FAIL ==\n${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 });

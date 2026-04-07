@@ -82,12 +82,12 @@ describe('worker config', () => {
     expect(config).toHaveProperty('maxRetries');
     expect(config).toHaveProperty('retryBackoff');
     expect(config).toHaveProperty('retryJitter');
-    expect(config).toHaveProperty('enabled');
+    expect(config).toHaveProperty('killSwitch');
 
     expect(typeof config.maxRetries).toBe('number');
     expect(typeof config.retryBackoff).toBe('number');
     expect(typeof config.retryJitter).toBe('boolean');
-    expect(typeof config.enabled).toBe('boolean');
+    expect(typeof config.killSwitch).toBe('boolean');
   });
 
   it('builds default retry config', () => {
@@ -101,8 +101,8 @@ describe('worker config', () => {
   it('builds default kill-switch config', () => {
     const config = buildDefaultWorkerKillSwitchConfig();
 
-    expect(typeof config.enabled).toBe('boolean');
-    expect(config.enabled).toBe(false);
+    expect(typeof config.killSwitch).toBe('boolean');
+    expect(config.killSwitch).toBe(false);
   });
 
   it('converts seconds to milliseconds', () => {

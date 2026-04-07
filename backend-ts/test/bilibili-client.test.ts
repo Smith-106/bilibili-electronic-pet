@@ -9,7 +9,7 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
 
 vi.stubGlobal('fetch', fetchMock);
 
-const { isBilibiliConfigured, postReply } = await import('../src/services/bilibili-client.js');
+const { isBilibiliConfigured, postReply, probeBilibiliAuth } = await import('../src/services/bilibili-client.js');
 
 const runtimeConfig = {
   sessdata: 'db-sess',
@@ -29,6 +29,7 @@ const runtimeConfig = {
 beforeEach(() => {
   loadBilibiliRuntimeConfig.mockReset();
   fetchMock.mockReset();
+  vi.restoreAllMocks();
 });
 
 afterAll(() => {
@@ -123,5 +124,64 @@ describe('bilibili-client runtime config integration', () => {
 
     await expect(isBilibiliConfigured()).resolves.toBe(true);
     await expect(isBilibiliConfigured()).resolves.toBe(false);
+  });
+
+  it('verifies runtime auth through the nav endpoint', async () => {
+    loadBilibiliRuntimeConfig.mockResolvedValue(runtimeConfig);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: { isLogin: true },
+      }),
+    });
+
+    await expect(probeBilibiliAuth()).resolves.toEqual({
+      ok: true,
+      reason: 'verified',
+      status: 200,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.bilibili.com/x/web-interface/nav',
+      expect.objectContaining({
+        method: 'GET',
+      }),
+    );
+  });
+
+  it('fails runtime auth verification when the nav endpoint says the user is not logged in', async () => {
+    loadBilibiliRuntimeConfig.mockResolvedValue(runtimeConfig);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: { isLogin: false },
+      }),
+    });
+
+    await expect(probeBilibiliAuth()).resolves.toEqual({
+      ok: false,
+      reason: 'not_logged_in',
+      status: 200,
+    });
+  });
+
+  it('caps auth probe timeout to a readiness-friendly window', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    loadBilibiliRuntimeConfig.mockResolvedValue(runtimeConfig);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: { isLogin: true },
+      }),
+    });
+
+    await probeBilibiliAuth();
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
   });
 });

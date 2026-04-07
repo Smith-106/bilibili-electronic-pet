@@ -59,6 +59,7 @@ export function createTaskWorker<P extends BaseTaskPayload>(
   connection?: RedisConnectionConfig,
 ): Worker<P> {
   const config = workerConfig ?? buildDefaultWorkerConfig();
+  const killSwitch = (config as WorkerConfig).killSwitch ?? (config as Record<string, unknown>).enabled === true;
   const redisConfig = connection ?? buildRedisConnectionConfig();
 
   const workerOptions: WorkerOptions = {
@@ -73,7 +74,7 @@ export function createTaskWorker<P extends BaseTaskPayload>(
     queueName,
     async (job: Job<P>) => {
       // Kill-switch check
-      if (config.enabled) {
+      if (killSwitch) {
         return {
           ok: false,
           reason: 'kill_switch_enabled',
