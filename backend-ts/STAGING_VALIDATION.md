@@ -147,6 +147,6 @@ npm run staging:check -- \
 - Use `--report <path>` to write a JSON dry-run report for release records.
 - Use `--preflight-only` when you want an env-level readiness report without hitting `/health`, `/readiness`, or admin endpoints.
 - If no API key is provided, the validator exits in degraded mode after the basic health/admin asset checks.
-- The repository `cloud-validate` workflow first records preflight diagnostics (non-blocking), then enforces strict checks with an injected `API_KEY` and a migrated temporary SQLite database.
+- The repository `cloud-validate` workflow now treats `preflight_ready` as a blocking gate before strict checks. It injects CI placeholder inputs so the wrapper/workflow/env contract must remain complete even in CI.
 - When running locally, start the server from `backend-ts/` (or ensure `process.cwd()` resolves to that directory) so `/admin` can locate `public/admin`, and provide a reachable Redis runtime before expecting `--strict` to pass.
 - `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.

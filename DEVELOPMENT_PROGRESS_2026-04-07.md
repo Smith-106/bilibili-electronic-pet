@@ -48,7 +48,7 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
   - `strict`
   - `real-chain`
 - `.env.example`, wrappers, and CI workflows are aligned on rehearsal inputs and mode behavior.
-- `cloud-validate` now records preflight diagnostics (non-blocking) before enforcing strict runtime checks.
+- `cloud-validate` now treats preflight readiness as a blocking gate before enforcing strict runtime checks.
 
 ## Current Gaps
 

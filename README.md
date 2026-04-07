@@ -1332,7 +1332,9 @@ npm run staging:check -- --preflight-only --env-file .env.staging --report ../st
 
 这些仍然要通过 `--strict` 或 `--pre-release-real-chain` 的运行时校验来确认。
 
-当前仓库的 `cloud-validate` CI 会先做 preflight（non-blocking diagnostics），再执行 strict 校验，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`。
+当前仓库的 `cloud-validate` CI 会先做 preflight，并把 `preflight_ready` 当作阻断门禁；只有 preflight 通过后，才会继续执行 strict 校验，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`。
+
+这里的 CI preflight 主要用于防止 wrapper / workflow / env 契约漂移。它会注入一组 CI placeholder 输入来确保能力矩阵本身保持完整；这并不等价于真实外部交付已经可用。
 
 如果你在本地跑 `--strict`，还需要满足两条额外前提：
 - 服务进程应从 `backend-ts/` 目录启动，确保 `/admin` 能正确找到 `public/admin`
