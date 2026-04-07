@@ -89,7 +89,7 @@ jobs:
           done
 
           curl -fsS http://localhost:18000/health || exit 1
-          bash ../smoke.sh
+          bash ../smoke.sh strict --base-url "$BASE_URL" --api-key "$API_KEY"
 
   pre-release-real-chain-smoke:
     if: ${{ needs.release-gate-config.outputs.pre_release_smoke_ready == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) }}
@@ -119,6 +119,4 @@ jobs:
         env:
           BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
           API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
-          STRICT_SMOKE: "true"
-          PRE_RELEASE_REAL_CHAIN: "true"
-        run: bash smoke.sh
+        run: bash smoke.sh real-chain --base-url "$BASE_URL" --api-key "$API_KEY"

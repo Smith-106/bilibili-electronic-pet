@@ -49,9 +49,16 @@ jobs:
           DATABASE_URL: file:./ci-smoke.db
         run: npm --prefix backend-ts run prisma:migrate:prod
 
+      - name: Preflight staging smoke contract (non-blocking diagnostics)
+        env:
+          API_KEY: ci-admin-key
+          REPORT_PATH: backend-ts/ci-preflight-report.json
+        run: bash smoke.sh preflight --strict --api-key "$API_KEY" --report "$REPORT_PATH"
+
       - name: Strict staging smoke contract
         env:
           PORT: 18000
+          BASE_URL: http://127.0.0.1:18000
           API_KEY: ci-admin-key
           DATABASE_URL: file:./ci-smoke.db
         run: |
@@ -62,7 +69,7 @@ jobs:
           APP_PID=$!
           trap 'kill $APP_PID' EXIT
 
-          bash smoke.sh --base-url http://127.0.0.1:18000 --api-key "$API_KEY" --strict
+          bash smoke.sh strict --base-url "$BASE_URL" --api-key "$API_KEY"
 
   # Frontend build validation
   frontend-build:
