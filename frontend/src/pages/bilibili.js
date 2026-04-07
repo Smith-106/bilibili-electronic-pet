@@ -311,9 +311,13 @@ export async function render(container) {
       const deliveryBlockerText = deliveryBlockers.length > 0 ? deliveryBlockers.join(', ') : '无';
       const capabilityBlockerText = capabilityBlockers.length > 0 ? capabilityBlockers.join(', ') : '无';
       const capabilityIssueText =
-        capabilityIssues.length > 0
-          ? capabilityIssues.map((entry) => formatCapabilityIssueLine(entry)).join('； ')
-          : '无';
+        readinessData
+          ? capabilityIssues.length > 0
+            ? capabilityIssues.map((entry) => formatCapabilityIssueLine(entry)).join('； ')
+            : '无'
+          : 'readiness_unavailable';
+      const capabilityIssueClass =
+        readinessError || capabilityIssues.length > 0 ? 'page-error' : 'form-hint';
 
       el.innerHTML = `
         <div class="stat-card mini">
@@ -398,7 +402,7 @@ export async function render(container) {
         </div>
         ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">当前阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
         ${readinessError ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">Readiness 状态加载失败: ${escapeHtml(readinessError)}</div>` : ''}
-        <div class="${capabilityIssues.length > 0 ? 'page-error' : 'form-hint'}" style="grid-column: 1 / -1; margin: 0;">
+        <div class="${capabilityIssueClass}" style="grid-column: 1 / -1; margin: 0;">
           关键缺失项: ${escapeHtml(capabilityIssueText)}
         </div>
       `;

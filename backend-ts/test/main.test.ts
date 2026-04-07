@@ -180,6 +180,7 @@ describe('health/readiness parity', () => {
     expect(data.delivery_capability_blockers).toEqual(
       expect.arrayContaining(['search_enrichment', 'webhook_publish']),
     );
+    expect(data.delivery_ready).toBe(false);
 
     await app.close();
   });
@@ -292,7 +293,14 @@ describe('health/readiness parity', () => {
   it('allows webhook mode with worker_or_publish gate', async () => {
     const app = createServer(
       buildDeps({
-        settings: buildSettings({ publisherMode: 'webhook' }),
+        settings: buildSettings({
+          publisherMode: 'webhook',
+          publisherWebhookUrlConfigured: true,
+          llmProvider: 'openai',
+          llmApiKeyConfigured: true,
+          searchProvider: 'serpapi',
+          searchApiKeyConfigured: true,
+        }),
         buildBilibiliDiagnostics: async () => ({
           ready: false,
           blocking_reasons: ['config:bilibili_enabled is false'],
@@ -317,6 +325,7 @@ describe('health/readiness parity', () => {
     expect(data.ready).toBe(true);
     expect(data.foundation_ready).toBe(true);
     expect(data.delivery_ready).toBe(true);
+    expect(data.delivery_capability_blockers).toEqual([]);
     expect(data.delivery_blockers).not.toContain('bilibili:delivery_diagnostics_not_ready');
     expect(data.delivery_blockers.some((reason: string) => reason.startsWith('bilibili:config:'))).toBe(false);
 

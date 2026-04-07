@@ -75,7 +75,12 @@ jobs:
           GATEWAY_TOKEN: test-gateway-token
           GATEWAY_HMAC_SECRET: test-hmac-secret-32-bytes!!
           KILL_SWITCH: "false"
-          LLM_PROVIDER: mock
+          LLM_PROVIDER: openai
+          LLM_API_KEY: e2e-strict-placeholder
+          SEARCH_PROVIDER: serpapi
+          SEARCH_API_KEY: e2e-strict-placeholder
+          PUBLISHER_MODE: webhook
+          PUBLISHER_WEBHOOK_URL: https://example.invalid/e2e-strict
           BASE_URL: http://localhost:18000
         run: |
           node dist/index.js &

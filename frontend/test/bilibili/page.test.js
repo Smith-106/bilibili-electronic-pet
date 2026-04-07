@@ -186,6 +186,8 @@ describe('bilibili admin critical-path regression tests', () => {
     expect(container.textContent).toContain('Readiness 状态加载失败');
     expect(container.textContent).toContain('readiness_down');
     expect(container.textContent).toContain('canonical: readiness_unavailable');
+    expect(container.textContent).toContain('关键缺失项: readiness_unavailable');
+    expect(container.textContent).not.toContain('关键缺失项: 无');
   });
 
   it('refetches videos when poll filter changes', async () => {

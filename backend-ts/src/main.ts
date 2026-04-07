@@ -2656,7 +2656,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       addBlocker(deliveryBlockers, 'bilibili:delivery_diagnostics_not_ready');
     }
 
-    const deliveryReady = deliveryBlockers.length === 0;
+    const deliveryReady = deliveryBlockers.length === 0 && deliveryCapabilities.blockers.length === 0;
 
     return {
       ready: foundationReady,

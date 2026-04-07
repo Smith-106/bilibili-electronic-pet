@@ -7,12 +7,18 @@ function buildSettings(overrides = {}) {
     celeryResultBackend: 'redis://localhost:6379/1',
     apiKey: '',
     llmProvider: 'mock',
+    llmApiKeyConfigured: false,
     llmFallbackToMock: true,
+    searchProvider: 'serpapi',
+    searchApiKeyConfigured: false,
+    searchCxConfigured: false,
     publisherMode: 'webhook',
+    publisherWebhookUrlConfigured: false,
     bilibiliEnabled: false,
     bilibiliPollEnabled: false,
     bilibiliPollIntervalSeconds: 300,
     bilibiliPublishEnabled: false,
+    bilibiliEnvCredentialConfigured: false,
     killSwitch: false,
     gatewayToken: '',
     gatewayHmacSecret: '',
@@ -141,7 +147,14 @@ describe('health/readiness parity', () => {
   it('allows webhook mode with worker_or_publish gate', async () => {
     const app = createServer(
       buildDeps({
-        settings: buildSettings({ publisherMode: 'webhook' }),
+        settings: buildSettings({
+          publisherMode: 'webhook',
+          publisherWebhookUrlConfigured: true,
+          llmProvider: 'openai',
+          llmApiKeyConfigured: true,
+          searchProvider: 'serpapi',
+          searchApiKeyConfigured: true,
+        }),
         buildBilibiliDiagnostics: async () => ({
           ready: false,
           blocking_reasons: ['config:bilibili_enabled is false'],
@@ -164,6 +177,7 @@ describe('health/readiness parity', () => {
     expect(data.ready).toBe(true);
     expect(data.foundation_ready).toBe(true);
     expect(data.delivery_ready).toBe(true);
+    expect(data.delivery_capability_blockers).toEqual([]);
     expect(data.delivery_blockers).not.toContain('bilibili:delivery_diagnostics_not_ready');
     expect(data.delivery_blockers.some((reason) => reason.startsWith('bilibili:config:'))).toBe(false);
     await app.close();
