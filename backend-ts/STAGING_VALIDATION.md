@@ -181,5 +181,6 @@ npm run staging:check -- \
 - Helpers now default env selection by mode:
   - `strict` → `.env.strict.local`
   - `real-chain` → `.env.real-chain.local`
+- In `real-chain` mode, helpers now fail fast if `.env.real-chain.local` still contains scaffold placeholders for native credentials or encryption key.
 - `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.
 - `--pre-release-real-chain` is now harder to satisfy with placeholder native credentials alone; the target runtime must surface a successful native auth probe before `real_auth_ready=true`.

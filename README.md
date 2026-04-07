@@ -1413,6 +1413,7 @@ bash ./rehearse-local.sh real-chain
   - `strict` → `.env.strict.local`
   - `real-chain` → `.env.real-chain.local`
 - `real-chain` 仍然需要真实 native auth 可用的目标运行时；`.env.real-chain.local.example` 只是字段模板，不会靠 placeholder 自动通过。
+- helper 在 `real-chain` 模式下会对 `BILIBILI_*` 凭证和 `CREDENTIAL_ENCRYPTION_KEY` 做 fail-fast 校验；如果还是模板值，会在启动 Redis/API 之前直接退出。
 
 如果用 wrapper 模式（`preflight` / `strict` / `real-chain`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
 

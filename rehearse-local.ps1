@@ -66,6 +66,43 @@ if ([string]::IsNullOrWhiteSpace($apiKey)) {
   throw "API_KEY must be present in $resolvedEnvFile for strict or real-chain rehearsal."
 }
 
+if ($Mode -eq 'real-chain') {
+  $requiredRealChain = @(
+    'BILIBILI_ENABLED',
+    'BILIBILI_PUBLISH_ENABLED',
+    'BILIBILI_SESSDATA',
+    'BILIBILI_BILI_JCT',
+    'BILIBILI_BUVID3',
+    'CREDENTIAL_ENCRYPTION_KEY'
+  )
+  $missing = @()
+  $placeholder = @()
+  foreach ($key in $requiredRealChain) {
+    $value = [string]($envMap[$key] ?? '')
+    if ([string]::IsNullOrWhiteSpace($value)) {
+      $missing += $key
+      continue
+    }
+    if ($value -match '^replace-with-' -or $value -match 'placeholder') {
+      $placeholder += $key
+    }
+  }
+
+  if ($envMap['BILIBILI_ENABLED'] -ne 'true' -or $envMap['BILIBILI_PUBLISH_ENABLED'] -ne 'true') {
+    throw "real-chain rehearsal requires BILIBILI_ENABLED=true and BILIBILI_PUBLISH_ENABLED=true in $resolvedEnvFile."
+  }
+  if ($missing.Count -gt 0 -or $placeholder.Count -gt 0) {
+    $parts = @()
+    if ($missing.Count -gt 0) {
+      $parts += "missing: $($missing -join ', ')"
+    }
+    if ($placeholder.Count -gt 0) {
+      $parts += "placeholder values: $($placeholder -join ', ')"
+    }
+    throw "real-chain rehearsal requires real native credential inputs in $resolvedEnvFile ($($parts -join '; '))."
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $resolvedReportDir | Out-Null
 $timestamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $reportPath = Join-Path $resolvedReportDir "$Mode-local-$timestamp.json"

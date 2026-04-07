@@ -89,6 +89,37 @@ if [[ -z "${api_key// }" ]]; then
   exit 2
 fi
 
+if [[ "$mode" == "real-chain" ]]; then
+  required_keys=(BILIBILI_ENABLED BILIBILI_PUBLISH_ENABLED BILIBILI_SESSDATA BILIBILI_BILI_JCT BILIBILI_BUVID3 CREDENTIAL_ENCRYPTION_KEY)
+  missing=()
+  placeholders=()
+  for key in "${required_keys[@]}"; do
+    value="$(grep -E "^${key}=" "$resolved_env_file" | head -n 1 | cut -d '=' -f 2-)"
+    value="${value%\"}"
+    value="${value#\"}"
+    if [[ -z "${value// }" ]]; then
+      missing+=("$key")
+      continue
+    fi
+    if [[ "$value" == replace-with-* || "$value" == *placeholder* ]]; then
+      placeholders+=("$key")
+    fi
+  done
+
+  enabled="$(grep -E '^BILIBILI_ENABLED=' "$resolved_env_file" | head -n 1 | cut -d '=' -f 2-)"
+  publish_enabled="$(grep -E '^BILIBILI_PUBLISH_ENABLED=' "$resolved_env_file" | head -n 1 | cut -d '=' -f 2-)"
+  if [[ "$enabled" != "true" || "$publish_enabled" != "true" ]]; then
+    echo "real-chain rehearsal requires BILIBILI_ENABLED=true and BILIBILI_PUBLISH_ENABLED=true in $resolved_env_file" >&2
+    exit 2
+  fi
+  if (( ${#missing[@]} > 0 || ${#placeholders[@]} > 0 )); then
+    [[ ${#missing[@]} -gt 0 ]] && echo "missing: ${missing[*]}" >&2
+    [[ ${#placeholders[@]} -gt 0 ]] && echo "placeholder values: ${placeholders[*]}" >&2
+    echo "real-chain rehearsal requires real native credential inputs in $resolved_env_file" >&2
+    exit 2
+  fi
+fi
+
 mkdir -p "$resolved_report_dir"
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 report_path="$resolved_report_dir/$mode-local-$timestamp.json"
