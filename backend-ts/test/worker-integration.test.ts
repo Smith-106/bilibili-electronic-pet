@@ -17,6 +17,40 @@ import type { WorkerServices } from '../src/services/interfaces.js';
 import type { CommentEventPayload } from '../src/workers/tasks/comment-event.task.js';
 import { parseBoolean, parseInteger } from '../src/workers/worker-main.js';
 
+const trackedEnvKeys = [
+  'LLM_PROVIDER',
+  'LLM_BASE_URL',
+  'LLM_MODEL',
+  'LLM_API_KEY',
+  'LLM_TIMEOUT',
+  'LLM_RETRIES',
+  'SEARCH_PROVIDER',
+  'SEARCH_API_KEY',
+  'SEARCH_MAX_RESULTS',
+  'SEARCH_TIMEOUT',
+  'SEARCH_CX',
+  'PUBLISHER_MODE',
+  'PUBLISHER_WEBHOOK_URL',
+  'PUBLISHER_WEBHOOK_TOKEN',
+  'PUBLISHER_TIMEOUT_SECONDS',
+  'PUBLISHER_CIRCUIT_BREAKER_ENABLED',
+] as const;
+
+const originalEnv = Object.fromEntries(trackedEnvKeys.map((key) => [key, process.env[key]])) as Record<
+  (typeof trackedEnvKeys)[number],
+  string | undefined
+>;
+
+function restoreTrackedEnv(): void {
+  for (const key of trackedEnvKeys) {
+    if (originalEnv[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = originalEnv[key];
+    }
+  }
+}
+
 describe('worker integration tests', () => {
   let mockServices: WorkerServices;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -25,6 +59,12 @@ describe('worker integration tests', () => {
   const createdQueues: Array<Queue<CommentEventPayload>> = [];
 
   beforeEach(() => {
+    restoreTrackedEnv();
+    process.env.LLM_TIMEOUT = '1000';
+    process.env.LLM_RETRIES = '1';
+    process.env.LLM_PROVIDER = 'ollama';
+    process.env.LLM_BASE_URL = 'http://127.0.0.1:1';
+    process.env.PUBLISHER_CIRCUIT_BREAKER_ENABLED = 'false';
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -44,6 +84,8 @@ describe('worker integration tests', () => {
     consoleErrorSpy.mockRestore();
     consoleLogSpy.mockRestore();
     consoleWarnSpy.mockRestore();
+    vi.unstubAllGlobals();
+    restoreTrackedEnv();
   });
 
   describe('comment event worker', () => {
@@ -83,7 +125,7 @@ describe('worker integration tests', () => {
     });
   });
 
-  describe('service placeholders', () => {
+  describe('service behavior contracts', () => {
     it('ensures trace ID generation', () => {
       const traceId = mockServices.ensureTraceId();
       expect(traceId).toBeDefined();
@@ -154,7 +196,11 @@ describe('worker integration tests', () => {
       expect(actionManual).toBe('manual_queue');
     });
 
-    it('generates reply with meta (fallback when no LLM key)', async () => {
+    it('generates reply with deterministic fallback when LLM provider is unreachable', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => {
+        throw new Error('llm_unreachable');
+      }));
+
       const result = await mockServices.generateReplyWithMeta({
         content: 'test comment',
         style_mode: 'doro',
@@ -165,14 +211,43 @@ describe('worker integration tests', () => {
       });
 
       expect(result.reply_text).toBeDefined();
-      // Without a real LLM API key, the service falls back to templates
-      expect(['fallback_template', 'mock', 'openai', 'claude', 'ollama']).toContain(result.provider);
+      expect(result.reply_text).toContain('[Doro_Doro]');
+      expect(result.provider).toBe('mock');
+      expect(result.used_fallback).toBe(true);
       expect(result.resolved_role_profile).toBe('doro');
     }, 15000);
 
+    it('returns provider output when LLM request is configured and succeeds', async () => {
+      process.env.LLM_PROVIDER = 'ollama';
+      process.env.LLM_BASE_URL = 'http://ollama.local';
+      process.env.LLM_MODEL = 'llama3.1';
+
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'configured llm reply' } }],
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await mockServices.generateReplyWithMeta({
+        content: 'configured test comment',
+        style_mode: 'normal',
+        length_mode: 'short',
+        knowledge_context: '',
+        search_context: '',
+        role_profile: 'default',
+      });
+
+      expect(result.reply_text).toBe('configured llm reply');
+      expect(result.provider).toBe('ollama');
+      expect(result.used_fallback).toBe(false);
+      expect(fetchMock).toHaveBeenCalledOnce();
+    });
+
     it('publishes reply with result defaults to manual_queue when mode is unset', async () => {
       const originalPublisherMode = process.env.PUBLISHER_MODE;
-      const commentId = `test-comment-${Date.now()}`;
+      const commentId = `test-comment-${Date.now()}-${Math.random().toString(16).slice(2)}`;
       delete process.env.PUBLISHER_MODE;
 
       try {
@@ -192,6 +267,53 @@ describe('worker integration tests', () => {
           delete process.env.PUBLISHER_MODE;
         }
       }
+    });
+
+    it('publishes reply through configured webhook mode', async () => {
+      process.env.PUBLISHER_MODE = 'webhook';
+      process.env.PUBLISHER_WEBHOOK_URL = 'https://example.com/publish';
+      process.env.PUBLISHER_WEBHOOK_TOKEN = 'test-token';
+      process.env.PUBLISHER_CIRCUIT_BREAKER_ENABLED = 'false';
+
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, id: 'remote-1' }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const [published, reason, publishedAt] = await mockServices.publishReplyWithResult(
+        `webhook-comment-${Date.now()}`,
+        'webhook reply',
+        'trace-webhook',
+      );
+
+      expect(published).toBe(true);
+      expect(reason).toBe('webhook_published');
+      expect(publishedAt).toBeDefined();
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://example.com/publish',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            Authorization: 'Bearer test-token',
+          }),
+        }),
+      );
+    });
+
+    it('fails webhook publish with explicit not-configured reason when url is missing', async () => {
+      process.env.PUBLISHER_MODE = 'webhook';
+      delete process.env.PUBLISHER_WEBHOOK_URL;
+      process.env.PUBLISHER_CIRCUIT_BREAKER_ENABLED = 'false';
+
+      const [published, reason] = await mockServices.publishReplyWithResult(
+        `webhook-missing-${Date.now()}`,
+        'test reply',
+        'trace-webhook-missing',
+      );
+
+      expect(published).toBe(false);
+      expect(reason).toBe('webhook_not_configured');
     });
 
     it('publishes reply with result (fails without Bilibili config)', async () => {
@@ -231,10 +353,36 @@ describe('worker integration tests', () => {
       expect(context).toContain('Category: example');
     });
 
-    it('searches web (placeholder)', async () => {
+    it('returns fallback-empty search results when search provider is not configured', async () => {
+      delete process.env.SEARCH_API_KEY;
       const result = await mockServices.searchWeb('test query');
       expect(result.items).toBeDefined();
-      expect(Array.isArray(result.items)).toBe(true);
+      expect(result.items).toEqual([]);
+    });
+
+    it('returns ranked and deduped items when search provider is configured', async () => {
+      process.env.SEARCH_PROVIDER = 'serpapi';
+      process.env.SEARCH_API_KEY = 'search-key';
+      process.env.SEARCH_MAX_RESULTS = '5';
+
+      const fetchMock = vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          organic_results: [
+            { link: 'https://example.com/a', title: 'Test topic', snippet: 'first snippet' },
+            { link: 'https://example.com/a', title: 'Test topic', snippet: 'first snippet' },
+            { link: 'https://example.com/b', title: 'Other', snippet: 'second snippet' },
+          ],
+        }),
+      }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await mockServices.searchWeb('test topic query');
+      expect(result.error_type).toBeUndefined();
+      expect(result.items.length).toBeGreaterThan(0);
+      expect(result.items[0]?.source).toBe('https://example.com/a');
+      expect(new Set(result.items.map((item) => item.source)).size).toBe(result.items.length);
+      expect(fetchMock).toHaveBeenCalled();
     });
 
     it('builds search context', () => {

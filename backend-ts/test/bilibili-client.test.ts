@@ -76,6 +76,48 @@ describe('bilibili-client runtime config integration', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('uses explicit config without loading runtime credential', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: 0,
+        data: { rpid: 9901 },
+      }),
+    });
+
+    const explicitConfig = {
+      ...runtimeConfig,
+      source: 'environment' as const,
+      baseUrl: 'https://custom.bilibili.test',
+      credentialId: null,
+      credentialName: null,
+    };
+
+    const result = await postReply('7788', 'explicit-config-reply', explicitConfig);
+
+    expect(result).toEqual({ success: true, rpid: '9901' });
+    expect(loadBilibiliRuntimeConfig).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://custom.bilibili.test/x/v2/reply/add',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('returns a safe failure when configured request returns non-200', async () => {
+    loadBilibiliRuntimeConfig.mockResolvedValue(runtimeConfig);
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => 'upstream failure',
+    });
+
+    const result = await postReply('12345', 'hello');
+
+    expect(result).toEqual({ success: false, rpid: '' });
+  });
+
   it('reports whether a runtime credential is available', async () => {
     loadBilibiliRuntimeConfig.mockResolvedValueOnce(runtimeConfig).mockResolvedValueOnce(null);
 

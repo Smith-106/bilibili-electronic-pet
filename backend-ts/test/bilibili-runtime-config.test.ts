@@ -122,6 +122,37 @@ describe('loadBilibiliRuntimeConfig', () => {
     warnSpy.mockRestore();
   });
 
+  it('uses a fully configured environment credential when no active database credential exists', async () => {
+    process.env.BILIBILI_SESSDATA = 'env-sess';
+    process.env.BILIBILI_BILI_JCT = 'env-jct';
+    process.env.BILIBILI_BUVID3 = 'env-buvid3';
+    process.env.BILIBILI_BUVID4 = 'env-buvid4';
+    process.env.BILIBILI_DEDEUSERID = '10086';
+    process.env.BILIBILI_BASE_URL = 'https://custom.bilibili.test';
+    process.env.BILIBILI_USER_AGENT = 'RuntimeConfigTest/1.0';
+    process.env.BILIBILI_TIMEOUT = '45000';
+    process.env.BILIBILI_RETRIES = '6';
+
+    mockPrisma.bilibiliCredential.findFirst.mockResolvedValue(null);
+
+    const config = await loadBilibiliRuntimeConfig();
+
+    expect(config).toMatchObject({
+      source: 'environment',
+      credentialId: null,
+      credentialName: null,
+      sessdata: 'env-sess',
+      biliJct: 'env-jct',
+      buvid: 'env-buvid3',
+      buvid4: 'env-buvid4',
+      dedeuserid: '10086',
+      baseUrl: 'https://custom.bilibili.test',
+      userAgent: 'RuntimeConfigTest/1.0',
+      timeout: 45000,
+      retries: 6,
+    });
+  });
+
   it('falls back to environment variables when the database lookup fails', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     process.env.BILIBILI_SESSDATA = 'env-sess';
@@ -138,6 +169,21 @@ describe('loadBilibiliRuntimeConfig', () => {
       biliJct: 'env-jct',
       buvid: 'env-buvid',
     });
+    expect(warnSpy).toHaveBeenCalledOnce();
+    warnSpy.mockRestore();
+  });
+
+  it('returns null when database lookup fails and environment credentials are incomplete', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.BILIBILI_SESSDATA = 'env-sess';
+    delete process.env.BILIBILI_BILI_JCT;
+    process.env.BILIBILI_BUVID3 = 'env-buvid';
+
+    mockPrisma.bilibiliCredential.findFirst.mockRejectedValue(new Error('db unavailable'));
+
+    const config = await loadBilibiliRuntimeConfig();
+
+    expect(config).toBeNull();
     expect(warnSpy).toHaveBeenCalledOnce();
     warnSpy.mockRestore();
   });
