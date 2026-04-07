@@ -174,6 +174,12 @@ npm run staging:check -- \
 - For a repo-managed local strict rehearsal path, copy `.env.strict.local.example` to `.env.strict.local` and run:
   - `pwsh ./rehearse-local.ps1 strict`
   - or `bash ./rehearse-local.sh strict`
+- For a repo-managed local native real-chain rehearsal scaffold, copy `.env.real-chain.local.example` to `.env.real-chain.local` and run:
+  - `pwsh ./rehearse-local.ps1 real-chain`
+  - or `bash ./rehearse-local.sh real-chain`
 - Those helpers build the backend, start local Redis, launch the API with `node --env-file=<env file>`, run strict validation, and then clean up the API process automatically.
+- Helpers now default env selection by mode:
+  - `strict` → `.env.strict.local`
+  - `real-chain` → `.env.real-chain.local`
 - `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.
 - `--pre-release-real-chain` is now harder to satisfy with placeholder native credentials alone; the target runtime must surface a successful native auth probe before `real_auth_ready=true`.

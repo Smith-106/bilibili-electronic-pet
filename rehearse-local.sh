@@ -18,7 +18,7 @@ EOF
 mode="${1:-strict}"
 shift || true
 
-env_file=".env.strict.local"
+env_file=""
 base_url="http://127.0.0.1:18000"
 report_dir=".artifacts/staging"
 keep_redis=0
@@ -55,6 +55,13 @@ done
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 backend_root="$repo_root/backend-ts"
+if [[ -z "$env_file" ]]; then
+  if [[ "$mode" == "real-chain" ]]; then
+    env_file=".env.real-chain.local"
+  else
+    env_file=".env.strict.local"
+  fi
+fi
 resolved_env_file="$env_file"
 if [[ ! "$resolved_env_file" = /* ]]; then
   resolved_env_file="$repo_root/$env_file"
@@ -66,7 +73,11 @@ fi
 
 if [[ ! -f "$resolved_env_file" ]]; then
   echo "Env file not found: $resolved_env_file" >&2
-  echo "Hint: copy .env.strict.local.example to .env.strict.local first." >&2
+  if [[ "$mode" == "real-chain" ]]; then
+    echo "Hint: copy .env.real-chain.local.example to .env.real-chain.local first." >&2
+  else
+    echo "Hint: copy .env.strict.local.example to .env.strict.local first." >&2
+  fi
   exit 2
 fi
 

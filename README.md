@@ -1383,6 +1383,9 @@ pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:AP
 ```powershell
 Copy-Item .env.strict.local.example .env.strict.local
 pwsh ./rehearse-local.ps1 strict
+
+Copy-Item .env.real-chain.local.example .env.real-chain.local
+pwsh ./rehearse-local.ps1 real-chain
 ```
 
 或在 shell 环境中：
@@ -1390,6 +1393,9 @@ pwsh ./rehearse-local.ps1 strict
 ```bash
 cp .env.strict.local.example .env.strict.local
 bash ./rehearse-local.sh strict
+
+cp .env.real-chain.local.example .env.real-chain.local
+bash ./rehearse-local.sh real-chain
 ```
 
 这个 helper 会自动：
@@ -1403,7 +1409,10 @@ bash ./rehearse-local.sh strict
 注意：
 
 - `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
-- `real-chain` 仍然需要真实 native auth 可用的目标运行时；strict-local 示例本身不足以让 `real-chain` 通过。
+- `rehearse-local.ps1` / `rehearse-local.sh` 默认会按模式选择 env 文件：
+  - `strict` → `.env.strict.local`
+  - `real-chain` → `.env.real-chain.local`
+- `real-chain` 仍然需要真实 native auth 可用的目标运行时；`.env.real-chain.local.example` 只是字段模板，不会靠 placeholder 自动通过。
 
 如果用 wrapper 模式（`preflight` / `strict` / `real-chain`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
 

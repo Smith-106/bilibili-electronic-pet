@@ -1,7 +1,7 @@
 param(
   [ValidateSet('strict', 'real-chain')]
   [string]$Mode = 'strict',
-  [string]$EnvFile = '.env.strict.local',
+  [string]$EnvFile = '',
   [string]$BaseUrl = 'http://127.0.0.1:18000',
   [string]$ReportDir = '.artifacts/staging',
   [switch]$KeepRedis
@@ -13,13 +13,14 @@ chcp 65001 > $null
 
 $repoRoot = $PSScriptRoot
 $backendRoot = Join-Path $repoRoot 'backend-ts'
-$resolvedEnvFile = if ([IO.Path]::IsPathRooted($EnvFile)) { $EnvFile } else { Join-Path $repoRoot $EnvFile }
+$defaultEnvFile = if ($EnvFile) { $EnvFile } elseif ($Mode -eq 'real-chain') { '.env.real-chain.local' } else { '.env.strict.local' }
+$resolvedEnvFile = if ([IO.Path]::IsPathRooted($defaultEnvFile)) { $defaultEnvFile } else { Join-Path $repoRoot $defaultEnvFile }
 $resolvedReportDir = if ([IO.Path]::IsPathRooted($ReportDir)) { $ReportDir } else { Join-Path $repoRoot $ReportDir }
 
 function Show-Usage {
   @'
 Usage:
-  pwsh ./rehearse-local.ps1 [strict|real-chain] [-EnvFile .env.strict.local] [-BaseUrl http://127.0.0.1:18000]
+  pwsh ./rehearse-local.ps1 [strict|real-chain] [-EnvFile <file>] [-BaseUrl http://127.0.0.1:18000]
 
 Behavior:
   1. Builds backend-ts
@@ -29,8 +30,10 @@ Behavior:
   5. Stops the API process and, unless -KeepRedis is set, stops redis
 
 Notes:
+  - strict defaults to .env.strict.local
+  - real-chain defaults to .env.real-chain.local
   - .env.strict.local.example is a good starting point for strict local rehearsal.
-  - real-chain requires a real native auth-capable runtime config; the strict-local example is not enough.
+  - .env.real-chain.local.example is a scaffold for native real-chain rehearsal, but placeholder values will not pass the auth probe.
 '@ | Write-Output
 }
 
@@ -40,7 +43,12 @@ if ($args -contains '--help' -or $args -contains '-h') {
 }
 
 if (-not (Test-Path $resolvedEnvFile)) {
-  throw "Env file not found: $resolvedEnvFile`nHint: copy .env.strict.local.example to .env.strict.local first."
+  $hint = if ($Mode -eq 'real-chain') {
+    'copy .env.real-chain.local.example to .env.real-chain.local first.'
+  } else {
+    'copy .env.strict.local.example to .env.strict.local first.'
+  }
+  throw "Env file not found: $resolvedEnvFile`nHint: $hint"
 }
 
 $envMap = @{}
