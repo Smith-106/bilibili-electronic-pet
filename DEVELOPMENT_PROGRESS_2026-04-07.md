@@ -49,6 +49,7 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
   - `real-chain`
 - `.env.example`, wrappers, and CI workflows are aligned on rehearsal inputs and mode behavior.
 - `cloud-validate` now treats preflight readiness as a blocking gate before enforcing strict runtime checks.
+- Release-path workflows now also fail closed when pre-release real-chain secrets are absent, instead of silently skipping the gate.
 
 ## Current Gaps
 

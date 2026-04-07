@@ -1336,6 +1336,8 @@ npm run staging:check -- --preflight-only --env-file .env.staging --report ../st
 
 这里的 CI preflight 主要用于防止 wrapper / workflow / env 契约漂移。它会注入一组 CI placeholder 输入来确保能力矩阵本身保持完整；这并不等价于真实外部交付已经可用。
 
+另外，默认分支 release 路径和手动 release dispatch 现在也会对 `PRE_RELEASE_SMOKE_BASE_URL` / `PRE_RELEASE_SMOKE_API_KEY` 采用 fail-closed 策略：缺少这些 secrets 时，release workflow 会直接失败，而不是静默跳过 real-chain 校验。
+
 如果你在本地跑 `--strict`，还需要满足两条额外前提：
 - 服务进程应从 `backend-ts/` 目录启动，确保 `/admin` 能正确找到 `public/admin`
 - 本地必须有可达的 Redis 运行时，否则 `/readiness` 会保持 `ready=false`

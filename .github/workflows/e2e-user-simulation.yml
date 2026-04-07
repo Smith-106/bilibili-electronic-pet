@@ -30,7 +30,8 @@ jobs:
             echo "Pre-release real-chain smoke configuration detected."
           else
             echo "pre_release_smoke_ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping pre-release real-chain smoke because PRE_RELEASE_SMOKE_BASE_URL or PRE_RELEASE_SMOKE_API_KEY is not configured."
+            echo "::error::Missing PRE_RELEASE_SMOKE_BASE_URL or PRE_RELEASE_SMOKE_API_KEY for a release path."
+            exit 1
           fi
 
   strict-business-acceptance:
