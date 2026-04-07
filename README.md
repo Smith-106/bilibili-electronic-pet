@@ -50,6 +50,7 @@
 - 审计日志
 - B 站集成管理
 - 查询页
+- 交付诊断视图（`foundation_ready` / `delivery_ready` / canonical capability blockers）
 
 ### 运维与审计
 
@@ -260,7 +261,7 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 补充说明：
 
 - `/health` 只返回最基础的存活状态，响应形如 `{ ok: true }`
-- `/readiness` 会同时检查数据库、Redis 与关键配置，返回 `ready`、`database`、`redis`、`config`、`publish`、`kill_switch`、`foundation_ready`、`delivery_ready`、`foundation_blockers`、`delivery_blockers`、`delivery_signals`、`bilibili_diagnostics` 等字段
+- `/readiness` 会同时检查数据库、Redis 与关键配置，返回 `ready`、`database`、`redis`、`config`、`publish`、`kill_switch`、`foundation_ready`、`delivery_ready`、`foundation_blockers`、`delivery_blockers`、`delivery_signals`、`delivery_capability_blockers`、`delivery_capabilities`、`bilibili_diagnostics` 等字段
 - 可将 `/health` 用作轻量存活探针，把 `/readiness` 用作就绪探针
 
 调用示例：
@@ -287,6 +288,18 @@ curl http://127.0.0.1:18000/readiness
     "polling_requested": false,
     "delivery_path_ready": false,
     "effective_publish_mode": "manual_queue"
+  },
+  "delivery_capability_blockers": [
+    "llm_generation",
+    "search_enrichment"
+  ],
+  "delivery_capabilities": {
+    "capabilities": [
+      { "capability": "llm_generation", "status": "fallback_only" },
+      { "capability": "search_enrichment", "status": "missing_inputs" },
+      { "capability": "webhook_publish", "status": "inactive" },
+      { "capability": "native_bilibili_publish", "status": "inactive" }
+    ]
   }
 }
 ```
@@ -1319,7 +1332,7 @@ npm run staging:check -- --preflight-only --env-file .env.staging --report ../st
 
 这些仍然要通过 `--strict` 或 `--pre-release-real-chain` 的运行时校验来确认。
 
-当前仓库的 `cloud-validate` CI 也应以 `--strict` 形式调用这条校验链，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`，避免只做浅层存活探测。
+当前仓库的 `cloud-validate` CI 会先做 preflight（non-blocking diagnostics），再执行 strict 校验，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`。
 
 如果你在本地跑 `--strict`，还需要满足两条额外前提：
 - 服务进程应从 `backend-ts/` 目录启动，确保 `/admin` 能正确找到 `public/admin`
@@ -1344,8 +1357,13 @@ npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" 
 也可以直接使用仓库根目录包装脚本：
 
 ```bash
-bash smoke.sh --base-url http://127.0.0.1:18000
-pwsh ./smoke.ps1 --base-url http://127.0.0.1:18000
+bash smoke.sh preflight --report ./staging-preflight.json
+bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+
+pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
+pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
 
 推荐顺序是：
@@ -1644,7 +1662,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 1. `backend-ts/` 提供 Fastify API、管理接口、事件接入、发布网关与审计导出能力
 2. `worker-main.ts` 负责消费 `comment-event` 队列，并在启用时承载 B 站轮询调度
 3. `frontend/` 提供原生模块化管理后台，构建后会打包进后端镜像的 `public/admin`
-4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis`、`db` 串成一套可启动的最小部署拓扑
+4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis` 串成一套可启动的最小部署拓扑
 5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/api/admin.js` 与 `backend-ts/src/main.ts` 的现行契约对齐
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/` 以及 compose / Dockerfile 中的现行实现，而非旧的 Python 历史描述。

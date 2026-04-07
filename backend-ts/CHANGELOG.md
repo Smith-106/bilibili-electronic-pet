@@ -4,6 +4,28 @@ All notable changes to the TypeScript backend migration project.
 
 Entries below describe the migration snapshot that was current on each release date. They are historical release notes, not a statement of the repository's current runtime completeness.
 
+## [Unreleased] - 2026-04-07
+
+### Added
+
+- `staging-check` gained explicit preflight diagnostics (`--preflight-only`) with canonical capability reporting for:
+  - `llm_generation`
+  - `search_enrichment`
+  - `webhook_publish`
+  - `native_bilibili_publish`
+- `/readiness` now surfaces `delivery_capability_blockers` and `delivery_capabilities` so runtime probes and staging checks share one capability contract.
+- Backend integration coverage was expanded for configured vs fallback branches across generator/search/publisher/bilibili-runtime flows.
+
+### Changed
+
+- Release rehearsal entrypoints are now aligned across wrappers and CI (`preflight | strict | real-chain`).
+- Admin UI diagnostics flow consumes `/readiness` capability output (via frontend integration) to expose foundation/delivery status and canonical capability blockers.
+- Backend test suite count increased from `161` to `172` after delivery-contract and branch-coverage additions.
+
+### Notes
+
+- This branch is close to pre-release hardening completion, but production-grade external delivery still depends on runtime secrets, active credentials, and target environment health.
+
 ## [1.0.0] - 2026-03-28
 
 ### Added - Complete TypeScript Migration

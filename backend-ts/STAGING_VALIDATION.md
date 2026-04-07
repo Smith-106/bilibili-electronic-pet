@@ -10,8 +10,13 @@ npm run staging:check -- --base-url http://127.0.0.1:18000
 It can also be invoked from the repository root through the wrappers:
 
 ```bash
-bash smoke.sh --base-url http://127.0.0.1:18000
-pwsh ./smoke.ps1 --base-url http://127.0.0.1:18000
+bash smoke.sh preflight --report ./staging-preflight.json
+bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+
+pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
+pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
 
 ## Modes
@@ -66,6 +71,7 @@ Checks:
 - `GET /api/admin/overview`
 - `GET /api/admin/bilibili/status`
 - delivery-capable diagnostics contract for the current effective publish mode
+- canonical capability contract parity (`delivery_capability_blockers` + `delivery_capabilities`)
 
 Use when:
 - You have an `API_KEY`
@@ -133,10 +139,14 @@ npm run staging:check -- \
 ## Notes
 
 - The validator loads `backend-ts/.env` and repository-root `.env` automatically when present.
+- Wrapper mode aliases:
+  - `smoke.sh preflight` / `smoke.ps1 preflight` => `--preflight-only`
+  - `smoke.sh strict` / `smoke.ps1 strict` => `--strict`
+  - `smoke.sh real-chain` / `smoke.ps1 real-chain` => `--strict --pre-release-real-chain`
 - Use `--env-file <path>` to point at a different staging env file.
 - Use `--report <path>` to write a JSON dry-run report for release records.
 - Use `--preflight-only` when you want an env-level readiness report without hitting `/health`, `/readiness`, or admin endpoints.
 - If no API key is provided, the validator exits in degraded mode after the basic health/admin asset checks.
-- The repository `cloud-validate` workflow is expected to use the strict path with an injected `API_KEY` and a migrated temporary SQLite database.
+- The repository `cloud-validate` workflow first records preflight diagnostics (non-blocking), then enforces strict checks with an injected `API_KEY` and a migrated temporary SQLite database.
 - When running locally, start the server from `backend-ts/` (or ensure `process.cwd()` resolves to that directory) so `/admin` can locate `public/admin`, and provide a reachable Redis runtime before expecting `--strict` to pass.
 - `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.

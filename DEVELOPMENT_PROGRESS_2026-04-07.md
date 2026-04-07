@@ -1,70 +1,80 @@
 # Development Progress Report
 
-Date: 2026-04-07
+Date: 2026-04-07  
 Project: bilibili electronic pet
 
 ## Overall Assessment
 
-The project is no longer in an early feature-building phase. It is better described as a post-migration integration and pre-release hardening phase.
+The project is in a post-migration pre-release hardening phase, not an early feature-building phase.
 
-The TypeScript backend migration is operational, the Vite admin frontend is integrated, local test/build validation passes, and the repository now includes explicit staging and release validation gates. The main remaining gap is not missing core application code, but runtime dependency readiness for real external delivery, especially native Bilibili publishing.
+Core backend/frontend workflows are implemented and integrated, release rehearsal tooling is aligned, and diagnostics are now explicit at both runtime (`/readiness`) and operations UI levels. Remaining closure items are mainly external runtime dependencies rather than missing core application code.
 
 ## Verified Status
 
-- Backend tests passed locally: 159 tests
-- Frontend tests passed locally: 9 tests
+- Backend tests passed locally: 172 tests
+- Frontend tests passed locally: 26 tests
 - Backend build passed locally
 - Frontend build passed locally
 
 ## Completed Areas
 
-### Backend
+### Backend and Runtime Contract
 
-- Fastify service with health, readiness, admin, gateway, metrics, audit, query, and Bilibili management routes is implemented in the active codepath.
-- Worker pipeline is implemented with BullMQ task consumption and optional Bilibili polling scheduling.
-- Core reply-processing services exist for decision, safety, generation, publishing, observability, search, knowledge, and persistence.
-- Readiness modeling distinguishes `foundation_ready` from `delivery_ready`, which indicates the project has moved into explicit operational gatekeeping rather than simple service liveness.
+- Fastify routes for health, readiness, admin, gateway, audit, metrics, query, and Bilibili operations are implemented in active codepaths.
+- Worker pipeline runs BullMQ task consumption and optional Bilibili polling scheduling.
+- `/readiness` now exposes both gate state and canonical capability diagnostics:
+  - `foundation_ready` / `delivery_ready`
+  - `foundation_blockers` / `delivery_blockers`
+  - `delivery_capability_blockers`
+  - `delivery_capabilities`
+- Staging validator and readiness contract are aligned on canonical capability names:
+  - `llm_generation`
+  - `search_enrichment`
+  - `webhook_publish`
+  - `native_bilibili_publish`
 
-### Frontend
+### Frontend and Operator UX
 
-- The admin UI registers 10 pages: dashboard, jobs, daily-metrics, knowledge, role-cards, profiles, gateway, audit, bilibili, and query.
-- The Bilibili page is a substantive operations page with status diagnostics, video management, credential management, sync actions, and manual polling triggers.
-- Jobs, dashboard, gateway, query, role cards, and knowledge workflows are wired to the backend API and are not placeholder screens.
-- Frontend production build outputs directly into `backend-ts/public/admin`, which confirms the delivery path between frontend and backend is already connected.
+- Admin UI has 10 routed pages and is integrated with backend APIs.
+- Bilibili operations page now includes consolidated delivery diagnostics by combining `/api/admin/bilibili/status` and `/readiness`, with explicit `foundation` vs `delivery` visibility and capability blocker hints.
+- Utility pages (`profiles`, `query`, `daily-metrics`) were strengthened with practical operator behaviors (dirty-state, refresh feedback, query history/copy, input normalization, summary feedback, and expanded error/empty handling).
+- Frontend regression coverage expanded from prior 19 to 26 tests.
 
-### Delivery and Tooling
+### Delivery Rehearsal and CI Tooling
 
-- Root Docker Compose defines a working `migrate + api + worker + redis` topology for local or containerized integration.
-- The repository includes staging smoke validation with baseline, strict, and pre-release real-chain modes.
-- CI workflows already enforce backend validation, frontend build validation, and gated release behavior based on smoke configuration.
+- Root compose topology remains `migrate + api + worker + redis`.
+- Smoke wrappers now share explicit mode semantics across shell and PowerShell:
+  - `preflight`
+  - `strict`
+  - `real-chain`
+- `.env.example`, wrappers, and CI workflows are aligned on rehearsal inputs and mode behavior.
+- `cloud-validate` now records preflight diagnostics (non-blocking) before enforcing strict runtime checks.
 
 ## Current Gaps
 
-### Environment-Dependent Delivery
+### External Runtime Dependencies (Still Not Repo-Closed)
 
-- Real LLM behavior still depends on runtime API keys. Without those inputs, generation can fall back to mock or template-based behavior.
-- Publishing supports multiple modes, but true native Bilibili delivery still requires valid credentials, publish switches, and dependency readiness.
-- Search enhancement depends on external provider configuration and cannot be treated as fully self-sufficient from repository state alone.
+- Real LLM generation still depends on runtime API keys/provider configuration.
+- Search enhancement still depends on provider credentials/configuration.
+- Native Bilibili publish still depends on active credentials, publish switches, and runtime dependency health.
+- Real-chain release validation still requires environment-provided secrets and a healthy target runtime.
 
-### Verification Gaps
+### Validation Scope Boundaries
 
-- Frontend regression coverage is focused on critical paths and is not evenly distributed across all pages.
-- Utility pages such as `query`, `profiles`, and `daily-metrics` are functional, but thinner than the Bilibili and jobs workflows.
-- Existing tests validate fallback and failure behavior for external integrations, but do not prove a full real-world external delivery chain in the current local repository state.
+- Repository tests now cover configured vs fallback branches more explicitly, but they still use deterministic mock/fake paths rather than proving a live production external chain.
+- CI-level static/workflow alignment has been validated; full GitHub-hosted runner execution is still an environment-level concern.
 
-### Documentation Drift
+## Documentation State
 
-- Some backend documentation still describes older placeholder states and outdated test counts.
-- Example drift observed during analysis:
-  - `backend-ts/README.md` still says 152 backend tests passing
-  - `backend-ts/CHANGELOG.md` still references 101 tests and placeholder wording
+- This report reflects the current branch state after delivery contract alignment, operator UX hardening, and rehearsal workflow unification.
+- Historical changelog entries that mention lower test counts are migration-snapshot records and should not be read as current runtime status.
 
 ## Practical Conclusion
 
-Current progress is best summarized as:
+Current status can be summarized as:
 
-1. Core product and admin workflows are implemented.
-2. Local development and staging verification are in place.
-3. Release readiness is conditional on external secrets, active Bilibili credentials, and runtime environment health.
+1. Core product and operator workflows are implemented and integrated.
+2. Runtime and staging diagnostics are explicit, consistent, and test-covered for repo-controlled behavior.
+3. Remaining release risk is primarily external dependency readiness (secrets/credentials/environment), not missing core feature code.
 
-This means the project is locally functional and operationally structured, but native Bilibili production delivery should still be treated as conditionally complete rather than fully closed out.
+The project is locally robust and close to pre-release closure, while native external delivery remains conditionally complete until runtime prerequisites are satisfied.
