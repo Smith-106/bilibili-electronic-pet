@@ -12,6 +12,8 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     setStyleProfile: vi.fn(),
     getRoleProfile: vi.fn(),
     setRoleProfile: vi.fn(),
+    getComment: vi.fn(),
+    getJob: vi.fn(),
   },
   mockShowToast: vi.fn(),
 }));
@@ -28,16 +30,19 @@ const pages = await Promise.all([
   import('../../src/pages/audit.js'),
   import('../../src/pages/daily-metrics.js'),
   import('../../src/pages/profiles.js'),
+  import('../../src/pages/query.js'),
 ]);
 
 const [
   { render: renderAudit },
   { render: renderDailyMetrics },
   { render: renderProfiles },
+  { render: renderQuery },
 ] = pages;
 
 describe('admin utility-page regression tests', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     mockApi.getAuditSummary.mockResolvedValue({
       total: 10,
       ok_count: 8,
@@ -72,6 +77,8 @@ describe('admin utility-page regression tests', () => {
     mockApi.getRoleProfile.mockResolvedValue({ role: 'comfort' });
     mockApi.setStyleProfile.mockResolvedValue({ ok: true });
     mockApi.setRoleProfile.mockResolvedValue({ ok: true });
+    mockApi.getComment.mockResolvedValue({ id: 'c-1', content: 'hello' });
+    mockApi.getJob.mockResolvedValue({ id: 'j-1', status: 'queued', comment_id: 'c-1' });
     mockShowToast.mockReset();
   });
 
@@ -106,7 +113,7 @@ describe('admin utility-page regression tests', () => {
     expect(mockShowToast).toHaveBeenCalledWith('导出成功', 'success');
   });
 
-  it('renders daily metrics rows from mocked data', async () => {
+  it('renders daily metrics rows and summary from mocked data', async () => {
     const container = createPageContainer();
 
     await renderDailyMetrics(container);
@@ -114,7 +121,21 @@ describe('admin utility-page regression tests', () => {
     expect(mockApi.getDailyMetrics).toHaveBeenCalledWith({ days: '30' });
     expect(container.textContent).toContain('每日指标');
     expect(container.textContent).toContain('2026-04-07');
-    expect(container.textContent).toContain('4');
+    expect(container.textContent).toContain('最近 30 天合计');
+  });
+
+  it('normalizes invalid day range and warns operator', async () => {
+    const container = createPageContainer();
+
+    await renderDailyMetrics(container);
+    mockShowToast.mockReset();
+
+    container.querySelector('#metrics-days').value = '0';
+    container.querySelector('#metrics-load').click();
+    await flushPromises();
+
+    expect(mockApi.getDailyMetrics).toHaveBeenLastCalledWith({ days: '1' });
+    expect(mockShowToast).toHaveBeenCalledWith('天数必须在 1-365 之间，已自动调整为 1', 'warning');
   });
 
   it('shows the empty state when no daily metrics exist', async () => {
@@ -124,30 +145,98 @@ describe('admin utility-page regression tests', () => {
     await renderDailyMetrics(container);
 
     expect(container.textContent).toContain('暂无指标数据');
+    expect(container.textContent).toContain('最近 30 天暂无可展示指标');
   });
 
-  it('loads current profile values and applies updates', async () => {
+  it('shows an error state when daily metrics loading fails', async () => {
+    const container = createPageContainer();
+    mockApi.getDailyMetrics.mockRejectedValueOnce(new Error('metrics_down'));
+
+    await renderDailyMetrics(container);
+
+    expect(container.textContent).toContain('加载失败: metrics_down');
+    expect(mockShowToast).toHaveBeenCalledWith('加载每日指标失败: metrics_down', 'error');
+  });
+
+  it('loads current profile values, tracks dirty state, and applies updates', async () => {
     const container = createPageContainer();
 
     await renderProfiles(container);
 
-    expect(mockApi.getStyleProfile).toHaveBeenCalledTimes(1);
-    expect(mockApi.getRoleProfile).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('#profile-style').value).toBe('meme');
-    expect(container.querySelector('#profile-role').value).toBe('comfort');
+    const styleSelect = container.querySelector('#profile-style');
+    const styleApply = container.querySelector('#profile-style-apply');
+    const roleSelect = container.querySelector('#profile-role');
+    const roleApply = container.querySelector('#profile-role-apply');
 
-    container.querySelector('#profile-style').value = 'normal';
-    container.querySelector('#profile-style-apply').click();
+    expect(styleApply.disabled).toBe(true);
+    expect(roleApply.disabled).toBe(true);
+    expect(container.querySelector('#profile-pending-state').textContent).toContain('已同步');
+
+    styleSelect.value = 'normal';
+    styleSelect.dispatchEvent(new Event('change'));
+    expect(styleApply.disabled).toBe(false);
+    styleApply.click();
     await flushPromises();
 
-    container.querySelector('#profile-role').value = 'playful';
-    container.querySelector('#profile-role-apply').click();
+    roleSelect.value = 'playful';
+    roleSelect.dispatchEvent(new Event('change'));
+    expect(roleApply.disabled).toBe(false);
+    roleApply.click();
     await flushPromises();
 
     expect(mockApi.setStyleProfile).toHaveBeenCalledWith('normal');
     expect(mockApi.setRoleProfile).toHaveBeenCalledWith('playful');
     expect(mockShowToast).toHaveBeenCalledWith('风格已更新', 'success');
     expect(mockShowToast).toHaveBeenCalledWith('角色配置已更新', 'success');
+    expect(container.querySelector('#profile-pending-state').textContent).toContain('已同步');
+  });
+
+  it('refreshes profile config and reports refresh feedback', async () => {
+    const container = createPageContainer();
+
+    await renderProfiles(container);
+    mockShowToast.mockReset();
+
+    container.querySelector('#profile-refresh').click();
+    await flushPromises();
+
+    expect(mockApi.getStyleProfile).toHaveBeenCalledTimes(2);
+    expect(mockApi.getRoleProfile).toHaveBeenCalledTimes(2);
+    expect(mockShowToast).toHaveBeenCalledWith('已从服务端刷新配置', 'success');
+  });
+
+  it('renders query page and links job detail to comment detail lookup', async () => {
+    const container = createPageContainer();
+
+    await renderQuery(container);
+
+    container.querySelector('#query-job-id').value = 'job-1';
+    container.querySelector('#query-job-btn').click();
+    await flushPromises();
+    expect(mockApi.getJob).toHaveBeenCalledWith('job-1');
+    expect(container.textContent).toContain('查询成功');
+
+    container.querySelector('#query-goto-comment').click();
+    await flushPromises();
+    expect(mockApi.getComment).toHaveBeenCalledWith('c-1');
+  });
+
+  it('warns when query id is empty and clears result panel', async () => {
+    const container = createPageContainer();
+
+    await renderQuery(container);
+
+    container.querySelector('#query-comment-btn').click();
+    expect(mockShowToast).toHaveBeenCalledWith('请输入 Comment ID', 'warning');
+
+    container.querySelector('#query-job-id').value = 'job-1';
+    container.querySelector('#query-job-btn').click();
+    await flushPromises();
+    expect(container.querySelector('#query-job-copy').disabled).toBe(false);
+
+    container.querySelector('#query-job-clear').click();
+    expect(container.querySelector('#query-job-result').innerHTML).toBe('');
+    expect(container.querySelector('#query-job-copy').disabled).toBe(true);
   });
 
   it('shows an error state when audit log loading fails', async () => {

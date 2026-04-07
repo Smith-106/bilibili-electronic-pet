@@ -129,6 +129,19 @@ describe('admin app shell regression tests', () => {
     expect(document.querySelector('.nav-item[data-page="jobs"]').classList.contains('active')).toBe(true);
   });
 
+  it('clears session and returns to login overlay on logout', async () => {
+    sessionStorage.setItem('admin_api_key', 'stored-key');
+
+    await loadMain();
+    await flushPromises();
+
+    document.getElementById('logout-btn').click();
+
+    expect(sessionStorage.getItem('admin_api_key')).toBeNull();
+    expect(document.getElementById('login-overlay').style.display).toBe('flex');
+    expect(document.getElementById('page-container').innerHTML).toBe('');
+  });
+
   it('cycles themes and toggles the sidebar layout', async () => {
     await loadMain();
 
