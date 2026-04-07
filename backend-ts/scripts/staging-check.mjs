@@ -241,6 +241,13 @@ function summarizeDiagnostics(diagnostics) {
   return `mode=${mode}, ready=${ready}, blocking=${blocking.join(',') || 'none'}`;
 }
 
+const DELIVERY_CAPABILITY_NAMES = [
+  'llm_generation',
+  'search_enrichment',
+  'webhook_publish',
+  'native_bilibili_publish',
+];
+
 function createPreflightCapability({
   capability,
   active,
@@ -322,7 +329,10 @@ function buildDeliveryPreflight(env) {
     webhookNotes.push('PUBLISHER_WEBHOOK_TOKEN is optional unless the downstream webhook requires authentication.');
   }
 
-  const nativePublishEnabled = parseBoolean(env.BILIBILI_ENABLED, false) && parseBoolean(env.BILIBILI_PUBLISH_ENABLED, false);
+  const nativePublishEnabled =
+    parseBoolean(env.BILIBILI_ENABLED, false) && parseBoolean(env.BILIBILI_PUBLISH_ENABLED, false);
+  const realPublishMode = publisherMode === 'real_publish';
+  const nativeCapabilityActive = nativePublishEnabled || realPublishMode;
   const nativeMissing = [];
   const nativeNotes = [];
   const envCredentialPresent =
@@ -331,21 +341,18 @@ function buildDeliveryPreflight(env) {
     hasText(env.BILIBILI_BUVID3);
   const encryptionKeyPresent =
     hasText(env.CREDENTIAL_ENCRYPTION_KEY) || hasText(env.BILIBILI_COOKIE_ENCRYPTION_KEY);
-  let nativeStatus = nativePublishEnabled ? 'configured' : 'inactive';
+  let nativeStatus = nativeCapabilityActive ? 'configured' : 'inactive';
 
-  if (!parseBoolean(env.BILIBILI_ENABLED, false)) {
-    nativeMissing.push('BILIBILI_ENABLED=true');
-  }
-  if (!parseBoolean(env.BILIBILI_PUBLISH_ENABLED, false)) {
-    nativeMissing.push('BILIBILI_PUBLISH_ENABLED=true');
-  }
-  if (nativePublishEnabled && !envCredentialPresent) {
+  if (nativeCapabilityActive && !envCredentialPresent) {
     nativeStatus = 'runtime_credentials_required';
     nativeMissing.push('BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3 or active DB credential');
     nativeNotes.push('An active database credential can satisfy runtime auth even when env cookies are absent.');
   }
-  if (nativePublishEnabled && !encryptionKeyPresent) {
+  if (nativeCapabilityActive && !encryptionKeyPresent) {
     nativeNotes.push('Set CREDENTIAL_ENCRYPTION_KEY when runtime credentials will be stored in the database.');
+  }
+  if (realPublishMode) {
+    nativeNotes.push('real_publish mode uses native Bilibili runtime credentials and delivery checks.');
   }
 
   const capabilities = [
@@ -381,12 +388,11 @@ function buildDeliveryPreflight(env) {
     }),
     createPreflightCapability({
       capability: 'native_bilibili_publish',
-      active: nativePublishEnabled,
+      active: nativeCapabilityActive,
       status: nativeStatus,
-      mode: nativePublishEnabled ? 'native_bilibili' : publisherMode,
+      mode: publisherMode,
       requiredInputs: [
-        'BILIBILI_ENABLED=true',
-        'BILIBILI_PUBLISH_ENABLED=true',
+        'PUBLISHER_MODE=real_publish or BILIBILI_ENABLED=true+BILIBILI_PUBLISH_ENABLED=true',
         'BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3 or active DB credential',
       ],
       optionalInputs: ['CREDENTIAL_ENCRYPTION_KEY', 'BILIBILI_BUVID4', 'BILIBILI_DEDEUSERID'],
@@ -419,6 +425,52 @@ function logDeliveryPreflight(preflight) {
       `[INFO] preflight ${entry.capability}: status=${entry.status}, mode=${entry.mode || 'unknown'}, missing=${missing}`,
     );
   }
+}
+
+function parseDeliveryCapabilityMatrix(rawMatrix, rawBlockers) {
+  if (!rawMatrix || typeof rawMatrix !== 'object') {
+    return { ok: false, error: 'readiness.delivery_capabilities is missing' };
+  }
+
+  const capabilities = Array.isArray(rawMatrix.capabilities) ? rawMatrix.capabilities : null;
+  if (!capabilities) {
+    return { ok: false, error: 'readiness.delivery_capabilities.capabilities must be an array' };
+  }
+
+  const blockers = Array.isArray(rawBlockers)
+    ? rawBlockers.map((entry) => String(entry).trim()).filter(Boolean)
+    : Array.isArray(rawMatrix.blockers)
+      ? rawMatrix.blockers.map((entry) => String(entry).trim()).filter(Boolean)
+      : null;
+  if (!blockers) {
+    return { ok: false, error: 'readiness.delivery_capability_blockers or readiness.delivery_capabilities.blockers must be an array' };
+  }
+
+  const statusByCapability = new Map();
+  for (const entry of capabilities) {
+    if (!entry || typeof entry !== 'object') continue;
+    const capability = String(entry.capability ?? '').trim();
+    const status = String(entry.status ?? '').trim();
+    if (!capability || !status) continue;
+    statusByCapability.set(capability, status);
+  }
+
+  for (const capability of DELIVERY_CAPABILITY_NAMES) {
+    if (!statusByCapability.has(capability)) {
+      return { ok: false, error: `readiness capability ${capability} is missing` };
+    }
+  }
+
+  const unknownBlockers = blockers.filter((name) => !DELIVERY_CAPABILITY_NAMES.includes(name));
+  if (unknownBlockers.length > 0) {
+    return { ok: false, error: `readiness capability blockers contain unknown names: ${unknownBlockers.join(',')}` };
+  }
+
+  return {
+    ok: true,
+    blockers,
+    statusByCapability,
+  };
 }
 
 async function main() {
@@ -550,8 +602,26 @@ async function main() {
       foundation_ready: readinessPayload.foundation_ready,
       delivery_ready: readinessPayload.delivery_ready,
       delivery_blockers: readinessPayload.delivery_blockers ?? [],
+      delivery_capability_blockers:
+        readinessPayload.delivery_capability_blockers ?? readinessPayload.delivery_capabilities?.blockers ?? [],
     });
     logPass('readiness');
+
+    const capabilityMatrix = parseDeliveryCapabilityMatrix(
+      readinessPayload?.delivery_capabilities,
+      readinessPayload?.delivery_capability_blockers,
+    );
+    if (!capabilityMatrix.ok) {
+      fail('delivery_capability_contract', capabilityMatrix.error);
+    }
+    record('delivery_capability_contract', 'passed', {
+      blockers: capabilityMatrix.blockers,
+      statuses: DELIVERY_CAPABILITY_NAMES.map((name) => ({
+        capability: name,
+        status: capabilityMatrix.statusByCapability.get(name),
+      })),
+    });
+    logPass('delivery capability contract');
 
     const overviewUrl = buildUrl(baseUrl, '/api/admin/overview');
     const { response: overviewResponse, parsed: overviewPayload } = await fetchJson(overviewUrl, { headers });
@@ -579,12 +649,36 @@ async function main() {
       const workerOrPublishReady = Boolean(
         releaseGates.worker_or_publish_ready ?? checks.worker_or_publish?.ready ?? false,
       );
+      const nativeCapabilityStatus = capabilityMatrix.statusByCapability.get('native_bilibili_publish') ?? 'unknown';
+      const webhookCapabilityStatus = capabilityMatrix.statusByCapability.get('webhook_publish') ?? 'unknown';
 
       if (effectivePublishMode === 'native_bilibili') {
+        if (nativeCapabilityStatus !== 'configured') {
+          fail(
+            'strict_delivery',
+            `native_bilibili_publish capability is ${nativeCapabilityStatus}; expected configured`,
+          );
+        }
         if (diagnostics?.ready !== true) {
           fail('strict_delivery', `native bilibili diagnostics are not ready (${summarizeDiagnostics(diagnostics)})`);
         }
-      } else if (effectivePublishMode === 'webhook' || effectivePublishMode === 'real_publish') {
+      } else if (effectivePublishMode === 'webhook') {
+        if (webhookCapabilityStatus !== 'configured') {
+          fail('strict_delivery', `webhook_publish capability is ${webhookCapabilityStatus}; expected configured`);
+        }
+        if (!workerOrPublishReady) {
+          fail(
+            'strict_delivery',
+            `${effectivePublishMode} mode is not delivery-ready (${summarizeDiagnostics(diagnostics)})`,
+          );
+        }
+      } else if (effectivePublishMode === 'real_publish') {
+        if (nativeCapabilityStatus !== 'configured') {
+          fail(
+            'strict_delivery',
+            `native_bilibili_publish capability is ${nativeCapabilityStatus}; expected configured for real_publish`,
+          );
+        }
         if (!workerOrPublishReady) {
           fail(
             'strict_delivery',
@@ -601,6 +695,8 @@ async function main() {
       record('strict_delivery', 'passed', {
         effective_publish_mode: effectivePublishMode,
         worker_or_publish_ready: workerOrPublishReady,
+        native_bilibili_publish_status: nativeCapabilityStatus,
+        webhook_publish_status: webhookCapabilityStatus,
       });
       logPass(`strict delivery contract (${effectivePublishMode})`);
 
@@ -625,6 +721,12 @@ async function main() {
         }
         if (readinessPayload?.delivery_ready !== true) {
           fieldFailures.push(`delivery_ready=${String(readinessPayload?.delivery_ready)}`);
+        }
+        if (nativeCapabilityStatus !== 'configured') {
+          fieldFailures.push(`native_bilibili_publish.status=${nativeCapabilityStatus}`);
+        }
+        if (capabilityMatrix.blockers.includes('native_bilibili_publish')) {
+          fieldFailures.push('delivery_capability_blockers includes native_bilibili_publish');
         }
         if (Array.isArray(releaseGates.blocking_reasons) && releaseGates.blocking_reasons.length > 0) {
           fieldFailures.push(`blocking_reasons=${releaseGates.blocking_reasons.join(',')}`);

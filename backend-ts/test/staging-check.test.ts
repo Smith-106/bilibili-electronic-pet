@@ -77,6 +77,12 @@ BILIBILI_PUBLISH_ENABLED=true
       'webhook_publish',
       'native_bilibili_publish',
     ]);
+    expect(report.delivery_preflight.capabilities.map((entry) => entry.capability)).toEqual([
+      'llm_generation',
+      'search_enrichment',
+      'webhook_publish',
+      'native_bilibili_publish',
+    ]);
   });
 
   it('reports a ready preflight when delivery prerequisites are configured', () => {
@@ -106,5 +112,29 @@ CREDENTIAL_ENCRYPTION_KEY=test-secret
     expect(
       report.delivery_preflight.capabilities.every((entry) => entry.status === 'configured'),
     ).toBe(true);
+  });
+
+  it('treats real_publish mode as native delivery capability and reports missing credentials', () => {
+    const { result, report } = runPreflight(`
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-test
+SEARCH_PROVIDER=serpapi
+SEARCH_API_KEY=search-key
+PUBLISHER_MODE=real_publish
+`);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('preflight native_bilibili_publish: status=runtime_credentials_required');
+    expect(report.status).toBe('preflight_incomplete');
+    expect(report.delivery_preflight.blockers).toContain('native_bilibili_publish');
+
+    const nativeEntry = report.delivery_preflight.capabilities.find(
+      (entry) => entry.capability === 'native_bilibili_publish',
+    );
+    expect(nativeEntry).toMatchObject({
+      active: true,
+      mode: 'real_publish',
+      status: 'runtime_credentials_required',
+    });
   });
 });

@@ -9,12 +9,18 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     celeryResultBackend: 'redis://localhost:6379/1',
     apiKey: '',
     llmProvider: 'mock',
+    llmApiKeyConfigured: false,
     llmFallbackToMock: true,
+    searchProvider: 'serpapi',
+    searchApiKeyConfigured: false,
+    searchCxConfigured: false,
     publisherMode: 'webhook',
+    publisherWebhookUrlConfigured: false,
     bilibiliEnabled: false,
     bilibiliPollEnabled: false,
     bilibiliPollIntervalSeconds: 300,
     bilibiliPublishEnabled: false,
+    bilibiliEnvCredentialConfigured: false,
     killSwitch: false,
     gatewayToken: '',
     gatewayHmacSecret: '',
@@ -103,6 +109,8 @@ describe('health/readiness parity', () => {
     expect(data).toHaveProperty('foundation_blockers');
     expect(data).toHaveProperty('delivery_blockers');
     expect(data).toHaveProperty('blocking_reasons');
+    expect(data).toHaveProperty('delivery_capability_blockers');
+    expect(data).toHaveProperty('delivery_capabilities');
     expect(data).toHaveProperty('delivery_signals');
     expect(data).toHaveProperty('bilibili_diagnostics');
 
@@ -111,10 +119,107 @@ describe('health/readiness parity', () => {
     expect(Array.isArray(data.foundation_blockers)).toBe(true);
     expect(Array.isArray(data.delivery_blockers)).toBe(true);
     expect(Array.isArray(data.blocking_reasons)).toBe(true);
+    expect(Array.isArray(data.delivery_capability_blockers)).toBe(true);
+    expect(Array.isArray(data.delivery_capabilities.capabilities)).toBe(true);
     expect(typeof data.delivery_signals).toBe('object');
     expect(typeof data.bilibili_diagnostics).toBe('object');
     expect(data.database).toHaveProperty('connected');
     expect(data.redis).toHaveProperty('connected');
+
+    await app.close();
+  });
+
+  it('returns canonical delivery capability names and statuses', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          llmProvider: 'openai',
+          llmApiKeyConfigured: true,
+          searchProvider: 'google',
+          searchApiKeyConfigured: false,
+          searchCxConfigured: false,
+          publisherMode: 'webhook',
+          publisherWebhookUrlConfigured: false,
+        }),
+        buildBilibiliDiagnostics: async () => ({
+          ready: false,
+          blocking_reasons: ['publish:webhook_not_configured'],
+          effective_publish_mode: 'webhook',
+          checks: {
+            worker_or_publish: { ready: false, errors: ['webhook_not_configured'] },
+          },
+          release_gates: {
+            worker_or_publish_ready: false,
+          },
+          signals: {},
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/readiness' });
+    const data = response.json();
+    const names = (data.delivery_capabilities.capabilities as Array<{ capability: string }>).map(
+      (entry) => entry.capability,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(names).toEqual([
+      'llm_generation',
+      'search_enrichment',
+      'webhook_publish',
+      'native_bilibili_publish',
+    ]);
+    expect(data.delivery_capabilities.summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ capability: 'llm_generation', status: 'configured' }),
+        expect.objectContaining({ capability: 'search_enrichment', status: 'missing_inputs' }),
+        expect.objectContaining({ capability: 'webhook_publish', status: 'missing_inputs' }),
+        expect.objectContaining({ capability: 'native_bilibili_publish', status: 'inactive' }),
+      ]),
+    );
+    expect(data.delivery_capability_blockers).toEqual(
+      expect.arrayContaining(['search_enrichment', 'webhook_publish']),
+    );
+
+    await app.close();
+  });
+
+  it('marks native capability as runtime_credentials_required when native publish is blocked by auth', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          publisherMode: 'manual_queue',
+          bilibiliEnabled: true,
+          bilibiliPublishEnabled: true,
+        }),
+        buildBilibiliDiagnostics: async () => ({
+          ready: false,
+          blocking_reasons: ['auth:no active credential'],
+          effective_publish_mode: 'native_bilibili',
+          checks: {
+            worker_or_publish: {
+              ready: false,
+              errors: ['no active credential'],
+            },
+          },
+          release_gates: {
+            worker_or_publish_ready: false,
+          },
+          signals: {},
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/readiness' });
+    const data = response.json();
+    const nativeEntry = (data.delivery_capabilities.capabilities as Array<{ capability: string; status: string }>).find(
+      (entry) => entry.capability === 'native_bilibili_publish',
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(nativeEntry).toEqual(expect.objectContaining({ status: 'runtime_credentials_required' }));
+    expect(data.delivery_capability_blockers).toContain('native_bilibili_publish');
+    expect(data.delivery_blockers).toContain('bilibili:auth:no active credential');
 
     await app.close();
   });

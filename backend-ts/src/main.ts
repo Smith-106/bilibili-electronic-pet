@@ -22,12 +22,18 @@ export type RuntimeSettings = {
   celeryResultBackend: string;
   apiKey: string;
   llmProvider: string;
+  llmApiKeyConfigured: boolean;
   llmFallbackToMock: boolean;
+  searchProvider: string;
+  searchApiKeyConfigured: boolean;
+  searchCxConfigured: boolean;
   publisherMode: string;
+  publisherWebhookUrlConfigured: boolean;
   bilibiliEnabled: boolean;
   bilibiliPollEnabled: boolean;
   bilibiliPollIntervalSeconds: number;
   bilibiliPublishEnabled: boolean;
+  bilibiliEnvCredentialConfigured: boolean;
   killSwitch: boolean;
   gatewayToken: string;
   gatewayHmacSecret: string;
@@ -46,6 +52,40 @@ export type BilibiliDiagnostics = {
   signals: Record<string, unknown>;
   checks?: Record<string, unknown>;
   release_gates?: Record<string, unknown>;
+};
+
+type DeliveryCapabilityName =
+  | 'llm_generation'
+  | 'search_enrichment'
+  | 'webhook_publish'
+  | 'native_bilibili_publish';
+
+type DeliveryCapabilityStatus =
+  | 'configured'
+  | 'inactive'
+  | 'fallback_only'
+  | 'unsupported'
+  | 'missing_inputs'
+  | 'runtime_credentials_required';
+
+type DeliveryCapability = {
+  capability: DeliveryCapabilityName;
+  active: boolean;
+  status: DeliveryCapabilityStatus;
+  ready: boolean;
+  mode: string;
+  missing_inputs: string[];
+};
+
+type DeliveryCapabilityMatrix = {
+  blockers: DeliveryCapabilityName[];
+  capabilities: DeliveryCapability[];
+  summary: Array<{
+    capability: DeliveryCapabilityName;
+    status: DeliveryCapabilityStatus;
+    mode: string;
+    missing_inputs: string[];
+  }>;
 };
 
 export type GatewayPublishPayload = {
@@ -841,18 +881,32 @@ function defaultVerifyPayloadSignature(payload: Record<string, unknown>, secret:
 }
 
 function buildDefaultSettings(): RuntimeSettings {
+  const llmProvider = String(process.env.LLM_PROVIDER ?? 'mock').trim() || 'mock';
+  const searchProvider = String(process.env.SEARCH_PROVIDER ?? 'serpapi').trim() || 'serpapi';
+
+  const bilibiliEnvCredentialConfigured =
+    hasText(process.env.BILIBILI_SESSDATA) &&
+    hasText(process.env.BILIBILI_BILI_JCT) &&
+    hasText(process.env.BILIBILI_BUVID3);
+
   return {
     databaseUrl: process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL,
     celeryBrokerUrl: process.env.CELERY_BROKER_URL ?? 'redis://localhost:6379/0',
     celeryResultBackend: process.env.CELERY_RESULT_BACKEND ?? 'redis://localhost:6379/1',
     apiKey: process.env.API_KEY ?? '',
-    llmProvider: process.env.LLM_PROVIDER ?? 'mock',
+    llmProvider,
+    llmApiKeyConfigured: hasText(process.env.LLM_API_KEY),
     llmFallbackToMock: parseBoolean(process.env.LLM_FALLBACK_TO_MOCK, true),
+    searchProvider,
+    searchApiKeyConfigured: hasText(process.env.SEARCH_API_KEY),
+    searchCxConfigured: hasText(process.env.SEARCH_CX),
     publisherMode: normalizePublishMode(process.env.PUBLISHER_MODE ?? 'manual_queue'),
+    publisherWebhookUrlConfigured: hasText(process.env.PUBLISHER_WEBHOOK_URL),
     bilibiliEnabled: parseBoolean(process.env.BILIBILI_ENABLED, false),
     bilibiliPollEnabled: parseBoolean(process.env.BILIBILI_POLL_ENABLED, false),
     bilibiliPollIntervalSeconds: parseInteger(process.env.BILIBILI_POLL_INTERVAL_SECONDS, 300),
     bilibiliPublishEnabled: parseBoolean(process.env.BILIBILI_PUBLISH_ENABLED, false),
+    bilibiliEnvCredentialConfigured,
     killSwitch: parseBoolean(process.env.KILL_SWITCH, false),
     gatewayToken: process.env.GATEWAY_TOKEN ?? '',
     gatewayHmacSecret: process.env.GATEWAY_HMAC_SECRET ?? '',
@@ -877,14 +931,127 @@ function buildDefaultReadinessSummary(settings: RuntimeSettings): {
       celery_result_backend_set: hasText(settings.celeryResultBackend),
       api_key_set: hasText(settings.apiKey),
       llm_provider: settings.llmProvider,
+      llm_api_key_configured: settings.llmApiKeyConfigured,
       llm_fallback_to_mock: settings.llmFallbackToMock,
+      search_provider: settings.searchProvider,
+      search_api_key_configured: settings.searchApiKeyConfigured,
+      search_cx_configured: settings.searchCxConfigured,
     },
     publish: {
       mode: settings.publisherMode,
+      webhook_url_configured: settings.publisherWebhookUrlConfigured,
       bilibili_enabled: settings.bilibiliEnabled,
       bilibili_publish_enabled: settings.bilibiliPublishEnabled,
+      bilibili_env_credential_configured: settings.bilibiliEnvCredentialConfigured,
     },
     kill_switch: settings.killSwitch,
+  };
+}
+
+function createDeliveryCapability(
+  capability: DeliveryCapabilityName,
+  active: boolean,
+  status: DeliveryCapabilityStatus,
+  mode: string,
+  missingInputs: string[] = [],
+): DeliveryCapability {
+  return {
+    capability,
+    active,
+    status,
+    ready: status === 'configured',
+    mode: mode || 'unknown',
+    missing_inputs: missingInputs,
+  };
+}
+
+function buildDeliveryCapabilityMatrix(
+  settings: RuntimeSettings,
+  bilibiliDiagnostics: BilibiliDiagnostics,
+  effectivePublishMode: string,
+): DeliveryCapabilityMatrix {
+  const llmProvider = String(settings.llmProvider ?? 'mock').trim().toLowerCase() || 'mock';
+  let llmStatus: DeliveryCapabilityStatus = 'configured';
+  const llmMissing: string[] = [];
+  if (llmProvider === 'mock') {
+    llmStatus = 'fallback_only';
+    llmMissing.push('LLM_PROVIDER(non-mock)');
+  } else if (!['openai', 'claude', 'ollama'].includes(llmProvider)) {
+    llmStatus = 'unsupported';
+    llmMissing.push('LLM_PROVIDER=<openai|claude|ollama>');
+  } else if ((llmProvider === 'openai' || llmProvider === 'claude') && !settings.llmApiKeyConfigured) {
+    llmStatus = 'missing_inputs';
+    llmMissing.push('LLM_API_KEY');
+  }
+
+  const searchProvider = String(settings.searchProvider ?? 'serpapi').trim().toLowerCase() || 'serpapi';
+  let searchStatus: DeliveryCapabilityStatus = 'configured';
+  const searchMissing: string[] = [];
+  if (!['serpapi', 'bing', 'google'].includes(searchProvider)) {
+    searchStatus = 'unsupported';
+    searchMissing.push('SEARCH_PROVIDER=<serpapi|bing|google>');
+  } else {
+    if (!settings.searchApiKeyConfigured) {
+      searchStatus = 'missing_inputs';
+      searchMissing.push('SEARCH_API_KEY');
+    }
+    if (searchProvider === 'google' && !settings.searchCxConfigured) {
+      searchStatus = 'missing_inputs';
+      searchMissing.push('SEARCH_CX');
+    }
+  }
+
+  const normalizedMode = normalizePublishMode(effectivePublishMode || settings.publisherMode);
+  const webhookActive = normalizedMode === 'webhook';
+  const webhookStatus: DeliveryCapabilityStatus = webhookActive
+    ? settings.publisherWebhookUrlConfigured
+      ? 'configured'
+      : 'missing_inputs'
+    : 'inactive';
+  const webhookMissing = webhookStatus === 'missing_inputs' ? ['PUBLISHER_WEBHOOK_URL'] : [];
+
+  const nativePublishActive = normalizedMode === 'native_bilibili' || normalizedMode === 'real_publish';
+  let nativeStatus: DeliveryCapabilityStatus = nativePublishActive ? 'configured' : 'inactive';
+  const nativeMissing: string[] = [];
+  const blockingReasons = Array.isArray(bilibiliDiagnostics.blocking_reasons)
+    ? bilibiliDiagnostics.blocking_reasons.map((entry) => String(entry))
+    : [];
+
+  if (nativePublishActive && bilibiliDiagnostics.ready !== true) {
+    if (blockingReasons.some((entry) => entry.startsWith('auth:'))) {
+      nativeStatus = 'runtime_credentials_required';
+      nativeMissing.push('BILIBILI_SESSDATA/BILIBILI_BILI_JCT/BILIBILI_BUVID3 or active DB credential');
+    } else {
+      nativeStatus = 'missing_inputs';
+    }
+    if (!settings.bilibiliEnabled && normalizedMode === 'native_bilibili') {
+      nativeMissing.push('BILIBILI_ENABLED=true');
+    }
+    if (!settings.bilibiliPublishEnabled && normalizedMode === 'native_bilibili') {
+      nativeMissing.push('BILIBILI_PUBLISH_ENABLED=true');
+    }
+  }
+
+  const capabilities: DeliveryCapability[] = [
+    createDeliveryCapability('llm_generation', true, llmStatus, llmProvider, llmMissing),
+    createDeliveryCapability('search_enrichment', true, searchStatus, searchProvider, searchMissing),
+    createDeliveryCapability('webhook_publish', webhookActive, webhookStatus, normalizedMode, webhookMissing),
+    createDeliveryCapability('native_bilibili_publish', nativePublishActive, nativeStatus, normalizedMode, nativeMissing),
+  ];
+
+  const blockers = capabilities
+    .filter((entry) => entry.status !== 'configured' && entry.status !== 'inactive')
+    .map((entry) => entry.capability);
+
+  return {
+    blockers,
+    capabilities,
+    summary: capabilities.map((entry) => ({
+      capability: entry.capability,
+      status: entry.status,
+      mode: entry.mode,
+      missing_inputs: entry.missing_inputs,
+    })),
   };
 }
 
@@ -2445,6 +2612,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
         ? workerOrPublishReady
         : false;
 
+    const deliveryCapabilities = buildDeliveryCapabilityMatrix(settings, bilibiliDiagnostics, effectivePublishMode);
+
     const pollingRequested = settings.bilibiliEnabled && settings.bilibiliPollEnabled;
 
     const deliverySignals = {
@@ -2501,6 +2670,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       foundation_blockers: foundationBlockers,
       delivery_blockers: deliveryBlockers,
       blocking_reasons: deliveryBlockers,
+      delivery_capability_blockers: deliveryCapabilities.blockers,
+      delivery_capabilities: deliveryCapabilities,
       delivery_signals: deliverySignals,
       bilibili_diagnostics: bilibiliDiagnostics,
     };
