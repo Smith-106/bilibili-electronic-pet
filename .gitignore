@@ -2,6 +2,7 @@
 .claude/
 .workflow/
 **/.workflow/
+.artifacts/
 **/__pycache__/
 *.py[cod]
 local.db

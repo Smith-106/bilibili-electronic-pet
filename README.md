@@ -1378,6 +1378,33 @@ pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KE
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
 
+如果你的目标只是快速复现一个**本地 strict-capable** 运行态，而不是手工启动 Redis、API、再自己拼 `staging-check` 参数，可以使用仓库根目录的一键 helper：
+
+```powershell
+Copy-Item .env.strict.local.example .env.strict.local
+pwsh ./rehearse-local.ps1 strict
+```
+
+或在 shell 环境中：
+
+```bash
+cp .env.strict.local.example .env.strict.local
+bash ./rehearse-local.sh strict
+```
+
+这个 helper 会自动：
+
+1. 构建 `backend-ts`
+2. 启动 `docker compose` 的 `redis`
+3. 用 `node --env-file=<env file>` 启动本地 API
+4. 运行 strict 校验
+5. 停掉 API，默认也会停掉 Redis
+
+注意：
+
+- `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
+- `real-chain` 仍然需要真实 native auth 可用的目标运行时；strict-local 示例本身不足以让 `real-chain` 通过。
+
 如果用 wrapper 模式（`preflight` / `strict` / `real-chain`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
 
 - `./.artifacts/staging/<mode>-<UTC timestamp>.json`

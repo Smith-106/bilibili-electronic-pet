@@ -171,5 +171,9 @@ npm run staging:check -- \
 - If no API key is provided, the validator exits in degraded mode after the basic health/admin asset checks.
 - The repository `cloud-validate` workflow now treats `preflight_ready` as a blocking gate before strict checks. It injects CI placeholder inputs so the wrapper/workflow/env contract must remain complete even in CI.
 - When running locally, start the server from `backend-ts/` (or ensure `process.cwd()` resolves to that directory) so `/admin` can locate `public/admin`, and provide a reachable Redis runtime before expecting `--strict` to pass.
+- For a repo-managed local strict rehearsal path, copy `.env.strict.local.example` to `.env.strict.local` and run:
+  - `pwsh ./rehearse-local.ps1 strict`
+  - or `bash ./rehearse-local.sh strict`
+- Those helpers build the backend, start local Redis, launch the API with `node --env-file=<env file>`, run strict validation, and then clean up the API process automatically.
 - `--preflight-only` cannot prove runtime facts such as Redis reachability, migrated schema state, or whether an active DB credential currently exists. It is a prerequisite inspection step, not a substitute for strict or pre-release real-chain validation.
 - `--pre-release-real-chain` is now harder to satisfy with placeholder native credentials alone; the target runtime must surface a successful native auth probe before `real_auth_ready=true`.
