@@ -50,6 +50,22 @@ import {
 } from './bilibili/credential.js';
 const api = createAdminApi();
 
+const capabilityLabelMap = {
+  llm_generation: 'LLM 生成',
+  search_enrichment: '搜索增强',
+  webhook_publish: 'Webhook 发布',
+  native_bilibili_publish: '原生 B 站发布',
+};
+
+const capabilityStatusLabelMap = {
+  configured: '已就绪',
+  inactive: '未启用',
+  fallback_only: '仅回退',
+  missing_inputs: '缺少配置',
+  runtime_credentials_required: '凭证缺失',
+  unsupported: '不支持',
+};
+
 function bindEnterKeyToClick(container, selectors, buttonSelector) {
   const button = container.querySelector(buttonSelector);
   selectors.forEach((selector) => {
@@ -62,6 +78,56 @@ function bindEnterKeyToClick(container, selectors, buttonSelector) {
       }
     });
   });
+}
+
+function normalizeStringList(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => String(entry ?? '').trim())
+    .filter(Boolean);
+}
+
+function resolveGateState(value) {
+  if (value === true) {
+    return { label: '就绪', color: 'var(--success-color)' };
+  }
+  if (value === false) {
+    return { label: '阻塞', color: 'var(--danger-color)' };
+  }
+  return { label: '未知', color: 'var(--warning-color)' };
+}
+
+function resolveCapabilitySummary(readinessData) {
+  if (!readinessData || typeof readinessData !== 'object' || Array.isArray(readinessData)) return [];
+  const matrix = readinessData.delivery_capabilities;
+  if (!matrix || typeof matrix !== 'object' || Array.isArray(matrix)) return [];
+
+  const rawEntries = Array.isArray(matrix.summary)
+    ? matrix.summary
+    : Array.isArray(matrix.capabilities)
+      ? matrix.capabilities
+      : [];
+
+  return rawEntries
+    .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
+    .map((entry) => {
+      const record = entry;
+      return {
+        capability: String(record.capability ?? '').trim(),
+        status: String(record.status ?? '').trim(),
+        mode: String(record.mode ?? '').trim(),
+        missing_inputs: normalizeStringList(record.missing_inputs),
+      };
+    })
+    .filter((entry) => entry.capability);
+}
+
+function formatCapabilityIssueLine(entry) {
+  const capabilityLabel = capabilityLabelMap[entry.capability] ?? entry.capability;
+  const statusLabel = capabilityStatusLabelMap[entry.status] ?? (entry.status || '未知');
+  const modeLabel = entry.mode ? `mode=${entry.mode}` : 'mode=unknown';
+  const missing = entry.missing_inputs.length > 0 ? entry.missing_inputs.join(', ') : '未提供缺失项';
+  return `${capabilityLabel} [${entry.capability}] (${statusLabel}, ${modeLabel}): ${missing}`;
 }
 
 export async function render(container) {
@@ -167,7 +233,28 @@ export async function render(container) {
     const el = container.querySelector('#bili-status-cards');
     el.innerHTML = '<div class="page-loading">加载中...</div>';
     try {
-      const data = await api.getBilibiliStatus();
+      const [statusResult, readinessResult] = await Promise.allSettled([
+        api.getBilibiliStatus(),
+        api.getReadinessStatus(),
+      ]);
+
+      if (statusResult.status !== 'fulfilled') {
+        throw statusResult.reason;
+      }
+
+      const data = statusResult.value;
+      const readinessData =
+        readinessResult.status === 'fulfilled'
+        && readinessResult.value
+        && typeof readinessResult.value === 'object'
+        && !Array.isArray(readinessResult.value)
+          ? readinessResult.value
+          : null;
+      const readinessError =
+        readinessResult.status === 'rejected'
+          ? getBilibiliErrorMessage(readinessResult.reason)
+          : '';
+
       const totalVideoCount = Number(data?.video_count ?? 0);
       const pollEnabledCount = Number(data?.videos?.poll_enabled_count ?? 0);
       const disabledVideoCount = Math.max(0, totalVideoCount - pollEnabledCount);
@@ -211,6 +298,23 @@ export async function render(container) {
       const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
       const credentialExpiryDetail = formatBilibiliCredentialExpiryHint(credentialExpiry, Boolean(data?.credential));
       const credentialUsage = getBilibiliCredentialUsageState(data?.credential);
+      const foundationGate = resolveGateState(readinessData?.foundation_ready);
+      const deliveryGate = resolveGateState(readinessData?.delivery_ready);
+      const foundationBlockers = normalizeStringList(readinessData?.foundation_blockers);
+      const deliveryBlockers = normalizeStringList(readinessData?.delivery_blockers);
+      const capabilityBlockers = normalizeStringList(readinessData?.delivery_capability_blockers);
+      const capabilitySummary = resolveCapabilitySummary(readinessData);
+      const capabilityIssues = capabilitySummary.filter(
+        (entry) => entry.status !== 'configured' && entry.status !== 'inactive',
+      );
+      const foundationBlockerText = foundationBlockers.length > 0 ? foundationBlockers.join(', ') : '无';
+      const deliveryBlockerText = deliveryBlockers.length > 0 ? deliveryBlockers.join(', ') : '无';
+      const capabilityBlockerText = capabilityBlockers.length > 0 ? capabilityBlockers.join(', ') : '无';
+      const capabilityIssueText =
+        capabilityIssues.length > 0
+          ? capabilityIssues.map((entry) => formatCapabilityIssueLine(entry)).join('； ')
+          : '无';
+
       el.innerHTML = `
         <div class="stat-card mini">
           <div class="stat-label">启用</div>
@@ -253,6 +357,21 @@ export async function render(container) {
           <div class="form-hint" style="margin-top:6px;">${escapeHtml(diagnosticHealth)}</div>
         </div>
         <div class="stat-card mini">
+          <div class="stat-label">基础就绪</div>
+          <div class="stat-value" style="color:${foundationGate.color}">${foundationGate.label}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(`blockers: ${foundationBlockerText}`)}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">交付就绪</div>
+          <div class="stat-value" style="color:${deliveryGate.color}">${deliveryGate.label}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(`blockers: ${deliveryBlockerText}`)}</div>
+        </div>
+        <div class="stat-card mini">
+          <div class="stat-label">能力阻塞</div>
+          <div class="stat-value" style="color:${capabilityBlockers.length > 0 ? 'var(--danger-color)' : 'var(--success-color)'}">${readinessData ? capabilityBlockers.length : 'N/A'}</div>
+          <div class="form-hint" style="margin-top:6px;">${escapeHtml(`canonical: ${readinessData ? capabilityBlockerText : 'readiness_unavailable'}`)}</div>
+        </div>
+        <div class="stat-card mini">
           <div class="stat-label">发布模式</div>
           <div class="stat-value">${escapeHtml(publishMode)}</div>
           <div class="form-hint" style="margin-top:6px;">${escapeHtml(publishModeHealth)}</div>
@@ -278,6 +397,10 @@ export async function render(container) {
           ${credentialUsage.detail ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialUsage.detail)}</div>` : ''}
         </div>
         ${blockingReasons ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">当前阻塞原因: ${escapeHtml(blockingReasons)}</div>` : ''}
+        ${readinessError ? `<div class="page-error" style="grid-column: 1 / -1; margin: 0;">Readiness 状态加载失败: ${escapeHtml(readinessError)}</div>` : ''}
+        <div class="${capabilityIssues.length > 0 ? 'page-error' : 'form-hint'}" style="grid-column: 1 / -1; margin: 0;">
+          关键缺失项: ${escapeHtml(capabilityIssueText)}
+        </div>
       `;
     } catch (err) {
       el.innerHTML = `<div class="page-error">状态加载失败: ${escapeHtml(getBilibiliErrorMessage(err))}</div>`;

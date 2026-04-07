@@ -150,6 +150,9 @@ export function createAdminApi() {
     getBilibiliStatus() {
       return requestJson('/api/admin/bilibili/status');
     },
+    getReadinessStatus() {
+      return requestJson('/readiness');
+    },
     getBilibiliVideos({ poll_enabled, limit, offset } = {}) {
       return requestJson(`/api/admin/bilibili/videos${qs({ poll_enabled, limit, offset })}`);
     },

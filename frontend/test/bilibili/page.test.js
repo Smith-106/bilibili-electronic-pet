@@ -5,6 +5,7 @@ import { createPageContainer, flushPromises } from '../utils/dom.js';
 const { mockApi, mockShowToast } = vi.hoisted(() => ({
   mockApi: {
     getBilibiliStatus: vi.fn(),
+    getReadinessStatus: vi.fn(),
     getBilibiliVideos: vi.fn(),
     getBilibiliCredentials: vi.fn(),
     triggerBilibiliPoll: vi.fn(),
@@ -113,6 +114,41 @@ describe('bilibili admin critical-path regression tests', () => {
         },
       ],
     });
+    mockApi.getReadinessStatus.mockResolvedValue({
+      foundation_ready: true,
+      delivery_ready: false,
+      foundation_blockers: [],
+      delivery_blockers: ['bilibili:delivery_diagnostics_not_ready'],
+      delivery_capability_blockers: ['llm_generation', 'search_enrichment'],
+      delivery_capabilities: {
+        summary: [
+          {
+            capability: 'llm_generation',
+            status: 'missing_inputs',
+            mode: 'openai',
+            missing_inputs: ['LLM_API_KEY'],
+          },
+          {
+            capability: 'search_enrichment',
+            status: 'missing_inputs',
+            mode: 'google',
+            missing_inputs: ['SEARCH_API_KEY', 'SEARCH_CX'],
+          },
+          {
+            capability: 'webhook_publish',
+            status: 'inactive',
+            mode: 'manual_queue',
+            missing_inputs: [],
+          },
+          {
+            capability: 'native_bilibili_publish',
+            status: 'configured',
+            mode: 'native_bilibili',
+            missing_inputs: [],
+          },
+        ],
+      },
+    });
     mockApi.triggerBilibiliPoll.mockResolvedValue({ ok: true });
   });
 
@@ -122,6 +158,7 @@ describe('bilibili admin critical-path regression tests', () => {
     await render(container);
 
     expect(mockApi.getBilibiliStatus).toHaveBeenCalledTimes(1);
+    expect(mockApi.getReadinessStatus).toHaveBeenCalledTimes(1);
     expect(mockApi.getBilibiliVideos).toHaveBeenCalledWith({
       limit: 50,
       offset: 0,
@@ -131,9 +168,24 @@ describe('bilibili admin critical-path regression tests', () => {
     expect(container.textContent).toContain('B站集成');
     expect(container.textContent).toContain('主账号');
     expect(container.textContent).toContain('原生 B 站发布');
+    expect(container.textContent).toContain('基础就绪');
+    expect(container.textContent).toContain('交付就绪');
+    expect(container.textContent).toContain('llm_generation');
+    expect(container.textContent).toContain('LLM_API_KEY');
     expect(container.textContent).toContain('带 aid 的视频');
     expect(container.textContent).toContain('缺少 aid 的视频');
     expect(container.querySelector('.bili-sync[disabled]')).toBeTruthy();
+  });
+
+  it('renders fallback hint when readiness endpoint is unavailable', async () => {
+    const container = createPageContainer();
+    mockApi.getReadinessStatus.mockRejectedValueOnce(new Error('readiness_down'));
+
+    await render(container);
+
+    expect(container.textContent).toContain('Readiness 状态加载失败');
+    expect(container.textContent).toContain('readiness_down');
+    expect(container.textContent).toContain('canonical: readiness_unavailable');
   });
 
   it('refetches videos when poll filter changes', async () => {
