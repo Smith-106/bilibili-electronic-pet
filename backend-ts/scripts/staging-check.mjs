@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -270,9 +272,21 @@ async function fetchText(url, options = {}) {
   for (const [key, value] of extraHeaders.entries()) {
     headers.set(key, value);
   }
-  const response = await fetch(url, { ...options, headers });
-  const body = await response.text();
-  return { response, body };
+  try {
+    const response = await fetch(url, { ...options, headers });
+    const body = await response.text();
+    if (response.status !== 403 || process.env.SMOKE_ALLOW_CURL_FALLBACK === 'false') {
+      return { response, body };
+    }
+    logWarn(`Fetch received 403 for ${url}; retrying with curl fallback.`);
+    return fetchTextViaCurl(url, { ...options, headers });
+  } catch (error) {
+    if (process.env.SMOKE_ALLOW_CURL_FALLBACK === 'false') {
+      throw error;
+    }
+    logWarn(`Fetch failed for ${url}; retrying with curl fallback.`);
+    return fetchTextViaCurl(url, { ...options, headers });
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -292,6 +306,54 @@ function buildAdminHeaders(apiKey) {
     headers['x-api-key'] = apiKey;
   }
   return headers;
+}
+
+function resolveCurlBinary() {
+  if (process.platform === 'win32') {
+    return 'curl.exe';
+  }
+  return 'curl';
+}
+
+function fetchTextViaCurl(url, options = {}) {
+  const curlBin = resolveCurlBinary();
+  const tmpDir = mkdtempSync(resolve(tmpdir(), 'bili-pet-smoke-'));
+  const bodyPath = resolve(tmpDir, 'body.txt');
+  const args = ['-sS', '-L', '-o', bodyPath, '-w', '%{http_code}'];
+
+  if (options.method) {
+    args.push('-X', String(options.method));
+  }
+
+  const headers = new Headers(options.headers || {});
+  for (const [key, value] of headers.entries()) {
+    args.push('-H', `${key}: ${value}`);
+  }
+
+  args.push(url);
+
+  try {
+    const result = spawnSync(curlBin, args, {
+      encoding: 'utf8',
+      maxBuffer: 10 * 1024 * 1024,
+    });
+
+    if (result.error) {
+      throw result.error;
+    }
+    if (result.status !== 0) {
+      throw new Error(`curl_exit_${result.status}: ${String(result.stderr || '').trim() || 'request_failed'}`);
+    }
+
+    const status = Number.parseInt(String(result.stdout || '').trim(), 10);
+    const body = readFileSync(bodyPath, 'utf8');
+    return {
+      response: { status: Number.isFinite(status) ? status : 0 },
+      body,
+    };
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 function summarizeDiagnostics(diagnostics) {
