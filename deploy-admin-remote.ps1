@@ -8,7 +8,7 @@ param(
   [switch]$SkipBuild,
   [switch]$SkipPersistImage,
   [switch]$SkipRecreate,
-  [switch]$VerifyPublic = $true
+  [bool]$VerifyPublic = $true
 )
 
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)

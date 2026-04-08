@@ -8,7 +8,7 @@ param(
   [string]$GhcrUsername = "Smith-106",
   [string]$GhcrToken = "",
   [switch]$PersistLogin,
-  [switch]$VerifyPublic = $true
+  [bool]$VerifyPublic = $true
 )
 
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)

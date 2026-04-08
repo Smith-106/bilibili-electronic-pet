@@ -10,6 +10,13 @@
 
 ## Current Deployment Modes
 
+- `deploy-remote.ps1`
+  - Unified entrypoint for remote deployment operations.
+  - Modes:
+    - `./deploy-remote.ps1 admin`
+    - `./deploy-remote.ps1 source -Ref origin/master`
+    - `./deploy-remote.ps1 ghcr`
+
 - `deploy-admin-remote.ps1`
   - Use when only the admin bundle changed.
   - Uploads `backend-ts/public/admin/**`, injects the files into the running `api` container, persists the container back into `bilibili-electronic-pet_api:latest`, recreates `api`, and verifies the public site.
@@ -36,6 +43,6 @@
 
 ## Recommended Operational Rule
 
-- Frontend-only admin changes: run `./deploy-admin-remote.ps1`
-- Full application changes: run `./deploy-remote-source.ps1 -Ref origin/master`
-- Switch runtime source to GHCR images: run `./deploy-remote-ghcr.ps1`
+- Frontend-only admin changes: run `./deploy-remote.ps1 admin`
+- Full application changes: run `./deploy-remote.ps1 source -Ref origin/master`
+- Switch runtime source to GHCR images: run `./deploy-remote.ps1 ghcr`

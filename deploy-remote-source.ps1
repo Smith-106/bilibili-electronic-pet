@@ -7,7 +7,7 @@ param(
   [string]$ComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.yml",
   [int]$SwapGiB = 4,
   [switch]$SkipSwap,
-  [switch]$VerifyPublic = $true
+  [bool]$VerifyPublic = $true
 )
 
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
