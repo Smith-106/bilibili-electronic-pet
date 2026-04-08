@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - deploy/frontend-backend-alignment-20260408
+      - master
 
 permissions:
   contents: read
