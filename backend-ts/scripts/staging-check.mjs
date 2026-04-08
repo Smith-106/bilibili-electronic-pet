@@ -198,6 +198,20 @@ function buildUrl(baseUrl, relativePath) {
   return new URL(relativePath, baseUrl).toString();
 }
 
+function getDefaultSmokeHeaders() {
+  const userAgent =
+    String(process.env.SMOKE_USER_AGENT ?? '').trim() ||
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
+
+  return {
+    'user-agent': userAgent,
+    accept: 'application/json, text/html, application/javascript, text/css;q=0.9, */*;q=0.8',
+    'accept-language': 'en-US,en;q=0.9',
+    'cache-control': 'no-cache',
+    pragma: 'no-cache',
+  };
+}
+
 function extractAssetPaths(html) {
   const matches = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:css|js))["']/gi)];
   const assets = new Set();
@@ -251,7 +265,12 @@ function buildEnvMatrix(env, options) {
 }
 
 async function fetchText(url, options = {}) {
-  const response = await fetch(url, options);
+  const headers = new Headers(getDefaultSmokeHeaders());
+  const extraHeaders = new Headers(options.headers || {});
+  for (const [key, value] of extraHeaders.entries()) {
+    headers.set(key, value);
+  }
+  const response = await fetch(url, { ...options, headers });
   const body = await response.text();
   return { response, body };
 }
@@ -268,7 +287,11 @@ async function fetchJson(url, options = {}) {
 }
 
 function buildAdminHeaders(apiKey) {
-  return apiKey ? { 'x-api-key': apiKey } : {};
+  const headers = getDefaultSmokeHeaders();
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+  return headers;
 }
 
 function summarizeDiagnostics(diagnostics) {
