@@ -1,0 +1,56 @@
+version: "3.8"
+
+services:
+  migrate:
+    image: bilibili-electronic-pet_migrate:latest
+    command: ["npx", "prisma", "migrate", "deploy"]
+    env_file:
+      - /etc/bilibili-pet/pre-release.env
+    volumes:
+      - ./data:/app/data
+      - ./backend-ts/prisma.config.ts:/app/prisma.config.ts:ro
+    restart: "no"
+
+  api:
+    image: bilibili-electronic-pet_api:latest
+    command: ["node", "dist/index.js"]
+    env_file:
+      - /etc/bilibili-pet/pre-release.env
+    ports:
+      - "18000:3000"
+    depends_on:
+      - redis
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  worker:
+    image: bilibili-electronic-pet_worker:latest
+    command: ["node", "dist/workers/worker-main.js"]
+    env_file:
+      - /etc/bilibili-pet/pre-release.env
+    depends_on:
+      - redis
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'dist/workers/worker-main.js' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis-data:
