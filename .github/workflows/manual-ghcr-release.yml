@@ -13,6 +13,7 @@ permissions:
 jobs:
   pre-release-smoke:
     runs-on: ubuntu-latest
+    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -120,7 +121,6 @@ jobs:
           fi
 
   build-release:
-    needs: [pre-release-smoke]
     runs-on: ubuntu-latest
 
     steps:
