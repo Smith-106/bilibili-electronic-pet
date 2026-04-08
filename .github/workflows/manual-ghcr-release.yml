@@ -91,6 +91,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
           API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+          SMOKE_DIRECT_IP: ${{ vars.PRE_RELEASE_SMOKE_ORIGIN_IP }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           SEARCH_PROVIDER: ${{ vars.SEARCH_PROVIDER }}
           PUBLISHER_MODE: ${{ vars.PUBLISHER_MODE }}

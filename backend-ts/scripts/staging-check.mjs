@@ -320,6 +320,7 @@ function fetchTextViaCurl(url, options = {}) {
   const tmpDir = mkdtempSync(resolve(tmpdir(), 'bili-pet-smoke-'));
   const bodyPath = resolve(tmpDir, 'body.txt');
   const args = ['-sS', '-L', '-o', bodyPath, '-w', '%{http_code}'];
+  const directIp = String(process.env.SMOKE_DIRECT_IP ?? '').trim();
 
   if (options.method) {
     args.push('-X', String(options.method));
@@ -328,6 +329,12 @@ function fetchTextViaCurl(url, options = {}) {
   const headers = new Headers(options.headers || {});
   for (const [key, value] of headers.entries()) {
     args.push('-H', `${key}: ${value}`);
+  }
+
+  if (directIp) {
+    const target = new URL(url);
+    const port = target.port || (target.protocol === 'https:' ? '443' : '80');
+    args.push('--resolve', `${target.hostname}:${port}:${directIp}`);
   }
 
   args.push(url);
