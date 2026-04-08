@@ -2,6 +2,9 @@ name: manual-ghcr-release
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - deploy/frontend-backend-alignment-20260408
 
 permissions:
   contents: read
