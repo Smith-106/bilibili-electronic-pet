@@ -5,20 +5,123 @@ import { showToast } from '../components/toast.js';
 
 const api = createAdminApi();
 
+const RUNTIME_SIGNAL_SPECS = [
+  { label: 'LLM 提供方', keys: ['llm_provider', 'llmProvider'] },
+  { label: '搜索提供方', keys: ['search_provider', 'searchProvider'] },
+  { label: '发布模式', keys: ['publisher_mode', 'publisherMode'] },
+  { label: 'LLM Key', keys: ['llm_api_key_configured', 'llmApiKeyConfigured'], format: 'configured' },
+  { label: '搜索 Key', keys: ['search_api_key_configured', 'searchApiKeyConfigured'], format: 'configured' },
+  { label: 'Webhook', keys: ['publisher_webhook_url_configured', 'publisherWebhookUrlConfigured'], format: 'configured' },
+  { label: 'B站采集', keys: ['bilibili_enabled', 'bilibiliEnabled'], format: 'enabled' },
+  { label: 'B站发布', keys: ['bilibili_publish_enabled', 'bilibiliPublishEnabled'], format: 'enabled' },
+  { label: 'Kill Switch', keys: ['kill_switch', 'killSwitch'], format: 'enabled' },
+];
+
+function getFirstValue(record, keys) {
+  for (const key of keys) {
+    if (record?.[key] !== undefined && record?.[key] !== null && record?.[key] !== '') {
+      return record[key];
+    }
+  }
+  return undefined;
+}
+
+function formatSignalValue(value, format) {
+  if (format === 'configured') {
+    return value ? '已配置' : '未配置';
+  }
+  if (format === 'enabled') {
+    return value ? '开启' : '关闭';
+  }
+  if (typeof value === 'boolean') {
+    return value ? '是' : '否';
+  }
+  return String(value);
+}
+
+function buildRuntimeSignals(metricsOverview) {
+  return RUNTIME_SIGNAL_SPECS
+    .map((spec) => {
+      const value = getFirstValue(metricsOverview, spec.keys);
+      if (value === undefined) {
+        return null;
+      }
+      return {
+        label: spec.label,
+        value: formatSignalValue(value, spec.format),
+      };
+    })
+    .filter(Boolean);
+}
+
+function humanizeKey(key) {
+  return String(key)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[._]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function flattenObservabilityEntries(value, prefix = '') {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return [];
+  }
+  const entries = [];
+  for (const [key, raw] of Object.entries(value)) {
+    const nextKey = prefix ? `${prefix}.${key}` : key;
+    if (raw == null || raw === '') {
+      continue;
+    }
+    if (typeof raw === 'object' && !Array.isArray(raw)) {
+      entries.push(...flattenObservabilityEntries(raw, nextKey));
+      continue;
+    }
+    if (Array.isArray(raw)) {
+      if (raw.length > 0) {
+        entries.push({ label: humanizeKey(nextKey), value: `${raw.length} 项` });
+      }
+      continue;
+    }
+    entries.push({ label: humanizeKey(nextKey), value: String(raw) });
+  }
+  return entries;
+}
+
+function renderSummaryGrid(entries, emptyText) {
+  if (!entries.length) {
+    return `<div class="table-empty" style="padding:16px;">${escapeHtml(emptyText)}</div>`;
+  }
+
+  return `
+    <div class="audit-summary-grid">
+      ${entries.map((entry) => `
+        <div class="stat-card mini">
+          <div class="stat-label">${escapeHtml(entry.label)}</div>
+          <div class="stat-value">${escapeHtml(entry.value)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 export async function render(container) {
   container.innerHTML = '<div class="page-loading">加载中...</div>';
 
   try {
-    const [overview, jobs, gatewayLogs, auditSummary] = await Promise.all([
+    const [overview, jobs, gatewayLogs, auditSummary, metricsOverview, observabilitySummary] = await Promise.all([
       api.getOverview().catch(() => null),
       api.getJobs({ limit: 5 }).catch(() => null),
       api.getGatewayLogs({ limit: 5 }).catch(() => null),
       api.getAuditSummary({ days: 7 }).catch(() => null),
+      api.getMetricsOverview().catch(() => null),
+      api.getObservabilitySummary({ windowMinutes: 120 }).catch(() => null),
     ]);
 
     const ov = overview || {};
     const jobItems = Array.isArray(jobs?.items) ? jobs.items : [];
     const gwItems = Array.isArray(gatewayLogs?.items) ? gatewayLogs.items : [];
+    const runtimeSignals = buildRuntimeSignals(metricsOverview || {});
+    const observabilitySignals = flattenObservabilityEntries(observabilitySummary?.summary || observabilitySummary || {}).slice(0, 6);
 
     container.innerHTML = `
       <div class="page-header">
@@ -94,6 +197,20 @@ export async function render(container) {
               <div class="stat-value" style="color:var(--danger-color)">${safeCount(auditSummary?.failed_count)}</div>
             </div>
           </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <h3>运行时能力</h3>
+          </div>
+          ${renderSummaryGrid(runtimeSignals, '未返回运行时配置摘要')}
+        </div>
+
+        <div class="section-card">
+          <div class="section-card-header">
+            <h3>可观测性摘要 (120分钟)</h3>
+          </div>
+          ${renderSummaryGrid(observabilitySignals, '未返回可观测性摘要')}
         </div>
       </div>
     `;

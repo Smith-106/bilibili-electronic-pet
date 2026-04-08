@@ -1,6 +1,7 @@
 import { createAdminApi } from '../api/admin.js';
-import { escapeHtml } from '../utils/format.js';
+import { escapeHtml, renderTimestamp } from '../utils/format.js';
 import { showToast } from '../components/toast.js';
+import { renderTable } from '../components/table.js';
 
 const api = createAdminApi();
 const COMMENT_HISTORY_KEY = 'query_recent_comment_ids';
@@ -52,9 +53,13 @@ function renderDetailRows(data) {
   `;
 }
 
+function resolveCommentLookupId(item) {
+  return String(item?.canonical_comment_id || item?.comment_id || item?.id || '').trim();
+}
+
 export async function render(container) {
   container.innerHTML = `
-    <div class="page-header"><h2>查询</h2></div>
+    <div class="page-header"><h2>查询 / 评论浏览</h2></div>
 
     <div class="section-grid">
       <div class="section-card">
@@ -102,6 +107,27 @@ export async function render(container) {
           <div id="query-job-result"></div>
         </div>
       </div>
+
+      <div class="section-card" style="grid-column: 1 / -1;">
+        <div class="section-card-header"><h3>最近评论浏览</h3></div>
+        <div style="padding: 16px;">
+          <div class="filter-bar" style="margin-bottom: 12px; padding: 0; background: transparent; box-shadow: none;">
+            <div class="form-group">
+              <label class="form-label">数量</label>
+              <input type="number" id="query-comments-limit" class="form-input" value="10" min="1" max="100" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">偏移</label>
+              <input type="number" id="query-comments-offset" class="form-input" value="0" min="0" max="10000" />
+            </div>
+            <div class="form-group">
+              <button class="btn btn-primary" id="query-comments-load">刷新评论列表</button>
+            </div>
+          </div>
+          <div id="query-comments-meta" class="form-hint" style="margin-bottom:8px;"></div>
+          <div id="query-comments-wrapper"><div class="page-loading">加载中...</div></div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -118,6 +144,9 @@ export async function render(container) {
   const jobRecent = container.querySelector('#query-job-recent');
   const jobCopyBtn = container.querySelector('#query-job-copy');
   let jobPayload = null;
+
+  const commentsMeta = container.querySelector('#query-comments-meta');
+  const commentsWrapper = container.querySelector('#query-comments-wrapper');
 
   function renderRecent(containerEl, key, clickHandler) {
     const items = getHistory(key);
@@ -188,8 +217,84 @@ export async function render(container) {
     }
   }
 
+  async function loadCommentsList() {
+    const limit = container.querySelector('#query-comments-limit').value;
+    const offset = container.querySelector('#query-comments-offset').value;
+    commentsWrapper.innerHTML = '<div class="page-loading">加载中...</div>';
+    commentsMeta.textContent = '';
+
+    try {
+      const data = await api.getComments({ limit, offset });
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const total = Number(data?.total ?? items.length) || items.length;
+      commentsMeta.textContent = `返回 ${items.length} / ${total} 条评论`;
+
+      if (items.length === 0) {
+        commentsWrapper.innerHTML = '<div class="table-empty">暂无评论</div>';
+        return;
+      }
+
+      commentsWrapper.innerHTML = renderTable({
+        columns: [
+          {
+            key: 'comment_id',
+            label: 'Comment ID',
+            class: 'cell-id',
+            render: (row) => escapeHtml(resolveCommentLookupId(row).substring(0, 18) || '-'),
+          },
+          {
+            key: 'platform',
+            label: '平台',
+            render: (row) => escapeHtml(row.platform || '-'),
+          },
+          {
+            key: 'source',
+            label: '来源',
+            render: (row) => escapeHtml(row.source || '-'),
+          },
+          {
+            key: 'content',
+            label: '评论内容',
+            class: 'cell-truncate',
+            render: (row) => escapeHtml((row.content || '-').toString().substring(0, 80)),
+          },
+          {
+            key: 'created_at',
+            label: '时间',
+            class: 'cell-time',
+            render: (row) => renderTimestamp(row.created_at),
+          },
+          {
+            key: 'actions',
+            label: '操作',
+            class: 'cell-actions',
+            render: (row) => {
+              const commentId = resolveCommentLookupId(row);
+              if (!commentId) {
+                return '<span class="form-hint">缺少 ID</span>';
+              }
+              return `<button class="btn btn-sm query-comment-open" data-comment-id="${escapeHtml(commentId)}" type="button">查看详情</button>`;
+            },
+          },
+        ],
+        rows: items,
+      });
+
+      commentsWrapper.querySelectorAll('.query-comment-open').forEach((button) => {
+        button.addEventListener('click', () => {
+          const commentId = button.dataset.commentId || '';
+          commentInput.value = commentId;
+          runCommentQuery(commentId);
+        });
+      });
+    } catch (err) {
+      commentsWrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
   container.querySelector('#query-comment-btn').addEventListener('click', () => { runCommentQuery(); });
   container.querySelector('#query-job-btn').addEventListener('click', () => { runJobQuery(); });
+  container.querySelector('#query-comments-load').addEventListener('click', loadCommentsList);
 
   commentInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') runCommentQuery();
@@ -232,4 +337,5 @@ export async function render(container) {
 
   renderRecent(commentRecent, COMMENT_HISTORY_KEY, runCommentQuery);
   renderRecent(jobRecent, JOB_HISTORY_KEY, runJobQuery);
+  await loadCommentsList();
 }

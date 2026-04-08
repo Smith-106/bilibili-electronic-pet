@@ -12,6 +12,7 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     setStyleProfile: vi.fn(),
     getRoleProfile: vi.fn(),
     setRoleProfile: vi.fn(),
+    getComments: vi.fn(),
     getComment: vi.fn(),
     getJob: vi.fn(),
   },
@@ -43,6 +44,11 @@ const [
 describe('admin utility-page regression tests', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    for (const mock of Object.values(mockApi)) {
+      mock.mockReset();
+    }
+    mockShowToast.mockReset();
+
     mockApi.getAuditSummary.mockResolvedValue({
       total: 10,
       ok_count: 8,
@@ -77,9 +83,22 @@ describe('admin utility-page regression tests', () => {
     mockApi.getRoleProfile.mockResolvedValue({ role: 'comfort' });
     mockApi.setStyleProfile.mockResolvedValue({ ok: true });
     mockApi.setRoleProfile.mockResolvedValue({ ok: true });
+    mockApi.getComments.mockResolvedValue({
+      total: 1,
+      items: [
+        {
+          id: 1,
+          canonical_comment_id: 'c-1',
+          comment_id: 'c-1',
+          platform: 'bilibili',
+          source: 'native_bilibili',
+          content: 'comment list row',
+          created_at: '2026-04-07T00:00:00.000Z',
+        },
+      ],
+    });
     mockApi.getComment.mockResolvedValue({ id: 'c-1', content: 'hello' });
     mockApi.getJob.mockResolvedValue({ id: 'j-1', status: 'queued', comment_id: 'c-1' });
-    mockShowToast.mockReset();
   });
 
   it('renders audit summary and log rows from mocked admin api', async () => {
@@ -209,6 +228,7 @@ describe('admin utility-page regression tests', () => {
     const container = createPageContainer();
 
     await renderQuery(container);
+    expect(mockApi.getComments).toHaveBeenCalledWith({ limit: '10', offset: '0' });
 
     container.querySelector('#query-job-id').value = 'job-1';
     container.querySelector('#query-job-btn').click();

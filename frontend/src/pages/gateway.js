@@ -1,11 +1,8 @@
 import { createAdminApi } from '../api/admin.js';
-import { escapeHtml, formatIsoDateTime, renderTimestamp } from '../utils/format.js';
+import { escapeHtml, renderTimestamp } from '../utils/format.js';
 import { renderBadge } from '../components/badge.js';
 import { showToast } from '../components/toast.js';
-
 import { renderTable } from '../components/table.js';
-
-import { safeCount } from '../utils/format.js';
 
 const api = createAdminApi();
 
@@ -51,12 +48,34 @@ export async function render(container) {
         <input type="number" id="gw-limit" class="form-input" value="20" min="1" max="100" />
       </div>
       <div class="form-group">
+        <label class="form-label">发布状态</label>
+        <select id="gw-status" class="form-input">
+          <option value="">全部</option>
+          <option value="published">published</option>
+          <option value="failed">failed</option>
+          <option value="pending_review">pending_review</option>
+        </select>
+      </div>
+      <div class="form-group">
         <button class="btn btn-primary" id="gw-filter-btn">查询</button>
       </div>
     </div>
 
-    <div class="table-wrapper" id="gw-table-wrapper">
-      <div class="page-loading">加载中...</div>
+    <div class="section-grid">
+      <div class="section-card">
+        <div class="section-card-header"><h3>网关事件</h3></div>
+        <div id="gw-events-meta" class="form-hint" style="padding: 12px 16px 0;"></div>
+        <div id="gw-events-wrapper" style="padding: 16px;">
+          <div class="page-loading">加载中...</div>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-card-header"><h3>发布日志诊断</h3></div>
+        <div id="gw-publish-meta" class="form-hint" style="padding: 12px 16px 0;"></div>
+        <div id="gw-publish-wrapper" style="padding: 16px;">
+          <div class="page-loading">加载中...</div>
+        </div>
+      </div>
     </div>
   `;
 
@@ -87,8 +106,8 @@ export async function render(container) {
       showToast('发布成功', 'success');
       container.querySelector('#gw-comment-id').value = '';
       container.querySelector('#gw-reply').value = '';
-      charCountEl.textContent = '0/0';
-      loadLogs();
+      charCountEl.textContent = '0 字';
+      await loadAll();
     } catch (err) {
       showToast(`发布失败: ${err.message}`, 'error');
     } finally {
@@ -97,14 +116,17 @@ export async function render(container) {
     }
   });
 
-  async function loadLogs() {
-    const wrapper = container.querySelector('#gw-table-wrapper');
+  async function loadGatewayLogs() {
+    const wrapper = container.querySelector('#gw-events-wrapper');
+    const meta = container.querySelector('#gw-events-meta');
     const limit = container.querySelector('#gw-limit').value;
     wrapper.innerHTML = '<div class="page-loading">加载中...</div>';
+    meta.textContent = '';
 
     try {
       const data = await api.getGatewayLogs({ limit });
       const items = Array.isArray(data?.items) ? data.items : [];
+      meta.textContent = `最近返回 ${items.length} 条网关事件`;
 
       if (items.length === 0) {
         wrapper.innerHTML = '<div class="table-empty">暂无网关日志</div>';
@@ -127,7 +149,49 @@ export async function render(container) {
     }
   }
 
-  container.querySelector('#gw-refresh').addEventListener('click', loadLogs);
-  container.querySelector('#gw-filter-btn').addEventListener('click', loadLogs);
-  await loadLogs();
+  async function loadPublishLogs() {
+    const wrapper = container.querySelector('#gw-publish-wrapper');
+    const meta = container.querySelector('#gw-publish-meta');
+    const limit = container.querySelector('#gw-limit').value;
+    const status = container.querySelector('#gw-status').value;
+    wrapper.innerHTML = '<div class="page-loading">加载中...</div>';
+    meta.textContent = '';
+
+    try {
+      const data = await api.getGatewayPublishLogs({ limit, status });
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const total = Number(data?.total ?? items.length) || items.length;
+      meta.textContent = status
+        ? `状态 ${status}，返回 ${items.length} / ${total} 条发布日志`
+        : `返回 ${items.length} / ${total} 条发布日志`;
+
+      if (items.length === 0) {
+        wrapper.innerHTML = '<div class="table-empty">暂无发布日志</div>';
+        return;
+      }
+
+      wrapper.innerHTML = renderTable({
+        columns: [
+          { key: 'comment_id', label: 'Comment ID', class: 'cell-id', render: (row) => escapeHtml((row.comment_id || row.canonical_comment_id || '-').toString().substring(0, 16)) },
+          { key: 'status', label: '状态', render: (row) => renderBadge(row.status) },
+          { key: 'source', label: '来源', render: (row) => escapeHtml(row.source || '-') },
+          { key: 'failure_reason', label: '失败原因', class: 'cell-truncate', render: (row) => escapeHtml(row.failure_reason || '-') },
+          { key: 'reply_hash', label: 'Hash', class: 'cell-id', render: (row) => escapeHtml((row.reply_hash || '-').toString().substring(0, 12)) },
+          { key: 'published_at', label: '发布于', class: 'cell-time', render: (row) => row.published_at ? renderTimestamp(row.published_at) : '-' },
+          { key: 'created_at', label: '记录时间', class: 'cell-time', render: (row) => renderTimestamp(row.created_at) },
+        ],
+        rows: items,
+      });
+    } catch (err) {
+      wrapper.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function loadAll() {
+    await Promise.all([loadGatewayLogs(), loadPublishLogs()]);
+  }
+
+  container.querySelector('#gw-refresh').addEventListener('click', loadAll);
+  container.querySelector('#gw-filter-btn').addEventListener('click', loadAll);
+  await loadAll();
 }

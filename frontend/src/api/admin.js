@@ -15,6 +15,12 @@ export function createAdminApi() {
     getOverview() {
       return requestJson('/api/admin/overview');
     },
+    getMetricsOverview() {
+      return requestJson('/api/admin/metrics/overview');
+    },
+    getObservabilitySummary({ windowMinutes, window_minutes } = {}) {
+      return requestJson(`/api/admin/observability/summary${qs({ window_minutes: windowMinutes ?? window_minutes })}`);
+    },
 
     // Jobs
     getJobs({ status, limit } = {}) {
@@ -52,13 +58,19 @@ export function createAdminApi() {
     },
 
     // Comments
+    getComments({ limit, offset } = {}) {
+      return requestJson(`/comments${qs({ limit, offset })}`);
+    },
     getComment(commentId) {
       return requestJson(`/api/comments/${encodeURIComponent(commentId)}`);
     },
 
     // Gateway
-    getGatewayLogs({ limit, comment_id } = {}) {
-      return requestJson(`/api/admin/gateway/logs${qs({ limit, comment_id })}`);
+    getGatewayLogs({ limit, commentId, comment_id } = {}) {
+      return requestJson(`/api/admin/gateway/logs${qs({ limit, comment_id: commentId ?? comment_id })}`);
+    },
+    getGatewayPublishLogs({ limit, offset, status } = {}) {
+      return requestJson(`/gateway/publish-logs${qs({ limit, offset, status })}`);
     },
     publishGatewayReply(body) {
       return requestJson('/gateway/publish', {

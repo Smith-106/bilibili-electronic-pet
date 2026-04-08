@@ -5,9 +5,13 @@ import { createPageContainer, flushPromises } from '../utils/dom.js';
 const { mockApi, mockShowToast } = vi.hoisted(() => ({
   mockApi: {
     getOverview: vi.fn(),
+    getMetricsOverview: vi.fn(),
+    getObservabilitySummary: vi.fn(),
     getJobs: vi.fn(),
     getGatewayLogs: vi.fn(),
+    getGatewayPublishLogs: vi.fn(),
     getAuditSummary: vi.fn(),
+    getComments: vi.fn(),
     getComment: vi.fn(),
     getJob: vi.fn(),
     publishGatewayReply: vi.fn(),
@@ -47,12 +51,37 @@ const [
 
 describe('admin-core frontend regression tests', () => {
   beforeEach(() => {
+    sessionStorage.clear();
+    for (const mock of Object.values(mockApi)) {
+      mock.mockReset();
+    }
+    mockShowToast.mockReset();
+
     mockApi.getOverview.mockResolvedValue({
       total_comments: 12,
       total_jobs: 7,
       total_published: 3,
       pending_review: 2,
       total_failed: 1,
+    });
+    mockApi.getMetricsOverview.mockResolvedValue({
+      llm_provider: 'openai',
+      search_provider: 'serpapi',
+      publisher_mode: 'real_publish',
+      llmApiKeyConfigured: true,
+      publisherWebhookUrlConfigured: true,
+      bilibiliEnabled: true,
+      bilibiliPublishEnabled: true,
+      killSwitch: false,
+    });
+    mockApi.getObservabilitySummary.mockResolvedValue({
+      ok: true,
+      summary: {
+        window_minutes: 120,
+        published_count: 3,
+        failed_count: 1,
+        latency_ms_p95: 420,
+      },
     });
     mockApi.getJobs.mockResolvedValue({
       items: [
@@ -78,10 +107,40 @@ describe('admin-core frontend regression tests', () => {
         },
       ],
     });
+    mockApi.getGatewayPublishLogs.mockResolvedValue({
+      total: 1,
+      items: [
+        {
+          id: 88,
+          comment_id: 'comment-1',
+          canonical_comment_id: 'bilibili:comment-1',
+          source: 'real_publish',
+          status: 'failed',
+          failure_reason: 'auth',
+          reply_hash: 'abcdef1234567890',
+          created_at: '2026-04-07T00:00:00.000Z',
+          published_at: null,
+        },
+      ],
+    });
     mockApi.getAuditSummary.mockResolvedValue({
       total: 10,
       ok_count: 8,
       failed_count: 2,
+    });
+    mockApi.getComments.mockResolvedValue({
+      total: 1,
+      items: [
+        {
+          id: 1,
+          canonical_comment_id: 'comment-1',
+          comment_id: 'comment-1',
+          platform: 'bilibili',
+          source: 'native_bilibili',
+          content: '列表中的评论',
+          created_at: '2026-04-07T00:00:00.000Z',
+        },
+      ],
     });
     mockApi.getComment.mockResolvedValue({
       ok: true,
@@ -112,7 +171,7 @@ describe('admin-core frontend regression tests', () => {
     mockApi.createKnowledgeEntry.mockResolvedValue({ ok: true });
   });
 
-  it('renders dashboard with summary counters', async () => {
+  it('renders dashboard with summary counters plus runtime and observability insights', async () => {
     const container = createPageContainer();
 
     await renderDashboard(container);
@@ -121,6 +180,10 @@ describe('admin-core frontend regression tests', () => {
     expect(container.textContent).toContain('评论总数');
     expect(container.textContent).toContain('12');
     expect(container.textContent).toContain('测试评论内容');
+    expect(container.textContent).toContain('运行时能力');
+    expect(container.textContent).toContain('可观测性摘要');
+    expect(container.textContent).toContain('LLM 提供方');
+    expect(container.textContent).toContain('openai');
   });
 
   it('renders jobs list from mocked admin API', async () => {
@@ -146,6 +209,20 @@ describe('admin-core frontend regression tests', () => {
     expect(container.textContent).toContain('评论详情');
   });
 
+  it('loads the comment browser and opens a comment from the list', async () => {
+    const container = createPageContainer();
+
+    await renderQuery(container);
+
+    expect(mockApi.getComments).toHaveBeenCalledWith({ limit: '10', offset: '0' });
+
+    container.querySelector('.query-comment-open').click();
+    await flushPromises();
+
+    expect(mockApi.getComment).toHaveBeenCalledWith('comment-1');
+    expect(container.textContent).toContain('列表中的评论');
+  });
+
   it('publishes from gateway page and refreshes logs', async () => {
     const container = createPageContainer();
 
@@ -162,6 +239,19 @@ describe('admin-core frontend regression tests', () => {
       force_publish: false,
     });
     expect(mockShowToast).toHaveBeenCalledWith('发布成功', 'success');
+  });
+
+  it('loads gateway publish diagnostics with the active status filter', async () => {
+    const container = createPageContainer();
+
+    await renderGateway(container);
+    container.querySelector('#gw-status').value = 'failed';
+    container.querySelector('#gw-filter-btn').click();
+    await flushPromises();
+
+    expect(mockApi.getGatewayPublishLogs).toHaveBeenLastCalledWith({ limit: '20', status: 'failed' });
+    expect(container.textContent).toContain('发布日志诊断');
+    expect(container.textContent).toContain('auth');
   });
 
   it('shows activate action for disabled role cards and triggers reactivation', async () => {
