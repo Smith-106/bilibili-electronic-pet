@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  migrate:
+    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    command: ["npx", "prisma", "migrate", "deploy"]
+
+  api:
+    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    command: ["node", "dist/index.js"]
+
+  worker:
+    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    command: ["node", "dist/workers/worker-main.js"]
