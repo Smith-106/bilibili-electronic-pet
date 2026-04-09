@@ -7,6 +7,7 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     getOverview: vi.fn(),
     getMetricsOverview: vi.fn(),
     getObservabilitySummary: vi.fn(),
+    getReadinessStatus: vi.fn(),
     getJobs: vi.fn(),
     getGatewayLogs: vi.fn(),
     getGatewayPublishLogs: vi.fn(),
@@ -81,6 +82,16 @@ describe('admin-core frontend regression tests', () => {
         published_count: 3,
         failed_count: 1,
         latency_ms_p95: 420,
+      },
+    });
+    mockApi.getReadinessStatus.mockResolvedValue({
+      foundation_ready: true,
+      delivery_ready: true,
+      foundation_blockers: [],
+      delivery_blockers: [],
+      delivery_capability_blockers: [],
+      bilibili_diagnostics: {
+        effective_publish_mode: 'native_bilibili',
       },
     });
     mockApi.getJobs.mockResolvedValue({
@@ -184,6 +195,24 @@ describe('admin-core frontend regression tests', () => {
     expect(container.textContent).toContain('可观测性摘要');
     expect(container.textContent).toContain('LLM 提供方');
     expect(container.textContent).toContain('openai');
+  });
+
+  it('falls back to readiness-derived runtime signals and a friendly empty observability state', async () => {
+    const container = createPageContainer();
+    mockApi.getMetricsOverview.mockResolvedValueOnce({
+      total_comments: 12,
+      total_jobs: 7,
+    });
+    mockApi.getObservabilitySummary.mockResolvedValueOnce({ ok: true, summary: {} });
+
+    await renderDashboard(container);
+
+    expect(container.textContent).toContain('发布模式');
+    expect(container.textContent).toContain('native_bilibili');
+    expect(container.textContent).toContain('基础就绪');
+    expect(container.textContent).toContain('交付就绪');
+    expect(container.textContent).toContain('当前窗口暂无可观测数据');
+    expect(container.textContent).not.toContain('未返回运行时配置摘要');
   });
 
   it('renders jobs list from mocked admin API', async () => {

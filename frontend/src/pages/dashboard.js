@@ -17,6 +17,14 @@ const RUNTIME_SIGNAL_SPECS = [
   { label: 'Kill Switch', keys: ['kill_switch', 'killSwitch'], format: 'enabled' },
 ];
 
+const READINESS_SIGNAL_SPECS = [
+  { label: '基础就绪', keys: ['foundation_ready'], format: 'ready' },
+  { label: '交付就绪', keys: ['delivery_ready'], format: 'ready' },
+  { label: '基础阻塞', keys: ['foundation_blockers'], format: 'count' },
+  { label: '交付阻塞', keys: ['delivery_blockers'], format: 'count' },
+  { label: '能力阻塞', keys: ['delivery_capability_blockers'], format: 'count' },
+];
+
 function getFirstValue(record, keys) {
   for (const key of keys) {
     if (record?.[key] !== undefined && record?.[key] !== null && record?.[key] !== '') {
@@ -32,6 +40,12 @@ function formatSignalValue(value, format) {
   }
   if (format === 'enabled') {
     return value ? '开启' : '关闭';
+  }
+  if (format === 'ready') {
+    return value ? '就绪' : '阻塞';
+  }
+  if (format === 'count') {
+    return Array.isArray(value) ? `${value.length} 项` : String(value ?? '0');
   }
   if (typeof value === 'boolean') {
     return value ? '是' : '否';
@@ -52,6 +66,42 @@ function buildRuntimeSignals(metricsOverview) {
       };
     })
     .filter(Boolean);
+}
+
+function resolveEffectivePublishMode(readiness) {
+  const mode = readiness?.bilibili_diagnostics?.effective_publish_mode
+    ?? readiness?.delivery_signals?.effective_publish_mode
+    ?? readiness?.effective_publish_mode;
+  return typeof mode === 'string' && mode.trim() ? mode.trim() : '';
+}
+
+function buildReadinessSignals(readiness) {
+  if (!readiness || typeof readiness !== 'object' || Array.isArray(readiness)) {
+    return [];
+  }
+
+  const entries = READINESS_SIGNAL_SPECS
+    .map((spec) => {
+      const value = getFirstValue(readiness, spec.keys);
+      if (value === undefined) {
+        return null;
+      }
+      return {
+        label: spec.label,
+        value: formatSignalValue(value, spec.format),
+      };
+    })
+    .filter(Boolean);
+
+  const effectivePublishMode = resolveEffectivePublishMode(readiness);
+  if (effectivePublishMode) {
+    entries.unshift({
+      label: '发布模式',
+      value: effectivePublishMode,
+    });
+  }
+
+  return entries;
 }
 
 function humanizeKey(key) {
@@ -108,20 +158,27 @@ export async function render(container) {
   container.innerHTML = '<div class="page-loading">加载中...</div>';
 
   try {
-    const [overview, jobs, gatewayLogs, auditSummary, metricsOverview, observabilitySummary] = await Promise.all([
+    const [overview, jobs, gatewayLogs, auditSummary, metricsOverview, observabilitySummary, readinessStatus] = await Promise.all([
       api.getOverview().catch(() => null),
       api.getJobs({ limit: 5 }).catch(() => null),
       api.getGatewayLogs({ limit: 5 }).catch(() => null),
       api.getAuditSummary({ days: 7 }).catch(() => null),
       api.getMetricsOverview().catch(() => null),
       api.getObservabilitySummary({ windowMinutes: 120 }).catch(() => null),
+      api.getReadinessStatus().catch(() => null),
     ]);
 
     const ov = overview || {};
     const jobItems = Array.isArray(jobs?.items) ? jobs.items : [];
     const gwItems = Array.isArray(gatewayLogs?.items) ? gatewayLogs.items : [];
-    const runtimeSignals = buildRuntimeSignals(metricsOverview || {});
+    const runtimeSignals = (() => {
+      const metricsSignals = buildRuntimeSignals(metricsOverview || {});
+      return metricsSignals.length > 0 ? metricsSignals : buildReadinessSignals(readinessStatus || {});
+    })();
     const observabilitySignals = flattenObservabilityEntries(observabilitySummary?.summary || observabilitySummary || {}).slice(0, 6);
+    const observabilityEmptyText = observabilitySummary?.ok
+      ? '当前窗口暂无可观测数据'
+      : '未返回可观测性摘要';
 
     container.innerHTML = `
       <div class="page-header">
@@ -210,7 +267,7 @@ export async function render(container) {
           <div class="section-card-header">
             <h3>可观测性摘要 (120分钟)</h3>
           </div>
-          ${renderSummaryGrid(observabilitySignals, '未返回可观测性摘要')}
+          ${renderSummaryGrid(observabilitySignals, observabilityEmptyText)}
         </div>
       </div>
     `;
