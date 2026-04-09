@@ -262,13 +262,14 @@ export async function render(container) {
       <div class="section-card-header">
         <h3>视频监控</h3>
         <div class="form-group" style="margin:0;">
+          <label class="form-label" for="bili-video-bvid">BVID</label>
           <input type="text" id="bili-video-bvid" class="form-input" placeholder="输入 BVID" />
           <button class="btn btn-primary" id="bili-video-add">添加</button>
         </div>
       </div>
       <div class="filter-bar" style="padding: 0 16px 16px;">
         <div class="form-group">
-          <label class="form-label">轮询状态</label>
+          <label class="form-label" for="bili-video-poll-filter">轮询状态</label>
           <select id="bili-video-poll-filter" class="form-input">
             <option value="">全部状态</option>
             <option value="true">仅轮询中</option>
@@ -296,22 +297,22 @@ export async function render(container) {
       <div class="section-card-header"><h3>凭证管理</h3></div>
       <div class="form-card" style="border:none; box-shadow:none;">
         <div class="form-row">
-          <div class="form-group"><label class="form-label">名称</label><input type="text" id="cred-name" class="form-input" /></div>
-          <div class="form-group"><label class="form-label">SESSDATA</label><input type="text" id="cred-sessdata" class="form-input" /></div>
+          <div class="form-group"><label class="form-label" for="cred-name">名称</label><input type="text" id="cred-name" class="form-input" /></div>
+          <div class="form-group"><label class="form-label" for="cred-sessdata">SESSDATA</label><input type="text" id="cred-sessdata" class="form-input" /></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">bili_jct</label><input type="text" id="cred-bili-jct" class="form-input" /></div>
-          <div class="form-group"><label class="form-label">buvid3</label><input type="text" id="cred-buvid3" class="form-input" /></div>
+          <div class="form-group"><label class="form-label" for="cred-bili-jct">bili_jct</label><input type="text" id="cred-bili-jct" class="form-input" /></div>
+          <div class="form-group"><label class="form-label" for="cred-buvid3">buvid3</label><input type="text" id="cred-buvid3" class="form-input" /></div>
         </div>
         <div class="form-row">
-          <div class="form-group"><label class="form-label">buvid4</label><input type="text" id="cred-buvid4" class="form-input" /></div>
-          <div class="form-group"><label class="form-label">过期时间</label><input type="datetime-local" id="cred-expires" class="form-input" /></div>
+          <div class="form-group"><label class="form-label" for="cred-buvid4">buvid4</label><input type="text" id="cred-buvid4" class="form-input" /></div>
+          <div class="form-group"><label class="form-label" for="cred-expires">过期时间</label><input type="datetime-local" id="cred-expires" class="form-input" /></div>
         </div>
         <button class="btn btn-primary" id="cred-add">添加凭证</button>
       </div>
       <div class="filter-bar" style="padding: 0 16px 16px;">
         <div class="form-group">
-          <label class="form-label">激活状态</label>
+          <label class="form-label" for="bili-cred-active-filter">激活状态</label>
           <select id="bili-cred-active-filter" class="form-input">
             <option value="">全部</option>
             <option value="active">仅激活</option>
@@ -319,7 +320,7 @@ export async function render(container) {
           </select>
         </div>
         <div class="form-group">
-          <label class="form-label">过期状态</label>
+          <label class="form-label" for="bili-cred-expiry-filter">过期状态</label>
           <select id="bili-cred-expiry-filter" class="form-input">
             <option value="">全部</option>
             <option value="expired">已过期</option>

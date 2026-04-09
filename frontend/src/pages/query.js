@@ -67,6 +67,7 @@ export async function render(container) {
         <div style="padding: 16px;">
           <div class="form-row">
             <div class="form-group" style="flex:1;">
+              <label class="form-label" for="query-comment-id">Comment ID</label>
               <input type="text" id="query-comment-id" class="form-input" placeholder="输入 Comment ID" />
             </div>
             <div class="form-group">
@@ -90,6 +91,7 @@ export async function render(container) {
         <div style="padding: 16px;">
           <div class="form-row">
             <div class="form-group" style="flex:1;">
+              <label class="form-label" for="query-job-id">Job ID</label>
               <input type="text" id="query-job-id" class="form-input" placeholder="输入 Job ID" />
             </div>
             <div class="form-group">
@@ -113,11 +115,11 @@ export async function render(container) {
         <div style="padding: 16px;">
           <div class="filter-bar" style="margin-bottom: 12px; padding: 0; background: transparent; box-shadow: none;">
             <div class="form-group">
-              <label class="form-label">数量</label>
+              <label class="form-label" for="query-comments-limit">数量</label>
               <input type="number" id="query-comments-limit" class="form-input" value="10" min="1" max="100" />
             </div>
             <div class="form-group">
-              <label class="form-label">偏移</label>
+              <label class="form-label" for="query-comments-offset">偏移</label>
               <input type="number" id="query-comments-offset" class="form-input" value="0" min="0" max="10000" />
             </div>
             <div class="form-group">

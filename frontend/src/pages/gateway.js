@@ -19,22 +19,22 @@ export async function render(container) {
         <div style="padding: 16px;">
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">Comment ID</label>
+              <label class="form-label" for="gw-comment-id">Comment ID</label>
               <input type="text" id="gw-comment-id" class="form-input" placeholder="评论 ID" />
             </div>
             <div class="form-group">
-              <label class="form-label">来源</label>
+              <label class="form-label" for="gw-source">来源</label>
               <input type="text" id="gw-source" class="form-input" value="manual" />
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">回复内容 <span id="gw-char-count" class="form-hint">0/0</span></label>
+            <label class="form-label" for="gw-reply">回复内容 <span id="gw-char-count" class="form-hint">0/0</span></label>
             <textarea id="gw-reply" class="form-input form-textarea" rows="3" placeholder="回复文本"></textarea>
           </div>
           <div class="form-row">
             <div class="form-group" style="flex-direction:row; align-items:center; gap:8px;">
-              <label class="form-label" style="margin:0;">强制发布</label>
               <input type="checkbox" id="gw-force" />
+              <label class="form-label" for="gw-force" style="margin:0;">强制发布</label>
             </div>
           </div>
           <button class="btn btn-primary" id="gw-publish-btn">发布</button>
@@ -44,11 +44,11 @@ export async function render(container) {
 
     <div class="filter-bar">
       <div class="form-group">
-        <label class="form-label">数量</label>
+        <label class="form-label" for="gw-limit">数量</label>
         <input type="number" id="gw-limit" class="form-input" value="20" min="1" max="100" />
       </div>
       <div class="form-group">
-        <label class="form-label">发布状态</label>
+        <label class="form-label" for="gw-status">发布状态</label>
         <select id="gw-status" class="form-input">
           <option value="">全部</option>
           <option value="published">published</option>

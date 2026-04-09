@@ -16,16 +16,16 @@ export async function render(container) {
       <h3>新增条目</h3>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">分类</label>
+          <label class="form-label" for="knowledge-category">分类</label>
           <input type="text" id="knowledge-category" class="form-input" placeholder="例: personality" />
         </div>
         <div class="form-group">
-          <label class="form-label">标题</label>
+          <label class="form-label" for="knowledge-title">标题</label>
           <input type="text" id="knowledge-title" class="form-input" placeholder="条目标题" />
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">内容</label>
+        <label class="form-label" for="knowledge-content">内容</label>
         <textarea id="knowledge-content" class="form-input form-textarea" rows="3" placeholder="知识内容"></textarea>
       </div>
       <button class="btn btn-primary" id="knowledge-create">创建</button>

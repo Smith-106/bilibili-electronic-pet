@@ -19,7 +19,7 @@ export async function render(container) {
 
     <div class="filter-bar">
       <div class="form-group">
-        <label class="form-label">状态</label>
+        <label class="form-label" for="jobs-status">状态</label>
         <select id="jobs-status" class="form-input">
           <option value="">全部</option>
           <option value="queued">排队中</option>
@@ -31,7 +31,7 @@ export async function render(container) {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">数量</label>
+        <label class="form-label" for="jobs-limit">数量</label>
         <input type="number" id="jobs-limit" class="form-input" value="20" min="1" max="200" />
       </div>
       <div class="form-group">

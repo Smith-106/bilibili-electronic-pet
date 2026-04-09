@@ -21,11 +21,11 @@ export async function render(container) {
 
     <div class="filter-bar">
       <div class="form-group">
-        <label class="form-label">操作类型</label>
+        <label class="form-label" for="audit-action">操作类型</label>
         <input type="text" id="audit-action" class="form-input" placeholder="例: approve, retry" />
       </div>
       <div class="form-group">
-        <label class="form-label">成功</label>
+        <label class="form-label" for="audit-ok">成功</label>
         <select id="audit-ok" class="form-input">
           <option value="">全部</option>
           <option value="true">成功</option>
@@ -33,7 +33,7 @@ export async function render(container) {
         </select>
       </div>
       <div class="form-group">
-        <label class="form-label">数量</label>
+        <label class="form-label" for="audit-limit">数量</label>
         <input type="number" id="audit-limit" class="form-input" value="30" min="1" max="200" />
       </div>
       <div class="form-group">

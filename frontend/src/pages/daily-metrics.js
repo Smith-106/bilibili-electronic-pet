@@ -10,7 +10,7 @@ export async function render(container) {
       <h2>每日指标</h2>
       <div class="page-actions">
         <div class="form-group" style="margin:0;">
-          <label class="form-label">天数</label>
+          <label class="form-label" for="metrics-days">天数</label>
           <input type="number" id="metrics-days" class="form-input" value="30" min="1" max="365" />
         </div>
         <button class="btn btn-secondary" id="metrics-days-7">近7天</button>

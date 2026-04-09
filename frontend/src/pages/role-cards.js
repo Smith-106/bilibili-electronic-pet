@@ -21,7 +21,7 @@ export async function render(container) {
 
     <div class="filter-bar">
       <div class="form-group">
-        <label class="form-label">选择角色卡</label>
+        <label class="form-label" for="rc-select">选择角色卡</label>
         <select id="rc-select" class="form-input"><option value="">-- 新建 --</option></select>
       </div>
       <div class="form-group">
@@ -33,28 +33,28 @@ export async function render(container) {
       <h3 id="rc-editor-title">新建角色卡</h3>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Key</label>
+          <label class="form-label" for="rc-key">Key</label>
           <input type="text" id="rc-key" class="form-input" placeholder="唯一标识 (英文)" />
         </div>
         <div class="form-group">
-          <label class="form-label">名称</label>
+          <label class="form-label" for="rc-name">名称</label>
           <input type="text" id="rc-name" class="form-input" placeholder="角色名称" />
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">描述</label>
+        <label class="form-label" for="rc-desc">描述</label>
         <input type="text" id="rc-desc" class="form-input" placeholder="简短描述" />
       </div>
       <div class="form-group">
-        <label class="form-label">System Prompt</label>
+        <label class="form-label" for="rc-system-prompt">System Prompt</label>
         <textarea id="rc-system-prompt" class="form-input form-textarea" rows="4" placeholder="系统提示词"></textarea>
       </div>
       <div class="form-group">
-        <label class="form-label">语气 (Tone)</label>
+        <label class="form-label" for="rc-tone">语气 (Tone)</label>
         <input type="text" id="rc-tone" class="form-input" placeholder="例: friendly, witty" />
       </div>
       <div class="form-group">
-        <label class="form-label">约束 (Constraints)</label>
+        <label class="form-label" for="rc-constraints">约束 (Constraints)</label>
         <textarea id="rc-constraints" class="form-input form-textarea" rows="2" placeholder="行为约束，JSON 或文本"></textarea>
       </div>
       <div class="form-actions">
