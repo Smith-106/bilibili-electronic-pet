@@ -147,6 +147,96 @@ function formatAuthProbeReason(diagnostics) {
   return reason;
 }
 
+function resolveRuntimeCredentialState(diagnostics) {
+  if (!diagnostics || typeof diagnostics !== 'object' || Array.isArray(diagnostics)) {
+    return {
+      credentialPresent: false,
+      credentialComplete: false,
+      realAuthReady: false,
+    };
+  }
+
+  const releaseGates = diagnostics.release_gates;
+  const signals = diagnostics.signals;
+  return {
+    credentialPresent: Boolean(
+      signals?.credential_present
+      ?? releaseGates?.credential_present,
+    ),
+    credentialComplete: Boolean(
+      signals?.credential_complete
+      ?? releaseGates?.credential_complete,
+    ),
+    realAuthReady: Boolean(
+      signals?.real_auth_ready
+      ?? releaseGates?.real_auth_ready,
+    ),
+  };
+}
+
+function resolveCredentialCardPresentation(data) {
+  const credential = data?.credential;
+  const runtimeState = resolveRuntimeCredentialState(data?.diagnostics);
+
+  if (credential) {
+    const credentialExpiry = getBilibiliCredentialExpiryState(credential?.expires_at);
+    return {
+      activeCredentialName: renderBilibiliCredentialName(credential, '未配置活跃凭证'),
+      credentialHealth: formatBilibiliCredentialHealth(
+        runtimeState.credentialPresent,
+        runtimeState.credentialComplete,
+      ),
+      credentialExpiry,
+      credentialExpiryColor: getBilibiliCredentialExpiryColor(credentialExpiry),
+      credentialExpiryDetail: formatBilibiliCredentialExpiryHint(credentialExpiry, true),
+      credentialUsage: getBilibiliCredentialUsageState(credential),
+    };
+  }
+
+  if (runtimeState.credentialPresent) {
+    const runtimeCredentialName = runtimeState.realAuthReady
+      ? '运行时外部凭证'
+      : '运行时外部凭证（待验证）';
+    const runtimeCredentialHint = runtimeState.realAuthReady
+      ? '后台未托管该凭证，当前运行时鉴权已通过'
+      : '后台未托管该凭证，当前仍需检查运行时鉴权状态';
+    const credentialExpiry = {
+      label: runtimeState.realAuthReady ? '外部管理' : '待确认',
+      cls: runtimeState.realAuthReady ? 'badge-success' : 'badge-warning',
+    };
+
+    return {
+      activeCredentialName: `${escapeHtml(runtimeCredentialName)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(runtimeCredentialHint)}</div>`,
+      credentialHealth: runtimeState.credentialComplete
+        ? (runtimeState.realAuthReady
+            ? '运行时外部凭证字段完整，鉴权探针已通过'
+            : '运行时外部凭证字段完整，但鉴权探针尚未通过')
+        : '运行时外部凭证已注入，但缺少关键字段，请检查运行时配置',
+      credentialExpiry,
+      credentialExpiryColor: runtimeState.realAuthReady ? 'var(--success-color)' : 'var(--warning-color)',
+      credentialExpiryDetail: runtimeState.realAuthReady
+        ? '后台未托管该凭证，过期时间需在运行时环境中确认'
+        : '后台未托管该凭证，过期时间与有效性需在运行时环境中确认',
+      credentialUsage: {
+        label: runtimeState.realAuthReady ? '运行时已验证' : '运行时待验证',
+        detail: runtimeState.realAuthReady
+          ? '认证探针已通过，但后台列表未托管该凭证'
+          : '后台列表未托管该凭证，请结合运行时诊断继续确认',
+      },
+    };
+  }
+
+  const credentialExpiry = getBilibiliCredentialExpiryState(undefined);
+  return {
+    activeCredentialName: renderBilibiliCredentialName(null, '未配置活跃凭证'),
+    credentialHealth: formatBilibiliCredentialHealth(false, false),
+    credentialExpiry,
+    credentialExpiryColor: getBilibiliCredentialExpiryColor(credentialExpiry),
+    credentialExpiryDetail: formatBilibiliCredentialExpiryHint(credentialExpiry, false),
+    credentialUsage: getBilibiliCredentialUsageState(null),
+  };
+}
+
 export async function render(container) {
   let videoOffset = 0;
 
@@ -280,16 +370,9 @@ export async function render(container) {
       const disabledVideoShare = formatBilibiliCoverage(disabledVideoCount, totalVideoCount, '停用占比');
       const diagnosticsReady = Boolean(data?.diagnostics?.ready);
       const blockingReasons = formatBilibiliBlockingReasons(data?.diagnostics?.blocking_reasons);
-      const activeCredentialName = renderBilibiliCredentialName(data?.credential, '未配置活跃凭证');
-      const credentialPresent = Boolean(
-        data?.diagnostics?.signals?.credential_present
-        ?? data?.diagnostics?.release_gates?.credential_present,
-      );
-      const credentialComplete = Boolean(
-        data?.diagnostics?.signals?.credential_complete
-        ?? data?.diagnostics?.release_gates?.credential_complete,
-      );
-      const credentialHealth = formatBilibiliCredentialHealth(credentialPresent, credentialComplete);
+      const credentialCard = resolveCredentialCardPresentation(data);
+      const activeCredentialName = credentialCard.activeCredentialName;
+      const credentialHealth = credentialCard.credentialHealth;
       const diagnosticHealth = formatBilibiliDiagnosticHealth(data?.diagnostics);
       const publishMode = formatBilibiliPublishMode(data?.diagnostics?.effective_publish_mode);
       const publishModeHealth = formatBilibiliPublishModeHealth(data?.diagnostics);
@@ -312,9 +395,10 @@ export async function render(container) {
       const pollIntervalHint = formatBilibiliPollIntervalHint(data?.config?.poll_interval_seconds);
       const rateLimit = formatBilibiliRateLimit(data?.config?.rate_limit_per_minute);
       const rateLimitHint = formatBilibiliRateLimitHint(data?.config?.rate_limit_per_minute);
-      const credentialExpiry = getBilibiliCredentialExpiryState(data?.credential?.expires_at);
-      const credentialExpiryDetail = formatBilibiliCredentialExpiryHint(credentialExpiry, Boolean(data?.credential));
-      const credentialUsage = getBilibiliCredentialUsageState(data?.credential);
+      const credentialExpiry = credentialCard.credentialExpiry;
+      const credentialExpiryDetail = credentialCard.credentialExpiryDetail;
+      const credentialUsage = credentialCard.credentialUsage;
+      const credentialExpiryColor = credentialCard.credentialExpiryColor;
       const foundationGate = resolveGateState(readinessData?.foundation_ready);
       const deliveryGate = resolveGateState(readinessData?.delivery_ready);
       const foundationBlockers = normalizeStringList(readinessData?.foundation_blockers);
@@ -410,7 +494,7 @@ export async function render(container) {
         </div>
         <div class="stat-card mini">
           <div class="stat-label">凭证过期</div>
-          <div class="stat-value" style="font-size:14px; color:${getBilibiliCredentialExpiryColor(credentialExpiry)}">${escapeHtml(credentialExpiry.label)}</div>
+          <div class="stat-value" style="font-size:14px; color:${credentialExpiryColor}">${escapeHtml(credentialExpiry.label)}</div>
           ${credentialExpiryDetail ? `<div class="form-hint" style="margin-top:6px;">${escapeHtml(credentialExpiryDetail)}</div>` : ''}
         </div>
         <div class="stat-card mini">

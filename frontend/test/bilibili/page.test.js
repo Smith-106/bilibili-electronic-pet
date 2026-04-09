@@ -258,6 +258,70 @@ describe('bilibili admin critical-path regression tests', () => {
     expect(container.textContent).toContain('native_bilibili_publish');
   });
 
+  it('renders runtime-managed credential summary when diagnostics report external credential availability', async () => {
+    const container = createPageContainer();
+    mockApi.getBilibiliStatus.mockResolvedValueOnce({
+      ok: true,
+      enabled: true,
+      polling_enabled: false,
+      publish_enabled: true,
+      video_count: 0,
+      config: {
+        poll_interval_seconds: 300,
+        rate_limit_per_minute: 30,
+      },
+      videos: {
+        poll_enabled_count: 0,
+      },
+      credential: null,
+      diagnostics: {
+        ready: true,
+        blocking_reasons: [],
+        effective_publish_mode: 'native_bilibili',
+        signals: {
+          credential_present: true,
+          credential_complete: true,
+          native_publish_enabled: true,
+          polling_worker_enabled: false,
+          real_auth_ready: true,
+          auth_probe_reason: 'verified',
+        },
+        release_gates: {
+          credential_present: true,
+          credential_complete: true,
+          worker_or_publish_ready: true,
+          real_auth_ready: true,
+        },
+      },
+    });
+    mockApi.getReadinessStatus.mockResolvedValueOnce({
+      foundation_ready: true,
+      delivery_ready: true,
+      foundation_blockers: [],
+      delivery_blockers: [],
+      delivery_capability_blockers: [],
+      delivery_capabilities: {
+        summary: [
+          {
+            capability: 'native_bilibili_publish',
+            status: 'configured',
+            mode: 'native_bilibili',
+            missing_inputs: [],
+          },
+        ],
+      },
+    });
+    mockApi.getBilibiliVideos.mockResolvedValueOnce({ total: 0, items: [] });
+    mockApi.getBilibiliCredentials.mockResolvedValueOnce({ items: [] });
+
+    await render(container);
+
+    expect(container.textContent).toContain('运行时外部凭证');
+    expect(container.textContent).toContain('后台未托管该凭证');
+    expect(container.textContent).toContain('运行时已验证');
+    expect(container.textContent).not.toContain('未配置活跃凭证');
+  });
+
   it('refetches videos when poll filter changes', async () => {
     const container = createPageContainer();
 
