@@ -28,7 +28,8 @@
 
 - `deploy-remote-ghcr.ps1`
   - Use when you want the live host to switch to prebuilt GHCR images instead of locally built images.
-  - Uploads `docker-compose.deploy.ghcr.yml`, performs a temporary GHCR login on the server, pulls `ghcr.io/smith-106/bilibili-electronic-pet:latest`, recreates `api` and `worker`, verifies the public site, and logs out by default.
+  - Uploads `docker-compose.deploy.ghcr.yml`, performs a temporary GHCR login on the server, pulls the selected GHCR image ref, recreates `api` and `worker`, verifies the public site, and logs out by default.
+  - Supports pinned deploys via `-ImageRef ghcr.io/smith-106/bilibili-electronic-pet:sha-<commit>`.
 
 - `deploy-remote-status.ps1`
   - Read-only remote status probe.
@@ -51,4 +52,5 @@
 - Frontend-only admin changes: run `./deploy-remote.ps1 admin`
 - Full application changes: run `./deploy-remote.ps1 source -Ref origin/master`
 - Switch runtime source to GHCR images: run `./deploy-remote.ps1 ghcr`
+- Deploy a pinned GHCR image: run `./deploy-remote.ps1 ghcr -ImageRef ghcr.io/smith-106/bilibili-electronic-pet:sha-<commit>`
 - Inspect live runtime source and public status: run `./deploy-remote.ps1 status`

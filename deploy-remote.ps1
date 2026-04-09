@@ -12,6 +12,7 @@ param(
   [switch]$SkipSwap,
   [switch]$PersistLogin,
   [string]$GhcrUsername = 'Smith-106',
+  [string]$ImageRef = 'ghcr.io/smith-106/bilibili-electronic-pet:latest',
   [string]$GhcrToken = ''
 )
 
@@ -63,6 +64,7 @@ switch ($Mode) {
       VerifyPublic = $VerifyPublic
       PersistLogin = [bool]$PersistLogin
       GhcrUsername = $GhcrUsername
+      ImageRef = $ImageRef
     }
     if ($GhcrToken) {
       $invokeArgs.GhcrToken = $GhcrToken

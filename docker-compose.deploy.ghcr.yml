@@ -1,14 +1,16 @@
 version: "3.8"
 
+x-ghcr-image: &ghcr_image ${GHCR_IMAGE_REF:-ghcr.io/smith-106/bilibili-electronic-pet:latest}
+
 services:
   migrate:
-    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    image: *ghcr_image
     command: ["npx", "prisma", "migrate", "deploy"]
 
   api:
-    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    image: *ghcr_image
     command: ["node", "dist/index.js"]
 
   worker:
-    image: ghcr.io/smith-106/bilibili-electronic-pet:latest
+    image: *ghcr_image
     command: ["node", "dist/workers/worker-main.js"]

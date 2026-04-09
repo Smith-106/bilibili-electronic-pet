@@ -6,6 +6,7 @@ param(
   [string]$BaseComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.yml",
   [string]$GhcrComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.ghcr.yml",
   [string]$GhcrUsername = "Smith-106",
+  [string]$ImageRef = "ghcr.io/smith-106/bilibili-electronic-pet:latest",
   [string]$GhcrToken = "",
   [switch]$PersistLogin,
   [bool]$VerifyPublic = $true
@@ -28,6 +29,9 @@ if (-not $GhcrToken) {
 if (-not $GhcrToken) {
   throw "GHCR token is required"
 }
+if (-not $ImageRef) {
+  throw "ImageRef is required"
+}
 
 $remote = "$User@$RemoteHost"
 $tmpKey = Join-Path $env:TEMP ("bili-pet-ghcr-key-" + [guid]::NewGuid().ToString("N"))
@@ -42,9 +46,12 @@ try {
     throw "override upload failed"
   }
 
+  $remoteDockerConfig = "/tmp/bili-ghcr-docker-config"
   $remoteLogin = @"
 set -euo pipefail
-sudo -n docker login ghcr.io -u $GhcrUsername --password-stdin
+sudo -n rm -rf $remoteDockerConfig
+sudo -n mkdir -p $remoteDockerConfig
+sudo -n env DOCKER_CONFIG=$remoteDockerConfig docker login ghcr.io -u $GhcrUsername --password-stdin
 "@
 
   Write-Output "[deploy-ghcr] logging remote docker into GHCR"
@@ -53,13 +60,19 @@ sudo -n docker login ghcr.io -u $GhcrUsername --password-stdin
     throw "remote GHCR login failed"
   }
 
-  $logoutFlag = if ($PersistLogin) { "0" } else { "1" }
+$logoutFlag = if ($PersistLogin) { "0" } else { "1" }
   $remoteDeploy = @"
 set -euo pipefail
 cd $RemoteAppDir
-sudo -n docker-compose -f $BaseComposeFile -f $GhcrComposeFile pull migrate api worker
-sudo -n docker-compose -f $BaseComposeFile -f $GhcrComposeFile run --rm migrate
-sudo -n docker-compose -f $BaseComposeFile -f $GhcrComposeFile up -d --force-recreate api worker
+if [ "$logoutFlag" = "0" ]; then
+  sudo -n mkdir -p /root/.docker
+  sudo -n cp -f $remoteDockerConfig/config.json /root/.docker/config.json
+  sudo -n chmod 600 /root/.docker/config.json
+fi
+export GHCR_IMAGE_REF='$ImageRef'
+sudo -n env DOCKER_CONFIG=$remoteDockerConfig GHCR_IMAGE_REF='$ImageRef' docker-compose -f $BaseComposeFile -f $GhcrComposeFile pull migrate api worker
+sudo -n env DOCKER_CONFIG=$remoteDockerConfig GHCR_IMAGE_REF='$ImageRef' docker-compose -f $BaseComposeFile -f $GhcrComposeFile run --rm migrate
+sudo -n env DOCKER_CONFIG=$remoteDockerConfig GHCR_IMAGE_REF='$ImageRef' docker-compose -f $BaseComposeFile -f $GhcrComposeFile up -d --force-recreate api worker
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   status=`$(sudo -n docker inspect --format '{{.State.Health.Status}}' bilibili-electronic-pet_api_1 2>/dev/null || echo missing)
   echo "api_health=`$status"
@@ -69,9 +82,10 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   sleep 5
 done
 [ "`$(sudo -n docker inspect --format '{{.State.Health.Status}}' bilibili-electronic-pet_api_1)" = "healthy" ]
+echo "ghcr_image_ref=$ImageRef"
 sudo -n docker ps --format '{{.Names}} {{.Image}} {{.Status}}' | grep '^bilibili-electronic-pet_'
 if [ "$logoutFlag" = "1" ]; then
-  sudo -n docker logout ghcr.io >/dev/null 2>&1 || true
+  sudo -n rm -rf $remoteDockerConfig
 fi
 "@
 
