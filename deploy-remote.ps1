@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('admin', 'source', 'ghcr')]
+  [ValidateSet('admin', 'source', 'ghcr', 'status')]
   [string]$Mode = 'source',
   [string]$Ref = 'origin/master',
   [string]$KeyPath = "C:\Users\32852\Desktop\服务器\azure\ssh-key-2026-02-10.key",
@@ -23,6 +23,7 @@ $scripts = @{
   admin  = Join-Path $PSScriptRoot 'deploy-admin-remote.ps1'
   source = Join-Path $PSScriptRoot 'deploy-remote-source.ps1'
   ghcr   = Join-Path $PSScriptRoot 'deploy-remote-ghcr.ps1'
+  status = Join-Path $PSScriptRoot 'deploy-remote-status.ps1'
 }
 
 $target = $scripts[$Mode]
@@ -67,6 +68,14 @@ switch ($Mode) {
       $invokeArgs.GhcrToken = $GhcrToken
     }
     & $target @invokeArgs
+    break
+  }
+  'status' {
+    & $target `
+      -KeyPath $KeyPath `
+      -User $User `
+      -RemoteHost $RemoteHost `
+      -VerifyPublic:$VerifyPublic
     break
   }
 }

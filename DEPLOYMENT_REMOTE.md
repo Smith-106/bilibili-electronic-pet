@@ -16,6 +16,7 @@
     - `./deploy-remote.ps1 admin`
     - `./deploy-remote.ps1 source -Ref origin/master`
     - `./deploy-remote.ps1 ghcr`
+    - `./deploy-remote.ps1 status`
 
 - `deploy-admin-remote.ps1`
   - Use when only the admin bundle changed.
@@ -28,6 +29,10 @@
 - `deploy-remote-ghcr.ps1`
   - Use when you want the live host to switch to prebuilt GHCR images instead of locally built images.
   - Uploads `docker-compose.deploy.ghcr.yml`, performs a temporary GHCR login on the server, pulls `ghcr.io/smith-106/bilibili-electronic-pet:latest`, recreates `api` and `worker`, verifies the public site, and logs out by default.
+
+- `deploy-remote-status.ps1`
+  - Read-only remote status probe.
+  - Reports current remote container image sources, container health, tracked deploy files, swap status, and public admin/readiness state.
 
 ## Server Resource Note
 
@@ -46,3 +51,4 @@
 - Frontend-only admin changes: run `./deploy-remote.ps1 admin`
 - Full application changes: run `./deploy-remote.ps1 source -Ref origin/master`
 - Switch runtime source to GHCR images: run `./deploy-remote.ps1 ghcr`
+- Inspect live runtime source and public status: run `./deploy-remote.ps1 status`
