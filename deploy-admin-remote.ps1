@@ -5,6 +5,7 @@ param(
   [string]$RemoteAppDir = "/opt/bilibili-electronic-pet",
   [string]$ApiContainer = "bilibili-electronic-pet_api_1",
   [string]$ComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.yml",
+  [switch]$AllowImageSourceChange,
   [switch]$SkipBuild,
   [switch]$SkipPersistImage,
   [switch]$SkipRecreate,
@@ -49,6 +50,20 @@ $remote = "$User@$RemoteHost"
 $remoteBundleDir = "/tmp/bili-admin-bundle"
 
 try {
+  Write-Output "[deploy-admin] checking current remote api image source"
+  $currentApiImage = (& ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $tmpKey $remote "sudo -n docker inspect --format '{{.Config.Image}}' $ApiContainer 2>/dev/null || true").Trim()
+  if ($LASTEXITCODE -ne 0) {
+    throw "remote image source probe failed"
+  }
+  if ($currentApiImage) {
+    Write-Output "[deploy-admin] current api image $currentApiImage"
+  }
+
+  $wouldUseLocalImagePath = (-not $SkipPersistImage) -or (-not $SkipRecreate)
+  if (-not $AllowImageSourceChange -and $wouldUseLocalImagePath -and $currentApiImage -like 'ghcr.io/*') {
+    throw "live api is running from GHCR image $currentApiImage. Refusing to persist or recreate via local-image compose. Use ./deploy-remote.ps1 -Mode ghcr -GitRef origin/master, or rerun with -AllowImageSourceChange if you intentionally want to switch runtime source."
+  }
+
   Write-Output "[deploy-admin] preparing remote bundle directory"
   & ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $tmpKey $remote "rm -rf $remoteBundleDir && mkdir -p $remoteBundleDir/assets"
   if ($LASTEXITCODE -ne 0) {

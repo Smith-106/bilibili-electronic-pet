@@ -5,6 +5,7 @@ param(
   [string]$RemoteHost = "20.194.7.31",
   [string]$RemoteAppDir = "/opt/bilibili-electronic-pet",
   [string]$ComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.yml",
+  [switch]$AllowImageSourceChange,
   [int]$SwapGiB = 4,
   [switch]$SkipSwap,
   [bool]$VerifyPublic = $true
@@ -21,18 +22,39 @@ $remote = "$User@$RemoteHost"
 $archivePath = Join-Path $env:TEMP ("bili-pet-src-" + [guid]::NewGuid().ToString("N") + ".tar")
 $tmpKey = Join-Path $env:TEMP ("bili-pet-src-key-" + [guid]::NewGuid().ToString("N"))
 
-Write-Output "[deploy-source] creating archive from $Ref"
-& git archive --format=tar --output $archivePath $Ref
-if ($LASTEXITCODE -ne 0) {
-  throw "git archive failed for ref $Ref"
-}
-
 Copy-Item -LiteralPath $KeyPath -Destination $tmpKey -Force
 icacls $tmpKey /inheritance:r | Out-Null
 icacls $tmpKey /grant:r "$env:USERNAME`:(F)" | Out-Null
 
 try {
+  Write-Output "[deploy-source] checking current remote image sources"
+  $currentImages = & ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $tmpKey $remote "sudo -n docker inspect --format '{{.Name}}|{{.Config.Image}}' bilibili-electronic-pet_api_1 bilibili-electronic-pet_worker_1 2>/dev/null || true"
+  if ($LASTEXITCODE -ne 0) {
+    throw "remote image source probe failed"
+  }
+  $currentImages = @($currentImages | Where-Object { $_ -and $_.Trim() })
+  foreach ($line in $currentImages) {
+    Write-Output "[deploy-source] current runtime $line"
+  }
+  $hasGhcrRuntime = $false
+  foreach ($line in $currentImages) {
+    $parts = $line -split '\|', 2
+    if ($parts.Count -eq 2 -and $parts[1] -like 'ghcr.io/*') {
+      $hasGhcrRuntime = $true
+      break
+    }
+  }
+  if (-not $AllowImageSourceChange -and $hasGhcrRuntime) {
+    throw "live runtime is currently backed by GHCR images. Refusing to switch api/worker back to local-image compose. Use ./deploy-remote.ps1 -Mode ghcr -GitRef $Ref, or rerun with -AllowImageSourceChange if you intentionally want to change runtime source."
+  }
+
   $swapFlag = if ($SkipSwap) { "0" } else { "1" }
+
+  Write-Output "[deploy-source] creating archive from $Ref"
+  & git archive --format=tar --output $archivePath $Ref
+  if ($LASTEXITCODE -ne 0) {
+    throw "git archive failed for ref $Ref"
+  }
 
   Write-Output "[deploy-source] uploading source archive"
   & scp -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $tmpKey $archivePath "${remote}:/tmp/bili-pet-source.tar"

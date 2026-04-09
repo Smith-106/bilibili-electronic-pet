@@ -31,6 +31,15 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 - `search_enrichment` is configured and cleared.
 - Native Bilibili publish is configured and cleared, with `real_auth_ready=true` and `pre_release_real_chain_ready=true`.
 
+## Live Delivery Baseline (2026-04-09)
+
+- `./deploy-remote.ps1 -Mode status` confirmed the live host is now running pinned GHCR images for both `api` and `worker`:
+  `ghcr.io/smith-106/bilibili-electronic-pet:sha-d3af305361bf8e63d20f97ccb315faecfcd97cb0`
+- The public target still serves the validated admin bundle asset `/assets/index-CZX0q7Yl.js`.
+- Public `/health` returns `{"ok":true}`.
+- Public `/readiness` returns `ready=true`, `foundation_ready=true`, `delivery_ready=true`.
+- The effective live publish mode is `native_bilibili`.
+
 ## Completed Areas
 
 ### Backend and Runtime Contract
@@ -72,19 +81,18 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 - `cloud-validate` now treats preflight readiness as a blocking gate before enforcing strict runtime checks.
 - Release-path workflows now also fail closed when pre-release real-chain secrets are absent, instead of silently skipping the gate.
 
-## Current Gaps
+## Residual Operational Risks
 
-### External Runtime Dependencies (Environment-Gated)
+### Environment Ownership
 
-- Real LLM generation still depends on runtime API keys/provider configuration.
-- Search enhancement still depends on provider credentials/configuration.
-- Native Bilibili publish still depends on active credentials, publish switches, and runtime dependency health.
-- Real-chain release validation still requires environment-provided secrets and a healthy target runtime even though the repository-controlled baseline is closed.
+- External provider and Bilibili credentials remain environment-owned assets and still require rotation and management outside the repository.
+- GHCR pulls are validated, but unattended future pulls still require persisted package credentials or a fresh authenticated deploy action.
+- Local-image `admin` and `source` deploy paths now need explicit opt-in before they can replace a GHCR-backed runtime.
 
 ### Validation Scope Boundaries
 
-- Repository tests now cover configured vs fallback branches more explicitly, and native real-chain readiness now resists placeholder credential fields, but the suite still does not prove a live production external chain.
-- CI-level static/workflow alignment has been validated; full GitHub-hosted runner execution is still an environment-level concern.
+- Repository tests and public target checks now cover both repo-controlled behavior and an active pre-release environment.
+- CI and workflow alignment have been validated against the live public target, but ongoing operational health still depends on external services remaining available.
 
 ## Documentation State
 
@@ -97,6 +105,6 @@ Current status can be summarized as:
 
 1. Core product and operator workflows are implemented and integrated.
 2. Runtime and staging diagnostics are explicit, consistent, and test-covered for repo-controlled behavior.
-3. Remaining release risk is primarily external dependency readiness (secrets/credentials/environment), not missing core feature code.
+3. The public pre-release target is now delivery-ready; remaining risk is operational ownership of external credentials and runtime hygiene, not missing core feature code.
 
-The project is repo-local closed and environment gated: backend 177 tests and frontend 27 tests passed on 2026-04-07, both builds passed on 2026-04-07, and native external delivery still depends on runtime prerequisites.
+The project is repo-local closed and target-environment validated: backend tests/build and frontend tests/build were already green locally, and the public target now also proves `foundation_ready=true`, `delivery_ready=true`, and `effective_publish_mode=native_bilibili`.

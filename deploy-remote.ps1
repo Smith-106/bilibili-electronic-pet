@@ -6,6 +6,7 @@ param(
   [string]$User = 'azureuser',
   [string]$RemoteHost = '20.194.7.31',
   [bool]$VerifyPublic = $true,
+  [switch]$AllowImageSourceChange,
   [switch]$SkipBuild,
   [switch]$SkipPersistImage,
   [switch]$SkipRecreate,
@@ -42,6 +43,7 @@ switch ($Mode) {
       -User $User `
       -RemoteHost $RemoteHost `
       -VerifyPublic:$VerifyPublic `
+      -AllowImageSourceChange:$AllowImageSourceChange `
       -SkipBuild:$SkipBuild `
       -SkipPersistImage:$SkipPersistImage `
       -SkipRecreate:$SkipRecreate
@@ -54,6 +56,7 @@ switch ($Mode) {
       -User $User `
       -RemoteHost $RemoteHost `
       -VerifyPublic:$VerifyPublic `
+      -AllowImageSourceChange:$AllowImageSourceChange `
       -SkipSwap:$SkipSwap
     break
   }
