@@ -13,6 +13,7 @@ param(
   [switch]$PersistLogin,
   [string]$GhcrUsername = 'Smith-106',
   [string]$ImageRef = 'ghcr.io/smith-106/bilibili-electronic-pet:latest',
+  [string]$GitRef = '',
   [string]$GhcrToken = ''
 )
 
@@ -65,6 +66,7 @@ switch ($Mode) {
       PersistLogin = [bool]$PersistLogin
       GhcrUsername = $GhcrUsername
       ImageRef = $ImageRef
+      GitRef = $GitRef
     }
     if ($GhcrToken) {
       $invokeArgs.GhcrToken = $GhcrToken

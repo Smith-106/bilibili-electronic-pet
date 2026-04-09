@@ -7,6 +7,7 @@ param(
   [string]$GhcrComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.ghcr.yml",
   [string]$GhcrUsername = "Smith-106",
   [string]$ImageRef = "ghcr.io/smith-106/bilibili-electronic-pet:latest",
+  [string]$GitRef = "",
   [string]$GhcrToken = "",
   [switch]$PersistLogin,
   [bool]$VerifyPublic = $true
@@ -21,6 +22,14 @@ $repoRoot = $PSScriptRoot
 $overridePath = Join-Path $repoRoot "docker-compose.deploy.ghcr.yml"
 if (-not (Test-Path $overridePath)) {
   throw "missing GHCR deploy override: $overridePath"
+}
+
+if ($GitRef) {
+  $resolver = Join-Path $repoRoot "resolve-ghcr-image-ref.ps1"
+  if (-not (Test-Path $resolver)) {
+    throw "missing GHCR resolver: $resolver"
+  }
+  $ImageRef = (& $resolver -GitRef $GitRef).Trim()
 }
 
 if (-not $GhcrToken) {

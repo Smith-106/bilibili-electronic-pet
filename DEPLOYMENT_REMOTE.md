@@ -30,6 +30,11 @@
   - Use when you want the live host to switch to prebuilt GHCR images instead of locally built images.
   - Uploads `docker-compose.deploy.ghcr.yml`, performs a temporary GHCR login on the server, pulls the selected GHCR image ref, recreates `api` and `worker`, verifies the public site, and logs out by default.
   - Supports pinned deploys via `-ImageRef ghcr.io/smith-106/bilibili-electronic-pet:sha-<commit>`.
+  - Also supports ref-based deploys via `-GitRef origin/master`, which resolves to the matching published `sha-<commit>` tag.
+
+- `resolve-ghcr-image-ref.ps1`
+  - Resolves a Git ref to a GHCR image reference.
+  - Example: `./resolve-ghcr-image-ref.ps1 -GitRef origin/master`
 
 - `deploy-remote-status.ps1`
   - Read-only remote status probe.
@@ -53,4 +58,5 @@
 - Full application changes: run `./deploy-remote.ps1 source -Ref origin/master`
 - Switch runtime source to GHCR images: run `./deploy-remote.ps1 ghcr`
 - Deploy a pinned GHCR image: run `./deploy-remote.ps1 ghcr -ImageRef ghcr.io/smith-106/bilibili-electronic-pet:sha-<commit>`
+- Deploy the GHCR image that matches a Git ref: run `./deploy-remote.ps1 ghcr -GitRef origin/master`
 - Inspect live runtime source and public status: run `./deploy-remote.ps1 status`
