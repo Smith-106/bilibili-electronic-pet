@@ -4,12 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bili Pet - 管理面板</title>
+    <meta
+      name="description"
+      content="Bili Pet 管理面板，用于查看系统概览、任务管理、B站集成、审计日志与运营配置状态。"
+    />
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%234808d1'/%3E%3Cpath d='M18 22h18c8 0 14 6 14 14s-6 14-14 14H18z' fill='%23fff'/%3E%3Cpath d='M24 28h11c4 0 7 3 7 8s-3 8-7 8H24z' fill='%234808d1'/%3E%3Ccircle cx='21' cy='18' r='3' fill='%23fff'/%3E%3Ccircle cx='43' cy='18' r='3' fill='%23fff'/%3E%3C/svg%3E"
     />
-    <script type="module" crossorigin src="/assets/index-hS27R1x2.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-7PDV3QOE.css">
+    <script type="module" crossorigin src="/assets/index-FchcTPhJ.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CjzP9oqT.css">
   </head>
   <body>
     <svg style="display:none">
@@ -54,7 +58,7 @@
         <aside class="sidebar" id="left-sidebar">
           <div class="sidebar-header">
             <span>管理面板</span>
-            <button class="btn btn-icon-only" id="toggle-left-btn"><svg width="18" height="18"><use href="#icon-chevron-left"></use></svg></button>
+            <button class="btn btn-icon-only" id="toggle-left-btn" title="收起左栏" aria-label="收起左栏"><svg width="18" height="18"><use href="#icon-chevron-left"></use></svg></button>
           </div>
           <div class="sidebar-section" id="nav-list">
             <div class="nav-item active" data-page="dashboard"><svg width="16" height="16"><use href="#icon-cpu"></use></svg> 仪表盘</div>
@@ -71,7 +75,7 @@
         </aside>
 
         <main class="center-editor-space">
-          <button class="btn btn-icon-only trigger-left" id="expand-left-btn" style="display:none;" title="展开左栏"><svg width="18" height="18" style="transform:rotate(180deg)"><use href="#icon-chevron-left"></use></svg></button>
+          <button class="btn btn-icon-only trigger-left" id="expand-left-btn" style="display:none;" title="展开左栏" aria-label="展开左栏"><svg width="18" height="18" style="transform:rotate(180deg)"><use href="#icon-chevron-left"></use></svg></button>
 
           <div class="document-container" id="page-container">
             <!-- Page content rendered here -->

@@ -426,7 +426,7 @@ body {
 .cell-actions { white-space: nowrap; }
 .cell-actions .btn { margin-right: 4px; }
 
-.table-empty-cell { text-align: center; color: var(--grey-2); padding: 24px !important; }
+.table-empty-cell { text-align: center; color: var(--grey-1); padding: 24px !important; }
 
 /* ===== Status Badges ===== */
 .status-badge {
