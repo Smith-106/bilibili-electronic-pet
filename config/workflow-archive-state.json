@@ -1,0 +1,74 @@
+{
+  "updated_at": "2026-04-09T17:31:31.2585577+08:00",
+  "workflow_root": ".workflow",
+  "archive_root": ".workflow/archives",
+  "active_root": ".workflow/active",
+  "preferred_strategy": "directory_junction_redirect",
+  "archived_sessions": [
+    {
+      "session_id": "WFS-preprod-gap-closure",
+      "active_path": ".workflow/active/WFS-preprod-gap-closure",
+      "archive_path": ".workflow/archives/WFS-preprod-gap-closure",
+      "compatibility_mode": "directory_junction_redirect",
+      "authoritative_files": [
+        ".workflow/archives/WFS-preprod-gap-closure/workflow-session.json",
+        ".workflow/archives/WFS-preprod-gap-closure/TODO_LIST.md",
+        ".workflow/archives/WFS-preprod-gap-closure/ARCHIVE_METADATA.json"
+      ],
+      "paired_truth_sources": [
+        ".workflow/.csv-wave/preprod-gap-closure-20260407/results.csv",
+        ".workflow/.csv-wave/preprod-gap-closure-20260407/context.md"
+      ],
+      "notes": [
+        "Pilot archive migration completed on 2026-04-09.",
+        "The old active path must resolve through a directory junction."
+      ]
+    },
+    {
+      "session_id": "WFS-frontend-backend-alignment-20260408",
+      "active_path": ".workflow/active/WFS-frontend-backend-alignment-20260408",
+      "archive_path": ".workflow/archives/WFS-frontend-backend-alignment-20260408",
+      "compatibility_mode": "directory_junction_redirect",
+      "authoritative_files": [
+        ".workflow/archives/WFS-frontend-backend-alignment-20260408/workflow-session.json",
+        ".workflow/archives/WFS-frontend-backend-alignment-20260408/TODO_LIST.md",
+        ".workflow/archives/WFS-frontend-backend-alignment-20260408/ARCHIVE_METADATA.json"
+      ],
+      "paired_truth_sources": [
+        ".workflow/.csv-wave/cwp-frontend-backend-alignment-20260408/results.csv",
+        ".workflow/.csv-wave/cwp-frontend-backend-alignment-20260408/context.md"
+      ],
+      "notes": [
+        "Second governed archive migration completed on 2026-04-09.",
+        "The old active path must resolve through a directory junction."
+      ]
+    }
+  ],
+  "remaining_candidates": [
+    {
+      "session_id": "WFS-progress-report-followups",
+      "external_reference_count": 21,
+      "recommendation": "next_candidate"
+    },
+    {
+      "session_id": "WFS-gap-closure-csv",
+      "external_reference_count": 25,
+      "recommendation": "after_next_candidate"
+    },
+    {
+      "session_id": "WFS-remaining-backlog",
+      "external_reference_count": 26,
+      "recommendation": "after_gap_closure_style_sessions"
+    },
+    {
+      "session_id": "WFS-bilibili-delivery-readiness-20260408",
+      "external_reference_count": 28,
+      "recommendation": "defer_current_delivery_truth_source"
+    },
+    {
+      "session_id": "WFS-project-status-next-queue",
+      "external_reference_count": 43,
+      "recommendation": "last_candidate"
+    }
+  ]
+}
