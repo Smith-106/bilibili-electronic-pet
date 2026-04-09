@@ -67,6 +67,11 @@ services:
         condition: service_healthy
     volumes:
       - sqlite-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'dist/workers/worker-main.js' >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     restart: unless-stopped
 
   redis:
