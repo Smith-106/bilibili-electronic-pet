@@ -1,62 +1,42 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
+import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { Redis } from 'ioredis';
-import { PrismaClient } from '@prisma/client';
+import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
+import { registerAdminCoreRoutes } from './routes/admin-core.js';
+import { registerAdminManagementRoutes } from './routes/admin-management.js';
+import { registerAdminReportingRoutes } from './routes/admin-reporting.js';
+import { registerAdminStaticRoutes } from './routes/admin-static.js';
+import { registerBilibiliAdminRoutes } from './routes/bilibili-admin.js';
+import { registerCommentRoutes } from './routes/comments.js';
+import { registerGatewayPublishRoutes } from './routes/gateway-publish.js';
+import { registerJobRoutes } from './routes/jobs.js';
+import { registerReadinessRoute } from './routes/readiness.js';
+import type {
+  AdminAuditSummaryResponse,
+  AdminGatewayLogsResponse,
+  AdminJobsResponse,
+  BilibiliDiagnostics,
+  BilibiliVideo,
+  CommentEvent,
+  ConnectionStatus,
+  GatewayPublishPayload,
+  KnowledgeEntry,
+  PlatformName,
+  PublishFinalizeInput,
+  PublishReservationInput,
+  ReplyJob,
+  ReservePublishLogResult,
+  RoleCard,
+  RoleCardValue,
+  RuntimeSettings,
+} from './server/contracts.js';
+import { buildDefaultServerDependencies, type ServerDependencies } from './server/dependencies.js';
 import { collectCommentEvent } from './services/collector.js';
 import { probeBilibiliAuth as probeBilibiliRuntimeAuth, type BilibiliAuthProbeResult } from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
-import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
-import { registerAdminCoreRoutes } from './routes/admin-core.js';
-import { registerAdminStaticRoutes } from './routes/admin-static.js';
-import { registerBilibiliAdminRoutes } from './routes/bilibili-admin.js';
-import { registerReadinessRoute } from './routes/readiness.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
-
-export type ConnectionStatus = {
-  connected: boolean;
-  error?: string;
-};
-
-export type PlatformName = 'bilibili' | 'douyin' | 'kuaishou';
-
-export type RuntimeSettings = {
-  databaseUrl: string;
-  celeryBrokerUrl: string;
-  celeryResultBackend: string;
-  apiKey: string;
-  llmProvider: string;
-  llmApiKeyConfigured: boolean;
-  llmFallbackToMock: boolean;
-  searchProvider: string;
-  searchApiKeyConfigured: boolean;
-  searchCxConfigured: boolean;
-  publisherMode: string;
-  publisherWebhookUrlConfigured: boolean;
-  bilibiliEnabled: boolean;
-  bilibiliPollEnabled: boolean;
-  bilibiliPollIntervalSeconds: number;
-  bilibiliPublishEnabled: boolean;
-  bilibiliEnvCredentialConfigured: boolean;
-  killSwitch: boolean;
-  gatewayToken: string;
-  gatewayHmacSecret: string;
-  platformBilibiliEnabled: boolean;
-  platformDouyinEnabled: boolean;
-  platformKuaishouEnabled: boolean;
-  platformBilibiliPublishSource: string;
-  platformDouyinPublishSource: string;
-  platformKuaishouPublishSource: string;
-};
-
-export type BilibiliDiagnostics = {
-  ready: boolean;
-  blocking_reasons: string[];
-  effective_publish_mode: string;
-  signals: Record<string, unknown>;
-  checks?: Record<string, unknown>;
-  release_gates?: Record<string, unknown>;
-};
 
 type DeliveryCapabilityName =
   | 'llm_generation'
@@ -91,331 +71,29 @@ type DeliveryCapabilityMatrix = {
     missing_inputs: string[];
   }>;
 };
-
-export type GatewayPublishPayload = {
-  comment_id: string;
-  reply_text: string;
-  force_publish: boolean;
-  source: string;
-  trace_id?: string;
-};
-
-export type PublishExecutionResult = {
-  published: boolean;
-  reason: string;
-  publishedAt?: Date;
-};
-
-export type PublishReservationInput = {
-  platform: PlatformName;
-  canonicalCommentId: string;
-  commentId: string;
-  replyHash: string;
-  source: string;
-};
-
-export type PublishFinalizeInput = {
-  reservationKey: string;
-  status: 'published' | 'failed';
-  source: string;
-  failureReason?: string;
-  publishedAt?: Date;
-};
-
-export type ReservePublishLogResult = {
-  duplicate: boolean;
-  reservationKey: string;
-};
-
-export type PublishGatewayInput = {
-  commentId: string;
-  replyText: string;
-  forcePublish: boolean;
-  source: string;
-  traceId: string;
-};
-
-export type PublishPlatformInput = {
-  platform: PlatformName;
-  commentId: string;
-  replyText: string;
-  forcePublish: boolean;
-  traceId: string;
-};
-
-export type AdminJobsResponse = {
-  items: Array<Record<string, unknown>>;
-  total: number;
-  limit: number;
-  offset: number;
-};
-
-export type AdminGatewayLogsResponse = {
-  items: Array<Record<string, unknown>>;
-};
-
-export type AdminAuditSummaryResponse = {
-  ok: boolean;
-  days: number;
-  total?: number;
-  ok_count?: number;
-  failed_count?: number;
-  totals: Record<string, unknown>;
-  by_action: Record<string, unknown>;
-  by_status?: Record<string, unknown>;
-  by_result: Record<string, unknown>;
-};
-
-export type KnowledgeEntry = {
-  id: number;
-  category: string;
-  title: string;
-  content: string;
-  enabled: boolean;
-  created_at?: string | null;
-  updated_at: string | null;
-};
-
-export type RoleCardValue = string | Record<string, unknown>;
-
-export type RoleCard = {
-  id: number;
-  key: string;
-  name: string;
-  description: string;
-  system_prompt: string;
-  tone: RoleCardValue;
-  constraints: RoleCardValue;
-  enabled: boolean;
-  is_active: boolean;
-  created_at: string | null;
-  updated_at: string | null;
-};
-
-export type CommentEvent = {
-  comment_id: string;
-  video_id?: string;
-  user_id?: string;
-  content?: string;
-  parent_id?: string;
-  platform?: string;
-  source: string;
-  trace_id?: string;
-};
-
-export type ReplyJob = {
-  id: number;
-  comment_id: string;
-  canonical_comment_id: string | null;
-  status: string;
-  reply_text: string | null;
-  style_profile: string | null;
-  role_profile: string | null;
-  role_card_key: string | null;
-  force_long: boolean | null;
-  platform: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  comment_content: string | null;
-};
-
-export type BilibiliVideo = {
-  id: number;
-  bvid: string;
-  aid?: number | null;
-  title?: string | null;
-  owner_mid?: number | null;
-  poll_enabled: boolean;
-  comment_count?: number | null;
-  last_polled_at?: string | null;
-  last_poll_status?: string | null;
-  last_poll_error?: string | null;
-  last_rpid?: number | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-};
-
-export type ServerDependencies = {
-  settings: RuntimeSettings;
-  checkDatabaseConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
-  checkRedisConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
-  probeBilibiliAuth: (
-    config: BilibiliRuntimeConfig,
-  ) => Promise<BilibiliAuthProbeResult> | BilibiliAuthProbeResult;
-  buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
-  verifyPayloadSignature: (payload: Record<string, unknown>, secret: string, signature: string) => boolean;
-  reservePublishLog: (input: PublishReservationInput) => Promise<ReservePublishLogResult> | ReservePublishLogResult;
-  finalizePublishLog: (input: PublishFinalizeInput) => Promise<void> | void;
-  publishGatewayReply: (input: PublishGatewayInput) => Promise<PublishExecutionResult> | PublishExecutionResult;
-  publishPlatformReply: (input: PublishPlatformInput) => Promise<PublishExecutionResult> | PublishExecutionResult;
-  normalizePublishFailureReason: (reason: string | undefined) => string;
-  isPlatformEnabled: (platform: PlatformName, settings: RuntimeSettings) => boolean;
-  getPlatformPublishSource: (platform: PlatformName, settings: RuntimeSettings) => string;
-  createTraceId: (preferred?: string) => string;
-  getAdminOverview: () => Promise<Record<string, unknown>> | Record<string, unknown>;
-  listAdminJobs: (input: {
-    status?: string;
-    limit: number;
-    offset: number;
-  }) => Promise<AdminJobsResponse> | AdminJobsResponse;
-  listAdminGatewayLogs: (input: {
-    commentId?: string;
-    limit: number;
-  }) => Promise<AdminGatewayLogsResponse> | AdminGatewayLogsResponse;
-  summarizeAdminAuditLogs: (input: {
-    days: number;
-    action?: string;
-    ok?: boolean;
-  }) => Promise<AdminAuditSummaryResponse> | AdminAuditSummaryResponse;
-  listKnowledgeEntries: (input: {
-    limit: number;
-    offset: number;
-  }) => Promise<{ ok: boolean; items: KnowledgeEntry[] }> | { ok: boolean; items: KnowledgeEntry[] };
-  createKnowledgeEntry: (input: {
-    category: string;
-    title: string;
-    content: string;
-  }) => Promise<{ ok: boolean; item: KnowledgeEntry }> | { ok: boolean; item: KnowledgeEntry };
-  disableKnowledgeEntry: (input: {
-    entryId: number;
-  }) =>
-    | Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }>
-    | { ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } };
-  getStyleProfile: () =>
-    | Promise<{ ok: boolean; style_profile: string; preset_profiles: string[] }>
-    | { ok: boolean; style_profile: string; preset_profiles: string[] };
-  setStyleProfile: (input: {
-    styleProfile: string;
-  }) => Promise<{ ok: boolean; style_profile: string }> | { ok: boolean; style_profile: string };
-  getRoleProfile: () =>
-    | Promise<{ ok: boolean; role_profile: string; preset_profiles: string[] }>
-    | { ok: boolean; role_profile: string; preset_profiles: string[] };
-  setRoleProfile: (input: {
-    roleProfile: string;
-  }) => Promise<{ ok: boolean; role_profile: string }> | { ok: boolean; role_profile: string };
-  listRoleCards: (input: {
-    limit: number;
-    offset: number;
-  }) =>
-    | Promise<{ ok: boolean; active_role_card_key: string | null; items: RoleCard[] }>
-    | { ok: boolean; active_role_card_key: string | null; items: RoleCard[] };
-  createRoleCard: (input: {
-    key: string;
-    name: string;
-    description: string;
-    system_prompt: string;
-    tone: RoleCardValue;
-    constraints: RoleCardValue;
-    enabled: boolean;
-  }) => Promise<{ ok: boolean; item: RoleCard }> | { ok: boolean; item: RoleCard };
-  updateRoleCard: (input: {
-    cardKey: string;
-    name?: string;
-    description?: string;
-    system_prompt?: string;
-    tone?: RoleCardValue;
-    constraints?: RoleCardValue;
-    enabled?: boolean;
-  }) => Promise<{ ok: boolean; item: RoleCard }> | { ok: boolean; item: RoleCard };
-  disableRoleCard: (input: {
-    cardKey: string;
-  }) =>
-    | Promise<{ ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } }>
-    | { ok: boolean; item: { key: string; enabled: boolean; is_active: boolean; updated_at: string | null } };
-  activateRoleCard: (input: {
-    cardKey: string;
-  }) => Promise<{ ok: boolean; active_role_card_key: string }> | { ok: boolean; active_role_card_key: string };
-  getObservabilitySummary: (input: {
-    windowMinutes: number;
-  }) => Promise<{ ok: boolean; summary: Record<string, unknown> }> | { ok: boolean; summary: Record<string, unknown> };
-  ingestCommentEvent: (input: {
-    event: CommentEvent;
-    source: string;
-  }) =>
-    | Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }>
-    | { ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string };
-  retryJob: (input: {
-    jobId: number;
-    forceLong?: boolean;
-    styleProfile?: string;
-    roleProfile?: string;
-    roleCardKey?: string;
-  }) =>
-    | Promise<{ ok: boolean; requeued: boolean; job_id: number; trace_id: string; error?: string }>
-    | { ok: boolean; requeued: boolean; job_id: number; trace_id: string; error?: string };
-  approveJob: (input: {
-    jobId: number;
-    styleProfile?: string;
-    roleProfile?: string;
-    roleCardKey?: string;
-  }) =>
-    | Promise<{ ok: boolean; job_id: number; status: string; trace_id: string }>
-    | { ok: boolean; job_id: number; status: string; trace_id: string };
-  approveJobsBatch: (input: { jobIds: number[] }) =>
-    | Promise<{
-        ok: boolean;
-        summary: { total: number; success: number; failed: number };
-        results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>;
-        trace_id: string;
-      }>
-    | {
-        ok: boolean;
-        summary: { total: number; success: number; failed: number };
-        results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }>;
-        trace_id: string;
-      };
-  retryJobsBatch: (input: { jobIds: number[]; forceLong?: boolean }) =>
-    | Promise<{
-        ok: boolean;
-        summary: { total: number; success: number; failed: number };
-        results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>;
-        trace_id: string;
-      }>
-    | {
-        ok: boolean;
-        summary: { total: number; success: number; failed: number };
-        results: Array<{ job_id: number; ok: boolean; requeued?: boolean; error?: string }>;
-        trace_id: string;
-      };
-  getComment: (input: {
-    commentId: string;
-  }) =>
-    | Promise<{ ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] }>
-    | { ok: boolean; comment: Record<string, unknown>; jobs: ReplyJob[] };
-  getJob: (input: { jobId: number }) => Promise<{ ok: boolean; item: ReplyJob }> | { ok: boolean; item: ReplyJob };
-  listJobs: (input: {
-    status?: string;
-    limit: number;
-    offset: number;
-  }) => Promise<{ ok: boolean; items: ReplyJob[] }> | { ok: boolean; items: ReplyJob[] };
-  exportJobsCsv: (input: { status?: string; limit: number }) => Promise<string> | string;
-  getBilibiliStatus: () =>
-    | Promise<{
-        ok: boolean;
-        config: Record<string, unknown>;
-        credential: Record<string, unknown> | null;
-        videos: Record<string, unknown>;
-        diagnostics: Record<string, unknown>;
-      }>
-    | {
-        ok: boolean;
-        config: Record<string, unknown>;
-        credential: Record<string, unknown> | null;
-        videos: Record<string, unknown>;
-        diagnostics: Record<string, unknown>;
-      };
-  listBilibiliVideos: (input: {
-    pollEnabled?: boolean;
-    limit: number;
-    offset: number;
-  }) =>
-    | Promise<{ ok: boolean; total: number; items: BilibiliVideo[] }>
-    | { ok: boolean; total: number; items: BilibiliVideo[] };
-  addBilibiliVideo: (input: {
-    bvid: string;
-    pollEnabled?: boolean;
-  }) => Promise<{ ok: boolean; item: BilibiliVideo }> | { ok: boolean; item: BilibiliVideo };
-};
+export type {
+  AdminAuditSummaryResponse,
+  AdminGatewayLogsResponse,
+  AdminJobsResponse,
+  BilibiliDiagnostics,
+  BilibiliVideo,
+  CommentEvent,
+  ConnectionStatus,
+  GatewayPublishPayload,
+  KnowledgeEntry,
+  PlatformName,
+  PublishExecutionResult,
+  PublishFinalizeInput,
+  PublishGatewayInput,
+  PublishPlatformInput,
+  PublishReservationInput,
+  ReplyJob,
+  ReservePublishLogResult,
+  RoleCard,
+  RoleCardValue,
+  RuntimeSettings,
+} from './server/contracts.js';
+export type { ServerDependencies } from './server/dependencies.js';
 
 const STANDARD_PUBLISH_FAILURE_REASONS = new Set(['timeout', '5xx', 'auth', 'invalid_response', 'not_configured']);
 const TIMEOUT_HINTS = ['timeout', 'timedout', 'readtimeout', 'connecttimeout'];
@@ -2353,58 +2031,48 @@ async function defaultAddBilibiliVideo(input: {
 }
 
 function defaultDependencies(): ServerDependencies {
-  const settings = buildDefaultSettings();
-  const logStore = createInMemoryLogStore();
-  return {
-    settings,
-    checkDatabaseConnection: () => defaultCheckDatabaseConnection(),
-    checkRedisConnection: () => defaultCheckRedisConnection(),
-    probeBilibiliAuth: (config) => probeBilibiliRuntimeAuth(config),
-    buildBilibiliDiagnostics: () => defaultBilibiliDiagnostics(settings, (config) => probeBilibiliRuntimeAuth(config)),
+  return buildDefaultServerDependencies({
+    buildSettings: buildDefaultSettings,
+    createLogStore: createInMemoryLogStore,
+    checkDatabaseConnection: defaultCheckDatabaseConnection,
+    checkRedisConnection: defaultCheckRedisConnection,
+    probeBilibiliAuth: probeBilibiliRuntimeAuth,
+    buildBilibiliDiagnostics: (settings, probeBilibiliAuth) => defaultBilibiliDiagnostics(settings, probeBilibiliAuth),
     verifyPayloadSignature: defaultVerifyPayloadSignature,
-    reservePublishLog: (input) => logStore.reserve(input),
-    finalizePublishLog: (input) => logStore.finalize(input),
-    publishGatewayReply: () => ({ published: false, reason: 'not_configured' }),
-    publishPlatformReply: () => ({ published: false, reason: 'not_configured' }),
     normalizePublishFailureReason: defaultNormalizePublishFailureReason,
     isPlatformEnabled: defaultIsPlatformEnabled,
     getPlatformPublishSource: defaultGetPlatformPublishSource,
     createTraceId: defaultCreateTraceId,
     getAdminOverview: defaultAdminOverview,
-    listAdminJobs: (input) => defaultAdminJobs(input),
-    listAdminGatewayLogs: (input) => defaultAdminGatewayLogs(input),
-    summarizeAdminAuditLogs: (input) => defaultAdminAuditSummary(input),
-    listKnowledgeEntries: (input) => defaultListKnowledgeEntries(input),
-    createKnowledgeEntry: (input) => defaultCreateKnowledgeEntry(input),
-    disableKnowledgeEntry: (input) => defaultDisableKnowledgeEntry(input),
+    listAdminJobs: defaultAdminJobs,
+    listAdminGatewayLogs: defaultAdminGatewayLogs,
+    summarizeAdminAuditLogs: defaultAdminAuditSummary,
+    listKnowledgeEntries: defaultListKnowledgeEntries,
+    createKnowledgeEntry: defaultCreateKnowledgeEntry,
+    disableKnowledgeEntry: defaultDisableKnowledgeEntry,
     getStyleProfile: defaultGetStyleProfile,
-    setStyleProfile: (input) => defaultSetStyleProfile(input),
+    setStyleProfile: defaultSetStyleProfile,
     getRoleProfile: defaultGetRoleProfile,
-    setRoleProfile: (input) => defaultSetRoleProfile(input),
-    listRoleCards: (input) => defaultListRoleCards(input),
-    createRoleCard: (input) => defaultCreateRoleCard(input),
-    updateRoleCard: (input) => defaultUpdateRoleCard(input),
-    disableRoleCard: (input) => defaultDisableRoleCard(input),
-    activateRoleCard: (input) => defaultActivateRoleCard(input),
-    getObservabilitySummary: (input) => defaultGetObservabilitySummary(input),
-    ingestCommentEvent: (input) => defaultIngestCommentEvent(input),
-    retryJob: (input) => defaultRetryJob(input),
-    approveJob: (input) => defaultApproveJob(input),
-    approveJobsBatch: (input) => defaultApproveJobsBatch(input),
-    retryJobsBatch: (input) => defaultRetryJobsBatch(input),
-    getComment: (input) => defaultGetComment(input),
-    getJob: (input) => defaultGetJob(input),
-    listJobs: (input) => defaultListJobs(input),
-    exportJobsCsv: (input) => defaultExportJobsCsv(input),
-    getBilibiliStatus: () =>
-      defaultGetBilibiliStatus({
-        settings,
-        buildBilibiliDiagnostics: () =>
-          defaultBilibiliDiagnostics(settings, (config) => probeBilibiliRuntimeAuth(config)),
-      }),
-    listBilibiliVideos: (input) => defaultListBilibiliVideos(input),
-    addBilibiliVideo: (input) => defaultAddBilibiliVideo(input),
-  };
+    setRoleProfile: defaultSetRoleProfile,
+    listRoleCards: defaultListRoleCards,
+    createRoleCard: defaultCreateRoleCard,
+    updateRoleCard: defaultUpdateRoleCard,
+    disableRoleCard: defaultDisableRoleCard,
+    activateRoleCard: defaultActivateRoleCard,
+    getObservabilitySummary: defaultGetObservabilitySummary,
+    ingestCommentEvent: defaultIngestCommentEvent,
+    retryJob: defaultRetryJob,
+    approveJob: defaultApproveJob,
+    approveJobsBatch: defaultApproveJobsBatch,
+    retryJobsBatch: defaultRetryJobsBatch,
+    getComment: defaultGetComment,
+    getJob: defaultGetJob,
+    listJobs: defaultListJobs,
+    exportJobsCsv: defaultExportJobsCsv,
+    getBilibiliStatus: defaultGetBilibiliStatus,
+    listBilibiliVideos: defaultListBilibiliVideos,
+    addBilibiliVideo: defaultAddBilibiliVideo,
+  });
 }
 
 function addBlocker(target: string[], message: string): void {
@@ -2587,146 +2255,28 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     buildDeliveryCapabilityMatrix,
   });
 
-  const publishCore = async (
-    requestBody: unknown,
-    headers: Record<string, string | string[] | undefined>,
-    platform?: PlatformName,
-  ) => {
-    const payload = parsePublishPayload(requestBody);
-    if (!payload) {
-      return { statusCode: 400, body: { detail: 'invalid_payload' } };
-    }
-
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return { statusCode: 401, body: { detail: 'unauthorized' } };
-      }
-    }
-
-    const traceId = createTraceId(payload.trace_id ?? getHeaderValue(headers['x-trace-id']));
-
-    const expectedToken = settings.gatewayToken.trim();
-    if (expectedToken) {
-      const authorization = getHeaderValue(headers.authorization);
-      const expectedAuthorization = `Bearer ${expectedToken}`;
-      if (authorization !== expectedAuthorization) {
-        return { statusCode: 401, body: { detail: 'unauthorized' } };
-      }
-    }
-
-    const hmacSecret = settings.gatewayHmacSecret.trim();
-    if (hmacSecret) {
-      const signature = getHeaderValue(headers['x-signature']);
-      if (!signature) {
-        return { statusCode: 401, body: { detail: 'missing_signature' } };
-      }
-      const valid = verifyPayloadSignature(gatewaySignaturePayload(payload), hmacSecret, signature);
-      if (!valid) {
-        return { statusCode: 401, body: { detail: 'invalid_signature' } };
-      }
-    }
-
-    const resolvedPlatform: PlatformName = platform ?? 'bilibili';
-    const canonicalCommentId = `${resolvedPlatform}:${payload.comment_id}`;
-    const hashed = buildReplyHash(payload.comment_id, payload.reply_text);
-
-    const reservation = await reservePublishLog({
-      platform: resolvedPlatform,
-      canonicalCommentId,
-      commentId: payload.comment_id,
-      replyHash: hashed,
-      source: payload.source,
-    });
-
-    if (reservation.duplicate) {
-      return {
-        statusCode: 200,
-        body: {
-          ok: true,
-          published: false,
-          duplicate: true,
-          reason: 'idempotent_replay',
-          trace_id: traceId,
-        },
-      };
-    }
-
-    const publishResult = platform
-      ? await publishPlatformReply({
-          platform,
-          commentId: payload.comment_id,
-          replyText: payload.reply_text,
-          forcePublish: payload.force_publish,
-          traceId,
-        })
-      : await publishGatewayReply({
-          commentId: payload.comment_id,
-          replyText: payload.reply_text,
-          forcePublish: payload.force_publish,
-          source: payload.source,
-          traceId,
-        });
-
-    if (!publishResult.published) {
-      const normalizedReason = normalizePublishFailureReason(publishResult.reason);
-      await finalizePublishLog({
-        reservationKey: reservation.reservationKey,
-        status: 'failed',
-        source: payload.source,
-        failureReason: normalizedReason,
-      });
-      return {
-        statusCode: 200,
-        body: {
-          ok: false,
-          published: false,
-          reason: normalizedReason,
-          comment_id: payload.comment_id,
-          trace_id: traceId,
-        },
-      };
-    }
-
-    const sourceValue = platform ? getPlatformPublishSource(platform, settings) : payload.source;
-
-    await finalizePublishLog({
-      reservationKey: reservation.reservationKey,
-      status: 'published',
-      source: sourceValue,
-      publishedAt: publishResult.publishedAt,
-    });
-
-    return {
-      statusCode: 200,
-      body: {
-        ok: true,
-        published: true,
-        reason: publishResult.reason,
-        comment_id: payload.comment_id,
-        published_at: publishResult.publishedAt ? publishResult.publishedAt.toISOString() : null,
-        trace_id: traceId,
-      },
-    };
-  };
-
-  app.post('/gateway/publish', async (request, reply) => {
-    const result = await publishCore(request.body, request.headers);
-    return reply.code(result.statusCode).send(result.body);
+  registerGatewayPublishRoutes(app, {
+    settings,
+    checkApiKey,
+    getHeaderValue,
+    parseAdminLimit,
+    parseAdminOffset,
+    parseAdminString,
+    parsePublishPayload,
+    buildReplyHash,
+    gatewaySignaturePayload,
+    createTraceId,
+    verifyPayloadSignature,
+    reservePublishLog,
+    finalizePublishLog,
+    publishGatewayReply,
+    publishPlatformReply,
+    normalizePublishFailureReason,
+    isPlatformEnabled,
+    getPlatformPublishSource,
+    listAdminGatewayLogs,
+    normalizeIsoTimestamp,
   });
-
-  const platformRoutes: PlatformName[] = ['bilibili', 'douyin', 'kuaishou'];
-  for (const platform of platformRoutes) {
-    app.post(`/gateway/publish/${platform}`, async (request, reply) => {
-      if (!isPlatformEnabled(platform, settings)) {
-        return reply.code(403).send({ detail: 'platform_disabled' });
-      }
-
-      const result = await publishCore(request.body, request.headers, platform);
-      return reply.code(result.statusCode).send(result.body);
-    });
-  }
 
   registerAdminCoreRoutes(app, {
     settings,
@@ -2740,412 +2290,41 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     normalizeAdminJobListItem,
   });
 
-  app.get('/api/admin/audit/summary', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await summarizeAdminAuditLogs({
-      days: parseAdminLimit(query.days, 7, 1, 90),
-      action: parseAdminString(query.action),
-      ok: parseAdminBoolean(query.ok),
-    });
-    return reply.send({ ...normalizeAdminAuditSummaryPayload(response), ok: true });
+  registerAdminReportingRoutes(app, {
+    settings,
+    checkApiKey,
+    parseAdminString,
+    parseAdminLimit,
+    parseAdminOffset,
+    parseAdminBoolean,
+    parseJsonRecord,
+    getAuditLogDetail,
+    csvEscape,
+    summarizeAdminAuditLogs,
+    normalizeAdminAuditSummaryPayload,
+    getObservabilitySummary,
   });
 
-  app.get('/api/admin/audit-logs/summary', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await summarizeAdminAuditLogs({
-      days: parseAdminLimit(query.days, 7, 1, 90),
-      action: parseAdminString(query.action),
-      ok: parseAdminBoolean(query.ok),
-    });
-    return reply.send(response);
-  });
-
-  app.get('/api/admin/gateway/logs', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await listAdminGatewayLogs({
-      commentId: parseAdminString(query.comment_id),
-      limit: parseAdminLimit(query.limit, 50, 1, 200),
-    });
-
-    const normalizedItems = response.items.map((item) => ({
-      ...item,
-      published_at: normalizeIsoTimestamp(item.published_at as Date | string | undefined),
-      created_at: normalizeIsoTimestamp(item.created_at as Date | string | undefined),
-    }));
-
-    return reply.send({
-      ok: true,
-      ...response,
-      items: normalizedItems,
-    });
-  });
-
-  app.get('/api/admin/gateway/publish-logs', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await listAdminGatewayLogs({
-      commentId: parseAdminString(query.comment_id),
-      limit: parseAdminLimit(query.limit, 50, 1, 200),
-    });
-
-    const normalizedItems = response.items.map((item) => ({
-      ...item,
-      published_at: normalizeIsoTimestamp(item.published_at as Date | string | undefined),
-      created_at: normalizeIsoTimestamp(item.created_at as Date | string | undefined),
-    }));
-
-    return reply.send({
-      ...response,
-      items: normalizedItems,
-    });
-  });
-
-  // Knowledge entries
-  app.get('/api/admin/knowledge', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await listKnowledgeEntries({
-      limit: parseAdminLimit(query.limit, 200, 1, 1000),
-      offset: parseAdminOffset(query.offset, 0, 0, 100000),
-    });
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/knowledge', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const category = String(body.category ?? '')
-      .trim()
-      .slice(0, 64);
-    const title = String(body.title ?? '')
-      .trim()
-      .slice(0, 128);
-    const content = String(body.content ?? '')
-      .trim()
-      .slice(0, 65535);
-
-    if (!category) {
-      return reply.code(400).send({ detail: 'category_required' });
-    }
-    if (!title) {
-      return reply.code(400).send({ detail: 'title_required' });
-    }
-    if (!content) {
-      return reply.code(400).send({ detail: 'content_required' });
-    }
-
-    const response = await createKnowledgeEntry({ category, title, content });
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/knowledge/:entry_id/disable', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const params = request.params as Record<string, unknown>;
-    const entryId = Number.parseInt(String(params.entry_id ?? ''), 10);
-    if (!Number.isFinite(entryId) || entryId <= 0) {
-      return reply.code(404).send({ detail: 'knowledge_not_found' });
-    }
-
-    const response = await disableKnowledgeEntry({ entryId });
-    return reply.send(response);
-  });
-
-  // Style profile
-  app.get('/api/admin/style-profile', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const response = await getStyleProfile();
-    return reply.send(normalizeStyleProfilePayload(response as unknown as Record<string, unknown>));
-  });
-
-  app.post('/api/admin/style-profile', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const value = String(body.style_profile ?? body.style ?? '')
-      .trim()
-      .toLowerCase();
-    const allowed = new Set(['auto', 'empathy', 'meme', 'normal']);
-    if (!allowed.has(value)) {
-      return reply.code(400).send({ detail: 'invalid_style_profile' });
-    }
-
-    const response = await setStyleProfile({ styleProfile: value });
-    return reply.send(normalizeStyleProfilePayload(response as unknown as Record<string, unknown>));
-  });
-
-  // Role profile
-  app.get('/api/admin/role-profile', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const response = await getRoleProfile();
-    return reply.send(normalizeRoleProfilePayload(response as unknown as Record<string, unknown>));
-  });
-
-  app.post('/api/admin/role-profile', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const value = String(body.role_profile ?? body.role ?? '')
-      .trim()
-      .toLowerCase();
-    const allowed = new Set(['auto', 'default', 'comfort', 'playful']);
-    if (!allowed.has(value)) {
-      return reply.code(400).send({ detail: 'invalid_role_profile' });
-    }
-
-    const response = await setRoleProfile({ roleProfile: value });
-    return reply.send(normalizeRoleProfilePayload(response as unknown as Record<string, unknown>));
-  });
-
-  // Role cards
-  app.get('/api/admin/role-cards', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const response = await listRoleCards({
-      limit: parseAdminLimit(query.limit, 200, 1, 1000),
-      offset: parseAdminOffset(query.offset, 0, 0, 100000),
-    });
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/role-cards', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const key = String(body.key ?? '')
-      .trim()
-      .toLowerCase()
-      .slice(0, 64);
-    const name = String(body.name ?? '')
-      .trim()
-      .slice(0, 128);
-    const description = String(body.description ?? '')
-      .trim()
-      .slice(0, 65535);
-    const systemPrompt = String(body.system_prompt ?? '')
-      .trim()
-      .slice(0, 65535);
-    const tone = normalizeRoleCardInputValue(body.tone);
-    const constraints = normalizeRoleCardInputValue(body.constraints);
-    const enabled = Boolean(body.enabled ?? true);
-
-    if (!key) {
-      return reply.code(400).send({ detail: 'role_card_key_required' });
-    }
-    if (!name) {
-      return reply.code(400).send({ detail: 'role_card_name_required' });
-    }
-
-    const response = await createRoleCard({
-      key,
-      name,
-      description,
-      system_prompt: systemPrompt,
-      tone,
-      constraints,
-      enabled,
-    });
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/role-cards/:card_key', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '')
-      .trim()
-      .toLowerCase()
-      .slice(0, 64);
-    const body = request.body as Record<string, unknown>;
-
-    const updateData: {
-      cardKey: string;
-      name?: string;
-      description?: string;
-      system_prompt?: string;
-      tone?: RoleCardValue;
-      constraints?: RoleCardValue;
-      enabled?: boolean;
-    } = { cardKey };
-
-    if ('name' in body) {
-      updateData.name = String(body.name ?? '')
-        .trim()
-        .slice(0, 128);
-      if (!updateData.name) {
-        return reply.code(400).send({ detail: 'role_card_name_required' });
-      }
-    }
-    if ('description' in body) {
-      updateData.description = String(body.description ?? '')
-        .trim()
-        .slice(0, 65535);
-    }
-    if ('system_prompt' in body) {
-      updateData.system_prompt = String(body.system_prompt ?? '')
-        .trim()
-        .slice(0, 65535);
-    }
-    if ('tone' in body) {
-      updateData.tone = normalizeRoleCardInputValue(body.tone);
-    }
-    if ('constraints' in body) {
-      updateData.constraints = normalizeRoleCardInputValue(body.constraints);
-    }
-    if ('enabled' in body) {
-      updateData.enabled = Boolean(body.enabled);
-    }
-
-    const response = await updateRoleCard(updateData);
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/role-cards/:card_key/disable', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '')
-      .trim()
-      .toLowerCase();
-
-    const response = await disableRoleCard({ cardKey });
-    return reply.send(response);
-  });
-
-  app.post('/api/admin/role-cards/:card_key/activate', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '')
-      .trim()
-      .toLowerCase();
-
-    const response = await activateRoleCard({ cardKey });
-    return reply.send(response);
-  });
-
-  // Observability
-  app.get('/api/admin/observability/summary', async (request, reply) => {
-    const expectedApiKey = settings.apiKey.trim();
-    if (expectedApiKey) {
-      const providedApiKey = getHeaderValue(request.headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
-        return reply.code(401).send({ detail: 'unauthorized' });
-      }
-    }
-
-    const query = request.query as Record<string, unknown>;
-    const windowMinutes = parseAdminLimit(query.window_minutes, 60, 1, 1440);
-    const response = await getObservabilitySummary({ windowMinutes });
-    return reply.send(response);
+  registerAdminManagementRoutes(app, {
+    settings,
+    checkApiKey,
+    parseAdminLimit,
+    parseAdminOffset,
+    normalizeStyleProfilePayload,
+    normalizeRoleProfilePayload,
+    normalizeRoleCardInputValue,
+    listKnowledgeEntries,
+    createKnowledgeEntry,
+    disableKnowledgeEntry,
+    getStyleProfile,
+    setStyleProfile,
+    getRoleProfile,
+    setRoleProfile,
+    listRoleCards,
+    createRoleCard,
+    updateRoleCard,
+    disableRoleCard,
+    activateRoleCard,
   });
 
   // Comments event ingestion — uses collector for source-aware field mapping
@@ -3180,154 +2359,27 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     });
   }
 
-  // Job management
-  const handleRetryJobRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = request.params as Record<string, unknown>;
-    const jobId = Number.parseInt(String(params.job_id ?? ''), 10);
-    if (!Number.isFinite(jobId) || jobId <= 0) {
-      return reply.code(404).send({ detail: 'job_not_found' });
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const response = await retryJob({
-      jobId,
-      forceLong: body.force_long ? Boolean(body.force_long) : undefined,
-      styleProfile: body.style_profile ? String(body.style_profile) : undefined,
-      roleProfile: body.role_profile ? String(body.role_profile) : undefined,
-      roleCardKey: body.role_card_key ? String(body.role_card_key) : undefined,
-    });
-    return reply.send(response);
-  };
-
-  app.post('/jobs/:job_id/retry', handleRetryJobRoute);
-  app.post('/api/jobs/:job_id/retry', handleRetryJobRoute);
-
-  const handleApproveJobRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = request.params as Record<string, unknown>;
-    const jobId = Number.parseInt(String(params.job_id ?? ''), 10);
-    if (!Number.isFinite(jobId) || jobId <= 0) {
-      return reply.code(404).send({ detail: 'job_not_found' });
-    }
-
-    const body = request.body as Record<string, unknown>;
-    const response = await approveJob({
-      jobId,
-      styleProfile: body.style_profile ? String(body.style_profile) : undefined,
-      roleProfile: body.role_profile ? String(body.role_profile) : undefined,
-      roleCardKey: body.role_card_key ? String(body.role_card_key) : undefined,
-    });
-    return reply.send(response);
-  };
-
-  app.post('/jobs/:job_id/approve', handleApproveJobRoute);
-  app.post('/api/jobs/:job_id/approve', handleApproveJobRoute);
-
-  const handleApproveJobsBatchRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = request.body as Record<string, unknown>;
-    const jobIds = Array.isArray(body.job_ids)
-      ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0)
-      : [];
-
-    if (jobIds.length === 0) {
-      return reply.code(400).send({ detail: 'job_ids_required' });
-    }
-
-    const response = await approveJobsBatch({ jobIds });
-    return reply.send(response);
-  };
-
-  app.post('/jobs/approve-batch', handleApproveJobsBatchRoute);
-  app.post('/api/jobs/approve-batch', handleApproveJobsBatchRoute);
-
-  const handleRetryJobsBatchRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    const body = request.body as Record<string, unknown>;
-    const jobIds = Array.isArray(body.job_ids)
-      ? body.job_ids.map((id) => Number.parseInt(String(id), 10)).filter((id) => Number.isFinite(id) && id > 0)
-      : [];
-
-    if (jobIds.length === 0) {
-      return reply.code(400).send({ detail: 'job_ids_required' });
-    }
-
-    const response = await retryJobsBatch({
-      jobIds,
-      forceLong: body.force_long ? Boolean(body.force_long) : undefined,
-    });
-    return reply.send(response);
-  };
-
-  app.post('/jobs/retry-batch', handleRetryJobsBatchRoute);
-  app.post('/api/jobs/retry-batch', handleRetryJobsBatchRoute);
-
-  app.get('/comments', async (request, reply) => {
-    const query = request.query as Record<string, unknown>;
-    const limit = parseAdminLimit(query.limit, 50, 1, 500);
-    const offset = parseAdminOffset(query.offset, 0, 0, 100000);
-    const prisma = getPrisma();
-    const [total, items] = await Promise.all([
-      prisma.comment.count(),
-      prisma.comment.findMany({ orderBy: { created_at: 'desc' }, skip: offset, take: limit }),
-    ]);
-    return reply.send({ ok: true, total, items });
+  registerCommentRoutes(app, {
+    settings,
+    checkApiKey,
+    parseAdminLimit,
+    parseAdminOffset,
+    getComment,
   });
 
-  const handleGetCommentRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = request.params as Record<string, unknown>;
-    const commentId = String(params.comment_id ?? '').trim();
-
-    if (!commentId) {
-      return reply.code(404).send({ detail: 'comment_not_found' });
-    }
-
-    const response = await getComment({ commentId });
-    return reply.send(response);
-  };
-
-  app.get('/comments/:comment_id', handleGetCommentRoute);
-  app.get('/api/comments/:comment_id', handleGetCommentRoute);
-
-  const handleGetJobRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    const params = request.params as Record<string, unknown>;
-    const jobId = Number.parseInt(String(params.job_id ?? ''), 10);
-
-    if (!Number.isFinite(jobId) || jobId <= 0) {
-      return reply.code(404).send({ detail: 'job_not_found' });
-    }
-
-    const response = await getJob({ jobId });
-    const item =
-      response &&
-      typeof response === 'object' &&
-      'item' in response &&
-      response.item &&
-      typeof response.item === 'object' &&
-      !Array.isArray(response.item)
-        ? (response.item as Record<string, unknown>)
-        : null;
-    return reply.send(item ? { ...response, ...item, item } : response);
-  };
-
-  app.get('/jobs/:job_id', handleGetJobRoute);
-  app.get('/api/jobs/:job_id', handleGetJobRoute);
-
-  app.get('/jobs', async (request, reply) => {
-    const query = request.query as Record<string, unknown>;
-    const response = await listJobs({
-      status: parseAdminString(query.status),
-      limit: parseAdminLimit(query.limit, 50, 1, 1000),
-      offset: parseAdminOffset(query.offset, 0, 0, 100000),
-    });
-    return reply.send(response);
-  });
-
-  app.get('/export/jobs.csv', async (request, reply) => {
-    const query = request.query as Record<string, unknown>;
-    const csv = await exportJobsCsv({
-      status: parseAdminString(query.status),
-      limit: parseAdminLimit(query.limit, 500, 1, 5000),
-    });
-
-    return reply.type('text/csv').send(csv);
+  registerJobRoutes(app, {
+    settings,
+    checkApiKey,
+    parseAdminString,
+    parseAdminLimit,
+    parseAdminOffset,
+    retryJob,
+    approveJob,
+    approveJobsBatch,
+    retryJobsBatch,
+    getJob,
+    listJobs,
+    exportJobsCsv,
   });
 
   registerBilibiliAdminRoutes(app, {
@@ -3341,303 +2393,6 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     addBilibiliVideo,
     normalizeBilibiliStatusPayload,
     normalizeBilibiliVideoRecord,
-  });
-
-  // ── Audit logs ──
-
-  const handleListAuditLogsRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
-
-    const where: Record<string, unknown> = {};
-    const action = parseAdminString(query.action);
-    const okFilter = parseAdminBoolean(query.ok);
-    const targetId = parseAdminLimit(query.target_id, -1, 0, Number.MAX_SAFE_INTEGER);
-    const traceId = parseAdminString(query.trace_id);
-    if (action) where.action = action;
-    if (okFilter !== undefined) where.ok = okFilter;
-    if (targetId >= 0) where.target_id = targetId;
-    if (traceId) where.trace_id = traceId;
-
-    const limit = parseAdminLimit(query.limit, 200, 1, 5000);
-    const offset = parseAdminOffset(query.offset, 0, 0, 100000);
-
-    const [total, items] = await Promise.all([
-      prisma.operationAuditLog.count({ where }),
-      prisma.operationAuditLog.findMany({
-        where,
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-        skip: offset,
-        take: limit,
-      }),
-    ]);
-
-    return reply.send({
-      ok: true,
-      summary: { total, returned: items.length, limit },
-      items: items.map((item) => {
-        const payload = parseJsonRecord(item.payload);
-        return {
-          id: item.id,
-          action: item.action,
-          target_type: item.target_type,
-          target_id: item.target_id,
-          ok: item.ok,
-          status: String(payload.status ?? '').trim() || null,
-          trace_id: String(payload.trace_id ?? '').trim() || null,
-          detail: getAuditLogDetail(payload),
-          payload,
-          created_at: item.created_at?.toISOString() ?? null,
-        };
-      }),
-    });
-  };
-
-  app.get('/audit-logs', handleListAuditLogsRoute);
-  app.get('/api/audit-logs', handleListAuditLogsRoute);
-  app.get('/api/audit-log', handleListAuditLogsRoute);
-
-  app.get('/export/audit-logs.csv', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
-
-    const where: Record<string, unknown> = {};
-    const action = parseAdminString(query.action);
-    const okFilter = parseAdminBoolean(query.ok);
-    const targetId = parseAdminLimit(query.target_id, -1, 0, Number.MAX_SAFE_INTEGER);
-    if (action) where.action = action;
-    if (okFilter !== undefined) where.ok = okFilter;
-    if (targetId >= 0) where.target_id = targetId;
-
-    const limit = parseAdminLimit(query.limit, 1000, 1, 5000);
-    const items = await prisma.operationAuditLog.findMany({
-      where,
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      take: limit,
-    });
-
-    const header = 'id,action,target_type,target_id,ok,status,trace_id,payload,created_at';
-    const rows = items.map((item) => {
-      const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : (item.payload ?? {});
-      return [
-        item.id,
-        csvEscape(item.action),
-        csvEscape(item.target_type),
-        item.target_id ?? '',
-        item.ok,
-        csvEscape(String(payload.status ?? '')),
-        csvEscape(String(payload.trace_id ?? '')),
-        csvEscape(JSON.stringify(payload)),
-        item.created_at?.toISOString() ?? '',
-      ].join(',');
-    });
-
-    const csvBody = [header, ...rows].join('\n');
-    const filename = `audit_logs_export_${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z.csv`;
-    void reply.header('Content-Disposition', `attachment; filename="${filename}"`);
-    return reply.type('text/csv').send(csvBody);
-  });
-
-  app.get('/audit-logs/summary', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const days = parseAdminLimit(query.days, 7, 1, 90);
-    const action = parseAdminString(query.action);
-    const okFilter = parseAdminBoolean(query.ok);
-    const prisma = getPrisma();
-
-    const startUtc = new Date(Date.now() - days * 24 * 3600 * 1000);
-    const where: Record<string, unknown> = { created_at: { gte: startUtc } };
-    if (action) where.action = action;
-    if (okFilter !== undefined) where.ok = okFilter;
-
-    const items = await prisma.operationAuditLog.findMany({ where });
-
-    const byAction: Record<string, number> = {};
-    const byStatus: Record<string, number> = {};
-    const byResult = { ok: 0, failed: 0 };
-
-    for (const item of items) {
-      byAction[item.action] = (byAction[item.action] ?? 0) + 1;
-      const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : (item.payload ?? {});
-      const statusValue = String(payload.status ?? '').trim();
-      if (statusValue) byStatus[statusValue] = (byStatus[statusValue] ?? 0) + 1;
-      if (item.ok) byResult.ok++;
-      else byResult.failed++;
-    }
-
-    return reply.send({
-      ok: true,
-      days,
-      totals: { audit_logs: items.length },
-      by_action: Object.fromEntries(Object.entries(byAction).sort()),
-      by_status: Object.fromEntries(Object.entries(byStatus).sort()),
-      by_result: byResult,
-    });
-  });
-
-  // ── Metrics /daily ──
-
-  const handleDailyMetricsRoute = async (request: FastifyRequest, reply: FastifyReply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const days = parseAdminLimit(query.days, 7, 1, 60);
-    const prisma = getPrisma();
-
-    const startUtc = new Date(Date.now() - days * 24 * 3600 * 1000);
-    const comments = await prisma.comment.findMany({
-      where: { created_at: { gte: startUtc } },
-      select: { created_at: true },
-      orderBy: { created_at: 'asc' },
-    });
-    const jobs = await prisma.replyJob.findMany({
-      where: { created_at: { gte: startUtc } },
-      select: { created_at: true, status: true },
-      orderBy: { created_at: 'asc' },
-    });
-
-    const commentsByDay: Record<string, number> = {};
-    const grouped: Record<string, Record<string, number>> = {};
-    const totalsByStatus: Record<string, number> = {};
-
-    for (const comment of comments) {
-      const dayKey = (comment.created_at ?? new Date()).toISOString().slice(0, 10);
-      commentsByDay[dayKey] = (commentsByDay[dayKey] ?? 0) + 1;
-    }
-
-    for (const job of jobs) {
-      const dayKey = (job.created_at ?? new Date()).toISOString().slice(0, 10);
-      if (!grouped[dayKey]) grouped[dayKey] = {};
-      const status = job.status;
-      grouped[dayKey][status] = (grouped[dayKey][status] ?? 0) + 1;
-      totalsByStatus[status] = (totalsByStatus[status] ?? 0) + 1;
-    }
-
-    const allDayKeys = [...new Set([...Object.keys(commentsByDay), ...Object.keys(grouped)])].sort();
-    const items = allDayKeys.map((dayKey) => {
-      const statusMap = grouped[dayKey] ?? {};
-      const commentCount = commentsByDay[dayKey] ?? 0;
-      const totalJobs = Object.values(statusMap).reduce((a, b) => a + b, 0);
-      const publishedCount = statusMap.published ?? 0;
-      const failedCount = statusMap.failed ?? 0;
-      const skippedCount = statusMap.skipped ?? 0;
-
-      return {
-        date: dayKey,
-        comments: commentCount,
-        comment_count: commentCount,
-        jobs: totalJobs,
-        job_count: totalJobs,
-        queued: statusMap.queued ?? 0,
-        published: publishedCount,
-        published_count: publishedCount,
-        manual_queue: statusMap.manual_queue ?? 0,
-        blocked: statusMap.blocked ?? 0,
-        failed: failedCount,
-        failed_count: failedCount,
-        dedupe_skipped: statusMap.dedupe_skipped ?? 0,
-        skipped: skippedCount,
-        skipped_count: skippedCount,
-        status_breakdown: Object.fromEntries(Object.entries(statusMap).sort()),
-        total: totalJobs,
-      };
-    });
-
-    return reply.send({
-      ok: true,
-      days,
-      totals: totalsByStatus,
-      items,
-    });
-  };
-
-  app.get('/metrics/daily', handleDailyMetricsRoute);
-  app.get('/api/metrics/daily', handleDailyMetricsRoute);
-
-  // ── Gateway publish-logs (top-level route) ──
-
-  app.get('/gateway/publish-logs', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
-
-    const limit = parseAdminLimit(query.limit, 50, 1, 500);
-    const offset = parseAdminOffset(query.offset, 0, 0, 100000);
-    const status = parseAdminString(query.status);
-
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-
-    const [total, items] = await Promise.all([
-      prisma.publishLog.count({ where }),
-      prisma.publishLog.findMany({
-        where,
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-        skip: offset,
-        take: limit,
-      }),
-    ]);
-
-    return reply.send({
-      ok: true,
-      total,
-      items: items.map((item) => ({
-        id: item.id,
-        platform: item.platform,
-        canonical_comment_id: item.canonical_comment_id,
-        comment_id: item.comment_id,
-        reply_hash: item.reply_hash,
-        source: item.source,
-        status: item.status,
-        published_at: item.published_at?.toISOString() ?? null,
-        failure_reason: item.failure_reason,
-        created_at: item.created_at?.toISOString() ?? null,
-      })),
-    });
-  });
-
-  // ── Legacy compatibility routes (/api/ prefix aliases) ──
-
-  app.get('/api/metrics/overview', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const prisma = getPrisma();
-    const totalJobs = await prisma.replyJob.count();
-    const totalComments = await prisma.comment.count();
-    const byStatusRows = await prisma.replyJob.groupBy({ by: ['status'], _count: true });
-    const byStatus: Record<string, number> = {};
-    for (const row of byStatusRows) {
-      byStatus[row.status] = row._count;
-    }
-    return reply.send({
-      ok: true,
-      totals: { comments: totalComments, jobs: totalJobs },
-      by_status: byStatus,
-    });
-  });
-
-  app.get('/api/jobs', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
-    const limit = parseAdminLimit(query.limit, 50, 1, 500);
-    const offset = parseAdminOffset(query.offset, 0, 0, 100000);
-    const [total, items] = await Promise.all([
-      prisma.replyJob.count(),
-      prisma.replyJob.findMany({ orderBy: { created_at: 'desc' }, skip: offset, take: limit }),
-    ]);
-    return reply.send({ ok: true, total, items });
-  });
-
-  app.get('/api/audit-logs/summary', async (request, reply) => {
-    if (!checkApiKey(request, reply, settings)) return;
-    const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
-    const days = parseAdminLimit(query.days, 7, 1, 90);
-    const since = new Date(Date.now() - days * 86400000);
-    const total = await prisma.operationAuditLog.count({ where: { created_at: { gte: since } } });
-    return reply.send({ ok: true, days, total });
   });
 
   registerAdminStaticRoutes(app);

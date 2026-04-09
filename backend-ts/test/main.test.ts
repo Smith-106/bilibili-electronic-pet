@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { createServer, type RuntimeSettings, type ServerDependencies } from '../src/main.js';
+import { createServer } from '../src/main.js';
+import type { RuntimeSettings } from '../src/server/contracts.js';
+import type { ServerDependencies } from '../src/server/dependencies.js';
 
 function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
@@ -2014,6 +2016,35 @@ describe('comments domain parity', () => {
         comment_id: 'comment-42',
       },
     });
+
+    await app.close();
+  });
+
+  it('requires x-api-key for jobs/comments compatibility endpoints when configured', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+      }),
+    );
+
+    const requests = [
+      { method: 'GET', url: '/jobs/123' },
+      { method: 'GET', url: '/jobs?status=done&limit=20' },
+      { method: 'GET', url: '/export/jobs.csv?status=done&limit=20' },
+      { method: 'POST', url: '/jobs/42/retry', payload: {} },
+      { method: 'POST', url: '/jobs/42/approve', payload: {} },
+      { method: 'POST', url: '/jobs/approve-batch', payload: { job_ids: [1] } },
+      { method: 'POST', url: '/jobs/retry-batch', payload: { job_ids: [1] } },
+      { method: 'GET', url: '/comments?limit=1' },
+      { method: 'GET', url: '/comments/comment-42' },
+      { method: 'GET', url: '/api/comments/comment-42' },
+    ];
+
+    for (const request of requests) {
+      const response = await app.inject(request);
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ detail: 'unauthorized' });
+    }
 
     await app.close();
   });

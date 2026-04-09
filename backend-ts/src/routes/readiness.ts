@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
-import type { BilibiliDiagnostics, ConnectionStatus, RuntimeSettings } from '../main.js';
+import type { BilibiliDiagnostics, ConnectionStatus, RuntimeSettings } from '../server/contracts.js';
 
 type DeliveryCapabilityMatrix = {
   blockers: string[];

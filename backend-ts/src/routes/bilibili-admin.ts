@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { getPrisma } from '../lib/prisma.js';
-import type { RuntimeSettings } from '../main.js';
+import type { RuntimeSettings } from '../server/contracts.js';
 import { encrypt } from '../services/credential-crypto.js';
 
 type BilibiliStatusResponse = {

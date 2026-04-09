@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { RuntimeSettings, ServerDependencies } from '../src/main.js';
+import type { RuntimeSettings } from '../src/server/contracts.js';
+import type { ServerDependencies } from '../src/server/dependencies.js';
 
 const mockPrisma = {
   bilibiliCredential: {

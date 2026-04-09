@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { AdminJobsResponse, RuntimeSettings } from '../main.js';
+import type { AdminJobsResponse, RuntimeSettings } from '../server/contracts.js';
 
 export type AdminCoreRouteDependencies = {
   settings: RuntimeSettings;
