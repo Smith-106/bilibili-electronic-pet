@@ -5,11 +5,15 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 176 tests passing in the current backend suite
+✅ **Tests Passing** - 177 tests passing in the current backend suite
+✅ **Validated Baseline (2026-04-07)** - backend 177 tests passed, frontend 27 tests passed, and both backend/frontend builds passed
+⚠️ **Candidate Checkpoint (2026-04-08)** - the current route-extraction snapshot passed targeted backend regression (`test/main.test.ts`, `test/admin-defaults.test.ts`, 98 tests) and the backend build, but it remains a candidate checkpoint and does not replace the 2026-04-07 verified baseline
+✅ **Status Framing** - repo-local closed, environment gated
+✅ **Native Public Real-Chain (2026-04-08)** - the deployed pre-release smoke target at `https://pet.nikoniko.tech` passed fresh preflight, strict, and native real-chain validation
 ✅ **Preflight Diagnostics Available** - `staging-check` can now report external-delivery prerequisites before runtime validation
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
 ✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
-⚠️ **External Delivery Depends on Configuration** - LLM, search, webhook, and native Bilibili publishing paths still require runtime credentials and environment setup
+✅ **Branch-Specific Delivery Scope Closed** - the current signoff certifies the native Bilibili rollout path on the public smoke domain
 
 ## Tech Stack
 
@@ -213,7 +217,9 @@ npm run staging:check -- --base-url http://127.0.0.1:18000
 npm test -- test/workers.test.ts
 ```
 
-**Test Coverage**: 176 tests, all passing
+**Test Coverage**: 177 tests, all passing
+
+Validated on 2026-04-07: backend 177 tests passed, frontend 27 tests passed, and both backend/frontend builds passed. Current release framing is repo-local closed, environment gated.
 
 ## Staging Validation
 

@@ -11,10 +11,25 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 
 ## Verified Status
 
-- Backend tests passed locally: 176 tests
-- Frontend tests passed locally: 27 tests
-- Backend build passed locally
-- Frontend build passed locally
+- Validated on 2026-04-07: backend tests passed locally (177 tests)
+- Validated on 2026-04-07: frontend tests passed locally (27 tests)
+- Validated on 2026-04-07: backend build passed locally
+- Validated on 2026-04-07: frontend build passed locally
+- Canonical status: repo-local closed, environment gated.
+
+## Candidate Checkpoint Status (2026-04-08)
+
+- The current route-extraction dirty snapshot passed targeted backend regression on 2026-04-08: `test/main.test.ts` and `test/admin-defaults.test.ts` passed locally (98 tests).
+- The current route-extraction dirty snapshot passed the backend build locally on 2026-04-08.
+- This 2026-04-08 result is a validated candidate checkpoint only. It does not replace the 2026-04-07 verified baseline recorded above.
+
+## Delivery Smoke Status (2026-04-08)
+
+- A fresh public smoke target is now live at `https://pet.nikoniko.tech`.
+- Fresh `preflight`, `strict`, and `pre-release real-chain` validation all passed against that public target on 2026-04-08.
+- `llm_generation` is configured and cleared.
+- `search_enrichment` is configured and cleared.
+- Native Bilibili publish is configured and cleared, with `real_auth_ready=true` and `pre_release_real_chain_ready=true`.
 
 ## Completed Areas
 
@@ -59,12 +74,12 @@ Core backend/frontend workflows are implemented and integrated, release rehearsa
 
 ## Current Gaps
 
-### External Runtime Dependencies (Still Not Repo-Closed)
+### External Runtime Dependencies (Environment-Gated)
 
 - Real LLM generation still depends on runtime API keys/provider configuration.
 - Search enhancement still depends on provider credentials/configuration.
 - Native Bilibili publish still depends on active credentials, publish switches, and runtime dependency health.
-- Real-chain release validation still requires environment-provided secrets and a healthy target runtime.
+- Real-chain release validation still requires environment-provided secrets and a healthy target runtime even though the repository-controlled baseline is closed.
 
 ### Validation Scope Boundaries
 
@@ -84,4 +99,4 @@ Current status can be summarized as:
 2. Runtime and staging diagnostics are explicit, consistent, and test-covered for repo-controlled behavior.
 3. Remaining release risk is primarily external dependency readiness (secrets/credentials/environment), not missing core feature code.
 
-The project is locally robust and close to pre-release closure, while native external delivery remains conditionally complete until runtime prerequisites are satisfied.
+The project is repo-local closed and environment gated: backend 177 tests and frontend 27 tests passed on 2026-04-07, both builds passed on 2026-04-07, and native external delivery still depends on runtime prerequisites.
