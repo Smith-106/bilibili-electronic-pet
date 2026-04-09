@@ -11,6 +11,20 @@ param(
 chcp 65001 > $null
 $ErrorActionPreference = "Stop"
 
+function Invoke-CurlText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+
+  $fullArgs = @('--retry', '3', '--retry-all-errors', '--connect-timeout', '10') + $Arguments
+  $output = & curl.exe @fullArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "curl failed: $([string]::Join(' ', $Arguments))"
+  }
+  return $output
+}
+
 $remote = "$User@$RemoteHost"
 $tmpKey = Join-Path $env:TEMP ("bili-pet-status-key-" + [guid]::NewGuid().ToString("N"))
 Copy-Item -LiteralPath $KeyPath -Destination $tmpKey -Force
@@ -40,14 +54,14 @@ cat /proc/swaps 2>/dev/null || true
   if ($VerifyPublic) {
     Write-Output "[deploy-status] public endpoints"
     $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    $adminHtml = & curl.exe -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "https://pet.nikoniko.tech/admin?bust=$bust"
+    $adminHtml = Invoke-CurlText @('-fsSL', '-H', 'Cache-Control: no-cache', '-H', 'Pragma: no-cache', "https://pet.nikoniko.tech/admin?bust=$bust")
     $asset = $adminHtml | Select-String -Pattern '/assets/index-[A-Za-z0-9_-]+\.js' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 1
     if (-not $asset) {
       throw "public admin asset not found"
     }
 
-    $health = & curl.exe -fsS https://pet.nikoniko.tech/health
-    $readiness = & curl.exe -fsS https://pet.nikoniko.tech/readiness
+    $health = Invoke-CurlText @('-fsS', 'https://pet.nikoniko.tech/health')
+    $readiness = Invoke-CurlText @('-fsS', 'https://pet.nikoniko.tech/readiness')
     $readinessObj = $readiness | ConvertFrom-Json
 
     Write-Output "admin_asset=$asset"
