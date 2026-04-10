@@ -44,6 +44,7 @@
 - 任务管理
 - 每日指标
 - 知识库管理
+- Memory 管理
 - 角色卡管理
 - 风格配置
 - 网关日志
@@ -230,6 +231,7 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 - `jobs`：任务管理
 - `daily-metrics`：每日指标
 - `knowledge`：知识库
+- `memory`：memory spaces / grants / identity links 管理
 - `role-cards`：角色卡
 - `profiles`：风格配置
 - `gateway`：网关

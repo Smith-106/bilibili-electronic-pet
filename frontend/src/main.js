@@ -6,6 +6,7 @@ import { render as renderDashboard } from './pages/dashboard.js';
 import { render as renderJobs } from './pages/jobs.js';
 import { render as renderDailyMetrics } from './pages/daily-metrics.js';
 import { render as renderKnowledge } from './pages/knowledge.js';
+import { render as renderMemory } from './pages/memory.js';
 import { render as renderRoleCards } from './pages/role-cards.js';
 import { render as renderProfiles } from './pages/profiles.js';
 import { render as renderGateway } from './pages/gateway.js';
@@ -18,6 +19,7 @@ const PAGES = {
   jobs: { render: renderJobs, title: '任务管理' },
   'daily-metrics': { render: renderDailyMetrics, title: '每日指标' },
   knowledge: { render: renderKnowledge, title: '知识库' },
+  memory: { render: renderMemory, title: 'Memory 管理' },
   'role-cards': { render: renderRoleCards, title: '角色卡' },
   profiles: { render: renderProfiles, title: '风格配置' },
   gateway: { render: renderGateway, title: '网关' },

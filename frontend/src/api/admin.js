@@ -111,6 +111,40 @@ export function createAdminApi() {
       return requestJson(`/api/admin/knowledge/${encodeURIComponent(entryId)}/disable`, { method: 'POST' });
     },
 
+    // Memory
+    getMemorySpaces({ limit, offset, space_type, subject_type, subject_id } = {}) {
+      return requestJson(`/api/admin/memory/spaces${qs({ limit, offset, space_type, subject_type, subject_id })}`);
+    },
+    createMemorySpace(entry) {
+      return requestJson('/api/admin/memory/spaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
+    getMemoryGrants({ limit, offset, space_id, subject_type, subject_id } = {}) {
+      return requestJson(`/api/admin/memory/grants${qs({ limit, offset, space_id, subject_type, subject_id })}`);
+    },
+    grantMemorySpaceAccess(entry) {
+      return requestJson('/api/admin/memory/grants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
+    getMemoryIdentityLinks({ limit, offset, subject_type, subject_id, platform, external_id } = {}) {
+      return requestJson(
+        `/api/admin/memory/identity-links${qs({ limit, offset, subject_type, subject_id, platform, external_id })}`,
+      );
+    },
+    linkMemoryIdentity(entry) {
+      return requestJson('/api/admin/memory/identity-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
+
     // Role Cards
     getRoleCards({ limit, offset } = {}) {
       return requestJson(`/api/admin/role-cards${qs({ limit, offset })}`);

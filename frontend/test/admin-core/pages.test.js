@@ -20,6 +20,12 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     activateRoleCard: vi.fn(),
     getKnowledgeEntries: vi.fn(),
     createKnowledgeEntry: vi.fn(),
+    getMemorySpaces: vi.fn(),
+    createMemorySpace: vi.fn(),
+    getMemoryGrants: vi.fn(),
+    grantMemorySpaceAccess: vi.fn(),
+    getMemoryIdentityLinks: vi.fn(),
+    linkMemoryIdentity: vi.fn(),
   },
   mockShowToast: vi.fn(),
 }));
@@ -39,6 +45,7 @@ const pages = await Promise.all([
   import('../../src/pages/gateway.js'),
   import('../../src/pages/role-cards.js'),
   import('../../src/pages/knowledge.js'),
+  import('../../src/pages/memory.js'),
 ]);
 
 const [
@@ -48,6 +55,7 @@ const [
   { render: renderGateway },
   { render: renderRoleCards },
   { render: renderKnowledge },
+  { render: renderMemory },
 ] = pages;
 
 describe('admin-core frontend regression tests', () => {
@@ -180,6 +188,12 @@ describe('admin-core frontend regression tests', () => {
     mockApi.activateRoleCard.mockResolvedValue({ ok: true });
     mockApi.getKnowledgeEntries.mockResolvedValue({ items: [] });
     mockApi.createKnowledgeEntry.mockResolvedValue({ ok: true });
+    mockApi.getMemorySpaces.mockResolvedValue({ items: [] });
+    mockApi.createMemorySpace.mockResolvedValue({ ok: true });
+    mockApi.getMemoryGrants.mockResolvedValue({ items: [] });
+    mockApi.grantMemorySpaceAccess.mockResolvedValue({ ok: true });
+    mockApi.getMemoryIdentityLinks.mockResolvedValue({ items: [] });
+    mockApi.linkMemoryIdentity.mockResolvedValue({ ok: true });
   });
 
   it('renders dashboard with summary counters plus runtime and observability insights', async () => {
@@ -316,5 +330,15 @@ describe('admin-core frontend regression tests', () => {
 
     expect(mockApi.createKnowledgeEntry).not.toHaveBeenCalled();
     expect(mockShowToast).toHaveBeenCalledWith('分类、标题和内容不能为空', 'warning');
+  });
+
+  it('renders the memory admin page shell', async () => {
+    const container = createPageContainer();
+
+    await renderMemory(container);
+
+    expect(container.textContent).toContain('Memory 管理');
+    expect(container.textContent).toContain('新增 Space');
+    expect(mockApi.getMemorySpaces).toHaveBeenCalledWith({ limit: 50 });
   });
 });

@@ -168,7 +168,8 @@ Current status:
 - preserved in the local checkpoint
 - covered by repository/service tests
 - wired into the admin-management surface for explicit operator access
-- not yet used by the worker flow, publish pipeline, or any shipped frontend page
+- not yet used by the worker flow or publish pipeline
+- now visible in the shipped admin frontend as a dedicated management page
 
 Treat this as candidate scope with an explicit management contract, not as a core business-runtime capability.
 
