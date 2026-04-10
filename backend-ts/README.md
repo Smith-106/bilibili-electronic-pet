@@ -5,7 +5,7 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 182 tests passing in the current backend suite
+✅ **Tests Passing** - 187 tests passing in the current backend suite
 ✅ **Validated Baseline (2026-04-07)** - backend 177 tests passed, frontend 27 tests passed, and both backend/frontend builds passed
 ⚠️ **Candidate Checkpoint (2026-04-08)** - the current route-extraction snapshot passed targeted backend regression (`test/main.test.ts`, `test/admin-defaults.test.ts`, 98 tests) and the backend build, but it remains a candidate checkpoint and does not replace the 2026-04-07 verified baseline
 ✅ **Signed-Off Rollout Baseline (2026-04-08 / 2026-04-09 truth sync)** - the native Bilibili public-domain path reached `GO` and remains the authoritative rollout baseline
@@ -15,7 +15,7 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
 ✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
 ✅ **Branch-Specific Delivery Scope Closed** - the current signoff certifies the native Bilibili rollout path on the public smoke domain
-⚠️ **Memory Domain Isolated** - `src/app/memory` and `src/infra/db/repositories/memory-repository.ts` are preserved as candidate backend surfaces, not as active runtime API contracts
+⚠️ **Memory Domain Admin Contract Available** - `src/app/memory` is now exposed through admin-management endpoints, but it is still not part of the worker/publish business runtime
 
 ## Tech Stack
 
@@ -153,19 +153,24 @@ ROLE_PROFILE_DEFAULT=doro
 
 ### Memory Domain
 
-The repository currently includes an isolated memory-domain candidate:
+The repository currently includes an isolated memory-domain candidate with a lightweight admin-management contract:
 
 - `src/app/memory/`
 - `src/infra/db/repositories/memory-repository.ts`
 - Prisma models for memory spaces, grants, items, and identity links
+- admin endpoints under:
+  - `GET/POST /api/admin/memory/spaces`
+  - `GET/POST /api/admin/memory/grants`
+  - `GET/POST /api/admin/memory/identity-links`
 
 Current status:
 
 - preserved in the local checkpoint
 - covered by repository/service tests
-- not yet wired into an active Fastify route, worker flow, or frontend surface
+- wired into the admin-management surface for explicit operator access
+- not yet used by the worker flow, publish pipeline, or any shipped frontend page
 
-Treat this as candidate scope, not as a live backend contract.
+Treat this as candidate scope with an explicit management contract, not as a core business-runtime capability.
 
 ## Database Models
 

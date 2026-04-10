@@ -114,6 +114,7 @@ The project is repo-local closed and target-environment validated: backend tests
 - The authoritative rollout baseline remains the signed-off `GO` state from `WFS-bilibili-delivery-readiness-20260408`; that baseline should continue to be treated as the delivery truth source.
 - A frontend follow-up regression in dashboard smoke coverage was corrected by aligning the smoke harness with the current admin API wrapper contract; frontend tests and build are green again.
 - Two local follow-up surfaces are now explicitly isolated rather than implicitly treated as shipped product code:
-  - backend memory-domain candidate (`schema + repository/service + tests`, but no runtime consumer yet)
+  - backend memory-domain candidate (`schema + repository/service + tests`, now with admin-management routes but still no worker or shipped-frontend consumer)
   - `pet-companion-web` companion prototype (`local stub` Vite surface, not part of the signed-off runtime path)
+- The current backend suite now validates `187` tests locally, including the new memory admin-management coverage.
 - A follow-up local checkpoint can now include those isolated surfaces without changing the signed-off rollout claim, as long as they continue to be described as candidate/prototype-only rather than active runtime features.

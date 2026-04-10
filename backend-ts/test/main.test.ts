@@ -1088,6 +1088,331 @@ describe('admin api parity', () => {
     await app.close();
   });
 
+  it('requires auth for memory spaces list', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/spaces',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ detail: 'unauthorized' });
+
+    await app.close();
+  });
+
+  it('lists memory spaces with filtering and query clamping', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemorySpaces: (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 7,
+                space_key: 'operator:alpha',
+                space_type: 'operator',
+                title: 'Alpha Operator',
+                summary: 'Primary operator memory',
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:05:00.000Z',
+              },
+            ],
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/spaces?limit=9999&offset=-5&space_type=operator',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        spaceType: 'operator',
+        subjectType: undefined,
+        subjectId: undefined,
+      },
+    ]);
+    expect(response.json()).toEqual({
+      ok: true,
+      items: [
+        {
+          id: 7,
+          space_key: 'operator:alpha',
+          space_type: 'operator',
+          title: 'Alpha Operator',
+          summary: 'Primary operator memory',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:05:00.000Z',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('creates a memory space with validation', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        createMemorySpace: (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 7,
+              space_key: input.space_key,
+              space_type: input.space_type ?? 'operator',
+              title: input.title,
+              summary: input.summary ?? '',
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:05:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/spaces',
+      payload: {
+        space_key: '  operator:alpha  ',
+        space_type: '  operator  ',
+        title: '  Alpha Operator  ',
+        summary: '  Primary operator memory  ',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        space_key: 'operator:alpha',
+        space_type: 'operator',
+        title: 'Alpha Operator',
+        summary: 'Primary operator memory',
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/spaces',
+      payload: {
+        title: 'Missing key',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'space_key_required' });
+
+    await app.close();
+  });
+
+  it('lists and upserts memory grants', async () => {
+    const listCaptured: Array<Record<string, unknown>> = [];
+    const writeCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemoryGrants: (input) => {
+          listCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 3,
+                space_id: 7,
+                subject_type: 'operator',
+                subject_id: 'alice',
+                access_level: 'write',
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:05:00.000Z',
+              },
+            ],
+          };
+        },
+        grantMemorySpaceAccess: (input) => {
+          writeCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 3,
+              space_id: input.space_id,
+              subject_type: input.subject_type,
+              subject_id: input.subject_id,
+              access_level: input.access_level ?? 'read',
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:05:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/grants?space_id=7&limit=9999&offset=-5&subject_type=operator&subject_id=alice',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listCaptured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        spaceId: 7,
+        subjectType: 'operator',
+        subjectId: 'alice',
+      },
+    ]);
+
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/grants',
+      payload: {
+        space_id: 7,
+        subject_type: 'operator',
+        subject_id: 'alice',
+        access_level: 'write',
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(writeCaptured).toEqual([
+      {
+        space_id: 7,
+        subject_type: 'operator',
+        subject_id: 'alice',
+        access_level: 'write',
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/grants',
+      payload: {
+        subject_type: 'operator',
+        subject_id: 'alice',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'space_id_required' });
+
+    await app.close();
+  });
+
+  it('lists and upserts memory identity links', async () => {
+    const listCaptured: Array<Record<string, unknown>> = [];
+    const writeCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemoryIdentityLinks: (input) => {
+          listCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 9,
+                subject_type: 'operator',
+                subject_id: 'alice',
+                platform: 'bilibili',
+                external_id: 'uid-42',
+                display_name: 'Alice',
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:05:00.000Z',
+              },
+            ],
+          };
+        },
+        linkMemoryIdentity: (input) => {
+          writeCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 9,
+              subject_type: input.subject_type,
+              subject_id: input.subject_id,
+              platform: input.platform ?? 'bilibili',
+              external_id: input.external_id,
+              display_name: input.display_name ?? null,
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:05:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/identity-links?limit=9999&offset=-5&subject_type=operator&subject_id=alice&platform=bilibili&external_id=uid-42',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listCaptured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        subjectType: 'operator',
+        subjectId: 'alice',
+        platform: 'bilibili',
+        externalId: 'uid-42',
+      },
+    ]);
+
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/identity-links',
+      payload: {
+        subject_type: 'operator',
+        subject_id: 'alice',
+        platform: 'bilibili',
+        external_id: 'uid-42',
+        display_name: 'Alice',
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(writeCaptured).toEqual([
+      {
+        subject_type: 'operator',
+        subject_id: 'alice',
+        platform: 'bilibili',
+        external_id: 'uid-42',
+        display_name: 'Alice',
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/identity-links',
+      payload: {
+        subject_type: 'operator',
+        subject_id: 'alice',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'external_id_required' });
+
+    await app.close();
+  });
+
   it('gets and sets style profile with validation', async () => {
     let capturedProfile = 'auto';
 

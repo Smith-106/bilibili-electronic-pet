@@ -1734,13 +1734,13 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 
 当前代码基线还包含两类后续演进中的隔离面：
 
-- `backend-ts` 下的 memory schema / repository / service 候选能力，当前尚无 API、worker 或前端消费者
+- `backend-ts` 下的 memory schema / repository / service 候选能力，当前已经暴露为 admin-management 接口，但仍无 worker 或已交付前端消费者
 - `pet-companion-web/` 下的独立 Vite companion prototype，当前仍是 local-stub 原型，不属于已签收主运行时
 
 因此，当前最准确的状态表述是：
 
 1. 主运行链路已完成迁移并已有已签收 rollout baseline
 2. 管理后台当前契约与测试已重新对齐
-3. 当前仓库包含一个后续本地 checkpoint，其中 memory 候选能力与 `pet-companion-web` prototype 被明确保留但隔离，不视为已签收主运行时的一部分
+3. 当前仓库包含一个后续本地 checkpoint，其中 memory 候选能力以管理面接口形式保留、`pet-companion-web` 以 prototype 形式保留，但二者都不视为已签收主运行时的一部分
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`WFS-bilibili-delivery-readiness-20260408` 的 truth sources，以及当前 follow-up workflow 中对隔离能力的说明，而非旧的 Python 历史描述。

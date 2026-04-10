@@ -3,6 +3,7 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { Redis } from 'ioredis';
+import { createMemoryService } from './app/memory/index.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 import { registerAdminCoreRoutes } from './routes/admin-core.js';
 import { registerAdminManagementRoutes } from './routes/admin-management.js';
@@ -22,7 +23,10 @@ import type {
   CommentEvent,
   ConnectionStatus,
   GatewayPublishPayload,
+  IdentityLink,
   KnowledgeEntry,
+  MemoryGrant,
+  MemorySpace,
   PlatformName,
   PublishFinalizeInput,
   PublishReservationInput,
@@ -1242,6 +1246,178 @@ async function defaultDisableKnowledgeEntry(input: {
   };
 }
 
+function normalizeMemorySpaceRecord(record: {
+  id: number;
+  space_key: string;
+  space_type: string;
+  title: string;
+  summary: string;
+  created_at: Date | string | null | undefined;
+  updated_at: Date | string | null | undefined;
+}): MemorySpace {
+  return {
+    id: record.id,
+    space_key: record.space_key,
+    space_type: record.space_type,
+    title: record.title,
+    summary: record.summary,
+    created_at: normalizeNullableIsoTimestamp(record.created_at),
+    updated_at: normalizeNullableIsoTimestamp(record.updated_at),
+  };
+}
+
+function normalizeMemoryGrantRecord(record: {
+  id: number;
+  space_id: number;
+  subject_type: string;
+  subject_id: string;
+  access_level: string;
+  created_at: Date | string | null | undefined;
+  updated_at: Date | string | null | undefined;
+}): MemoryGrant {
+  return {
+    id: record.id,
+    space_id: record.space_id,
+    subject_type: record.subject_type,
+    subject_id: record.subject_id,
+    access_level: record.access_level,
+    created_at: normalizeNullableIsoTimestamp(record.created_at),
+    updated_at: normalizeNullableIsoTimestamp(record.updated_at),
+  };
+}
+
+function normalizeIdentityLinkRecord(record: {
+  id: number;
+  subject_type: string;
+  subject_id: string;
+  platform: string;
+  external_id: string;
+  display_name: string | null;
+  created_at: Date | string | null | undefined;
+  updated_at: Date | string | null | undefined;
+}): IdentityLink {
+  return {
+    id: record.id,
+    subject_type: record.subject_type,
+    subject_id: record.subject_id,
+    platform: record.platform,
+    external_id: record.external_id,
+    display_name: record.display_name,
+    created_at: normalizeNullableIsoTimestamp(record.created_at),
+    updated_at: normalizeNullableIsoTimestamp(record.updated_at),
+  };
+}
+
+async function defaultListMemorySpaces(input: {
+  limit: number;
+  offset: number;
+  spaceType?: string;
+  subjectType?: string;
+  subjectId?: string;
+}): Promise<{ ok: boolean; items: MemorySpace[] }> {
+  const service = createMemoryService();
+  const items =
+    input.subjectType && input.subjectId
+      ? await service.listAccessibleSpaces(input.subjectType, input.subjectId)
+      : await service.listSpaces({ spaceType: input.spaceType });
+
+  return {
+    ok: true,
+    items: items
+      .slice(input.offset, input.offset + input.limit)
+      .map((item) => normalizeMemorySpaceRecord(item)),
+  };
+}
+
+async function defaultCreateMemorySpace(input: {
+  space_key: string;
+  space_type?: string;
+  title: string;
+  summary?: string;
+}): Promise<{ ok: boolean; item: MemorySpace }> {
+  const service = createMemoryService();
+  const item = await service.createSpace(input);
+  return {
+    ok: true,
+    item: normalizeMemorySpaceRecord(item),
+  };
+}
+
+async function defaultListMemoryGrants(input: {
+  limit: number;
+  offset: number;
+  spaceId?: number;
+  subjectType?: string;
+  subjectId?: string;
+}): Promise<{ ok: boolean; items: MemoryGrant[] }> {
+  const service = createMemoryService();
+  const items = await service.listGrants({
+    spaceId: input.spaceId,
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+  });
+
+  return {
+    ok: true,
+    items: items
+      .slice(input.offset, input.offset + input.limit)
+      .map((item) => normalizeMemoryGrantRecord(item)),
+  };
+}
+
+async function defaultGrantMemorySpaceAccess(input: {
+  space_id: number;
+  subject_type: string;
+  subject_id: string;
+  access_level?: string;
+}): Promise<{ ok: boolean; item: MemoryGrant }> {
+  const service = createMemoryService();
+  const item = await service.grantSpaceAccess(input);
+  return {
+    ok: true,
+    item: normalizeMemoryGrantRecord(item),
+  };
+}
+
+async function defaultListMemoryIdentityLinks(input: {
+  limit: number;
+  offset: number;
+  subjectType?: string;
+  subjectId?: string;
+  platform?: string;
+  externalId?: string;
+}): Promise<{ ok: boolean; items: IdentityLink[] }> {
+  const service = createMemoryService();
+  const items = await service.listIdentityLinks({
+    subjectType: input.subjectType,
+    subjectId: input.subjectId,
+    platform: input.platform,
+    externalId: input.externalId,
+  });
+
+  return {
+    ok: true,
+    items: items
+      .slice(input.offset, input.offset + input.limit)
+      .map((item) => normalizeIdentityLinkRecord(item)),
+  };
+}
+
+async function defaultLinkMemoryIdentity(input: {
+  subject_type: string;
+  subject_id: string;
+  platform?: string;
+  external_id: string;
+  display_name?: string | null;
+}): Promise<{ ok: boolean; item: IdentityLink }> {
+  const service = createMemoryService();
+  const item = await service.linkIdentity(input);
+  return {
+    ok: true,
+    item: normalizeIdentityLinkRecord(item),
+  };
+}
+
 function defaultGetStyleProfile(): { ok: boolean; style_profile: string; preset_profiles: string[] } {
   return {
     ok: true,
@@ -2050,6 +2226,12 @@ function defaultDependencies(): ServerDependencies {
     listKnowledgeEntries: defaultListKnowledgeEntries,
     createKnowledgeEntry: defaultCreateKnowledgeEntry,
     disableKnowledgeEntry: defaultDisableKnowledgeEntry,
+    listMemorySpaces: defaultListMemorySpaces,
+    createMemorySpace: defaultCreateMemorySpace,
+    listMemoryGrants: defaultListMemoryGrants,
+    grantMemorySpaceAccess: defaultGrantMemorySpaceAccess,
+    listMemoryIdentityLinks: defaultListMemoryIdentityLinks,
+    linkMemoryIdentity: defaultLinkMemoryIdentity,
     getStyleProfile: defaultGetStyleProfile,
     setStyleProfile: defaultSetStyleProfile,
     getRoleProfile: defaultGetRoleProfile,
@@ -2210,6 +2392,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const listKnowledgeEntries = overrides.listKnowledgeEntries ?? defaults.listKnowledgeEntries;
   const createKnowledgeEntry = overrides.createKnowledgeEntry ?? defaults.createKnowledgeEntry;
   const disableKnowledgeEntry = overrides.disableKnowledgeEntry ?? defaults.disableKnowledgeEntry;
+  const listMemorySpaces = overrides.listMemorySpaces ?? defaults.listMemorySpaces;
+  const createMemorySpace = overrides.createMemorySpace ?? defaults.createMemorySpace;
+  const listMemoryGrants = overrides.listMemoryGrants ?? defaults.listMemoryGrants;
+  const grantMemorySpaceAccess = overrides.grantMemorySpaceAccess ?? defaults.grantMemorySpaceAccess;
+  const listMemoryIdentityLinks = overrides.listMemoryIdentityLinks ?? defaults.listMemoryIdentityLinks;
+  const linkMemoryIdentity = overrides.linkMemoryIdentity ?? defaults.linkMemoryIdentity;
   const getStyleProfile = overrides.getStyleProfile ?? defaults.getStyleProfile;
   const setStyleProfile = overrides.setStyleProfile ?? defaults.setStyleProfile;
   const getRoleProfile = overrides.getRoleProfile ?? defaults.getRoleProfile;
@@ -2316,6 +2504,12 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     listKnowledgeEntries,
     createKnowledgeEntry,
     disableKnowledgeEntry,
+    listMemorySpaces,
+    createMemorySpace,
+    listMemoryGrants,
+    grantMemorySpaceAccess,
+    listMemoryIdentityLinks,
+    linkMemoryIdentity,
     getStyleProfile,
     setStyleProfile,
     getRoleProfile,

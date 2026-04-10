@@ -127,6 +127,37 @@ export type KnowledgeEntry = {
   updated_at: string | null;
 };
 
+export type MemorySpace = {
+  id: number;
+  space_key: string;
+  space_type: string;
+  title: string;
+  summary: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type MemoryGrant = {
+  id: number;
+  space_id: number;
+  subject_type: string;
+  subject_id: string;
+  access_level: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type IdentityLink = {
+  id: number;
+  subject_type: string;
+  subject_id: string;
+  platform: string;
+  external_id: string;
+  display_name: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 export type RoleCardValue = string | Record<string, unknown>;
 
 export type RoleCard = {
