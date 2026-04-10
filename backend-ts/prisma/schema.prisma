@@ -185,3 +185,72 @@ model BilibiliVideo {
   @@index([updated_at])
   @@map("bilibili_videos")
 }
+
+model MemorySpace {
+  id         Int      @id @default(autoincrement())
+  space_key  String   @unique
+  space_type String   @default("operator")
+  title      String
+  summary    String   @default("")
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  items  MemoryItem[]
+  grants MemoryGrant[]
+
+  @@index([space_type])
+  @@index([updated_at])
+  @@map("memory_spaces")
+}
+
+model MemoryItem {
+  id            Int      @id @default(autoincrement())
+  space_id      Int
+  item_key      String
+  content       String
+  content_type  String   @default("note")
+  source        String   @default("operator")
+  item_metadata String   @default("{}")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+
+  space MemorySpace @relation(fields: [space_id], references: [id], onDelete: Cascade)
+
+  @@unique([space_id, item_key], name: "uq_memory_items_space_key")
+  @@index([space_id, content_type])
+  @@index([updated_at])
+  @@map("memory_items")
+}
+
+model MemoryGrant {
+  id           Int      @id @default(autoincrement())
+  space_id     Int
+  subject_type String   @default("user")
+  subject_id   String
+  access_level String   @default("read")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+
+  space MemorySpace @relation(fields: [space_id], references: [id], onDelete: Cascade)
+
+  @@unique([space_id, subject_type, subject_id], name: "uq_memory_grants_subject")
+  @@index([subject_type, subject_id])
+  @@index([updated_at])
+  @@map("memory_grants")
+}
+
+model IdentityLink {
+  id           Int      @id @default(autoincrement())
+  subject_type String   @default("user")
+  subject_id   String
+  platform     String   @default("bilibili")
+  external_id  String
+  display_name String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+
+  @@unique([platform, external_id], name: "uq_identity_links_platform_external")
+  @@index([subject_type, subject_id])
+  @@index([updated_at])
+  @@map("identity_links")
+}

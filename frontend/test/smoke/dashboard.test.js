@@ -5,6 +5,9 @@ import { createPageContainer } from '../utils/dom.js';
 const { mockApi, mockShowToast } = vi.hoisted(() => ({
   mockApi: {
     getOverview: vi.fn(),
+    getMetricsOverview: vi.fn(),
+    getObservabilitySummary: vi.fn(),
+    getReadinessStatus: vi.fn(),
     getJobs: vi.fn(),
     getGatewayLogs: vi.fn(),
     getAuditSummary: vi.fn(),
@@ -47,6 +50,35 @@ describe('frontend test harness smoke', () => {
       ok_count: 8,
       failed_count: 2,
     });
+    mockApi.getMetricsOverview.mockResolvedValue({
+      llm_provider: 'openai',
+      search_provider: 'serpapi',
+      publisher_mode: 'native_bilibili',
+      llmApiKeyConfigured: true,
+      searchApiKeyConfigured: true,
+      bilibiliEnabled: true,
+      bilibiliPublishEnabled: true,
+      killSwitch: false,
+    });
+    mockApi.getObservabilitySummary.mockResolvedValue({
+      ok: true,
+      summary: {
+        window_minutes: 120,
+        published_count: 3,
+        failed_count: 1,
+        latency_ms_p95: 420,
+      },
+    });
+    mockApi.getReadinessStatus.mockResolvedValue({
+      foundation_ready: true,
+      delivery_ready: true,
+      foundation_blockers: [],
+      delivery_blockers: [],
+      delivery_capability_blockers: [],
+      bilibili_diagnostics: {
+        effective_publish_mode: 'native_bilibili',
+      },
+    });
   });
 
   it('renders dashboard stats and latest job data', async () => {
@@ -63,5 +95,8 @@ describe('frontend test harness smoke', () => {
     expect(mockApi.getJobs).toHaveBeenCalledWith({ limit: 5 });
     expect(mockApi.getGatewayLogs).toHaveBeenCalledWith({ limit: 5 });
     expect(mockApi.getAuditSummary).toHaveBeenCalledWith({ days: 7 });
+    expect(mockApi.getMetricsOverview).toHaveBeenCalledTimes(1);
+    expect(mockApi.getObservabilitySummary).toHaveBeenCalledWith({ windowMinutes: 120 });
+    expect(mockApi.getReadinessStatus).toHaveBeenCalledTimes(1);
   });
 });

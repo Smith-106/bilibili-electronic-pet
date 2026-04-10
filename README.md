@@ -117,6 +117,10 @@
 │  │  ├─ utils/                # 工具函数
 │  │  └─ style.css             # 全局样式
 │  └─ package.json
+├─ pet-companion-web/           # 独立 companion prototype（当前隔离，不接入已签收主运行时）
+│  ├─ src/                      # prototype UI + local adapter
+│  ├─ test/                     # prototype tests
+│  └─ package.json
 ├─ docker-compose.yml           # 本地/容器编排入口
 ├─ docker-compose.ghcr.yml      # GHCR 镜像部署编排
 ├─ docker-compose.hostnet.yml   # host network 部署变体
@@ -1726,4 +1730,17 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis` 串成一套可启动的最小部署拓扑
 5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/api/admin.js` 与 `backend-ts/src/main.ts` 的现行契约对齐
 
-这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/` 以及 compose / Dockerfile 中的现行实现，而非旧的 Python 历史描述。
+当前权威交付基线已不是早期的 `rollout blocked` 结论，而是 `WFS-bilibili-delivery-readiness-20260408` 中记录的原生 B 站 public-domain `GO`。也就是说，主运行链路已经有一条已签收的交付基线。
+
+当前代码基线还包含两类后续演进中的隔离面：
+
+- `backend-ts` 下的 memory schema / repository / service 候选能力，当前尚无 API、worker 或前端消费者
+- `pet-companion-web/` 下的独立 Vite companion prototype，当前仍是 local-stub 原型，不属于已签收主运行时
+
+因此，当前最准确的状态表述是：
+
+1. 主运行链路已完成迁移并已有已签收 rollout baseline
+2. 管理后台当前契约与测试已重新对齐
+3. 当前仓库包含一个后续本地 checkpoint，其中 memory 候选能力与 `pet-companion-web` prototype 被明确保留但隔离，不视为已签收主运行时的一部分
+
+这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`WFS-bilibili-delivery-readiness-20260408` 的 truth sources，以及当前 follow-up workflow 中对隔离能力的说明，而非旧的 Python 历史描述。
