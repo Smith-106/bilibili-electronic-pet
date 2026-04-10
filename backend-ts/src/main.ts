@@ -28,6 +28,7 @@ import type {
   IdentityLink,
   KnowledgeEntry,
   MemoryGrant,
+  MemoryItem,
   MemorySpace,
   PlatformName,
   PublishFinalizeInput,
@@ -1288,6 +1289,30 @@ function normalizeMemoryGrantRecord(record: {
   };
 }
 
+function normalizeMemoryItemRecord(record: {
+  id: number;
+  space_id: number;
+  item_key: string;
+  content: string;
+  content_type: string;
+  source: string;
+  item_metadata: Record<string, unknown>;
+  created_at: Date | string | null | undefined;
+  updated_at: Date | string | null | undefined;
+}): MemoryItem {
+  return {
+    id: record.id,
+    space_id: record.space_id,
+    item_key: record.item_key,
+    content: record.content,
+    content_type: record.content_type,
+    source: record.source,
+    item_metadata: record.item_metadata,
+    created_at: normalizeNullableIsoTimestamp(record.created_at),
+    updated_at: normalizeNullableIsoTimestamp(record.updated_at),
+  };
+}
+
 function normalizeIdentityLinkRecord(record: {
   id: number;
   subject_type: string;
@@ -1342,6 +1367,44 @@ async function defaultCreateMemorySpace(input: {
   return {
     ok: true,
     item: normalizeMemorySpaceRecord(item),
+  };
+}
+
+async function defaultListMemoryItems(input: {
+  limit: number;
+  offset: number;
+  spaceId?: number;
+  itemKey?: string;
+  contentType?: string;
+  source?: string;
+}): Promise<{ ok: boolean; items: MemoryItem[] }> {
+  const service = createMemoryService();
+  const items = await service.listItems({
+    spaceId: input.spaceId,
+    itemKey: input.itemKey,
+    contentType: input.contentType,
+    source: input.source,
+  });
+
+  return {
+    ok: true,
+    items: items.slice(input.offset, input.offset + input.limit).map((item) => normalizeMemoryItemRecord(item)),
+  };
+}
+
+async function defaultUpsertMemoryItem(input: {
+  space_id: number;
+  item_key: string;
+  content: string;
+  content_type?: string;
+  source?: string;
+  item_metadata?: Record<string, unknown>;
+}): Promise<{ ok: boolean; item: MemoryItem }> {
+  const service = createMemoryService();
+  const item = await service.upsertItem(input);
+  return {
+    ok: true,
+    item: normalizeMemoryItemRecord(item),
   };
 }
 
@@ -2235,13 +2298,14 @@ function buildFallbackCompanionState(reason?: string): CompanionState {
 async function defaultGetCompanionState(): Promise<CompanionState> {
   try {
     const service = createMemoryService();
-    const [spaces, grants, links] = await Promise.all([
+    const [spaces, items, grants, links] = await Promise.all([
       service.listSpaces(),
+      service.listItems(),
       service.listGrants(),
       service.listIdentityLinks(),
     ]);
 
-    const latestTimestamp = [spaces, grants, links]
+    const latestTimestamp = [spaces, items, grants, links]
       .flat()
       .map((item) => item.updated_at)
       .filter((value): value is Date => value instanceof Date)
@@ -2252,13 +2316,15 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       .slice(0, 3)
       .map((link) => `${link.platform}:${link.external_id}`)
       .filter(Boolean);
+    const recentItems = items.slice(0, 3);
+    const recentItemSummaries = recentItems.map((item) => `${item.item_key}: ${item.content.slice(0, 48)}`);
 
-    const hasMemory = spaces.length > 0 || grants.length > 0 || links.length > 0;
+    const hasMemory = spaces.length > 0 || items.length > 0 || grants.length > 0 || links.length > 0;
 
     return {
       petName: 'Mochi',
       statusLine: hasMemory
-        ? `Tracking ${spaces.length} spaces, ${grants.length} grants, and ${links.length} linked identities.`
+        ? `Tracking ${spaces.length} spaces, ${items.length} items, ${grants.length} grants, and ${links.length} linked identities.`
         : 'Waiting for the first persisted companion memory signal.',
       loopMode: 'Backend memory companion',
       lastCheckIn: latestTimestamp ? normalizeIsoTimestamp(latestTimestamp) : 'Pending',
@@ -2273,17 +2339,22 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
           : 'No persisted memory records exist yet, so the companion stays in a low-signal state.',
       },
       memoryTitle: hasMemory ? 'Persisted memory summary' : 'Memory bootstrap',
-      memorySummary: hasMemory
-        ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
-        : 'Persisted memory has not been populated yet.',
+      memorySummary:
+        items.length > 0
+          ? recentItemSummaries.join(' | ')
+          : hasMemory
+            ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
+            : 'Persisted memory has not been populated yet.',
       vitals: [
         { label: 'Spaces', value: String(spaces.length) },
+        { label: 'Items', value: String(items.length) },
         { label: 'Grants', value: String(grants.length) },
         { label: 'Links', value: String(links.length) },
-        { label: 'Focus', value: hasMemory ? 'Persisted' : 'Bootstrap' },
+        { label: 'Focus', value: items.length > 0 ? 'Active memory' : hasMemory ? 'Persisted' : 'Bootstrap' },
       ],
       recentSignals: [
         hasMemory ? 'Latest signal timestamps are sourced from persisted memory updates.' : 'No memory signals available yet.',
+        recentItemSummaries.length > 0 ? `Recent items: ${recentItemSummaries.join(' | ')}` : 'No recent items.',
         recentSpaceTitles.length > 0 ? `Recent spaces: ${recentSpaceTitles.join(', ')}` : 'No recent spaces.',
         recentSubjects.length > 0 ? `Recent links: ${recentSubjects.join(', ')}` : 'No recent identity links.',
       ],
@@ -2315,6 +2386,8 @@ function defaultDependencies(): ServerDependencies {
     disableKnowledgeEntry: defaultDisableKnowledgeEntry,
     listMemorySpaces: defaultListMemorySpaces,
     createMemorySpace: defaultCreateMemorySpace,
+    listMemoryItems: defaultListMemoryItems,
+    upsertMemoryItem: defaultUpsertMemoryItem,
     listMemoryGrants: defaultListMemoryGrants,
     grantMemorySpaceAccess: defaultGrantMemorySpaceAccess,
     listMemoryIdentityLinks: defaultListMemoryIdentityLinks,
@@ -2482,6 +2555,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const disableKnowledgeEntry = overrides.disableKnowledgeEntry ?? defaults.disableKnowledgeEntry;
   const listMemorySpaces = overrides.listMemorySpaces ?? defaults.listMemorySpaces;
   const createMemorySpace = overrides.createMemorySpace ?? defaults.createMemorySpace;
+  const listMemoryItems = overrides.listMemoryItems ?? defaults.listMemoryItems;
+  const upsertMemoryItem = overrides.upsertMemoryItem ?? defaults.upsertMemoryItem;
   const listMemoryGrants = overrides.listMemoryGrants ?? defaults.listMemoryGrants;
   const grantMemorySpaceAccess = overrides.grantMemorySpaceAccess ?? defaults.grantMemorySpaceAccess;
   const listMemoryIdentityLinks = overrides.listMemoryIdentityLinks ?? defaults.listMemoryIdentityLinks;
@@ -2595,6 +2670,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     disableKnowledgeEntry,
     listMemorySpaces,
     createMemorySpace,
+    listMemoryItems,
+    upsertMemoryItem,
     listMemoryGrants,
     grantMemorySpaceAccess,
     listMemoryIdentityLinks,

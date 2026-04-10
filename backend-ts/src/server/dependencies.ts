@@ -12,6 +12,7 @@ import type {
   IdentityLink,
   KnowledgeEntry,
   MemoryGrant,
+  MemoryItem,
   MemorySpace,
   PlatformName,
   PublishExecutionResult,
@@ -85,6 +86,22 @@ export type ServerDependencies = {
     title: string;
     summary?: string;
   }) => Promise<{ ok: boolean; item: MemorySpace }> | { ok: boolean; item: MemorySpace };
+  listMemoryItems: (input: {
+    limit: number;
+    offset: number;
+    spaceId?: number;
+    itemKey?: string;
+    contentType?: string;
+    source?: string;
+  }) => Promise<{ ok: boolean; items: MemoryItem[] }> | { ok: boolean; items: MemoryItem[] };
+  upsertMemoryItem: (input: {
+    space_id: number;
+    item_key: string;
+    content: string;
+    content_type?: string;
+    source?: string;
+    item_metadata?: Record<string, unknown>;
+  }) => Promise<{ ok: boolean; item: MemoryItem }> | { ok: boolean; item: MemoryItem };
   listMemoryGrants: (input: {
     limit: number;
     offset: number;
@@ -279,6 +296,8 @@ type DefaultServerDependenciesInput = {
   disableKnowledgeEntry: ServerDependencies['disableKnowledgeEntry'];
   listMemorySpaces: ServerDependencies['listMemorySpaces'];
   createMemorySpace: ServerDependencies['createMemorySpace'];
+  listMemoryItems: ServerDependencies['listMemoryItems'];
+  upsertMemoryItem: ServerDependencies['upsertMemoryItem'];
   listMemoryGrants: ServerDependencies['listMemoryGrants'];
   grantMemorySpaceAccess: ServerDependencies['grantMemorySpaceAccess'];
   listMemoryIdentityLinks: ServerDependencies['listMemoryIdentityLinks'];
@@ -340,6 +359,8 @@ export function buildDefaultServerDependencies(input: DefaultServerDependenciesI
     disableKnowledgeEntry: (knowledgeDisableInput) => input.disableKnowledgeEntry(knowledgeDisableInput),
     listMemorySpaces: (memorySpaceListInput) => input.listMemorySpaces(memorySpaceListInput),
     createMemorySpace: (memorySpaceCreateInput) => input.createMemorySpace(memorySpaceCreateInput),
+    listMemoryItems: (memoryItemListInput) => input.listMemoryItems(memoryItemListInput),
+    upsertMemoryItem: (memoryItemInput) => input.upsertMemoryItem(memoryItemInput),
     listMemoryGrants: (memoryGrantListInput) => input.listMemoryGrants(memoryGrantListInput),
     grantMemorySpaceAccess: (memoryGrantInput) => input.grantMemorySpaceAccess(memoryGrantInput),
     listMemoryIdentityLinks: (memoryIdentityListInput) => input.listMemoryIdentityLinks(memoryIdentityListInput),

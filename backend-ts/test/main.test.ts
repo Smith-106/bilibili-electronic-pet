@@ -1294,6 +1294,109 @@ describe('admin api parity', () => {
     await app.close();
   });
 
+  it('lists and upserts memory items', async () => {
+    const listCaptured: Array<Record<string, unknown>> = [];
+    const writeCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemoryItems: (input) => {
+          listCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 21,
+                space_id: 7,
+                item_key: 'status:latest',
+                content: 'Operator alpha is attentive.',
+                content_type: 'summary',
+                source: 'companion',
+                item_metadata: { score: 0.8 },
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:10:00.000Z',
+              },
+            ],
+          };
+        },
+        upsertMemoryItem: (input) => {
+          writeCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 21,
+              space_id: input.space_id,
+              item_key: input.item_key,
+              content: input.content,
+              content_type: input.content_type ?? 'note',
+              source: input.source ?? 'operator',
+              item_metadata: input.item_metadata ?? {},
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:10:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/items?space_id=7&content_type=summary&limit=9999&offset=-5',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listCaptured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        spaceId: 7,
+        itemKey: undefined,
+        contentType: 'summary',
+        source: undefined,
+      },
+    ]);
+
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/items',
+      payload: {
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: { score: 0.8 },
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(writeCaptured).toEqual([
+      {
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: { score: 0.8 },
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/items',
+      payload: {
+        space_id: 7,
+        item_key: '',
+        content: '',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'item_key_required' });
+
+    await app.close();
+  });
+
   it('lists and upserts memory grants', async () => {
     const listCaptured: Array<Record<string, unknown>> = [];
     const writeCaptured: Array<Record<string, unknown>> = [];

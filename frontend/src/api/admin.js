@@ -122,6 +122,16 @@ export function createAdminApi() {
         body: JSON.stringify(entry),
       });
     },
+    getMemoryItems({ limit, offset, space_id, item_key, content_type, source } = {}) {
+      return requestJson(`/api/admin/memory/items${qs({ limit, offset, space_id, item_key, content_type, source })}`);
+    },
+    upsertMemoryItem(entry) {
+      return requestJson('/api/admin/memory/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
     getMemoryGrants({ limit, offset, space_id, subject_type, subject_id } = {}) {
       return requestJson(`/api/admin/memory/grants${qs({ limit, offset, space_id, subject_type, subject_id })}`);
     },

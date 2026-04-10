@@ -10,6 +10,7 @@ Standalone Vite prototype for a browser-side companion surface.
 - built into `backend-ts/public/companion`
 - served by backend at `/companion`
 - copied into the default backend image as a companion static surface
+- current backend companion state is synthesized from persisted memory management data when available
 
 ## Purpose
 

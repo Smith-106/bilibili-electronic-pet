@@ -53,6 +53,13 @@ export type ListMemoryGrantOptions = {
   subjectId?: string;
 };
 
+export type ListMemoryItemOptions = {
+  spaceId?: number;
+  itemKey?: string;
+  contentType?: string;
+  source?: string;
+};
+
 export type ListIdentityLinkOptions = {
   subjectType?: string;
   subjectId?: string;
@@ -74,6 +81,15 @@ export type UpsertMemoryGrantInput = {
   access_level?: string;
 };
 
+export type UpsertMemoryItemInput = {
+  space_id: number;
+  item_key: string;
+  content: string;
+  content_type?: string;
+  source?: string;
+  item_metadata?: Record<string, unknown>;
+};
+
 export type UpsertIdentityLinkInput = {
   subject_type: string;
   subject_id: string;
@@ -86,6 +102,9 @@ export type MemoryService = {
   listSpaces(filters?: ListMemorySpaceOptions): Promise<MemorySpaceRecord[]>;
   listAccessibleSpaces(subjectType: string, subjectId: string): Promise<MemorySpaceRecord[]>;
   createSpace(input: CreateMemorySpaceInput): Promise<MemorySpaceRecord>;
+  listItems(filters?: ListMemoryItemOptions): Promise<MemoryItemRecord[]>;
+  listSpaceItems(spaceId: number): Promise<MemoryItemRecord[]>;
+  upsertItem(input: UpsertMemoryItemInput): Promise<MemoryItemRecord>;
   listGrants(filters?: ListMemoryGrantOptions): Promise<MemoryGrantRecord[]>;
   listSpaceGrants(spaceId: number): Promise<MemoryGrantRecord[]>;
   listSubjectGrants(subjectType: string, subjectId: string): Promise<MemoryGrantRecord[]>;

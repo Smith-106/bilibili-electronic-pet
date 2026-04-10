@@ -3,10 +3,12 @@ import type {
   CreateMemorySpaceInput,
   ListIdentityLinkOptions,
   ListMemoryGrantOptions,
+  ListMemoryItemOptions,
   ListMemorySpaceOptions,
   MemoryService,
   UpsertIdentityLinkInput,
   UpsertMemoryGrantInput,
+  UpsertMemoryItemInput,
 } from './types.js';
 
 export function createMemoryService(repository: MemoryRepository = createMemoryRepository()): MemoryService {
@@ -31,6 +33,18 @@ export function createMemoryService(repository: MemoryRepository = createMemoryR
 
     async createSpace(input: CreateMemorySpaceInput) {
       return repository.createSpace(input);
+    },
+
+    async listItems(filters?: ListMemoryItemOptions) {
+      return repository.listItems(filters);
+    },
+
+    async listSpaceItems(spaceId: number) {
+      return repository.listItems({ spaceId });
+    },
+
+    async upsertItem(input: UpsertMemoryItemInput) {
+      return repository.upsertItem(input);
     },
 
     async listGrants(filters?: ListMemoryGrantOptions) {

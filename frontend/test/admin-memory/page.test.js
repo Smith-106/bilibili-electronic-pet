@@ -6,6 +6,8 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
   mockApi: {
     getMemorySpaces: vi.fn(),
     createMemorySpace: vi.fn(),
+    getMemoryItems: vi.fn(),
+    upsertMemoryItem: vi.fn(),
     getMemoryGrants: vi.fn(),
     grantMemorySpaceAccess: vi.fn(),
     getMemoryIdentityLinks: vi.fn(),
@@ -68,7 +70,21 @@ describe('memory admin page', () => {
         },
       ],
     });
+    mockApi.getMemoryItems.mockResolvedValue({
+      items: [
+        {
+          id: 21,
+          space_id: 7,
+          item_key: 'status:latest',
+          content: 'Operator alpha is attentive.',
+          content_type: 'summary',
+          source: 'companion',
+          updated_at: '2026-04-11T00:10:00.000Z',
+        },
+      ],
+    });
     mockApi.createMemorySpace.mockResolvedValue({ ok: true });
+    mockApi.upsertMemoryItem.mockResolvedValue({ ok: true });
     mockApi.grantMemorySpaceAccess.mockResolvedValue({ ok: true });
     mockApi.linkMemoryIdentity.mockResolvedValue({ ok: true });
   });
@@ -79,10 +95,12 @@ describe('memory admin page', () => {
     await render(container);
 
     expect(mockApi.getMemorySpaces).toHaveBeenCalledWith({ limit: 50 });
+    expect(mockApi.getMemoryItems).toHaveBeenCalledWith({ limit: 50 });
     expect(mockApi.getMemoryGrants).toHaveBeenCalledWith({ limit: 50 });
     expect(mockApi.getMemoryIdentityLinks).toHaveBeenCalledWith({ limit: 50 });
     expect(container.textContent).toContain('Memory 管理');
     expect(container.textContent).toContain('Alpha Operator');
+    expect(container.textContent).toContain('status:latest');
     expect(container.textContent).toContain('alice');
     expect(container.textContent).toContain('uid-42');
   });
@@ -104,6 +122,26 @@ describe('memory admin page', () => {
       summary: 'Secondary operator memory',
     });
     expect(mockShowToast).toHaveBeenCalledWith('Space 创建成功', 'success');
+  });
+
+  it('upserts a memory item', async () => {
+    const container = createPageContainer();
+
+    await render(container);
+    container.querySelector('#memory-item-space').value = '7';
+    container.querySelector('#memory-item-key').value = 'status:next';
+    container.querySelector('#memory-item-content').value = 'Operator beta is playful.';
+    container.querySelector('#memory-item-create').click();
+    await flushPromises();
+
+    expect(mockApi.upsertMemoryItem).toHaveBeenCalledWith({
+      space_id: 7,
+      item_key: 'status:next',
+      content: 'Operator beta is playful.',
+      content_type: 'note',
+      source: 'operator',
+    });
+    expect(mockShowToast).toHaveBeenCalledWith('Item 保存成功', 'success');
   });
 
   it('blocks invalid grant creation', async () => {

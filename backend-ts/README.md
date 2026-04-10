@@ -160,6 +160,7 @@ The repository currently includes an isolated memory-domain candidate with a lig
 - Prisma models for memory spaces, grants, items, and identity links
 - admin endpoints under:
   - `GET/POST /api/admin/memory/spaces`
+  - `GET/POST /api/admin/memory/items`
   - `GET/POST /api/admin/memory/grants`
   - `GET/POST /api/admin/memory/identity-links`
 
@@ -170,6 +171,7 @@ Current status:
 - wired into the admin-management surface for explicit operator access
 - not yet used by the worker flow or publish pipeline
 - now visible in the shipped admin frontend as a dedicated management page
+- now also feeds the public `/companion/state` summary that hydrates the companion surface
 
 Treat this as candidate scope with an explicit management contract, not as a core business-runtime capability.
 

@@ -71,6 +71,35 @@ function renderGrantsTable(items) {
   `;
 }
 
+function renderItemsTable(items) {
+  if (!items.length) {
+    return '<div class="table-empty">暂无 memory items</div>';
+  }
+
+  return `
+    <table class="data-table">
+      <thead><tr>
+        <th>ID</th><th>Space ID</th><th>Item Key</th><th>类型</th><th>来源</th><th>内容</th><th>更新时间</th>
+      </tr></thead>
+      <tbody>
+        ${items
+          .map(
+            (item) => `<tr>
+              <td class="cell-id">${escapeHtml(String(item.id))}</td>
+              <td>${escapeHtml(String(item.space_id))}</td>
+              <td>${escapeHtml(item.item_key)}</td>
+              <td>${escapeHtml(item.content_type)}</td>
+              <td>${escapeHtml(item.source)}</td>
+              <td class="cell-truncate">${escapeHtml((item.content || '').substring(0, 100))}</td>
+              <td class="cell-time">${renderTimestamp(item.updated_at)}</td>
+            </tr>`,
+          )
+          .join('')}
+      </tbody>
+    </table>
+  `;
+}
+
 function renderIdentityLinksTable(items) {
   if (!items.length) {
     return '<div class="table-empty">暂无 identity links</div>';
@@ -133,6 +162,35 @@ export async function render(container) {
     </div>
 
     <div class="form-card">
+      <h3>新增 / 更新 Item</h3>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="memory-item-space">Space</label>
+          <select id="memory-item-space" class="form-input"><option value="">选择空间</option></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="memory-item-key">Item Key</label>
+          <input type="text" id="memory-item-key" class="form-input" placeholder="status:latest" />
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="memory-item-type">类型</label>
+          <input type="text" id="memory-item-type" class="form-input" value="note" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="memory-item-source">来源</label>
+          <input type="text" id="memory-item-source" class="form-input" value="operator" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="memory-item-content">内容</label>
+        <textarea id="memory-item-content" class="form-input form-textarea" rows="3" placeholder="记忆内容"></textarea>
+      </div>
+      <button class="btn btn-primary" id="memory-item-create">保存 Item</button>
+    </div>
+
+    <div class="form-card">
       <h3>新增 Grant</h3>
       <div class="form-row">
         <div class="form-group">
@@ -192,6 +250,10 @@ export async function render(container) {
         <div class="table-wrapper" id="memory-spaces-wrapper"><div class="page-loading">加载中...</div></div>
       </div>
       <div class="section-card">
+        <div class="section-card-header"><h3>Items</h3></div>
+        <div class="table-wrapper" id="memory-items-wrapper"><div class="page-loading">加载中...</div></div>
+      </div>
+      <div class="section-card">
         <div class="section-card-header"><h3>Grants</h3></div>
         <div class="table-wrapper" id="memory-grants-wrapper"><div class="page-loading">加载中...</div></div>
       </div>
@@ -203,20 +265,24 @@ export async function render(container) {
   `;
 
   async function loadAll() {
-    const [spacesData, grantsData, linksData] = await Promise.all([
+    const [spacesData, itemsData, grantsData, linksData] = await Promise.all([
       api.getMemorySpaces({ limit: 50 }),
+      api.getMemoryItems({ limit: 50 }),
       api.getMemoryGrants({ limit: 50 }),
       api.getMemoryIdentityLinks({ limit: 50 }),
     ]);
 
     const spaces = Array.isArray(spacesData?.items) ? spacesData.items : [];
+    const items = Array.isArray(itemsData?.items) ? itemsData.items : [];
     const grants = Array.isArray(grantsData?.items) ? grantsData.items : [];
     const links = Array.isArray(linksData?.items) ? linksData.items : [];
 
     container.querySelector('#memory-spaces-wrapper').innerHTML = renderSpacesTable(spaces);
+    container.querySelector('#memory-items-wrapper').innerHTML = renderItemsTable(items);
     container.querySelector('#memory-grants-wrapper').innerHTML = renderGrantsTable(grants);
     container.querySelector('#memory-links-wrapper').innerHTML = renderIdentityLinksTable(links);
     container.querySelector('#memory-grant-space').innerHTML = renderSpaceOptions(spaces);
+    container.querySelector('#memory-item-space').innerHTML = renderSpaceOptions(spaces);
   }
 
   async function guardedReload() {
@@ -225,6 +291,7 @@ export async function render(container) {
     } catch (err) {
       const message = escapeHtml(err.message || '未知错误');
       container.querySelector('#memory-spaces-wrapper').innerHTML = `<div class="page-error">加载失败: ${message}</div>`;
+      container.querySelector('#memory-items-wrapper').innerHTML = `<div class="page-error">加载失败: ${message}</div>`;
       container.querySelector('#memory-grants-wrapper').innerHTML = `<div class="page-error">加载失败: ${message}</div>`;
       container.querySelector('#memory-links-wrapper').innerHTML = `<div class="page-error">加载失败: ${message}</div>`;
     }
@@ -250,6 +317,35 @@ export async function render(container) {
       await guardedReload();
     } catch (err) {
       showToast(`创建失败: ${err.message}`, 'error');
+    }
+  });
+
+  container.querySelector('#memory-item-create').addEventListener('click', async () => {
+    const space_id = container.querySelector('#memory-item-space').value;
+    const item_key = container.querySelector('#memory-item-key').value.trim();
+    const content_type = container.querySelector('#memory-item-type').value.trim();
+    const source = container.querySelector('#memory-item-source').value.trim();
+    const content = container.querySelector('#memory-item-content').value.trim();
+
+    if (!space_id || !item_key || !content) {
+      showToast('Space、Item Key 和内容不能为空', 'warning');
+      return;
+    }
+
+    try {
+      await api.upsertMemoryItem({
+        space_id: Number(space_id),
+        item_key,
+        content,
+        content_type,
+        source,
+      });
+      showToast('Item 保存成功', 'success');
+      container.querySelector('#memory-item-key').value = '';
+      container.querySelector('#memory-item-content').value = '';
+      await guardedReload();
+    } catch (err) {
+      showToast(`保存失败: ${err.message}`, 'error');
     }
   });
 

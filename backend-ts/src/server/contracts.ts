@@ -147,6 +147,18 @@ export type MemoryGrant = {
   updated_at: string | null;
 };
 
+export type MemoryItem = {
+  id: number;
+  space_id: number;
+  item_key: string;
+  content: string;
+  content_type: string;
+  source: string;
+  item_metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 export type IdentityLink = {
   id: number;
   subject_type: string;

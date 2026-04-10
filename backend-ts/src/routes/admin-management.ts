@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { IdentityLink, MemoryGrant, MemorySpace, RoleCardValue, RuntimeSettings } from '../server/contracts.js';
+import type { IdentityLink, MemoryGrant, MemoryItem, MemorySpace, RoleCardValue, RuntimeSettings } from '../server/contracts.js';
 
 export type AdminManagementRouteDependencies = {
   settings: RuntimeSettings;
@@ -39,6 +39,22 @@ export type AdminManagementRouteDependencies = {
     title: string;
     summary?: string;
   }) => Promise<{ ok: boolean; item: MemorySpace }> | { ok: boolean; item: MemorySpace };
+  listMemoryItems: (input: {
+    limit: number;
+    offset: number;
+    spaceId?: number;
+    itemKey?: string;
+    contentType?: string;
+    source?: string;
+  }) => Promise<{ ok: boolean; items: MemoryItem[] }> | { ok: boolean; items: MemoryItem[] };
+  upsertMemoryItem: (input: {
+    space_id: number;
+    item_key: string;
+    content: string;
+    content_type?: string;
+    source?: string;
+    item_metadata?: Record<string, unknown>;
+  }) => Promise<{ ok: boolean; item: MemoryItem }> | { ok: boolean; item: MemoryItem };
   listMemoryGrants: (input: {
     limit: number;
     offset: number;
@@ -226,6 +242,61 @@ export function registerAdminManagementRoutes(
       space_type: spaceType,
       title,
       summary,
+    });
+    return reply.send(response);
+  });
+
+  app.get('/api/admin/memory/items', async (request, reply) => {
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
+
+    const query = request.query as Record<string, unknown>;
+    const spaceId = parseOptionalInteger(query.space_id);
+    if (query.space_id !== undefined && spaceId === undefined) {
+      return reply.code(400).send({ detail: 'space_id_invalid' });
+    }
+
+    const response = await deps.listMemoryItems({
+      limit: deps.parseAdminLimit(query.limit, 200, 1, 1000),
+      offset: deps.parseAdminOffset(query.offset, 0, 0, 100000),
+      spaceId,
+      itemKey: parseOptionalString(query.item_key, 128),
+      contentType: parseOptionalString(query.content_type, 64),
+      source: parseOptionalString(query.source, 64),
+    });
+    return reply.send(response);
+  });
+
+  app.post('/api/admin/memory/items', async (request, reply) => {
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
+
+    const body = request.body as Record<string, unknown>;
+    const spaceId = Number.parseInt(String(body.space_id ?? ''), 10);
+    const itemKey = String(body.item_key ?? '').trim().slice(0, 128);
+    const content = String(body.content ?? '').trim().slice(0, 65535);
+    const contentType = parseOptionalString(body.content_type, 64);
+    const source = parseOptionalString(body.source, 64);
+    const itemMetadata =
+      body.item_metadata && typeof body.item_metadata === 'object' && !Array.isArray(body.item_metadata)
+        ? (body.item_metadata as Record<string, unknown>)
+        : undefined;
+
+    if (!Number.isFinite(spaceId) || spaceId <= 0) {
+      return reply.code(400).send({ detail: 'space_id_required' });
+    }
+    if (!itemKey) {
+      return reply.code(400).send({ detail: 'item_key_required' });
+    }
+    if (!content) {
+      return reply.code(400).send({ detail: 'content_required' });
+    }
+
+    const response = await deps.upsertMemoryItem({
+      space_id: spaceId,
+      item_key: itemKey,
+      content,
+      content_type: contentType,
+      source,
+      item_metadata: itemMetadata,
     });
     return reply.send(response);
   });

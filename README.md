@@ -44,7 +44,7 @@
 - 任务管理
 - 每日指标
 - 知识库管理
-- Memory 管理
+- Memory 管理（spaces / items / grants / identity links）
 - 角色卡管理
 - 风格配置
 - 网关日志

@@ -13,6 +13,10 @@ const mockPrisma = {
     findMany: vi.fn(),
     upsert: vi.fn(),
   },
+  memoryItem: {
+    findMany: vi.fn(),
+    upsert: vi.fn(),
+  },
   identityLink: {
     findMany: vi.fn(),
     upsert: vi.fn(),
@@ -34,6 +38,8 @@ function resetMockPrisma(): void {
   mockPrisma.memorySpace.create.mockReset();
   mockPrisma.memoryGrant.findMany.mockReset();
   mockPrisma.memoryGrant.upsert.mockReset();
+  mockPrisma.memoryItem.findMany.mockReset();
+  mockPrisma.memoryItem.upsert.mockReset();
   mockPrisma.identityLink.findMany.mockReset();
   mockPrisma.identityLink.upsert.mockReset();
 }
@@ -301,6 +307,107 @@ describe('memory repository and service', () => {
         platform: 'bilibili',
         external_id: 'uid-42',
         display_name: 'Alice',
+      },
+    });
+  });
+
+  it('lists memory items with repository filters', async () => {
+    mockPrisma.memoryItem.findMany.mockResolvedValue([
+      {
+        id: 21,
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: JSON.stringify({ score: 0.8 }),
+        created_at: new Date('2026-04-11T00:00:00.000Z'),
+        updated_at: new Date('2026-04-11T00:10:00.000Z'),
+      },
+    ]);
+
+    const repository = createMemoryRepository();
+
+    await expect(repository.listItems({ spaceId: 7, contentType: 'summary' })).resolves.toEqual([
+      {
+        id: 21,
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: { score: 0.8 },
+        created_at: new Date('2026-04-11T00:00:00.000Z'),
+        updated_at: new Date('2026-04-11T00:10:00.000Z'),
+      },
+    ]);
+
+    expect(mockPrisma.memoryItem.findMany).toHaveBeenCalledWith({
+      where: {
+        space_id: 7,
+        content_type: 'summary',
+      },
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+    });
+  });
+
+  it('upserts memory items with the composite space-item key', async () => {
+    mockPrisma.memoryItem.upsert.mockResolvedValue({
+      id: 21,
+      space_id: 7,
+      item_key: 'status:latest',
+      content: 'Operator alpha is attentive.',
+      content_type: 'summary',
+      source: 'companion',
+      item_metadata: JSON.stringify({ score: 0.8 }),
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:10:00.000Z'),
+    });
+
+    const service = createMemoryService();
+
+    await expect(
+      service.upsertItem({
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: { score: 0.8 },
+      }),
+    ).resolves.toEqual({
+      id: 21,
+      space_id: 7,
+      item_key: 'status:latest',
+      content: 'Operator alpha is attentive.',
+      content_type: 'summary',
+      source: 'companion',
+      item_metadata: { score: 0.8 },
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:10:00.000Z'),
+    });
+
+    expect(mockPrisma.memoryItem.upsert).toHaveBeenCalledWith({
+      where: {
+        uq_memory_items_space_key: {
+          space_id: 7,
+          item_key: 'status:latest',
+        },
+      },
+      update: {
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: JSON.stringify({ score: 0.8 }),
+        updated_at: expect.any(Date),
+      },
+      create: {
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: JSON.stringify({ score: 0.8 }),
       },
     });
   });
