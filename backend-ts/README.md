@@ -5,15 +5,17 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 177 tests passing in the current backend suite
+✅ **Tests Passing** - 182 tests passing in the current backend suite
 ✅ **Validated Baseline (2026-04-07)** - backend 177 tests passed, frontend 27 tests passed, and both backend/frontend builds passed
 ⚠️ **Candidate Checkpoint (2026-04-08)** - the current route-extraction snapshot passed targeted backend regression (`test/main.test.ts`, `test/admin-defaults.test.ts`, 98 tests) and the backend build, but it remains a candidate checkpoint and does not replace the 2026-04-07 verified baseline
-✅ **Status Framing** - repo-local closed, environment gated
+✅ **Signed-Off Rollout Baseline (2026-04-08 / 2026-04-09 truth sync)** - the native Bilibili public-domain path reached `GO` and remains the authoritative rollout baseline
+✅ **Current Local Checkpoint** - follow-up validation is green while isolated non-runtime surfaces are preserved in-repo
 ✅ **Native Public Real-Chain (2026-04-08)** - the deployed pre-release smoke target at `https://pet.nikoniko.tech` passed fresh preflight, strict, and native real-chain validation
 ✅ **Preflight Diagnostics Available** - `staging-check` can now report external-delivery prerequisites before runtime validation
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
 ✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
 ✅ **Branch-Specific Delivery Scope Closed** - the current signoff certifies the native Bilibili rollout path on the public smoke domain
+⚠️ **Memory Domain Isolated** - `src/app/memory` and `src/infra/db/repositories/memory-repository.ts` are preserved as candidate backend surfaces, not as active runtime API contracts
 
 ## Tech Stack
 
@@ -32,6 +34,8 @@ backend-ts/
 ├── src/
 │   ├── index.ts          # Process entrypoint
 │   ├── main.ts           # Fastify service and route registration
+│   ├── app/              # App-layer candidate modules (memory currently isolated)
+│   ├── infra/            # Infra-layer candidate modules (memory repository currently isolated)
 │   ├── services/         # Business logic services
 │   ├── workers/          # BullMQ task processors
 │   ├── models/           # TypeScript type definitions
@@ -144,6 +148,24 @@ ROLE_PROFILE_DEFAULT=doro
 - `POST /api/admin/bilibili/videos` - Add monitored video
 - `POST /api/admin/bilibili/poll` - Trigger poll
 - `GET /api/admin/bilibili/credentials` - Credential list
+
+## Isolated Candidate Surfaces
+
+### Memory Domain
+
+The repository currently includes an isolated memory-domain candidate:
+
+- `src/app/memory/`
+- `src/infra/db/repositories/memory-repository.ts`
+- Prisma models for memory spaces, grants, items, and identity links
+
+Current status:
+
+- preserved in the local checkpoint
+- covered by repository/service tests
+- not yet wired into an active Fastify route, worker flow, or frontend surface
+
+Treat this as candidate scope, not as a live backend contract.
 
 ## Database Models
 
