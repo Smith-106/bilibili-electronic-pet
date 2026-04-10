@@ -7,8 +7,9 @@ Standalone Vite prototype for a browser-side companion surface.
 - preserved in the current repository checkpoint
 - explicitly isolated from the signed-off Bilibili rollout baseline
 - uses a local stub adapter
-- not served by `backend-ts/public/admin`
-- not wired into the default Docker / compose runtime
+- built into `backend-ts/public/companion`
+- served by backend at `/companion`
+- copied into the default backend image as a companion static surface
 
 ## Purpose
 
@@ -31,4 +32,4 @@ npm run dev
 
 ## Boundary
 
-Do not describe this package as part of the signed-off native Bilibili rollout path unless a future change explicitly adds runtime/packaging integration and validation.
+Do not describe this package as part of the signed-off native Bilibili rollout path unless a future change explicitly adds business-runtime integration beyond static hosting and validation.

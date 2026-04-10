@@ -1738,6 +1738,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 
 - `backend-ts` 下的 memory schema / repository / service 候选能力，当前已经暴露为 admin-management 接口，但仍无 worker 或已交付前端消费者
 - `pet-companion-web/` 下的独立 Vite companion prototype，当前仍是 local-stub 原型，不属于已签收主运行时
+  但现在可以由 backend 以 `/companion` 静态托管访问
 
 因此，当前最准确的状态表述是：
 

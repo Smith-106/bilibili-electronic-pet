@@ -10,6 +10,16 @@ COPY frontend/ ./
 ENV BUILD_OUT_DIR=/app/dist
 RUN npm run build
 
+# Stage 0b: Build companion surface
+FROM node:20-alpine AS companion-builder
+WORKDIR /app
+COPY pet-companion-web/package*.json ./
+RUN npm ci
+COPY pet-companion-web/ ./
+ENV BUILD_OUT_DIR=/app/dist
+ENV BUILD_BASE=/companion/
+RUN npm run build
+
 # Stage 1: Build backend
 FROM node:20-alpine AS builder
 WORKDIR /app
@@ -32,6 +42,7 @@ RUN npm ci --only=production && npm cache clean --force
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
 COPY --from=frontend-builder /app/dist ./public/admin
+COPY --from=companion-builder /app/dist ./public/companion
 COPY backend-ts/config ./config
 ENV NODE_ENV=production
 ENV PORT=3000

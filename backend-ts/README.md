@@ -173,6 +173,20 @@ Current status:
 
 Treat this as candidate scope with an explicit management contract, not as a core business-runtime capability.
 
+### Companion Surface
+
+The repository also includes a separately hosted companion prototype:
+
+- source package: `../pet-companion-web`
+- backend-served path: `/companion`
+- production image path: `public/companion`
+
+Current status:
+
+- backend can serve the built companion surface
+- the surface remains prototype-oriented and local-stub based
+- it is not part of the signed-off Bilibili admin/operator runtime contract
+
 ## Database Models
 
 - **Comment** - User comments
