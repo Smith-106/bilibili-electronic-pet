@@ -165,6 +165,57 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('accepts public companion actions', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        recordCompanionAction: async (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            action: input.action,
+            item_key: `action:${input.action}-latest`,
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      payload: {
+        action: 'pat',
+        note: 'soft tap',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        action: 'pat',
+        note: 'soft tap',
+      },
+    ]);
+    expect(response.json()).toEqual({
+      ok: true,
+      action: 'pat',
+      item_key: 'action:pat-latest',
+    });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      payload: {
+        action: 'dance',
+      },
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toEqual({ detail: 'action_invalid' });
+
+    await app.close();
+  });
+
   it('returns readiness payload shape', async () => {
     const app = createServer(buildDeps());
 

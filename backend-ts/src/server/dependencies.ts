@@ -265,6 +265,10 @@ export type ServerDependencies = {
     pollEnabled?: boolean;
   }) => Promise<{ ok: boolean; item: BilibiliVideo }> | { ok: boolean; item: BilibiliVideo };
   getCompanionState: () => Promise<CompanionState> | CompanionState;
+  recordCompanionAction: (input: {
+    action: 'pat' | 'feed' | 'wake';
+    note?: string;
+  }) => Promise<{ ok: boolean; action: string; item_key: string }> | { ok: boolean; action: string; item_key: string };
 };
 
 type PublishLogStore = {
@@ -328,6 +332,7 @@ type DefaultServerDependenciesInput = {
   listBilibiliVideos: ServerDependencies['listBilibiliVideos'];
   addBilibiliVideo: ServerDependencies['addBilibiliVideo'];
   getCompanionState: ServerDependencies['getCompanionState'];
+  recordCompanionAction: ServerDependencies['recordCompanionAction'];
 };
 
 export function buildDefaultServerDependencies(input: DefaultServerDependenciesInput): ServerDependencies {
@@ -392,5 +397,6 @@ export function buildDefaultServerDependencies(input: DefaultServerDependenciesI
     listBilibiliVideos: (videosInput) => input.listBilibiliVideos(videosInput),
     addBilibiliVideo: (addVideoInput) => input.addBilibiliVideo(addVideoInput),
     getCompanionState: input.getCompanionState,
+    recordCompanionAction: (actionInput) => input.recordCompanionAction(actionInput),
   };
 }

@@ -2381,6 +2381,38 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
   }
 }
 
+async function defaultRecordCompanionAction(input: {
+  action: 'pat' | 'feed' | 'wake';
+  note?: string;
+}): Promise<{ ok: boolean; action: string; item_key: string }> {
+  const actionMessages: Record<'pat' | 'feed' | 'wake', string> = {
+    pat: 'A gentle pat settled Mochi and raised the bond signal.',
+    feed: 'A quick snack topped up Mochi and eased the hunger signal.',
+    wake: 'A bright nudge woke Mochi up for the next interaction window.',
+  };
+
+  const itemKey = `action:${input.action}-latest`;
+  const content = input.note
+    ? `${actionMessages[input.action]} Note: ${input.note}`
+    : actionMessages[input.action];
+
+  await upsertCompanionFeedItem({
+    itemKey,
+    content,
+    source: 'companion_action',
+    metadata: {
+      action: input.action,
+      note: input.note ?? null,
+    },
+  });
+
+  return {
+    ok: true,
+    action: input.action,
+    item_key: itemKey,
+  };
+}
+
 function defaultDependencies(): ServerDependencies {
   return buildDefaultServerDependencies({
     buildSettings: buildDefaultSettings,
@@ -2432,6 +2464,7 @@ function defaultDependencies(): ServerDependencies {
     listBilibiliVideos: defaultListBilibiliVideos,
     addBilibiliVideo: defaultAddBilibiliVideo,
     getCompanionState: defaultGetCompanionState,
+    recordCompanionAction: defaultRecordCompanionAction,
   });
 }
 
@@ -2607,6 +2640,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const listBilibiliVideos = overrides.listBilibiliVideos ?? defaults.listBilibiliVideos;
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
   const getCompanionState = overrides.getCompanionState ?? defaults.getCompanionState;
+  const recordCompanionAction = overrides.recordCompanionAction ?? defaults.recordCompanionAction;
 
   const app = Fastify();
 
@@ -2774,6 +2808,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   registerCompanionRoutes(app, {
     getCompanionState,
+    recordCompanionAction,
   });
 
   registerAdminStaticRoutes(app);

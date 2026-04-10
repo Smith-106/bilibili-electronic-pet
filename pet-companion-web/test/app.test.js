@@ -97,4 +97,53 @@ describe('pet companion surface', () => {
     expect(state.petName).toBe('Mochi');
     expect(state.adapterLabel).toContain('Local');
   });
+
+  it('posts companion actions through the backend adapter', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, action: 'pat', item_key: 'action:pat-latest' }),
+    });
+    const adapter = createBackendPetAdapter({
+      fetchImpl: fetchMock,
+    });
+
+    const result = await adapter.performAction('pat');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/companion/actions',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    expect(result).toEqual({ ok: true, action: 'pat', item_key: 'action:pat-latest' });
+  });
+
+  it('triggers action buttons and reloads companion state', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi
+        .fn()
+        .mockResolvedValueOnce(createState())
+        .mockResolvedValueOnce(
+          createState({
+            mood: {
+              label: 'Calm',
+              note: 'A gentle pat settled the companion.',
+            },
+            recentSignals: ['Pat action recorded.'],
+          }),
+        ),
+      performAction: vi.fn().mockResolvedValue({ ok: true }),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    container.querySelector('[data-action="pat"]').click();
+    await flushPromises();
+
+    expect(adapter.performAction).toHaveBeenCalledWith('pat');
+    expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain('Calm');
+    expect(container.textContent).toContain('Pat action recorded.');
+  });
 });

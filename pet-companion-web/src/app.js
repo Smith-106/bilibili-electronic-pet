@@ -145,6 +145,11 @@ function createShellMarkup() {
         </div>
         <div class="hero-actions">
           <span class="status-pill" data-role="adapter-status">Adapter: local stub</span>
+          <div class="companion-actions" data-role="action-buttons">
+            <button class="action-button" type="button" data-action="pat">Pat</button>
+            <button class="action-button" type="button" data-action="feed">Feed</button>
+            <button class="action-button" type="button" data-action="wake">Wake</button>
+          </div>
           <button class="refresh-button" type="button" data-action="refresh">Refresh mood</button>
         </div>
       </section>
@@ -166,9 +171,13 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const content = target.querySelector('[data-role="content"]');
   const refreshButton = target.querySelector('[data-action="refresh"]');
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
+  const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
 
   async function loadState() {
     refreshButton.disabled = true;
+    actionButtons.forEach((button) => {
+      button.disabled = true;
+    });
     refreshButton.textContent = 'Refreshing...';
     adapterStatus.textContent = 'Adapter: syncing local loop';
 
@@ -182,8 +191,38 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       adapterStatus.textContent = 'Adapter: degraded';
     } finally {
       refreshButton.disabled = false;
+      actionButtons.forEach((button) => {
+        button.disabled = false;
+      });
       refreshButton.textContent = 'Refresh mood';
     }
+  }
+
+  for (const button of actionButtons) {
+    button.addEventListener('click', async () => {
+      const action = button.getAttribute('data-action');
+      if (!action || typeof adapter.performAction !== 'function') {
+        return;
+      }
+
+      refreshButton.disabled = true;
+      actionButtons.forEach((item) => {
+        item.disabled = true;
+      });
+      adapterStatus.textContent = `Adapter: sending ${action}`;
+
+      try {
+        await adapter.performAction(action);
+        await loadState();
+      } catch (error) {
+        content.innerHTML = createErrorMarkup(error);
+        adapterStatus.textContent = 'Adapter: action failed';
+        refreshButton.disabled = false;
+        actionButtons.forEach((item) => {
+          item.disabled = false;
+        });
+      }
+    });
   }
 
   refreshButton.addEventListener('click', () => {

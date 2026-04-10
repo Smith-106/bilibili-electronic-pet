@@ -2,6 +2,7 @@ import { createLocalPetAdapter } from './local-adapter.js';
 
 export function createBackendPetAdapter({
   endpoint = '/companion/state',
+  actionEndpoint = '/companion/actions',
   fetchImpl = globalThis.fetch?.bind(globalThis),
   fallback = createLocalPetAdapter(),
 } = {}) {
@@ -28,6 +29,27 @@ export function createBackendPetAdapter({
       } catch {
         return fallback.getCompanionState();
       }
+    },
+
+    async performAction(action, note) {
+      if (typeof fetchImpl !== 'function') {
+        return { ok: false, fallback: true };
+      }
+
+      const response = await fetchImpl(actionEndpoint, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action, note }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`companion_action_${response.status}`);
+      }
+
+      return response.json();
     },
   };
 }
