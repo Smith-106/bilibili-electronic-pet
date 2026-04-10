@@ -114,6 +114,57 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('returns companion state without admin auth', async () => {
+    const app = createServer(
+      buildDeps({
+        getCompanionState: async () => ({
+          petName: 'Mochi',
+          statusLine: 'Tracking persisted memory.',
+          loopMode: 'Backend memory companion',
+          lastCheckIn: '2026-04-11T00:00:00.000Z',
+          adapterLabel: 'Backend memory endpoint',
+          loopHint: 'Companion state is sourced from backend memory.',
+          mood: {
+            label: 'Attentive',
+            note: 'Companion sees stored spaces.',
+          },
+          memoryTitle: 'Persisted memory summary',
+          memorySummary: 'Known spaces: Alpha Operator.',
+          vitals: [
+            { label: 'Spaces', value: '1' },
+            { label: 'Grants', value: '1' },
+          ],
+          recentSignals: ['Recent spaces: Alpha Operator'],
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/companion/state' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      petName: 'Mochi',
+      statusLine: 'Tracking persisted memory.',
+      loopMode: 'Backend memory companion',
+      lastCheckIn: '2026-04-11T00:00:00.000Z',
+      adapterLabel: 'Backend memory endpoint',
+      loopHint: 'Companion state is sourced from backend memory.',
+      mood: {
+        label: 'Attentive',
+        note: 'Companion sees stored spaces.',
+      },
+      memoryTitle: 'Persisted memory summary',
+      memorySummary: 'Known spaces: Alpha Operator.',
+      vitals: [
+        { label: 'Spaces', value: '1' },
+        { label: 'Grants', value: '1' },
+      ],
+      recentSignals: ['Recent spaces: Alpha Operator'],
+    });
+
+    await app.close();
+  });
+
   it('returns readiness payload shape', async () => {
     const app = createServer(buildDeps());
 

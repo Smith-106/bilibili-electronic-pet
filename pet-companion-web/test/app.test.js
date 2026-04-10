@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderPetCompanion } from '../src/app.js';
+import { createBackendPetAdapter } from '../src/api/backend-adapter.js';
 import { createPageContainer, flushPromises } from './utils/dom.js';
 
 function createState(overrides = {}) {
@@ -84,5 +85,16 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Companion unavailable');
     expect(container.textContent).toContain('local loop offline');
     expect(container.textContent).toContain('surface stays bootable');
+  });
+
+  it('falls back to local companion state when backend fetch fails', async () => {
+    const adapter = createBackendPetAdapter({
+      fetchImpl: vi.fn().mockRejectedValue(new Error('network_down')),
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.petName).toBe('Mochi');
+    expect(state.adapterLabel).toContain('Local');
   });
 });

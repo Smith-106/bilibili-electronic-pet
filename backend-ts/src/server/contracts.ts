@@ -216,3 +216,20 @@ export type BilibiliVideo = {
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+export type CompanionState = {
+  petName: string;
+  statusLine: string;
+  loopMode: string;
+  lastCheckIn: string;
+  adapterLabel: string;
+  loopHint: string;
+  mood: {
+    label: string;
+    note: string;
+  };
+  memoryTitle: string;
+  memorySummary: string;
+  vitals: Array<{ label: string; value: string }>;
+  recentSignals: string[];
+};

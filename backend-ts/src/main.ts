@@ -11,6 +11,7 @@ import { registerAdminReportingRoutes } from './routes/admin-reporting.js';
 import { registerAdminStaticRoutes } from './routes/admin-static.js';
 import { registerBilibiliAdminRoutes } from './routes/bilibili-admin.js';
 import { registerCommentRoutes } from './routes/comments.js';
+import { registerCompanionRoutes } from './routes/companion.js';
 import { registerGatewayPublishRoutes } from './routes/gateway-publish.js';
 import { registerJobRoutes } from './routes/jobs.js';
 import { registerReadinessRoute } from './routes/readiness.js';
@@ -21,6 +22,7 @@ import type {
   BilibiliDiagnostics,
   BilibiliVideo,
   CommentEvent,
+  CompanionState,
   ConnectionStatus,
   GatewayPublishPayload,
   IdentityLink,
@@ -2206,6 +2208,91 @@ async function defaultAddBilibiliVideo(input: {
   };
 }
 
+function buildFallbackCompanionState(reason?: string): CompanionState {
+  return {
+    petName: 'Mochi',
+    statusLine: 'Idle on the browser ledge, listening for the next check-in.',
+    loopMode: 'Backend companion fallback',
+    lastCheckIn: 'Pending',
+    adapterLabel: 'Backend fallback',
+    loopHint: 'The backend companion endpoint is running in fallback mode until richer memory signals are available.',
+    mood: {
+      label: 'Curious',
+      note: reason ? `Companion endpoint degraded gracefully: ${reason}.` : 'Waiting for the next backend companion update.',
+    },
+    memoryTitle: 'Short-term memory',
+    memorySummary: 'No persisted companion memory summary is available yet.',
+    vitals: [
+      { label: 'Spaces', value: '0' },
+      { label: 'Grants', value: '0' },
+      { label: 'Links', value: '0' },
+      { label: 'Mode', value: 'Fallback' },
+    ],
+    recentSignals: ['Companion state is using the backend fallback profile.'],
+  };
+}
+
+async function defaultGetCompanionState(): Promise<CompanionState> {
+  try {
+    const service = createMemoryService();
+    const [spaces, grants, links] = await Promise.all([
+      service.listSpaces(),
+      service.listGrants(),
+      service.listIdentityLinks(),
+    ]);
+
+    const latestTimestamp = [spaces, grants, links]
+      .flat()
+      .map((item) => item.updated_at)
+      .filter((value): value is Date => value instanceof Date)
+      .sort((a, b) => b.getTime() - a.getTime())[0];
+
+    const recentSpaceTitles = spaces.slice(0, 3).map((space) => space.title).filter(Boolean);
+    const recentSubjects = links
+      .slice(0, 3)
+      .map((link) => `${link.platform}:${link.external_id}`)
+      .filter(Boolean);
+
+    const hasMemory = spaces.length > 0 || grants.length > 0 || links.length > 0;
+
+    return {
+      petName: 'Mochi',
+      statusLine: hasMemory
+        ? `Tracking ${spaces.length} spaces, ${grants.length} grants, and ${links.length} linked identities.`
+        : 'Waiting for the first persisted companion memory signal.',
+      loopMode: 'Backend memory companion',
+      lastCheckIn: latestTimestamp ? normalizeIsoTimestamp(latestTimestamp) : 'Pending',
+      adapterLabel: 'Backend memory endpoint',
+      loopHint: hasMemory
+        ? 'This companion state is synthesized from the backend memory management surfaces.'
+        : 'Create spaces, grants, or identity links in the admin memory page to enrich this view.',
+      mood: {
+        label: hasMemory ? 'Attentive' : 'Settling',
+        note: hasMemory
+          ? 'The companion is reading persisted management data and reflecting the latest memory signals.'
+          : 'No persisted memory records exist yet, so the companion stays in a low-signal state.',
+      },
+      memoryTitle: hasMemory ? 'Persisted memory summary' : 'Memory bootstrap',
+      memorySummary: hasMemory
+        ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
+        : 'Persisted memory has not been populated yet.',
+      vitals: [
+        { label: 'Spaces', value: String(spaces.length) },
+        { label: 'Grants', value: String(grants.length) },
+        { label: 'Links', value: String(links.length) },
+        { label: 'Focus', value: hasMemory ? 'Persisted' : 'Bootstrap' },
+      ],
+      recentSignals: [
+        hasMemory ? 'Latest signal timestamps are sourced from persisted memory updates.' : 'No memory signals available yet.',
+        recentSpaceTitles.length > 0 ? `Recent spaces: ${recentSpaceTitles.join(', ')}` : 'No recent spaces.',
+        recentSubjects.length > 0 ? `Recent links: ${recentSubjects.join(', ')}` : 'No recent identity links.',
+      ],
+    };
+  } catch (error) {
+    return buildFallbackCompanionState(error instanceof Error ? error.message : 'unknown_backend_error');
+  }
+}
+
 function defaultDependencies(): ServerDependencies {
   return buildDefaultServerDependencies({
     buildSettings: buildDefaultSettings,
@@ -2254,6 +2341,7 @@ function defaultDependencies(): ServerDependencies {
     getBilibiliStatus: defaultGetBilibiliStatus,
     listBilibiliVideos: defaultListBilibiliVideos,
     addBilibiliVideo: defaultAddBilibiliVideo,
+    getCompanionState: defaultGetCompanionState,
   });
 }
 
@@ -2426,6 +2514,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
       }));
   const listBilibiliVideos = overrides.listBilibiliVideos ?? defaults.listBilibiliVideos;
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
+  const getCompanionState = overrides.getCompanionState ?? defaults.getCompanionState;
 
   const app = Fastify();
 
@@ -2587,6 +2676,10 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     addBilibiliVideo,
     normalizeBilibiliStatusPayload,
     normalizeBilibiliVideoRecord,
+  });
+
+  registerCompanionRoutes(app, {
+    getCompanionState,
   });
 
   registerAdminStaticRoutes(app);

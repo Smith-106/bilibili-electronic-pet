@@ -1,10 +1,11 @@
 import './style.css';
+import { createBackendPetAdapter } from './api/backend-adapter.js';
 import { renderPetCompanion } from './app.js';
 
 const appRoot = document.getElementById('app');
 
 if (appRoot) {
-  renderPetCompanion(appRoot).catch((error) => {
+  renderPetCompanion(appRoot, { adapter: createBackendPetAdapter() }).catch((error) => {
     appRoot.innerHTML = `
       <main class="companion-shell" data-surface="pet-companion">
         <section class="panel panel-error">

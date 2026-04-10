@@ -179,6 +179,7 @@ The repository also includes a separately hosted companion prototype:
 
 - source package: `../pet-companion-web`
 - backend-served path: `/companion`
+- backend state endpoint: `/companion/state`
 - production image path: `public/companion`
 
 Current status:

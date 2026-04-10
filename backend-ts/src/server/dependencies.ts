@@ -7,6 +7,7 @@ import type {
   BilibiliDiagnostics,
   BilibiliVideo,
   CommentEvent,
+  CompanionState,
   ConnectionStatus,
   IdentityLink,
   KnowledgeEntry,
@@ -246,6 +247,7 @@ export type ServerDependencies = {
     bvid: string;
     pollEnabled?: boolean;
   }) => Promise<{ ok: boolean; item: BilibiliVideo }> | { ok: boolean; item: BilibiliVideo };
+  getCompanionState: () => Promise<CompanionState> | CompanionState;
 };
 
 type PublishLogStore = {
@@ -306,6 +308,7 @@ type DefaultServerDependenciesInput = {
   }) => ReturnType<ServerDependencies['getBilibiliStatus']>;
   listBilibiliVideos: ServerDependencies['listBilibiliVideos'];
   addBilibiliVideo: ServerDependencies['addBilibiliVideo'];
+  getCompanionState: ServerDependencies['getCompanionState'];
 };
 
 export function buildDefaultServerDependencies(input: DefaultServerDependenciesInput): ServerDependencies {
@@ -367,5 +370,6 @@ export function buildDefaultServerDependencies(input: DefaultServerDependenciesI
       }),
     listBilibiliVideos: (videosInput) => input.listBilibiliVideos(videosInput),
     addBilibiliVideo: (addVideoInput) => input.addBilibiliVideo(addVideoInput),
+    getCompanionState: input.getCompanionState,
   };
 }

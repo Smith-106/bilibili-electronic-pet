@@ -6,7 +6,7 @@ Standalone Vite prototype for a browser-side companion surface.
 
 - preserved in the current repository checkpoint
 - explicitly isolated from the signed-off Bilibili rollout baseline
-- uses a local stub adapter
+- prefers the backend `/companion/state` endpoint and falls back to a local stub adapter
 - built into `backend-ts/public/companion`
 - served by backend at `/companion`
 - copied into the default backend image as a companion static surface
