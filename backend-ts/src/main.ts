@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { Redis } from 'ioredis';
 import { createMemoryService } from './app/memory/index.js';
+import { upsertCompanionFeedItem } from './app/memory/companion-feed.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 import { registerAdminCoreRoutes } from './routes/admin-core.js';
 import { registerAdminManagementRoutes } from './routes/admin-management.js';
@@ -1927,6 +1928,22 @@ async function defaultApproveJob(input: {
     status: 'published',
     payload: { reply_text_preview: replyText.substring(0, 40) },
   });
+
+  try {
+    await upsertCompanionFeedItem({
+      itemKey: 'signal:approval-latest',
+      content: `Approved and published queued reply for comment ${job.comment_id}.`,
+      source: 'admin_approval',
+      metadata: {
+        trace_id: traceId,
+        job_id: input.jobId,
+        comment_id: job.comment_id,
+        publish_reason: publishReason,
+      },
+    });
+  } catch {
+    /* non-critical */
+  }
 
   return {
     ok: true,

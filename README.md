@@ -1736,7 +1736,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 
 当前代码基线还包含两类后续演进中的隔离面：
 
-- `backend-ts` 下的 memory schema / repository / service 候选能力，当前已经暴露为 admin-management 接口，但仍无 worker 或已交付前端消费者
+- `backend-ts` 下的 memory schema / repository / service 候选能力，当前已经暴露为 admin-management 接口，并开始被 worker / 人工审批流自动写入 companion feed，但仍未进入主发布业务契约
 - `pet-companion-web/` 下的独立 Vite companion prototype，当前仍是 local-stub 原型，不属于已签收主运行时
   但现在可以由 backend 以 `/companion` 静态托管访问
 

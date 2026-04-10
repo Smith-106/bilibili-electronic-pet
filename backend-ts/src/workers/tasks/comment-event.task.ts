@@ -5,6 +5,7 @@
  */
 
 import { Job } from 'bullmq';
+import { upsertCompanionFeedItem } from '../../app/memory/companion-feed.js';
 import { BaseTaskPayload, createTaskQueue, createTaskWorker } from '../task-queue.js';
 import { NonRetryableWorkerError } from '../errors.js';
 import type { WorkerServices } from '../../services/interfaces.js';
@@ -58,6 +59,35 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           duration_ms: durationMs,
           metadata: options?.metadata,
         });
+      };
+
+      const recordCompanionSignal = async (
+        itemKey: string,
+        content: string,
+        metadata?: Record<string, unknown>,
+      ): Promise<void> => {
+        try {
+          await upsertCompanionFeedItem({
+            itemKey,
+            content,
+            source: 'worker',
+            metadata: {
+              trace_id: traceId,
+              comment_id: job.data.comment_id,
+              ...(metadata ?? {}),
+            },
+          });
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              level: 'warn',
+              message: 'worker_companion_signal_failed',
+              trace_id: traceId,
+              comment_id: job.data.comment_id,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
       };
 
       // Kill-switch check
@@ -162,6 +192,16 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           jobId,
           metadata: { style_mode: styleMode, length_mode: lengthMode },
         });
+
+        await recordCompanionSignal(
+          'signal:job-skipped',
+          `Skipped reply generation for comment ${comment.comment_id} because shouldReply returned false.`,
+          {
+            job_id: jobId,
+            status: 'skipped',
+            platform,
+          },
+        );
 
         return { ok: true, status: 'skipped', trace_id: traceId };
       }
@@ -314,6 +354,16 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           },
         });
 
+        await recordCompanionSignal(
+          'signal:dedupe-latest',
+          `Deduped reply for comment ${comment.comment_id}; recent phrase matched an existing user reply.`,
+          {
+            job_id: jobId,
+            status: 'dedupe_skipped',
+            platform,
+          },
+        );
+
         return { ok: true, status: 'dedupe_skipped', trace_id: traceId };
       }
 
@@ -355,6 +405,17 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
             decision: (riskFlags as Record<string, unknown>).decision,
           },
         });
+
+        await recordCompanionSignal(
+          `signal:${safetyAction}-latest`,
+          `Moved comment ${comment.comment_id} into ${safetyAction} after safety review.`,
+          {
+            job_id: jobId,
+            status: safetyAction,
+            platform,
+            decision: (riskFlags as Record<string, unknown>).decision,
+          },
+        );
 
         return {
           ok: true,
@@ -432,6 +493,19 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         jobId,
         metadata: { style_mode: styleMode, length_mode: lengthMode, publish_reason: publishReason },
       });
+
+      await recordCompanionSignal(
+        published ? 'signal:publish-latest' : 'signal:manual-queue-latest',
+        published
+          ? `Published reply for comment ${comment.comment_id} with reason ${publishReason}.`
+          : `Publish attempt for comment ${comment.comment_id} fell back to manual_queue with reason ${publishReason}.`,
+        {
+          job_id: jobId,
+          status,
+          platform,
+          publish_reason: publishReason,
+        },
+      );
 
       // Remember phrase if published
       if (published && comment.user_id) {

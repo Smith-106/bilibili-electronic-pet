@@ -30,6 +30,7 @@ vi.mock('../src/lib/prisma.js', () => ({
 const { getActiveRoleCard, getRoleCardByKey } = await import('../src/services/db-queries.js');
 const { createMemoryRepository } = await import('../src/infra/db/repositories/memory-repository.js');
 const { createMemoryService } = await import('../src/app/memory/memory-service.js');
+const { upsertCompanionFeedItem, COMPANION_SYSTEM_SPACE_KEY } = await import('../src/app/memory/companion-feed.js');
 
 function resetMockPrisma(): void {
   mockPrisma.roleCard.findUnique.mockReset();
@@ -410,5 +411,51 @@ describe('memory repository and service', () => {
         item_metadata: JSON.stringify({ score: 0.8 }),
       },
     });
+  });
+
+  it('creates the companion system space on first signal write', async () => {
+    mockPrisma.memorySpace.findMany.mockResolvedValueOnce([]);
+    mockPrisma.memorySpace.create.mockResolvedValueOnce({
+      id: 99,
+      space_key: COMPANION_SYSTEM_SPACE_KEY,
+      space_type: 'system',
+      title: 'Companion System',
+      summary: 'Auto-generated companion feed signals sourced from backend activity.',
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:00:00.000Z'),
+    });
+    mockPrisma.memoryItem.upsert.mockResolvedValueOnce({
+      id: 31,
+      space_id: 99,
+      item_key: 'signal:publish-latest',
+      content: 'Published reply for comment c-1.',
+      content_type: 'companion_signal',
+      source: 'worker',
+      item_metadata: JSON.stringify({ trace_id: 'trace-1' }),
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:01:00.000Z'),
+    });
+
+    await expect(
+      upsertCompanionFeedItem({
+        itemKey: 'signal:publish-latest',
+        content: 'Published reply for comment c-1.',
+        source: 'worker',
+        metadata: { trace_id: 'trace-1' },
+      }),
+    ).resolves.toEqual({
+      id: 31,
+      space_id: 99,
+      item_key: 'signal:publish-latest',
+      content: 'Published reply for comment c-1.',
+      content_type: 'companion_signal',
+      source: 'worker',
+      item_metadata: { trace_id: 'trace-1' },
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:01:00.000Z'),
+    });
+
+    expect(mockPrisma.memorySpace.create).toHaveBeenCalled();
+    expect(mockPrisma.memoryItem.upsert).toHaveBeenCalled();
   });
 });

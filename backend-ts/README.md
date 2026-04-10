@@ -15,7 +15,7 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
 ✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
 ✅ **Branch-Specific Delivery Scope Closed** - the current signoff certifies the native Bilibili rollout path on the public smoke domain
-⚠️ **Memory Domain Admin Contract Available** - `src/app/memory` is now exposed through admin-management endpoints, but it is still not part of the worker/publish business runtime
+⚠️ **Memory Domain Feed Enabled** - `src/app/memory` is exposed through admin-management endpoints and now receives automatic companion-feed writes from worker/admin approval outcomes, but it is still not part of the core publish contract
 
 ## Tech Stack
 
@@ -169,7 +169,7 @@ Current status:
 - preserved in the local checkpoint
 - covered by repository/service tests
 - wired into the admin-management surface for explicit operator access
-- not yet used by the worker flow or publish pipeline
+- receives automatic companion-feed updates from worker outcomes and admin approval publish events
 - now visible in the shipped admin frontend as a dedicated management page
 - now also feeds the public `/companion/state` summary that hydrates the companion surface
 
