@@ -126,12 +126,13 @@ describe('pet companion surface', () => {
       fetchImpl: fetchMock,
     });
 
-    const result = await adapter.performAction('pat');
+    const result = await adapter.performAction('pat', 'soft tap');
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/companion/actions',
       expect.objectContaining({
         method: 'POST',
+        body: JSON.stringify({ action: 'pat', note: 'soft tap' }),
       }),
     );
     expect(result).toEqual({ ok: true, action: 'pat', item_key: 'action:pat-latest' });
@@ -165,13 +166,36 @@ describe('pet companion surface', () => {
 
     await renderPetCompanion(container, { adapter });
 
+    const noteInput = container.querySelector('[data-role="action-note"]');
+    noteInput.value = 'steady pulse';
     container.querySelector('[data-action="pat"]').click();
     await flushPromises();
 
-    expect(adapter.performAction).toHaveBeenCalledWith('pat');
+    expect(adapter.performAction).toHaveBeenCalledWith('pat', 'steady pulse');
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
+    expect(noteInput.value).toBe('');
     expect(container.textContent).toContain('Calm');
     expect(container.textContent).toContain('Pat action recorded.');
     expect(container.textContent).toContain('Companion Action');
+  });
+
+  it('keeps the note draft when an action request fails', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+      performAction: vi.fn().mockRejectedValue(new Error('action_failed')),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    const noteInput = container.querySelector('[data-role="action-note"]');
+    noteInput.value = 'keep this note';
+    container.querySelector('[data-action="feed"]').click();
+    await flushPromises();
+
+    expect(adapter.performAction).toHaveBeenCalledWith('feed', 'keep this note');
+    expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
+    expect(noteInput.value).toBe('keep this note');
+    expect(container.textContent).toContain('action_failed');
   });
 });

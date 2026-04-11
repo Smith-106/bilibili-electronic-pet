@@ -133,6 +133,56 @@ body {
   justify-content: space-between;
 }
 
+.note-stack {
+  width: min(320px, 100%);
+  display: grid;
+  gap: 8px;
+}
+
+.note-label,
+.note-hint {
+  margin: 0;
+}
+
+.note-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.note-input {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid rgba(18, 51, 73, 0.12);
+  border-radius: 16px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+}
+
+.note-input::placeholder {
+  color: rgba(85, 112, 131, 0.92);
+}
+
+.note-input:focus {
+  outline: 2px solid rgba(23, 143, 132, 0.24);
+  outline-offset: 2px;
+}
+
+.note-input:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.note-hint {
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .companion-actions {
   display: flex;
   gap: 10px;
@@ -416,6 +466,10 @@ body {
 
   .hero-actions {
     align-items: stretch;
+  }
+
+  .note-stack {
+    width: 100%;
   }
 
   .panel-grid {

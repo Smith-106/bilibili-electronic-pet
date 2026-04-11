@@ -190,6 +190,18 @@ function createShellMarkup() {
         </div>
         <div class="hero-actions">
           <span class="status-pill" data-role="adapter-status">Adapter: local stub</span>
+          <div class="note-stack">
+            <label class="note-label" for="action-note">Interaction note</label>
+            <textarea
+              class="note-input"
+              id="action-note"
+              data-role="action-note"
+              rows="3"
+              maxlength="160"
+              placeholder="Optional note for the next pat, feed, or wake."
+            ></textarea>
+            <p class="note-hint">Optional context travels into the companion timeline.</p>
+          </div>
           <div class="companion-actions" data-role="action-buttons">
             <button class="action-button" type="button" data-action="pat">Pat</button>
             <button class="action-button" type="button" data-action="feed">Feed</button>
@@ -216,13 +228,21 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const content = target.querySelector('[data-role="content"]');
   const refreshButton = target.querySelector('[data-action="refresh"]');
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
+  const actionNote = target.querySelector('[data-role="action-note"]');
   const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
 
-  async function loadState() {
-    refreshButton.disabled = true;
+  function setControlsDisabled(disabled) {
+    refreshButton.disabled = disabled;
     actionButtons.forEach((button) => {
-      button.disabled = true;
+      button.disabled = disabled;
     });
+    if (actionNote) {
+      actionNote.disabled = disabled;
+    }
+  }
+
+  async function loadState() {
+    setControlsDisabled(true);
     refreshButton.textContent = 'Refreshing...';
     adapterStatus.textContent = 'Adapter: syncing local loop';
 
@@ -235,10 +255,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       content.innerHTML = createErrorMarkup(error);
       adapterStatus.textContent = 'Adapter: degraded';
     } finally {
-      refreshButton.disabled = false;
-      actionButtons.forEach((button) => {
-        button.disabled = false;
-      });
+      setControlsDisabled(false);
       refreshButton.textContent = 'Refresh mood';
     }
   }
@@ -250,22 +267,21 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         return;
       }
 
-      refreshButton.disabled = true;
-      actionButtons.forEach((item) => {
-        item.disabled = true;
-      });
+      const note = typeof actionNote?.value === 'string' ? actionNote.value.trim() : '';
+
+      setControlsDisabled(true);
       adapterStatus.textContent = `Adapter: sending ${action}`;
 
       try {
-        await adapter.performAction(action);
+        await adapter.performAction(action, note || undefined);
+        if (actionNote) {
+          actionNote.value = '';
+        }
         await loadState();
       } catch (error) {
         content.innerHTML = createErrorMarkup(error);
         adapterStatus.textContent = 'Adapter: action failed';
-        refreshButton.disabled = false;
-        actionButtons.forEach((item) => {
-          item.disabled = false;
-        });
+        setControlsDisabled(false);
       }
     });
   }
