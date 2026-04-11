@@ -83,21 +83,21 @@ function getComposerCopy(filter) {
     return {
       label: 'Pat note',
       placeholder: 'Optional note for the next pat.',
-      hint: 'Describe the comfort, bond, or calming signal you want the timeline to capture.',
+      hint: 'Describe the comfort, bond, or calming signal you want the timeline to capture. Press Ctrl+Enter to send.',
     };
   }
   if (normalizedFilter === 'feed') {
     return {
       label: 'Feed note',
       placeholder: 'Optional note for the next feed.',
-      hint: 'Add snack, refill, or appetite context so the feed entry reads clearly later.',
+      hint: 'Add snack, refill, or appetite context so the feed entry reads clearly later. Press Ctrl+Enter to send.',
     };
   }
   if (normalizedFilter === 'wake') {
     return {
       label: 'Wake note',
       placeholder: 'Optional note for the next wake.',
-      hint: 'Explain the nudge or prompt that should bring the companion back into motion.',
+      hint: 'Explain the nudge or prompt that should bring the companion back into motion. Press Ctrl+Enter to send.',
     };
   }
   return {
@@ -794,6 +794,45 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     clearDraft();
   });
 
+  async function triggerAction(action) {
+    if (!action || typeof adapter.performAction !== 'function') {
+      return;
+    }
+
+    const note = typeof actionNote?.value === 'string' ? actionNote.value.trim() : '';
+
+    setControlsDisabled(true);
+    adapterStatus.textContent = `Adapter: sending ${action}`;
+
+    try {
+      await adapter.performAction(action, note || undefined);
+      clearPendingTemplateAction();
+      selectedTimelineFilter = normalizeInteractionFilter(action);
+      if (actionNote) {
+        actionNote.value = '';
+      }
+      await loadState();
+    } catch (error) {
+      content.innerHTML = createErrorMarkup(error);
+      adapterStatus.textContent = 'Adapter: action failed';
+      setControlsDisabled(false);
+    }
+  }
+
+  actionNote?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && pendingTemplateValue) {
+      event.preventDefault();
+      clearPendingTemplateAction();
+      syncComposerContext();
+      return;
+    }
+
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && isActionFilter(selectedTimelineFilter)) {
+      event.preventDefault();
+      void triggerAction(selectedTimelineFilter);
+    }
+  });
+
   function renderCurrentState() {
     if (!latestState) {
       syncLinkedActionButtons();
@@ -842,28 +881,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   for (const button of actionButtons) {
     button.addEventListener('click', async () => {
       const action = button.getAttribute('data-action');
-      if (!action || typeof adapter.performAction !== 'function') {
-        return;
-      }
-
-        const note = typeof actionNote?.value === 'string' ? actionNote.value.trim() : '';
-
-      setControlsDisabled(true);
-      adapterStatus.textContent = `Adapter: sending ${action}`;
-
-      try {
-        await adapter.performAction(action, note || undefined);
-        clearPendingTemplateAction();
-        selectedTimelineFilter = normalizeInteractionFilter(action);
-        if (actionNote) {
-          actionNote.value = '';
-        }
-        await loadState();
-      } catch (error) {
-        content.innerHTML = createErrorMarkup(error);
-        adapterStatus.textContent = 'Adapter: action failed';
-        setControlsDisabled(false);
-      }
+      await triggerAction(action);
     });
   }
 

@@ -185,6 +185,7 @@ describe('pet companion surface', () => {
       'Optional note for the next feed.',
     );
     expect(container.querySelector('[data-role="action-note-hint"]')?.textContent).toContain('feed entry');
+    expect(container.querySelector('[data-role="action-note-hint"]')?.textContent).toContain('Ctrl+Enter');
     expect(container.querySelector('[data-role="composer-templates"]')?.textContent).toContain('Suggested feed notes');
     expect(container.querySelector('[data-role="composer-guide"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.textContent).toContain('A snack tray landed right on time.');
@@ -207,6 +208,13 @@ describe('pet companion surface', () => {
     );
     expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Template waiting');
     expect(container.querySelector('[data-role="action-note-clear"]')?.hasAttribute('disabled')).toBe(false);
+
+    noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(container.querySelector('[data-role="composer-template-actions"]')?.hasAttribute('hidden')).toBe(true);
+    expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Feed draft ready');
+
+    templateButton.click();
+    expect(container.querySelector('[data-role="composer-template-actions"]')?.hasAttribute('hidden')).toBe(false);
 
     container.querySelector('[data-merge-mode="append"]').click();
     expect(container.querySelector('[data-role="action-note"]')?.value).toBe(
@@ -255,6 +263,55 @@ describe('pet companion surface', () => {
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('wake');
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Wake note');
     expect(container.querySelector('[data-role="composer-templates"]')?.textContent).toContain('Suggested wake notes');
+  });
+
+  it('submits the selected action from the composer with Ctrl+Enter', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi
+        .fn()
+        .mockResolvedValueOnce(
+          createState({
+            recentInteractions: [
+              {
+                kind: 'wake',
+                title: 'Wake interaction',
+                detail: 'Wake prompt queued.',
+                timestamp: '2026-04-10T03:28:00.000Z',
+                source: 'Companion Action',
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          createState({
+            recentInteractions: [
+              {
+                kind: 'wake',
+                title: 'Wake interaction',
+                detail: 'Wake prompt sent from keyboard shortcut.',
+                timestamp: '2026-04-10T03:29:00.000Z',
+                source: 'Companion Action',
+              },
+            ],
+          }),
+        ),
+      performAction: vi.fn().mockResolvedValue({ ok: true }),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    container.querySelector('[data-filter-kind="wake"]').click();
+    const noteInput = container.querySelector('[data-role="action-note"]');
+    noteInput.value = 'keyboard wake';
+    noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+    await flushPromises();
+
+    expect(adapter.performAction).toHaveBeenCalledWith('wake', 'keyboard wake');
+    expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('wake');
+    expect(noteInput.value).toBe('');
+    expect(container.textContent).toContain('Wake prompt sent from keyboard shortcut.');
   });
 
   it('shows a degraded panel when the local adapter fails', async () => {
