@@ -193,6 +193,29 @@ describe('pet companion surface', () => {
 
     expect(container.querySelector('[data-role="action-note"]')?.value).toContain('Refilled snack tray');
 
+    const noteInput = container.querySelector('[data-role="action-note"]');
+    noteInput.value = 'Existing draft';
+    templateButton.click();
+
+    expect(container.querySelector('[data-role="action-note"]')?.value).toBe('Existing draft');
+    expect(container.querySelector('[data-role="composer-template-actions"]')?.textContent).toContain(
+      'Keep the current draft',
+    );
+
+    container.querySelector('[data-merge-mode="append"]').click();
+    expect(container.querySelector('[data-role="action-note"]')?.value).toBe(
+      'Existing draft\nRefilled snack tray and appetite stabilized.',
+    );
+
+    const secondTemplateButton = container.querySelectorAll('[data-role="composer-template"]')[1];
+    noteInput.value = 'Replace this draft';
+    secondTemplateButton.click();
+    container.querySelector('[data-merge-mode="replace"]').click();
+
+    expect(container.querySelector('[data-role="action-note"]')?.value).toBe(
+      'Quick bite restored energy before the next loop window.',
+    );
+
     container.querySelector('[data-action="refresh"]').click();
     await flushPromises();
 

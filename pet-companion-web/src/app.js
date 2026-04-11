@@ -490,6 +490,7 @@ function createShellMarkup() {
             ></textarea>
             <p class="note-hint" data-role="action-note-hint">Optional context travels into the companion timeline.</p>
             <div class="composer-templates" data-role="composer-templates" hidden></div>
+            <div class="composer-template-actions" data-role="composer-template-actions" hidden></div>
             <div class="composer-guide" data-role="composer-guide" hidden></div>
           </div>
           <div class="companion-actions" data-role="action-buttons">
@@ -522,10 +523,12 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
   const composerTemplates = target.querySelector('[data-role="composer-templates"]');
+  const composerTemplateActions = target.querySelector('[data-role="composer-template-actions"]');
   const composerGuide = target.querySelector('[data-role="composer-guide"]');
   const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
   let selectedTimelineFilter = 'all';
   let latestState = null;
+  let pendingTemplateValue = null;
 
   function syncLinkedActionButtons() {
     actionButtons.forEach((button) => {
@@ -534,6 +537,27 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       button.classList.toggle('is-linked', linked);
       button.setAttribute('data-filter-linked', linked ? 'true' : 'false');
     });
+  }
+
+  function clearPendingTemplateAction() {
+    pendingTemplateValue = null;
+  }
+
+  function applyTemplateToDraft(mode) {
+    if (!actionNote || !pendingTemplateValue) {
+      return;
+    }
+
+    const existingValue = actionNote.value.trim();
+    if (mode === 'append' && existingValue) {
+      actionNote.value = `${existingValue}\n${pendingTemplateValue}`;
+    } else {
+      actionNote.value = pendingTemplateValue;
+    }
+
+    actionNote.focus();
+    clearPendingTemplateAction();
+    syncComposerContext();
   }
 
   function syncComposerContext() {
@@ -578,9 +602,58 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         templateButtons.forEach((button) => {
           button.addEventListener('click', () => {
             if (actionNote) {
-              actionNote.value = button.getAttribute('data-template-value') ?? '';
+              const nextTemplateValue = button.getAttribute('data-template-value') ?? '';
+              const existingValue = actionNote.value.trim();
+
+              if (existingValue && existingValue !== nextTemplateValue) {
+                pendingTemplateValue = nextTemplateValue;
+                syncComposerContext();
+                return;
+              }
+
+              actionNote.value = nextTemplateValue;
               actionNote.focus();
+              clearPendingTemplateAction();
+              syncComposerContext();
             }
+          });
+        });
+      }
+    }
+    if (composerTemplateActions) {
+      if (!pendingTemplateValue || !composerTemplateState) {
+        composerTemplateActions.innerHTML = '';
+        composerTemplateActions.hidden = true;
+      } else {
+        composerTemplateActions.hidden = false;
+        composerTemplateActions.innerHTML = `
+          <p class="composer-template-actions-copy">
+            Keep the current draft, append the suggestion, or replace it with:
+            <span class="composer-template-preview">${escapeHtml(pendingTemplateValue)}</span>
+          </p>
+          <div class="composer-template-action-row">
+            <button class="composer-template-action" type="button" data-role="template-merge-action" data-merge-mode="replace">
+              Replace
+            </button>
+            <button class="composer-template-action" type="button" data-role="template-merge-action" data-merge-mode="append">
+              Append
+            </button>
+            <button class="composer-template-action is-ghost" type="button" data-role="template-merge-action" data-merge-mode="cancel">
+              Cancel
+            </button>
+          </div>
+        `;
+
+        const mergeButtons = [...composerTemplateActions.querySelectorAll('[data-role="template-merge-action"]')];
+        mergeButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            const mergeMode = button.getAttribute('data-merge-mode');
+            if (mergeMode === 'replace' || mergeMode === 'append') {
+              applyTemplateToDraft(mergeMode);
+              return;
+            }
+            clearPendingTemplateAction();
+            syncComposerContext();
           });
         });
       }
@@ -631,6 +704,13 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
   }
 
+  actionNote?.addEventListener('input', () => {
+    if (pendingTemplateValue) {
+      clearPendingTemplateAction();
+      syncComposerContext();
+    }
+  });
+
   function renderCurrentState() {
     if (!latestState) {
       syncLinkedActionButtons();
@@ -648,6 +728,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         if (nextFilter === selectedTimelineFilter) {
           return;
         }
+        clearPendingTemplateAction();
         selectedTimelineFilter = nextFilter;
         renderCurrentState();
       });
@@ -682,13 +763,14 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         return;
       }
 
-      const note = typeof actionNote?.value === 'string' ? actionNote.value.trim() : '';
+        const note = typeof actionNote?.value === 'string' ? actionNote.value.trim() : '';
 
       setControlsDisabled(true);
       adapterStatus.textContent = `Adapter: sending ${action}`;
 
       try {
         await adapter.performAction(action, note || undefined);
+        clearPendingTemplateAction();
         selectedTimelineFilter = normalizeInteractionFilter(action);
         if (actionNote) {
           actionNote.value = '';
