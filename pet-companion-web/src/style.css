@@ -307,6 +307,13 @@ body {
   line-height: 1.5;
 }
 
+.composer-template-actions-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
 .composer-template-preview {
   display: block;
   margin-top: 8px;
@@ -657,6 +664,18 @@ body {
   border-color: rgba(23, 143, 132, 0.42);
   background: rgba(23, 143, 132, 0.12);
   color: #0c6e65;
+}
+
+.timeline-filter-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: rgba(18, 51, 73, 0.08);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 .timeline-filter-count {

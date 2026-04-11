@@ -65,6 +65,7 @@ describe('pet companion surface', () => {
     expect(container.querySelector('.interaction-time')?.getAttribute('title')).toBe('2026-04-10 03:28 UTC');
     expect(container.querySelector('.interaction-card-pat')).not.toBeNull();
     expect(container.querySelector('.interaction-kind-pat')?.textContent).toBe('Pat');
+    expect(container.querySelector('[data-filter-kind="all"]')?.textContent).toContain('Alt+1');
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Interaction note');
     expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
       'Optional note for the next pat, feed, or wake.',
@@ -180,6 +181,7 @@ describe('pet companion surface', () => {
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('feed');
+    expect(container.querySelector('[data-filter-kind="feed"]')?.textContent).toContain('Alt+3');
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Feed note');
     expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
       'Optional note for the next feed.',
@@ -206,10 +208,13 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="composer-template-actions"]')?.textContent).toContain(
       'Keep the current draft',
     );
+    expect(container.querySelector('[data-role="composer-template-actions"]')?.textContent).toContain(
+      'Press Esc to cancel this merge.',
+    );
     expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Template waiting');
     expect(container.querySelector('[data-role="action-note-clear"]')?.hasAttribute('disabled')).toBe(false);
 
-    noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(container.querySelector('[data-role="composer-template-actions"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Feed draft ready');
 
@@ -247,8 +252,7 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Refilled snack tray confirmed after refresh.');
     expect(container.textContent).not.toContain('A later pat should stay hidden while feed filter is active.');
 
-    const signalFilter = container.querySelector('[data-filter-kind="signal"]');
-    signalFilter.click();
+    container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '5', altKey: true, bubbles: true }));
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('signal');
     expect(container.querySelector('[data-role="composer-templates"]')?.hasAttribute('hidden')).toBe(true);

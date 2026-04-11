@@ -19,6 +19,13 @@ const FALLBACK_INTERACTIONS = [
 const INTERACTION_FILTER_ORDER = ['all', 'pat', 'feed', 'wake', 'signal', 'fallback'];
 const ACTION_INTERACTION_KINDS = ['pat', 'feed', 'wake'];
 
+function getFilterShortcut(index) {
+  return {
+    key: String(index + 1),
+    label: `Alt+${index + 1}`,
+  };
+}
+
 function normalizeInteractionKind(value) {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (normalized === 'pat' || normalized === 'feed' || normalized === 'wake' || normalized === 'signal') {
@@ -370,20 +377,24 @@ function buildInteractionFilterOptions(interactions) {
 
 function renderInteractionFilters(interactions, selectedFilter) {
   return buildInteractionFilterOptions(interactions)
-    .map(
-      (option) => `
+    .map((option, index) => {
+      const shortcut = getFilterShortcut(index);
+
+      return `
         <button
           class="timeline-filter${option.kind === selectedFilter ? ' is-active' : ''}"
           type="button"
           data-role="timeline-filter"
           data-filter-kind="${escapeHtml(option.kind)}"
+          data-filter-shortcut="${escapeHtml(shortcut.key)}"
           aria-pressed="${option.kind === selectedFilter ? 'true' : 'false'}"
         >
           <span>${escapeHtml(option.label)}</span>
+          <span class="timeline-filter-shortcut" aria-hidden="true">${escapeHtml(shortcut.label)}</span>
           <span class="timeline-filter-count">${escapeHtml(option.count)}</span>
         </button>
-      `,
-    )
+      `;
+    })
     .join('');
 }
 
@@ -710,6 +721,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
             Keep the current draft, append the suggestion, or replace it with:
             <span class="composer-template-preview">${escapeHtml(pendingTemplateValue)}</span>
           </p>
+          <p class="composer-template-actions-hint">Press Esc to cancel this merge.</p>
           <div class="composer-template-action-row">
             <button class="composer-template-action" type="button" data-role="template-merge-action" data-merge-mode="replace">
               Replace
@@ -792,6 +804,33 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   actionNoteClear?.addEventListener('click', () => {
     clearDraft();
+  });
+
+  target.ownerDocument.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && pendingTemplateValue) {
+      event.preventDefault();
+      clearPendingTemplateAction();
+      syncComposerContext();
+      return;
+    }
+
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+      return;
+    }
+
+    const filterIndex = Number.parseInt(event.key, 10) - 1;
+    if (Number.isNaN(filterIndex) || filterIndex < 0 || filterIndex >= INTERACTION_FILTER_ORDER.length) {
+      return;
+    }
+
+    event.preventDefault();
+    const nextFilter = INTERACTION_FILTER_ORDER[filterIndex];
+    if (nextFilter === selectedTimelineFilter) {
+      return;
+    }
+    clearPendingTemplateAction();
+    selectedTimelineFilter = nextFilter;
+    renderCurrentState();
   });
 
   async function triggerAction(action) {
