@@ -25,6 +25,77 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
+function formatPreciseTimestamp(date) {
+  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+}
+
+function formatRelativeTime(deltaSeconds, unitSeconds, singularLabel, pluralLabel) {
+  const count = Math.max(1, Math.round(Math.abs(deltaSeconds) / unitSeconds));
+  const unitLabel = count === 1 ? singularLabel : pluralLabel;
+  return deltaSeconds >= 0 ? `${count} ${unitLabel} ago` : `in ${count} ${unitLabel}`;
+}
+
+function formatInteractionTimestamp(timestamp) {
+  const rawTimestamp = String(timestamp ?? '').trim();
+  if (!rawTimestamp || rawTimestamp.toLowerCase() === 'pending') {
+    return {
+      label: rawTimestamp || 'Pending',
+      exact: '',
+      machine: '',
+    };
+  }
+
+  const date = new Date(rawTimestamp);
+  if (Number.isNaN(date.getTime())) {
+    return {
+      label: rawTimestamp,
+      exact: '',
+      machine: '',
+    };
+  }
+
+  const deltaSeconds = Math.round((Date.now() - date.getTime()) / 1000);
+  const absoluteSeconds = Math.abs(deltaSeconds);
+
+  if (absoluteSeconds < 45) {
+    return {
+      label: deltaSeconds >= 0 ? 'just now' : 'in moments',
+      exact: formatPreciseTimestamp(date),
+      machine: date.toISOString(),
+    };
+  }
+
+  if (absoluteSeconds < 60 * 60) {
+    return {
+      label: formatRelativeTime(deltaSeconds, 60, 'min', 'mins'),
+      exact: formatPreciseTimestamp(date),
+      machine: date.toISOString(),
+    };
+  }
+
+  if (absoluteSeconds < 60 * 60 * 24) {
+    return {
+      label: formatRelativeTime(deltaSeconds, 60 * 60, 'hour', 'hours'),
+      exact: formatPreciseTimestamp(date),
+      machine: date.toISOString(),
+    };
+  }
+
+  if (absoluteSeconds < 60 * 60 * 24 * 7) {
+    return {
+      label: formatRelativeTime(deltaSeconds, 60 * 60 * 24, 'day', 'days'),
+      exact: formatPreciseTimestamp(date),
+      machine: date.toISOString(),
+    };
+  }
+
+  return {
+    label: formatPreciseTimestamp(date),
+    exact: formatPreciseTimestamp(date),
+    machine: date.toISOString(),
+  };
+}
+
 function normalizeState(state) {
   const safeState = state && typeof state === 'object' ? state : {};
   const mood = safeState.mood && typeof safeState.mood === 'object' ? safeState.mood : {};
@@ -86,8 +157,10 @@ function renderSignals(signals) {
 
 function renderInteractions(interactions) {
   return interactions
-    .map(
-      (interaction) => `
+    .map((interaction) => {
+      const time = formatInteractionTimestamp(interaction.timestamp);
+
+      return `
         <article class="interaction-card">
           <div class="interaction-head">
             <div>
@@ -96,10 +169,14 @@ function renderInteractions(interactions) {
             </div>
             <span class="interaction-source">${escapeHtml(interaction.source)}</span>
           </div>
-          <p class="interaction-time">${escapeHtml(interaction.timestamp)}</p>
+          <time
+            class="interaction-time"
+            ${time.machine ? `datetime="${escapeHtml(time.machine)}"` : ''}
+            ${time.exact ? `title="${escapeHtml(time.exact)}"` : ''}
+          >${escapeHtml(time.label)}</time>
         </article>
-      `,
-    )
+      `;
+    })
     .join('');
 }
 

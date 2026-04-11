@@ -436,8 +436,10 @@ body {
 }
 
 .interaction-time {
+  display: inline-block;
   margin-top: 12px;
   font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .interaction-source {

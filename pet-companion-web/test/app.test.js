@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderPetCompanion } from '../src/app.js';
 import { createBackendPetAdapter } from '../src/api/backend-adapter.js';
@@ -37,6 +37,14 @@ function createState(overrides = {}) {
 }
 
 describe('pet companion surface', () => {
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-10T03:30:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('renders an isolated pet surface with mood, state widgets, and memory summary', async () => {
     const container = createPageContainer();
     const adapter = {
@@ -52,6 +60,8 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Memory summary');
     expect(container.textContent).toContain('Companion timeline');
     expect(container.textContent).toContain('Pat interaction');
+    expect(container.querySelector('.interaction-time')?.textContent).toBe('2 mins ago');
+    expect(container.querySelector('.interaction-time')?.getAttribute('title')).toBe('2026-04-10 03:28 UTC');
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
   });
@@ -90,6 +100,7 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Playful');
     expect(container.textContent).toContain('A fresh status ping just landed.');
     expect(container.textContent).toContain('Wake interaction');
+    expect(container.querySelector('.interaction-time')?.textContent).toBe('in 1 min');
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
   });
 
