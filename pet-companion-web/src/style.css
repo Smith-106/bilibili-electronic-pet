@@ -16,6 +16,8 @@
   --radius-lg: 28px;
   --radius-md: 20px;
   --radius-sm: 14px;
+  --focus-ring: rgba(23, 143, 132, 0.34);
+  --focus-shadow: 0 0 0 4px rgba(23, 143, 132, 0.12);
 }
 
 * {
@@ -253,6 +255,12 @@ body {
   outline-offset: 2px;
 }
 
+.note-input:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+  box-shadow: var(--focus-shadow);
+}
+
 .note-input[data-composer-kind='pat'] {
   border-color: rgba(255, 122, 89, 0.28);
   background: rgba(255, 247, 243, 0.96);
@@ -467,6 +475,19 @@ body {
 .composer-shortcut:hover {
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 1);
+}
+
+.shortcut-help-toggle:focus-visible,
+.note-clear-button:focus-visible,
+.composer-template:focus-visible,
+.composer-template-action:focus-visible,
+.composer-shortcut:focus-visible,
+.action-button:focus-visible,
+.refresh-button:focus-visible,
+.timeline-filter:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  box-shadow: var(--focus-shadow);
 }
 
 .companion-actions {
