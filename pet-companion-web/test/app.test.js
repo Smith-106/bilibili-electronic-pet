@@ -127,6 +127,40 @@ describe('pet companion surface', () => {
     expect(container.ownerDocument.activeElement).toBe(helpTitle);
   });
 
+  it('dismisses shortcut help on outside click without closing it for inside clicks', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    const helpToggle = container.querySelector('[data-role="shortcut-help-toggle"]');
+    const helpCard = container.querySelector('[data-role="shortcut-help"]');
+    const helpTitle = container.querySelector('[data-role="shortcut-help-title"]');
+    const liveRegion = container.querySelector('[data-role="live-region"]');
+    const noteInput = container.querySelector('[data-role="action-note"]');
+
+    helpToggle.click();
+    expect(helpCard?.hasAttribute('hidden')).toBe(false);
+
+    helpTitle.click();
+    expect(helpCard?.hasAttribute('hidden')).toBe(false);
+    expect(liveRegion?.textContent).toBe('Shortcut help opened.');
+
+    helpToggle.click();
+    expect(helpCard?.hasAttribute('hidden')).toBe(true);
+
+    helpToggle.click();
+    expect(helpCard?.hasAttribute('hidden')).toBe(false);
+
+    noteInput.focus();
+    noteInput.click();
+    expect(helpCard?.hasAttribute('hidden')).toBe(true);
+    expect(liveRegion?.textContent).toBe('Shortcut help closed.');
+    expect(container.ownerDocument.activeElement).toBe(noteInput);
+  });
+
   it('refreshes the mood widget when the local adapter returns new state', async () => {
     const container = createPageContainer();
     const adapter = {

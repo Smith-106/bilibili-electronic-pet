@@ -733,6 +733,10 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
   }
 
+  function isShortcutHelpTarget(node) {
+    return Boolean(node && (shortcutHelp?.contains(node) || shortcutHelpToggle?.contains(node)));
+  }
+
   function setTimelineFilter(nextFilter, { announcement } = {}) {
     const normalized = normalizeInteractionFilter(nextFilter);
     if (normalized === selectedTimelineFilter) {
@@ -963,6 +967,14 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   shortcutHelpClose?.addEventListener('click', () => {
     setShortcutHelpVisible(false, 'Shortcut help closed.', { moveFocus: true });
+  });
+
+  target.ownerDocument.addEventListener('click', (event) => {
+    if (!showShortcutHelp || isShortcutHelpTarget(event.target)) {
+      return;
+    }
+
+    setShortcutHelpVisible(false, 'Shortcut help closed.');
   });
 
   target.ownerDocument.addEventListener('keydown', (event) => {
