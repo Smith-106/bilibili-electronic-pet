@@ -695,6 +695,16 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     );
   }
 
+  function getFocusableTarget(node) {
+    if (!node || typeof node !== 'object' || !('closest' in node)) {
+      return null;
+    }
+
+    return node.closest(
+      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]',
+    );
+  }
+
   function syncLinkedActionButtons() {
     actionButtons.forEach((button) => {
       const action = button.getAttribute('data-action');
@@ -991,7 +1001,11 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       return;
     }
 
-    setShortcutHelpVisible(false, 'Shortcut help closed.');
+    const focusableTarget = getFocusableTarget(event.target);
+    const activeElementInsideHelp = Boolean(shortcutHelp?.contains(ownerDocument.activeElement));
+    setShortcutHelpVisible(false, 'Shortcut help closed.', {
+      moveFocus: !focusableTarget && activeElementInsideHelp,
+    });
   }
 
   function handleDocumentKeydown(event) {
@@ -1059,6 +1073,11 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   async function triggerAction(action) {
     if (!action) {
+      return;
+    }
+
+    if (pendingTemplateValue) {
+      announce('Resolve template merge before sending.');
       return;
     }
 

@@ -162,6 +162,27 @@ describe('pet companion surface', () => {
     expect(container.ownerDocument.activeElement).toBe(noteInput);
   });
 
+  it('returns focus to the shortcut toggle when outside click closes the help from a non-focusable area', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    const helpToggle = container.querySelector('[data-role="shortcut-help-toggle"]');
+    const helpCard = container.querySelector('[data-role="shortcut-help"]');
+    const helpTitle = container.querySelector('[data-role="shortcut-help-title"]');
+    const heroCopy = container.querySelector('.hero-copy');
+
+    helpToggle.click();
+    helpTitle.focus();
+    heroCopy.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(helpCard?.hasAttribute('hidden')).toBe(true);
+    expect(container.ownerDocument.activeElement).toBe(helpToggle);
+  });
+
   it('removes document shortcut listeners when the companion is destroyed', async () => {
     const container = createPageContainer();
     const adapter = {
@@ -455,6 +476,29 @@ describe('pet companion surface', () => {
       'Signal entries are read-only. Pick Pat, Feed, or Wake before sending.',
     );
     expect(noteInput.value).toBe('cannot send from signal');
+  });
+
+  it('blocks sending while a template merge decision is pending', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+      performAction: vi.fn(),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    container.querySelector('[data-filter-kind="feed"]').click();
+    const noteInput = container.querySelector('[data-role="action-note"]');
+    noteInput.value = 'Existing draft';
+    container.querySelector('[data-role="composer-template"]').click();
+    noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+
+    expect(adapter.performAction).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-role="composer-template-actions"]')?.hasAttribute('hidden')).toBe(false);
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe(
+      'Resolve template merge before sending.',
+    );
+    expect(noteInput.value).toBe('Existing draft');
   });
 
   it('announces when action sending is unavailable in the local preview', async () => {
