@@ -436,6 +436,43 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Wake prompt sent from keyboard shortcut.');
   });
 
+  it('announces why Ctrl+Enter is blocked when the composer is not on an action filter', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+      performAction: vi.fn(),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '5', altKey: true, bubbles: true }));
+    const noteInput = container.querySelector('[data-role="action-note"]');
+    noteInput.value = 'cannot send from signal';
+    noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+
+    expect(adapter.performAction).not.toHaveBeenCalled();
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe(
+      'Signal entries are read-only. Pick Pat, Feed, or Wake before sending.',
+    );
+    expect(noteInput.value).toBe('cannot send from signal');
+  });
+
+  it('announces when action sending is unavailable in the local preview', async () => {
+    const container = createPageContainer();
+
+    await renderPetCompanion(container);
+
+    container.querySelector('[data-filter-kind="pat"]').click();
+    container.querySelector('[data-role="action-note"]').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, bubbles: true }),
+    );
+
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe(
+      'Pat action is unavailable in this preview.',
+    );
+    expect(container.querySelector('[data-role="adapter-status"]')?.textContent).toBe('Adapter: action unavailable');
+  });
+
   it('shows a degraded panel when the local adapter fails', async () => {
     const container = createPageContainer();
     const adapter = {

@@ -141,6 +141,17 @@ function getComposerGuide(filter) {
   };
 }
 
+function getComposerSubmitBlockedMessage(filter) {
+  const normalizedFilter = normalizeInteractionFilter(filter);
+  if (normalizedFilter === 'signal') {
+    return 'Signal entries are read-only. Pick Pat, Feed, or Wake before sending.';
+  }
+  if (normalizedFilter === 'fallback') {
+    return 'Fallback entries are read-only. Pick Pat, Feed, or Wake before sending.';
+  }
+  return 'Pick Pat, Feed, or Wake before sending a note.';
+}
+
 function getComposerTemplates(filter) {
   const normalizedFilter = normalizeInteractionFilter(filter);
   if (normalizedFilter === 'pat') {
@@ -1047,7 +1058,13 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   ownerDocument.addEventListener('keydown', handleDocumentKeydown);
 
   async function triggerAction(action) {
-    if (!action || typeof adapter.performAction !== 'function') {
+    if (!action) {
+      return;
+    }
+
+    if (typeof adapter.performAction !== 'function') {
+      adapterStatus.textContent = 'Adapter: action unavailable';
+      announce(`${getInteractionKindLabel(action)} action is unavailable in this preview.`);
       return;
     }
 
@@ -1080,6 +1097,12 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       clearPendingTemplateAction();
       syncComposerContext();
       announce('Template merge cancelled.');
+      return;
+    }
+
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !isActionFilter(selectedTimelineFilter)) {
+      event.preventDefault();
+      announce(getComposerSubmitBlockedMessage(selectedTimelineFilter));
       return;
     }
 
