@@ -72,6 +72,36 @@ function normalizeInteractionFilter(value) {
   return INTERACTION_FILTER_ORDER.includes(normalized) ? normalized : 'all';
 }
 
+function getComposerCopy(filter) {
+  const normalizedFilter = normalizeInteractionFilter(filter);
+  if (normalizedFilter === 'pat') {
+    return {
+      label: 'Pat note',
+      placeholder: 'Optional note for the next pat.',
+      hint: 'Describe the comfort, bond, or calming signal you want the timeline to capture.',
+    };
+  }
+  if (normalizedFilter === 'feed') {
+    return {
+      label: 'Feed note',
+      placeholder: 'Optional note for the next feed.',
+      hint: 'Add snack, refill, or appetite context so the feed entry reads clearly later.',
+    };
+  }
+  if (normalizedFilter === 'wake') {
+    return {
+      label: 'Wake note',
+      placeholder: 'Optional note for the next wake.',
+      hint: 'Explain the nudge or prompt that should bring the companion back into motion.',
+    };
+  }
+  return {
+    label: 'Interaction note',
+    placeholder: 'Optional note for the next pat, feed, or wake.',
+    hint: 'Optional context travels into the companion timeline.',
+  };
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -383,7 +413,7 @@ function createShellMarkup() {
         <div class="hero-actions">
           <span class="status-pill" data-role="adapter-status">Adapter: local stub</span>
           <div class="note-stack">
-            <label class="note-label" for="action-note">Interaction note</label>
+            <label class="note-label" data-role="action-note-label" for="action-note">Interaction note</label>
             <textarea
               class="note-input"
               id="action-note"
@@ -392,7 +422,7 @@ function createShellMarkup() {
               maxlength="160"
               placeholder="Optional note for the next pat, feed, or wake."
             ></textarea>
-            <p class="note-hint">Optional context travels into the companion timeline.</p>
+            <p class="note-hint" data-role="action-note-hint">Optional context travels into the companion timeline.</p>
           </div>
           <div class="companion-actions" data-role="action-buttons">
             <button class="action-button" type="button" data-action="pat">Pat</button>
@@ -421,6 +451,8 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const refreshButton = target.querySelector('[data-action="refresh"]');
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
   const actionNote = target.querySelector('[data-role="action-note"]');
+  const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
+  const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
   const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
   let selectedTimelineFilter = 'all';
   let latestState = null;
@@ -432,6 +464,20 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       button.classList.toggle('is-linked', linked);
       button.setAttribute('data-filter-linked', linked ? 'true' : 'false');
     });
+  }
+
+  function syncComposerContext() {
+    const composerCopy = getComposerCopy(selectedTimelineFilter);
+    if (actionNoteLabel) {
+      actionNoteLabel.textContent = composerCopy.label;
+    }
+    if (actionNote) {
+      actionNote.placeholder = composerCopy.placeholder;
+      actionNote.setAttribute('data-composer-kind', normalizeInteractionFilter(selectedTimelineFilter));
+    }
+    if (actionNoteHint) {
+      actionNoteHint.textContent = composerCopy.hint;
+    }
   }
 
   function setControlsDisabled(disabled) {
@@ -447,11 +493,13 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   function renderCurrentState() {
     if (!latestState) {
       syncLinkedActionButtons();
+      syncComposerContext();
       return;
     }
 
     content.innerHTML = createStateMarkup(latestState, selectedTimelineFilter);
     syncLinkedActionButtons();
+    syncComposerContext();
     const filterButtons = [...content.querySelectorAll('[data-role="timeline-filter"]')];
     filterButtons.forEach((button) => {
       button.addEventListener('click', () => {
@@ -518,6 +566,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   });
 
   syncLinkedActionButtons();
+  syncComposerContext();
   await loadState();
 
   return {

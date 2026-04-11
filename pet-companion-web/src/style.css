@@ -172,6 +172,21 @@ body {
   outline-offset: 2px;
 }
 
+.note-input[data-composer-kind='pat'] {
+  border-color: rgba(255, 122, 89, 0.28);
+  background: rgba(255, 247, 243, 0.96);
+}
+
+.note-input[data-composer-kind='feed'] {
+  border-color: rgba(245, 163, 56, 0.28);
+  background: rgba(255, 249, 238, 0.96);
+}
+
+.note-input[data-composer-kind='wake'] {
+  border-color: rgba(23, 143, 132, 0.28);
+  background: rgba(242, 253, 250, 0.96);
+}
+
 .note-input:disabled {
   opacity: 0.7;
   cursor: wait;

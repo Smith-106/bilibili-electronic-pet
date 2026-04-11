@@ -65,6 +65,10 @@ describe('pet companion surface', () => {
     expect(container.querySelector('.interaction-time')?.getAttribute('title')).toBe('2026-04-10 03:28 UTC');
     expect(container.querySelector('.interaction-card-pat')).not.toBeNull();
     expect(container.querySelector('.interaction-kind-pat')?.textContent).toBe('Pat');
+    expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Interaction note');
+    expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
+      'Optional note for the next pat, feed, or wake.',
+    );
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
   });
@@ -170,6 +174,11 @@ describe('pet companion surface', () => {
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('feed');
+    expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Feed note');
+    expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
+      'Optional note for the next feed.',
+    );
+    expect(container.querySelector('[data-role="action-note-hint"]')?.textContent).toContain('feed entry');
     expect(container.textContent).toContain('A snack tray landed right on time.');
     expect(container.textContent).not.toContain('A calm pat kept Mochi focused on the browser ledge.');
 
@@ -179,6 +188,7 @@ describe('pet companion surface', () => {
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('feed');
+    expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Feed note');
     expect(container.textContent).toContain('Refilled snack tray confirmed after refresh.');
     expect(container.textContent).not.toContain('A later pat should stay hidden while feed filter is active.');
   });
@@ -270,6 +280,10 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Companion Action');
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('pat');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('pat');
+    expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Pat note');
+    expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
+      'Optional note for the next pat.',
+    );
     expect(container.querySelector('.interaction-kind-pat')?.textContent).toBe('Pat');
   });
 
