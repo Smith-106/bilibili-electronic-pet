@@ -198,6 +198,45 @@ body {
   line-height: 1.5;
 }
 
+.composer-guide {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: rgba(18, 51, 73, 0.05);
+}
+
+.composer-guide-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.composer-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer-shortcut {
+  border: 1px solid rgba(18, 51, 73, 0.12);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.composer-shortcut:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 1);
+}
+
 .companion-actions {
   display: flex;
   gap: 10px;

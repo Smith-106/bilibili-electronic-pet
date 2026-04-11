@@ -17,6 +17,7 @@ const FALLBACK_INTERACTIONS = [
   },
 ];
 const INTERACTION_FILTER_ORDER = ['all', 'pat', 'feed', 'wake', 'signal', 'fallback'];
+const ACTION_INTERACTION_KINDS = ['pat', 'feed', 'wake'];
 
 function normalizeInteractionKind(value) {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -72,6 +73,10 @@ function normalizeInteractionFilter(value) {
   return INTERACTION_FILTER_ORDER.includes(normalized) ? normalized : 'all';
 }
 
+function isActionFilter(filter) {
+  return ACTION_INTERACTION_KINDS.includes(normalizeInteractionFilter(filter));
+}
+
 function getComposerCopy(filter) {
   const normalizedFilter = normalizeInteractionFilter(filter);
   if (normalizedFilter === 'pat') {
@@ -99,6 +104,32 @@ function getComposerCopy(filter) {
     label: 'Interaction note',
     placeholder: 'Optional note for the next pat, feed, or wake.',
     hint: 'Optional context travels into the companion timeline.',
+  };
+}
+
+function getComposerGuide(filter) {
+  const normalizedFilter = normalizeInteractionFilter(filter);
+  if (isActionFilter(normalizedFilter)) {
+    return null;
+  }
+
+  if (normalizedFilter === 'signal') {
+    return {
+      message: 'Signal entries are read-only snapshots. Pick Pat, Feed, or Wake to focus the composer on a writable action.',
+      shortcuts: ACTION_INTERACTION_KINDS,
+    };
+  }
+
+  if (normalizedFilter === 'fallback') {
+    return {
+      message: 'Fallback entries describe degraded state only. Switch to Pat, Feed, or Wake before drafting the next note.',
+      shortcuts: ACTION_INTERACTION_KINDS,
+    };
+  }
+
+  return {
+    message: 'Notes publish through Pat, Feed, or Wake actions. Pick one to focus the composer before writing.',
+    shortcuts: ACTION_INTERACTION_KINDS,
   };
 }
 
@@ -423,6 +454,7 @@ function createShellMarkup() {
               placeholder="Optional note for the next pat, feed, or wake."
             ></textarea>
             <p class="note-hint" data-role="action-note-hint">Optional context travels into the companion timeline.</p>
+            <div class="composer-guide" data-role="composer-guide" hidden></div>
           </div>
           <div class="companion-actions" data-role="action-buttons">
             <button class="action-button" type="button" data-action="pat">Pat</button>
@@ -453,6 +485,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
+  const composerGuide = target.querySelector('[data-role="composer-guide"]');
   const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
   let selectedTimelineFilter = 'all';
   let latestState = null;
@@ -468,6 +501,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   function syncComposerContext() {
     const composerCopy = getComposerCopy(selectedTimelineFilter);
+    const composerGuideState = getComposerGuide(selectedTimelineFilter);
     if (actionNoteLabel) {
       actionNoteLabel.textContent = composerCopy.label;
     }
@@ -477,6 +511,40 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
     if (actionNoteHint) {
       actionNoteHint.textContent = composerCopy.hint;
+    }
+    if (composerGuide) {
+      if (!composerGuideState) {
+        composerGuide.innerHTML = '';
+        composerGuide.hidden = true;
+      } else {
+        composerGuide.hidden = false;
+        composerGuide.innerHTML = `
+          <p class="composer-guide-copy">${escapeHtml(composerGuideState.message)}</p>
+          <div class="composer-shortcuts">
+            ${composerGuideState.shortcuts
+              .map(
+                (kind) => `
+                  <button
+                    class="composer-shortcut"
+                    type="button"
+                    data-role="composer-shortcut"
+                    data-shortcut-kind="${escapeHtml(kind)}"
+                  >${escapeHtml(getInteractionKindLabel(kind))}</button>
+                `,
+              )
+              .join('')}
+          </div>
+        `;
+
+        const shortcutButtons = [...composerGuide.querySelectorAll('[data-role="composer-shortcut"]')];
+        shortcutButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            selectedTimelineFilter = normalizeInteractionFilter(button.getAttribute('data-shortcut-kind'));
+            renderCurrentState();
+            actionNote?.focus();
+          });
+        });
+      }
     }
   }
 

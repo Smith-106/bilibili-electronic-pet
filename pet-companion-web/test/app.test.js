@@ -69,6 +69,9 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
       'Optional note for the next pat, feed, or wake.',
     );
+    expect(container.querySelector('[data-role="composer-guide"]')?.textContent).toContain(
+      'Notes publish through Pat, Feed, or Wake actions.',
+    );
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
   });
@@ -179,6 +182,7 @@ describe('pet companion surface', () => {
       'Optional note for the next feed.',
     );
     expect(container.querySelector('[data-role="action-note-hint"]')?.textContent).toContain('feed entry');
+    expect(container.querySelector('[data-role="composer-guide"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.textContent).toContain('A snack tray landed right on time.');
     expect(container.textContent).not.toContain('A calm pat kept Mochi focused on the browser ledge.');
 
@@ -191,6 +195,21 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Feed note');
     expect(container.textContent).toContain('Refilled snack tray confirmed after refresh.');
     expect(container.textContent).not.toContain('A later pat should stay hidden while feed filter is active.');
+
+    const signalFilter = container.querySelector('[data-filter-kind="signal"]');
+    signalFilter.click();
+
+    expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('signal');
+    expect(container.querySelector('[data-role="composer-guide"]')?.textContent).toContain(
+      'Signal entries are read-only snapshots.',
+    );
+
+    const wakeShortcut = container.querySelector('[data-shortcut-kind="wake"]');
+    wakeShortcut.click();
+
+    expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('wake');
+    expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('wake');
+    expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Wake note');
   });
 
   it('shows a degraded panel when the local adapter fails', async () => {
