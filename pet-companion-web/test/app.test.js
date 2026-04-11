@@ -109,6 +109,78 @@ describe('pet companion surface', () => {
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
   });
 
+  it('filters timeline interactions and preserves the selected filter after refresh', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi
+        .fn()
+        .mockResolvedValueOnce(
+          createState({
+            recentInteractions: [
+              {
+                kind: 'pat',
+                title: 'Pat interaction',
+                detail: 'A calm pat kept Mochi focused on the browser ledge.',
+                timestamp: '2026-04-10T03:28:00.000Z',
+                source: 'Local Stub',
+              },
+              {
+                kind: 'feed',
+                title: 'Feed interaction',
+                detail: 'A snack tray landed right on time.',
+                timestamp: '2026-04-10T03:26:00.000Z',
+                source: 'Companion Action',
+              },
+              {
+                kind: 'signal',
+                title: 'Queue signal',
+                detail: 'A quiet system heartbeat passed through the loop.',
+                timestamp: '2026-04-10T03:25:00.000Z',
+                source: 'Backend Memory',
+              },
+            ],
+          }),
+        )
+        .mockResolvedValueOnce(
+          createState({
+            recentInteractions: [
+              {
+                kind: 'feed',
+                title: 'Feed interaction',
+                detail: 'Refilled snack tray confirmed after refresh.',
+                timestamp: '2026-04-10T03:29:00.000Z',
+                source: 'Companion Action',
+              },
+              {
+                kind: 'pat',
+                title: 'Pat interaction',
+                detail: 'A later pat should stay hidden while feed filter is active.',
+                timestamp: '2026-04-10T03:27:00.000Z',
+                source: 'Companion Action',
+              },
+            ],
+          }),
+        ),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    const feedFilter = container.querySelector('[data-filter-kind="feed"]');
+    feedFilter.click();
+
+    expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
+    expect(container.textContent).toContain('A snack tray landed right on time.');
+    expect(container.textContent).not.toContain('A calm pat kept Mochi focused on the browser ledge.');
+
+    container.querySelector('[data-action="refresh"]').click();
+    await flushPromises();
+
+    expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
+    expect(container.textContent).toContain('Refilled snack tray confirmed after refresh.');
+    expect(container.textContent).not.toContain('A later pat should stay hidden while feed filter is active.');
+  });
+
   it('shows a degraded panel when the local adapter fails', async () => {
     const container = createPageContainer();
     const adapter = {

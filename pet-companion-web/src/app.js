@@ -16,6 +16,7 @@ const FALLBACK_INTERACTIONS = [
     source: 'Local stub',
   },
 ];
+const INTERACTION_FILTER_ORDER = ['all', 'pat', 'feed', 'wake', 'signal', 'fallback'];
 
 function normalizeInteractionKind(value) {
   const normalized = String(value ?? '').trim().toLowerCase();
@@ -48,6 +49,9 @@ function inferInteractionKind(entry) {
 }
 
 function getInteractionKindLabel(kind) {
+  if (kind === 'all') {
+    return 'All';
+  }
   if (kind === 'pat') {
     return 'Pat';
   }
@@ -61,6 +65,11 @@ function getInteractionKindLabel(kind) {
     return 'Fallback';
   }
   return 'Signal';
+}
+
+function normalizeInteractionFilter(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return INTERACTION_FILTER_ORDER.includes(normalized) ? normalized : 'all';
 }
 
 function escapeHtml(value) {
@@ -203,8 +212,58 @@ function renderSignals(signals) {
     .join('');
 }
 
-function renderInteractions(interactions) {
-  return interactions
+function buildInteractionFilterOptions(interactions) {
+  const counts = interactions.reduce(
+    (accumulator, interaction) => {
+      accumulator.all += 1;
+      accumulator[interaction.kind] = (accumulator[interaction.kind] || 0) + 1;
+      return accumulator;
+    },
+    { all: 0, pat: 0, feed: 0, wake: 0, signal: 0, fallback: 0 },
+  );
+
+  return INTERACTION_FILTER_ORDER.map((kind) => ({
+    kind,
+    label: getInteractionKindLabel(kind),
+    count: counts[kind] || 0,
+  }));
+}
+
+function renderInteractionFilters(interactions, selectedFilter) {
+  return buildInteractionFilterOptions(interactions)
+    .map(
+      (option) => `
+        <button
+          class="timeline-filter${option.kind === selectedFilter ? ' is-active' : ''}"
+          type="button"
+          data-role="timeline-filter"
+          data-filter-kind="${escapeHtml(option.kind)}"
+          aria-pressed="${option.kind === selectedFilter ? 'true' : 'false'}"
+        >
+          <span>${escapeHtml(option.label)}</span>
+          <span class="timeline-filter-count">${escapeHtml(option.count)}</span>
+        </button>
+      `,
+    )
+    .join('');
+}
+
+function renderInteractions(interactions, selectedFilter) {
+  const normalizedFilter = normalizeInteractionFilter(selectedFilter);
+  const filteredInteractions =
+    normalizedFilter === 'all'
+      ? interactions
+      : interactions.filter((interaction) => interaction.kind === normalizedFilter);
+
+  if (filteredInteractions.length === 0) {
+    return `
+      <div class="timeline-empty" data-role="timeline-empty">
+        No ${escapeHtml(getInteractionKindLabel(normalizedFilter).toLowerCase())} interactions yet.
+      </div>
+    `;
+  }
+
+  return filteredInteractions
     .map((interaction) => {
       const time = formatInteractionTimestamp(interaction.timestamp);
       const kindLabel = getInteractionKindLabel(interaction.kind);
@@ -232,8 +291,9 @@ function renderInteractions(interactions) {
     .join('');
 }
 
-function createStateMarkup(rawState) {
+function createStateMarkup(rawState, selectedFilter = 'all') {
   const state = normalizeState(rawState);
+  const normalizedFilter = normalizeInteractionFilter(selectedFilter);
 
   return `
     <div class="panel-grid">
@@ -277,8 +337,11 @@ function createStateMarkup(rawState) {
       <section class="panel panel-history" aria-labelledby="timeline-heading">
         <p class="section-label">Recent interactions</p>
         <h2 id="timeline-heading">Companion timeline</h2>
+        <div class="timeline-filter-bar" data-role="timeline-filter-bar">
+          ${renderInteractionFilters(state.recentInteractions, normalizedFilter)}
+        </div>
         <div class="interaction-list">
-          ${renderInteractions(state.recentInteractions)}
+          ${renderInteractions(state.recentInteractions, normalizedFilter)}
         </div>
       </section>
 
@@ -359,6 +422,8 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
+  let selectedTimelineFilter = 'all';
+  let latestState = null;
 
   function setControlsDisabled(disabled) {
     refreshButton.disabled = disabled;
@@ -370,6 +435,25 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
   }
 
+  function renderCurrentState() {
+    if (!latestState) {
+      return;
+    }
+
+    content.innerHTML = createStateMarkup(latestState, selectedTimelineFilter);
+    const filterButtons = [...content.querySelectorAll('[data-role="timeline-filter"]')];
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const nextFilter = normalizeInteractionFilter(button.getAttribute('data-filter-kind'));
+        if (nextFilter === selectedTimelineFilter) {
+          return;
+        }
+        selectedTimelineFilter = nextFilter;
+        renderCurrentState();
+      });
+    });
+  }
+
   async function loadState() {
     setControlsDisabled(true);
     refreshButton.textContent = 'Refreshing...';
@@ -378,9 +462,11 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     try {
       const state = await adapter.getCompanionState();
       const normalized = normalizeState(state);
-      content.innerHTML = createStateMarkup(normalized);
+      latestState = normalized;
+      renderCurrentState();
       adapterStatus.textContent = `Adapter: ${normalized.adapterLabel}`;
     } catch (error) {
+      latestState = null;
       content.innerHTML = createErrorMarkup(error);
       adapterStatus.textContent = 'Adapter: degraded';
     } finally {

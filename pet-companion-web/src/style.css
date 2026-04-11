@@ -405,6 +405,60 @@ body {
   gap: 14px;
 }
 
+.timeline-filter-bar {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.timeline-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(18, 51, 73, 0.12);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.84);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.timeline-filter:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.timeline-filter.is-active {
+  border-color: rgba(23, 143, 132, 0.42);
+  background: rgba(23, 143, 132, 0.12);
+  color: #0c6e65;
+}
+
+.timeline-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(18, 51, 73, 0.08);
+  font-size: 0.76rem;
+}
+
+.timeline-empty {
+  padding: 18px;
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(18, 51, 73, 0.16);
+  background: rgba(255, 255, 255, 0.64);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .interaction-card {
   padding: 18px;
   border-radius: var(--radius-md);
