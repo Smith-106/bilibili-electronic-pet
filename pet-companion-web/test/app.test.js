@@ -169,6 +169,7 @@ describe('pet companion surface', () => {
     feedFilter.click();
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
+    expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('feed');
     expect(container.textContent).toContain('A snack tray landed right on time.');
     expect(container.textContent).not.toContain('A calm pat kept Mochi focused on the browser ledge.');
 
@@ -177,6 +178,7 @@ describe('pet companion surface', () => {
 
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
+    expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('feed');
     expect(container.textContent).toContain('Refilled snack tray confirmed after refresh.');
     expect(container.textContent).not.toContain('A later pat should stay hidden while feed filter is active.');
   });
@@ -266,6 +268,8 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Calm');
     expect(container.textContent).toContain('Pat action recorded.');
     expect(container.textContent).toContain('Companion Action');
+    expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('pat');
+    expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('pat');
     expect(container.querySelector('.interaction-kind-pat')?.textContent).toBe('Pat');
   });
 

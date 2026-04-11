@@ -425,6 +425,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   let selectedTimelineFilter = 'all';
   let latestState = null;
 
+  function syncLinkedActionButtons() {
+    actionButtons.forEach((button) => {
+      const action = button.getAttribute('data-action');
+      const linked = action === selectedTimelineFilter;
+      button.classList.toggle('is-linked', linked);
+      button.setAttribute('data-filter-linked', linked ? 'true' : 'false');
+    });
+  }
+
   function setControlsDisabled(disabled) {
     refreshButton.disabled = disabled;
     actionButtons.forEach((button) => {
@@ -437,10 +446,12 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   function renderCurrentState() {
     if (!latestState) {
+      syncLinkedActionButtons();
       return;
     }
 
     content.innerHTML = createStateMarkup(latestState, selectedTimelineFilter);
+    syncLinkedActionButtons();
     const filterButtons = [...content.querySelectorAll('[data-role="timeline-filter"]')];
     filterButtons.forEach((button) => {
       button.addEventListener('click', () => {
@@ -489,6 +500,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
       try {
         await adapter.performAction(action, note || undefined);
+        selectedTimelineFilter = normalizeInteractionFilter(action);
         if (actionNote) {
           actionNote.value = '';
         }
@@ -505,6 +517,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     void loadState();
   });
 
+  syncLinkedActionButtons();
   await loadState();
 
   return {
