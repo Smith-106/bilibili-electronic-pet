@@ -229,7 +229,10 @@ export type BilibiliVideo = {
   updated_at?: string | null;
 };
 
+export type CompanionInteractionKind = 'pat' | 'feed' | 'wake' | 'signal' | 'fallback';
+
 export type CompanionInteraction = {
+  kind: CompanionInteractionKind;
   title: string;
   detail: string;
   timestamp: string;

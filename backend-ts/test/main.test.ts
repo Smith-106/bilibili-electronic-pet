@@ -137,6 +137,7 @@ describe('health/readiness parity', () => {
           recentSignals: ['Recent spaces: Alpha Operator'],
           recentInteractions: [
             {
+              kind: 'pat',
               title: 'Pat interaction',
               detail: 'A gentle pat settled Mochi and raised the bond signal.',
               timestamp: '2026-04-11T00:00:00.000Z',
@@ -170,6 +171,7 @@ describe('health/readiness parity', () => {
       recentSignals: ['Recent spaces: Alpha Operator'],
       recentInteractions: [
         {
+          kind: 'pat',
           title: 'Pat interaction',
           detail: 'A gentle pat settled Mochi and raised the bond signal.',
           timestamp: '2026-04-11T00:00:00.000Z',

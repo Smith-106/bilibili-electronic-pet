@@ -9,12 +9,59 @@ const FALLBACK_VITALS = [
 const FALLBACK_SIGNALS = ['Local companion loop has not reported any recent signals yet.'];
 const FALLBACK_INTERACTIONS = [
   {
+    kind: 'signal',
     title: 'Companion signal pending',
     detail: 'No structured interaction timeline is available yet.',
     timestamp: 'Pending',
     source: 'Local stub',
   },
 ];
+
+function normalizeInteractionKind(value) {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'pat' || normalized === 'feed' || normalized === 'wake' || normalized === 'signal') {
+    return normalized;
+  }
+  if (normalized === 'fallback') {
+    return 'fallback';
+  }
+  return 'signal';
+}
+
+function inferInteractionKind(entry) {
+  const source = String(entry?.source ?? '').trim().toLowerCase();
+  const title = String(entry?.title ?? '').trim().toLowerCase();
+
+  if (source.includes('fallback') || title.includes('fallback')) {
+    return 'fallback';
+  }
+  if (title.includes('pat')) {
+    return 'pat';
+  }
+  if (title.includes('feed')) {
+    return 'feed';
+  }
+  if (title.includes('wake')) {
+    return 'wake';
+  }
+  return 'signal';
+}
+
+function getInteractionKindLabel(kind) {
+  if (kind === 'pat') {
+    return 'Pat';
+  }
+  if (kind === 'feed') {
+    return 'Feed';
+  }
+  if (kind === 'wake') {
+    return 'Wake';
+  }
+  if (kind === 'fallback') {
+    return 'Fallback';
+  }
+  return 'Signal';
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -107,6 +154,7 @@ function normalizeState(state) {
   const recentInteractions =
     Array.isArray(safeState.recentInteractions) && safeState.recentInteractions.length
       ? safeState.recentInteractions.map((entry) => ({
+          kind: normalizeInteractionKind(entry?.kind || inferInteractionKind(entry)),
           title: entry?.title || 'Companion signal',
           detail: entry?.detail || 'No detail published yet.',
           timestamp: entry?.timestamp || 'Pending',
@@ -159,15 +207,19 @@ function renderInteractions(interactions) {
   return interactions
     .map((interaction) => {
       const time = formatInteractionTimestamp(interaction.timestamp);
+      const kindLabel = getInteractionKindLabel(interaction.kind);
 
       return `
-        <article class="interaction-card">
+        <article class="interaction-card interaction-card-${escapeHtml(interaction.kind)}">
           <div class="interaction-head">
             <div>
               <h3 class="interaction-title">${escapeHtml(interaction.title)}</h3>
               <p class="interaction-detail">${escapeHtml(interaction.detail)}</p>
             </div>
-            <span class="interaction-source">${escapeHtml(interaction.source)}</span>
+            <div class="interaction-meta">
+              <span class="interaction-kind interaction-kind-${escapeHtml(interaction.kind)}">${escapeHtml(kindLabel)}</span>
+              <span class="interaction-source">${escapeHtml(interaction.source)}</span>
+            </div>
           </div>
           <time
             class="interaction-time"

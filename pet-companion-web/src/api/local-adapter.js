@@ -25,12 +25,14 @@ const DEFAULT_STATE = Object.freeze({
   ],
   recentInteractions: [
     {
+      kind: 'pat',
       title: 'Pat interaction',
       detail: 'A calm pat kept Mochi settled on the browser ledge.',
       timestamp: '2026-04-10T03:28:00.000Z',
       source: 'Local Stub',
     },
     {
+      kind: 'signal',
       title: 'Status pulse',
       detail: 'The local adapter emitted a lightweight keep-alive signal.',
       timestamp: '2026-04-10T03:30:00.000Z',

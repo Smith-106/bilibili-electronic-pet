@@ -26,6 +26,7 @@ function createState(overrides = {}) {
     recentSignals: ['Last pat 2 minutes ago.'],
     recentInteractions: [
       {
+        kind: 'pat',
         title: 'Pat interaction',
         detail: 'A calm pat kept Mochi focused on the browser ledge.',
         timestamp: '2026-04-10T03:28:00.000Z',
@@ -62,6 +63,8 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Pat interaction');
     expect(container.querySelector('.interaction-time')?.textContent).toBe('2 mins ago');
     expect(container.querySelector('.interaction-time')?.getAttribute('title')).toBe('2026-04-10 03:28 UTC');
+    expect(container.querySelector('.interaction-card-pat')).not.toBeNull();
+    expect(container.querySelector('.interaction-kind-pat')?.textContent).toBe('Pat');
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
   });
@@ -82,6 +85,7 @@ describe('pet companion surface', () => {
             recentSignals: ['A fresh status ping just landed.'],
             recentInteractions: [
               {
+                kind: 'wake',
                 title: 'Wake interaction',
                 detail: 'A quick wake prompt reopened the next interaction window.',
                 timestamp: '2026-04-10T03:31:00.000Z',
@@ -101,6 +105,7 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('A fresh status ping just landed.');
     expect(container.textContent).toContain('Wake interaction');
     expect(container.querySelector('.interaction-time')?.textContent).toBe('in 1 min');
+    expect(container.querySelector('.interaction-kind-wake')?.textContent).toBe('Wake');
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
   });
 
@@ -164,6 +169,7 @@ describe('pet companion surface', () => {
             recentSignals: ['Pat action recorded.'],
             recentInteractions: [
               {
+                kind: 'pat',
                 title: 'Pat interaction',
                 detail: 'A gentle pat settled Mochi and raised the bond signal.',
                 timestamp: '2026-04-10T03:32:00.000Z',
@@ -188,6 +194,7 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Calm');
     expect(container.textContent).toContain('Pat action recorded.');
     expect(container.textContent).toContain('Companion Action');
+    expect(container.querySelector('.interaction-kind-pat')?.textContent).toBe('Pat');
   });
 
   it('keeps the note draft when an action request fails', async () => {

@@ -24,6 +24,7 @@ import type {
   BilibiliVideo,
   CommentEvent,
   CompanionInteraction,
+  CompanionInteractionKind,
   CompanionState,
   ConnectionStatus,
   GatewayPublishPayload,
@@ -202,6 +203,17 @@ function startCase(value: string): string {
     .join(' ');
 }
 
+function normalizeCompanionInteractionKind(value: unknown): CompanionInteractionKind {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'pat' || normalized === 'feed' || normalized === 'wake') {
+    return normalized;
+  }
+  if (normalized === 'fallback') {
+    return 'fallback';
+  }
+  return 'signal';
+}
+
 function buildCompanionInteraction(item: {
   item_key: string;
   content: string;
@@ -212,11 +224,13 @@ function buildCompanionInteraction(item: {
 }): CompanionInteraction {
   const metadata = item.item_metadata ?? {};
   const action = typeof metadata.action === 'string' ? metadata.action.trim().toLowerCase() : '';
+  const kind = normalizeCompanionInteractionKind(action);
   const sourceLabel = startCase(item.source || 'system');
   const title = action ? `${startCase(action)} interaction` : `${sourceLabel} signal`;
   const timestamp = item.updated_at ?? item.created_at;
 
   return {
+    kind,
     title,
     detail: item.content,
     timestamp: timestamp ? normalizeIsoTimestamp(timestamp) : 'Pending',
@@ -2342,6 +2356,7 @@ function buildFallbackCompanionState(reason?: string): CompanionState {
     recentSignals: ['Companion state is using the backend fallback profile.'],
     recentInteractions: [
       {
+        kind: 'fallback',
         title: 'Fallback mode',
         detail: reason
           ? `Companion endpoint degraded gracefully: ${reason}.`
@@ -2385,11 +2400,12 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       return `${interaction.title}: ${interaction.detail.slice(0, 48)}`;
     });
     const hasMemory = spaces.length > 0 || items.length > 0 || grants.length > 0 || links.length > 0;
-    const recentInteractions =
+    const recentInteractions: CompanionInteraction[] =
       recentCompanionItems.length > 0
         ? recentCompanionItems.map((item) => buildCompanionInteraction(item))
         : [
             {
+              kind: 'signal',
               title: hasMemory
                 ? 'Companion feed pending'
                 : 'No companion interactions yet',
