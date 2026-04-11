@@ -583,7 +583,17 @@ function createShellMarkup() {
             aria-live="polite"
             hidden
           >
-            <p class="shortcut-help-title" data-role="shortcut-help-title" tabindex="-1">Keyboard shortcuts</p>
+            <div class="shortcut-help-header">
+              <p class="shortcut-help-title" data-role="shortcut-help-title" tabindex="0">Keyboard shortcuts</p>
+              <button
+                class="shortcut-help-close"
+                type="button"
+                data-role="shortcut-help-close"
+                aria-label="Close shortcut help"
+              >
+                Close
+              </button>
+            </div>
             ${renderShortcutHelpItems()}
           </section>
           <div class="sr-only" data-role="live-region" aria-live="polite" aria-atomic="true"></div>
@@ -640,6 +650,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const shortcutHelpToggle = target.querySelector('[data-role="shortcut-help-toggle"]');
   const shortcutHelp = target.querySelector('[data-role="shortcut-help"]');
   const shortcutHelpTitle = target.querySelector('[data-role="shortcut-help-title"]');
+  const shortcutHelpClose = target.querySelector('[data-role="shortcut-help-close"]');
   const liveRegion = target.querySelector('[data-role="live-region"]');
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
@@ -696,6 +707,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     if (shortcutHelp) {
       shortcutHelp.hidden = !showShortcutHelp;
     }
+  }
+
+  function focusShortcutHelpBoundary(reverse = false) {
+    const focusables = [shortcutHelpTitle, shortcutHelpClose].filter(Boolean);
+    if (!focusables.length) {
+      return;
+    }
+    const targetNode = reverse ? focusables[focusables.length - 1] : focusables[0];
+    targetNode?.focus();
   }
 
   function setShortcutHelpVisible(nextVisible, announcement, { moveFocus = false } = {}) {
@@ -941,6 +961,10 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     });
   });
 
+  shortcutHelpClose?.addEventListener('click', () => {
+    setShortcutHelpVisible(false, 'Shortcut help closed.', { moveFocus: true });
+  });
+
   target.ownerDocument.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && pendingTemplateValue) {
       event.preventDefault();
@@ -953,6 +977,29 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     if (event.key === 'Escape' && showShortcutHelp) {
       event.preventDefault();
       setShortcutHelpVisible(false, 'Shortcut help closed.', { moveFocus: true });
+      return;
+    }
+
+    if (event.key === 'Tab' && showShortcutHelp) {
+      const focusables = [shortcutHelpTitle, shortcutHelpClose].filter(Boolean);
+      if (!focusables.length) {
+        return;
+      }
+
+      const activeElement = target.ownerDocument.activeElement;
+      const currentIndex = focusables.indexOf(activeElement);
+
+      if (currentIndex === -1) {
+        event.preventDefault();
+        focusShortcutHelpBoundary(event.shiftKey);
+        return;
+      }
+
+      const nextIndex = event.shiftKey
+        ? (currentIndex - 1 + focusables.length) % focusables.length
+        : (currentIndex + 1) % focusables.length;
+      event.preventDefault();
+      focusables[nextIndex]?.focus();
       return;
     }
 
