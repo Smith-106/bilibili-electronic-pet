@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { Redis } from 'ioredis';
 import { createMemoryService } from './app/memory/index.js';
-import { upsertCompanionFeedItem } from './app/memory/companion-feed.js';
+import { COMPANION_SYSTEM_SPACE_KEY, upsertCompanionFeedItem } from './app/memory/companion-feed.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 import { registerAdminCoreRoutes } from './routes/admin-core.js';
 import { registerAdminManagementRoutes } from './routes/admin-management.js';
@@ -23,6 +23,7 @@ import type {
   BilibiliDiagnostics,
   BilibiliVideo,
   CommentEvent,
+  CompanionInteraction,
   CompanionState,
   ConnectionStatus,
   GatewayPublishPayload,
@@ -191,6 +192,36 @@ function normalizeNullableIsoTimestamp(value: Date | string | null | undefined):
     return null;
   }
   return normalizeIsoTimestamp(value);
+}
+
+function startCase(value: string): string {
+  return value
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function buildCompanionInteraction(item: {
+  item_key: string;
+  content: string;
+  source: string;
+  item_metadata?: Record<string, unknown>;
+  created_at?: Date | string | null;
+  updated_at?: Date | string | null;
+}): CompanionInteraction {
+  const metadata = item.item_metadata ?? {};
+  const action = typeof metadata.action === 'string' ? metadata.action.trim().toLowerCase() : '';
+  const sourceLabel = startCase(item.source || 'system');
+  const title = action ? `${startCase(action)} interaction` : `${sourceLabel} signal`;
+  const timestamp = item.updated_at ?? item.created_at;
+
+  return {
+    title,
+    detail: item.content,
+    timestamp: timestamp ? normalizeIsoTimestamp(timestamp) : 'Pending',
+    source: sourceLabel,
+  };
 }
 
 const REVIEWABLE_JOB_STATUSES = ['manual_queue', 'blocked', 'dedupe_skipped'] as const;
@@ -2309,6 +2340,16 @@ function buildFallbackCompanionState(reason?: string): CompanionState {
       { label: 'Mode', value: 'Fallback' },
     ],
     recentSignals: ['Companion state is using the backend fallback profile.'],
+    recentInteractions: [
+      {
+        title: 'Fallback mode',
+        detail: reason
+          ? `Companion endpoint degraded gracefully: ${reason}.`
+          : 'Companion state is using the backend fallback profile.',
+        timestamp: 'Pending',
+        source: 'Fallback',
+      },
+    ],
   };
 }
 
@@ -2328,6 +2369,9 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       .filter((value): value is Date => value instanceof Date)
       .sort((a, b) => b.getTime() - a.getTime())[0];
 
+    const companionSpace = spaces.find((space) => space.space_key === COMPANION_SYSTEM_SPACE_KEY);
+    const companionItems = companionSpace ? items.filter((item) => item.space_id === companionSpace.id) : [];
+    const timelineSourceItems = companionItems.filter((item) => item.item_metadata?.entry_mode !== 'latest');
     const recentSpaceTitles = spaces.slice(0, 3).map((space) => space.title).filter(Boolean);
     const recentSubjects = links
       .slice(0, 3)
@@ -2335,8 +2379,27 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       .filter(Boolean);
     const recentItems = items.slice(0, 3);
     const recentItemSummaries = recentItems.map((item) => `${item.item_key}: ${item.content.slice(0, 48)}`);
-
+    const recentCompanionItems = (timelineSourceItems.length > 0 ? timelineSourceItems : companionItems).slice(0, 4);
+    const recentCompanionSummaries = recentCompanionItems.map((item) => {
+      const interaction = buildCompanionInteraction(item);
+      return `${interaction.title}: ${interaction.detail.slice(0, 48)}`;
+    });
     const hasMemory = spaces.length > 0 || items.length > 0 || grants.length > 0 || links.length > 0;
+    const recentInteractions =
+      recentCompanionItems.length > 0
+        ? recentCompanionItems.map((item) => buildCompanionInteraction(item))
+        : [
+            {
+              title: hasMemory
+                ? 'Companion feed pending'
+                : 'No companion interactions yet',
+              detail: hasMemory
+                ? 'Persisted memory exists, but no companion-specific feed items have been written yet.'
+                : 'Trigger a companion action or write a feed signal to populate this timeline.',
+              timestamp: latestTimestamp ? normalizeIsoTimestamp(latestTimestamp) : 'Pending',
+              source: 'Memory',
+            },
+          ];
 
     return {
       petName: 'Mochi',
@@ -2357,7 +2420,9 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       },
       memoryTitle: hasMemory ? 'Persisted memory summary' : 'Memory bootstrap',
       memorySummary:
-        items.length > 0
+        recentCompanionSummaries.length > 0
+          ? recentCompanionSummaries.join(' | ')
+          : items.length > 0
           ? recentItemSummaries.join(' | ')
           : hasMemory
             ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
@@ -2367,14 +2432,19 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         { label: 'Items', value: String(items.length) },
         { label: 'Grants', value: String(grants.length) },
         { label: 'Links', value: String(links.length) },
+        { label: 'Feed', value: companionItems.length > 0 ? `${companionItems.length} signals` : 'Quiet' },
         { label: 'Focus', value: items.length > 0 ? 'Active memory' : hasMemory ? 'Persisted' : 'Bootstrap' },
       ],
       recentSignals: [
         hasMemory ? 'Latest signal timestamps are sourced from persisted memory updates.' : 'No memory signals available yet.',
+        recentCompanionSummaries.length > 0
+          ? `Recent companion feed: ${recentCompanionSummaries.join(' | ')}`
+          : 'No companion feed items yet.',
         recentItemSummaries.length > 0 ? `Recent items: ${recentItemSummaries.join(' | ')}` : 'No recent items.',
         recentSpaceTitles.length > 0 ? `Recent spaces: ${recentSpaceTitles.join(', ')}` : 'No recent spaces.',
         recentSubjects.length > 0 ? `Recent links: ${recentSubjects.join(', ')}` : 'No recent identity links.',
       ],
+      recentInteractions,
     };
   } catch (error) {
     return buildFallbackCompanionState(error instanceof Error ? error.message : 'unknown_backend_error');
@@ -2391,25 +2461,51 @@ async function defaultRecordCompanionAction(input: {
     wake: 'A bright nudge woke Mochi up for the next interaction window.',
   };
 
-  const itemKey = `action:${input.action}-latest`;
+  const actionAt = new Date();
+  const latestItemKey = `action:${input.action}-latest`;
+  const historyItemKey = `action:${input.action}:${actionAt.toISOString()}`;
   const content = input.note
     ? `${actionMessages[input.action]} Note: ${input.note}`
     : actionMessages[input.action];
+  const metadata = {
+    action: input.action,
+    note: input.note ?? null,
+    action_at: actionAt.toISOString(),
+  };
+  const service = createMemoryService();
 
-  await upsertCompanionFeedItem({
-    itemKey,
-    content,
-    source: 'companion_action',
-    metadata: {
-      action: input.action,
-      note: input.note ?? null,
-    },
-  });
+  await Promise.all([
+    upsertCompanionFeedItem(
+      {
+        itemKey: latestItemKey,
+        content,
+        source: 'companion_action',
+        metadata: {
+          ...metadata,
+          entry_mode: 'latest',
+        },
+      },
+      service,
+    ),
+    upsertCompanionFeedItem(
+      {
+        itemKey: historyItemKey,
+        content,
+        contentType: 'companion_event',
+        source: 'companion_action',
+        metadata: {
+          ...metadata,
+          entry_mode: 'history',
+        },
+      },
+      service,
+    ),
+  ]);
 
   return {
     ok: true,
     action: input.action,
-    item_key: itemKey,
+    item_key: latestItemKey,
   };
 }
 

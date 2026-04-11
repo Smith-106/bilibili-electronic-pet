@@ -23,6 +23,20 @@ const DEFAULT_STATE = Object.freeze({
     'Quiet window open for another 18 minutes.',
     'Next nudge stays local until the real API is wired in.',
   ],
+  recentInteractions: [
+    {
+      title: 'Pat interaction',
+      detail: 'A calm pat kept Mochi settled on the browser ledge.',
+      timestamp: '2026-04-10T03:28:00.000Z',
+      source: 'Local Stub',
+    },
+    {
+      title: 'Status pulse',
+      detail: 'The local adapter emitted a lightweight keep-alive signal.',
+      timestamp: '2026-04-10T03:30:00.000Z',
+      source: 'Local Stub',
+    },
+  ],
 });
 
 function cloneState(state) {

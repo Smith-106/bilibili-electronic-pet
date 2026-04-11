@@ -229,6 +229,13 @@ export type BilibiliVideo = {
   updated_at?: string | null;
 };
 
+export type CompanionInteraction = {
+  title: string;
+  detail: string;
+  timestamp: string;
+  source: string;
+};
+
 export type CompanionState = {
   petName: string;
   statusLine: string;
@@ -244,4 +251,5 @@ export type CompanionState = {
   memorySummary: string;
   vitals: Array<{ label: string; value: string }>;
   recentSignals: string[];
+  recentInteractions: CompanionInteraction[];
 };

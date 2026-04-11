@@ -7,6 +7,14 @@ const FALLBACK_VITALS = [
 ];
 
 const FALLBACK_SIGNALS = ['Local companion loop has not reported any recent signals yet.'];
+const FALLBACK_INTERACTIONS = [
+  {
+    title: 'Companion signal pending',
+    detail: 'No structured interaction timeline is available yet.',
+    timestamp: 'Pending',
+    source: 'Local stub',
+  },
+];
 
 function escapeHtml(value) {
   return String(value)
@@ -25,6 +33,15 @@ function normalizeState(state) {
     Array.isArray(safeState.recentSignals) && safeState.recentSignals.length
       ? safeState.recentSignals
       : FALLBACK_SIGNALS;
+  const recentInteractions =
+    Array.isArray(safeState.recentInteractions) && safeState.recentInteractions.length
+      ? safeState.recentInteractions.map((entry) => ({
+          title: entry?.title || 'Companion signal',
+          detail: entry?.detail || 'No detail published yet.',
+          timestamp: entry?.timestamp || 'Pending',
+          source: entry?.source || 'Memory',
+        }))
+      : FALLBACK_INTERACTIONS;
 
   return {
     petName: safeState.petName || 'Companion',
@@ -44,6 +61,7 @@ function normalizeState(state) {
       'No memory summary is available yet. The prototype stays useful even before backend contracts exist.',
     vitals,
     recentSignals,
+    recentInteractions,
   };
 }
 
@@ -63,6 +81,25 @@ function renderMetrics(vitals) {
 function renderSignals(signals) {
   return signals
     .map((signal) => `<li class="signal-item">${escapeHtml(signal)}</li>`)
+    .join('');
+}
+
+function renderInteractions(interactions) {
+  return interactions
+    .map(
+      (interaction) => `
+        <article class="interaction-card">
+          <div class="interaction-head">
+            <div>
+              <h3 class="interaction-title">${escapeHtml(interaction.title)}</h3>
+              <p class="interaction-detail">${escapeHtml(interaction.detail)}</p>
+            </div>
+            <span class="interaction-source">${escapeHtml(interaction.source)}</span>
+          </div>
+          <p class="interaction-time">${escapeHtml(interaction.timestamp)}</p>
+        </article>
+      `,
+    )
     .join('');
 }
 
@@ -99,14 +136,6 @@ function createStateMarkup(rawState) {
         <p class="hint-text">${escapeHtml(state.loopHint)}</p>
       </section>
 
-      <section class="panel" aria-labelledby="widgets-heading">
-        <p class="section-label">State widgets</p>
-        <h2 id="widgets-heading">Pet loop snapshot</h2>
-        <div class="metric-grid">
-          ${renderMetrics(state.vitals)}
-        </div>
-      </section>
-
       <section class="panel panel-memory" aria-labelledby="memory-heading">
         <p class="section-label">Memory summary</p>
         <h2 id="memory-heading">${escapeHtml(state.memoryTitle)}</h2>
@@ -114,6 +143,22 @@ function createStateMarkup(rawState) {
         <ul class="signal-list">
           ${renderSignals(state.recentSignals)}
         </ul>
+      </section>
+
+      <section class="panel panel-history" aria-labelledby="timeline-heading">
+        <p class="section-label">Recent interactions</p>
+        <h2 id="timeline-heading">Companion timeline</h2>
+        <div class="interaction-list">
+          ${renderInteractions(state.recentInteractions)}
+        </div>
+      </section>
+
+      <section class="panel panel-wide" aria-labelledby="widgets-heading">
+        <p class="section-label">State widgets</p>
+        <h2 id="widgets-heading">Pet loop snapshot</h2>
+        <div class="metric-grid">
+          ${renderMetrics(state.vitals)}
+        </div>
       </section>
     </div>
   `;

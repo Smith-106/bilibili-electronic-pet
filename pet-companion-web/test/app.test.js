@@ -24,6 +24,14 @@ function createState(overrides = {}) {
       { label: 'Bond', value: 'Growing' },
     ],
     recentSignals: ['Last pat 2 minutes ago.'],
+    recentInteractions: [
+      {
+        title: 'Pat interaction',
+        detail: 'A calm pat kept Mochi focused on the browser ledge.',
+        timestamp: '2026-04-10T03:28:00.000Z',
+        source: 'Local Stub',
+      },
+    ],
     ...overrides,
   };
 }
@@ -42,6 +50,8 @@ describe('pet companion surface', () => {
     expect(container.textContent).toContain('Curious');
     expect(container.textContent).toContain('Energy');
     expect(container.textContent).toContain('Memory summary');
+    expect(container.textContent).toContain('Companion timeline');
+    expect(container.textContent).toContain('Pat interaction');
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
   });
@@ -60,6 +70,14 @@ describe('pet companion surface', () => {
               note: 'Ready to bounce into a short interaction.',
             },
             recentSignals: ['A fresh status ping just landed.'],
+            recentInteractions: [
+              {
+                title: 'Wake interaction',
+                detail: 'A quick wake prompt reopened the next interaction window.',
+                timestamp: '2026-04-10T03:31:00.000Z',
+                source: 'Backend Memory',
+              },
+            ],
           }),
         ),
     };
@@ -71,6 +89,7 @@ describe('pet companion surface', () => {
 
     expect(container.textContent).toContain('Playful');
     expect(container.textContent).toContain('A fresh status ping just landed.');
+    expect(container.textContent).toContain('Wake interaction');
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
   });
 
@@ -131,6 +150,14 @@ describe('pet companion surface', () => {
               note: 'A gentle pat settled the companion.',
             },
             recentSignals: ['Pat action recorded.'],
+            recentInteractions: [
+              {
+                title: 'Pat interaction',
+                detail: 'A gentle pat settled Mochi and raised the bond signal.',
+                timestamp: '2026-04-10T03:32:00.000Z',
+                source: 'Companion Action',
+              },
+            ],
           }),
         ),
       performAction: vi.fn().mockResolvedValue({ ok: true }),
@@ -145,5 +172,6 @@ describe('pet companion surface', () => {
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
     expect(container.textContent).toContain('Calm');
     expect(container.textContent).toContain('Pat action recorded.');
+    expect(container.textContent).toContain('Companion Action');
   });
 });

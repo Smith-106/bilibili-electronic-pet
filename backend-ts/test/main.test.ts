@@ -135,6 +135,14 @@ describe('health/readiness parity', () => {
             { label: 'Grants', value: '1' },
           ],
           recentSignals: ['Recent spaces: Alpha Operator'],
+          recentInteractions: [
+            {
+              title: 'Pat interaction',
+              detail: 'A gentle pat settled Mochi and raised the bond signal.',
+              timestamp: '2026-04-11T00:00:00.000Z',
+              source: 'Companion Action',
+            },
+          ],
         }),
       }),
     );
@@ -160,6 +168,14 @@ describe('health/readiness parity', () => {
         { label: 'Grants', value: '1' },
       ],
       recentSignals: ['Recent spaces: Alpha Operator'],
+      recentInteractions: [
+        {
+          title: 'Pat interaction',
+          detail: 'A gentle pat settled Mochi and raised the bond signal.',
+          timestamp: '2026-04-11T00:00:00.000Z',
+          source: 'Companion Action',
+        },
+      ],
     });
 
     await app.close();
