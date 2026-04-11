@@ -43,6 +43,7 @@ describe('pet companion surface', () => {
   });
 
   afterEach(() => {
+    document.body.innerHTML = '';
     vi.restoreAllMocks();
   });
 
@@ -159,6 +160,38 @@ describe('pet companion surface', () => {
     expect(helpCard?.hasAttribute('hidden')).toBe(true);
     expect(liveRegion?.textContent).toBe('Shortcut help closed.');
     expect(container.ownerDocument.activeElement).toBe(noteInput);
+  });
+
+  it('removes document shortcut listeners when the companion is destroyed', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+    };
+
+    const rendered = await renderPetCompanion(container, { adapter });
+    const helpCard = container.querySelector('[data-role="shortcut-help"]');
+
+    rendered.destroy();
+    container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+
+    expect(helpCard?.hasAttribute('hidden')).toBe(true);
+  });
+
+  it('cleans up document listeners before rerendering the same target', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+    };
+    const addEventListenerSpy = vi.spyOn(container.ownerDocument, 'addEventListener');
+    const removeEventListenerSpy = vi.spyOn(container.ownerDocument, 'removeEventListener');
+
+    await renderPetCompanion(container, { adapter });
+    await renderPetCompanion(container, { adapter });
+
+    expect(addEventListenerSpy.mock.calls.filter(([type]) => type === 'click')).toHaveLength(2);
+    expect(addEventListenerSpy.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(2);
+    expect(removeEventListenerSpy.mock.calls.filter(([type]) => type === 'click')).toHaveLength(1);
+    expect(removeEventListenerSpy.mock.calls.filter(([type]) => type === 'keydown')).toHaveLength(1);
   });
 
   it('refreshes the mood widget when the local adapter returns new state', async () => {

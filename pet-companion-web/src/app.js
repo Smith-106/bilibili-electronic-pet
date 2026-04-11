@@ -18,6 +18,7 @@ const FALLBACK_INTERACTIONS = [
 ];
 const INTERACTION_FILTER_ORDER = ['all', 'pat', 'feed', 'wake', 'signal', 'fallback'];
 const ACTION_INTERACTION_KINDS = ['pat', 'feed', 'wake'];
+const RENDER_CLEANUP = Symbol('petCompanionCleanup');
 
 function getFilterShortcut(index) {
   return {
@@ -642,8 +643,13 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     throw new Error('A target element is required to render the pet companion surface.');
   }
 
+  if (typeof target[RENDER_CLEANUP] === 'function') {
+    target[RENDER_CLEANUP]();
+  }
+
   target.innerHTML = createShellMarkup();
 
+  const ownerDocument = target.ownerDocument;
   const content = target.querySelector('[data-role="content"]');
   const refreshButton = target.querySelector('[data-action="refresh"]');
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
@@ -969,15 +975,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     setShortcutHelpVisible(false, 'Shortcut help closed.', { moveFocus: true });
   });
 
-  target.ownerDocument.addEventListener('click', (event) => {
+  function handleDocumentClick(event) {
     if (!showShortcutHelp || isShortcutHelpTarget(event.target)) {
       return;
     }
 
     setShortcutHelpVisible(false, 'Shortcut help closed.');
-  });
+  }
 
-  target.ownerDocument.addEventListener('keydown', (event) => {
+  function handleDocumentKeydown(event) {
     if (event.key === 'Escape' && pendingTemplateValue) {
       event.preventDefault();
       clearPendingTemplateAction();
@@ -1035,7 +1041,10 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     event.preventDefault();
     const nextFilter = INTERACTION_FILTER_ORDER[filterIndex];
     setTimelineFilter(nextFilter, { announcement: `Timeline filter set to ${getInteractionKindLabel(nextFilter)}.` });
-  });
+  }
+
+  ownerDocument.addEventListener('click', handleDocumentClick);
+  ownerDocument.addEventListener('keydown', handleDocumentKeydown);
 
   async function triggerAction(action) {
     if (!action || typeof adapter.performAction !== 'function') {
@@ -1131,12 +1140,23 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     void loadState();
   });
 
+  function destroy() {
+    ownerDocument.removeEventListener('click', handleDocumentClick);
+    ownerDocument.removeEventListener('keydown', handleDocumentKeydown);
+    if (target[RENDER_CLEANUP] === destroy) {
+      delete target[RENDER_CLEANUP];
+    }
+  }
+
+  target[RENDER_CLEANUP] = destroy;
+
   syncLinkedActionButtons();
   syncShortcutHelp();
   syncComposerContext();
   await loadState();
 
   return {
+    destroy,
     reload: loadState,
   };
 }
