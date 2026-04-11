@@ -218,6 +218,39 @@ function getComposerStatus(filter, draftValue, pendingTemplateValue) {
   };
 }
 
+function renderShortcutHelpItems() {
+  const filterItems = INTERACTION_FILTER_ORDER.map(
+    (kind, index) => `
+      <li class="shortcut-help-item">
+        <span class="shortcut-help-key">${escapeHtml(getFilterShortcut(index).label)}</span>
+        <span>${escapeHtml(`Switch timeline to ${getInteractionKindLabel(kind)}.`)}</span>
+      </li>
+    `,
+  ).join('');
+
+  return `
+    <ul class="shortcut-help-list">
+      ${filterItems}
+      <li class="shortcut-help-item">
+        <span class="shortcut-help-key">Ctrl+Enter</span>
+        <span>Send the selected Pat, Feed, or Wake action.</span>
+      </li>
+      <li class="shortcut-help-item">
+        <span class="shortcut-help-key">Cmd+Enter</span>
+        <span>Send the selected action on macOS.</span>
+      </li>
+      <li class="shortcut-help-item">
+        <span class="shortcut-help-key">?</span>
+        <span>Toggle this shortcut help card.</span>
+      </li>
+      <li class="shortcut-help-item">
+        <span class="shortcut-help-key">Esc</span>
+        <span>Dismiss template merge prompts or close the shortcut card.</span>
+      </li>
+    </ul>
+  `;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -531,7 +564,28 @@ function createShellMarkup() {
           </p>
         </div>
         <div class="hero-actions">
-          <span class="status-pill" data-role="adapter-status">Adapter: local stub</span>
+          <div class="hero-utility-row">
+            <span class="status-pill" data-role="adapter-status">Adapter: local stub</span>
+            <button
+              class="shortcut-help-toggle"
+              type="button"
+              data-role="shortcut-help-toggle"
+              aria-expanded="false"
+              aria-controls="shortcut-help-card"
+            >
+              Shortcuts ?
+            </button>
+          </div>
+          <section
+            class="shortcut-help"
+            id="shortcut-help-card"
+            data-role="shortcut-help"
+            aria-live="polite"
+            hidden
+          >
+            <p class="shortcut-help-title">Keyboard shortcuts</p>
+            ${renderShortcutHelpItems()}
+          </section>
           <div class="note-stack">
             <label class="note-label" data-role="action-note-label" for="action-note">Interaction note</label>
             <textarea
@@ -582,6 +636,8 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const content = target.querySelector('[data-role="content"]');
   const refreshButton = target.querySelector('[data-action="refresh"]');
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
+  const shortcutHelpToggle = target.querySelector('[data-role="shortcut-help-toggle"]');
+  const shortcutHelp = target.querySelector('[data-role="shortcut-help"]');
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
@@ -596,6 +652,16 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   let selectedTimelineFilter = 'all';
   let latestState = null;
   let pendingTemplateValue = null;
+  let showShortcutHelp = false;
+
+  function isEditableTarget(node) {
+    return Boolean(
+      node &&
+        typeof node === 'object' &&
+        'tagName' in node &&
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(String(node.tagName).toUpperCase()),
+    );
+  }
 
   function syncLinkedActionButtons() {
     actionButtons.forEach((button) => {
@@ -604,6 +670,16 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       button.classList.toggle('is-linked', linked);
       button.setAttribute('data-filter-linked', linked ? 'true' : 'false');
     });
+  }
+
+  function syncShortcutHelp() {
+    if (shortcutHelpToggle) {
+      shortcutHelpToggle.setAttribute('aria-expanded', showShortcutHelp ? 'true' : 'false');
+      shortcutHelpToggle.classList.toggle('is-active', showShortcutHelp);
+    }
+    if (shortcutHelp) {
+      shortcutHelp.hidden = !showShortcutHelp;
+    }
   }
 
   function clearPendingTemplateAction() {
@@ -806,11 +882,30 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     clearDraft();
   });
 
+  shortcutHelpToggle?.addEventListener('click', () => {
+    showShortcutHelp = !showShortcutHelp;
+    syncShortcutHelp();
+  });
+
   target.ownerDocument.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && pendingTemplateValue) {
       event.preventDefault();
       clearPendingTemplateAction();
       syncComposerContext();
+      return;
+    }
+
+    if (event.key === 'Escape' && showShortcutHelp) {
+      event.preventDefault();
+      showShortcutHelp = false;
+      syncShortcutHelp();
+      return;
+    }
+
+    if (event.key === '?' && !isEditableTarget(event.target)) {
+      event.preventDefault();
+      showShortcutHelp = !showShortcutHelp;
+      syncShortcutHelp();
       return;
     }
 
@@ -929,6 +1024,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   });
 
   syncLinkedActionButtons();
+  syncShortcutHelp();
   syncComposerContext();
   await loadState();
 

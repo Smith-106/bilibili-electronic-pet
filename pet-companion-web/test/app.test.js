@@ -76,8 +76,36 @@ describe('pet companion surface', () => {
     );
     expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Composer idle');
     expect(container.querySelector('[data-role="action-note-clear"]')?.hasAttribute('disabled')).toBe(true);
+    expect(container.querySelector('[data-role="shortcut-help"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
+  });
+
+  it('toggles the shortcut help card from button and keyboard', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createState()),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    const helpToggle = container.querySelector('[data-role="shortcut-help-toggle"]');
+    const helpCard = container.querySelector('[data-role="shortcut-help"]');
+    const noteInput = container.querySelector('[data-role="action-note"]');
+
+    helpToggle.click();
+    expect(helpCard?.hasAttribute('hidden')).toBe(false);
+    expect(helpCard?.textContent).toContain('Alt+1');
+    expect(helpCard?.textContent).toContain('Ctrl+Enter');
+
+    container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(helpCard?.hasAttribute('hidden')).toBe(true);
+
+    noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+    expect(helpCard?.hasAttribute('hidden')).toBe(true);
+
+    container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
+    expect(helpCard?.hasAttribute('hidden')).toBe(false);
   });
 
   it('refreshes the mood widget when the local adapter returns new state', async () => {
