@@ -586,6 +586,7 @@ function createShellMarkup() {
             <p class="shortcut-help-title">Keyboard shortcuts</p>
             ${renderShortcutHelpItems()}
           </section>
+          <div class="sr-only" data-role="live-region" aria-live="polite" aria-atomic="true"></div>
           <div class="note-stack">
             <label class="note-label" data-role="action-note-label" for="action-note">Interaction note</label>
             <textarea
@@ -638,6 +639,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
   const shortcutHelpToggle = target.querySelector('[data-role="shortcut-help-toggle"]');
   const shortcutHelp = target.querySelector('[data-role="shortcut-help"]');
+  const liveRegion = target.querySelector('[data-role="live-region"]');
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
@@ -653,6 +655,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   let latestState = null;
   let pendingTemplateValue = null;
   let showShortcutHelp = false;
+  let lastAnnouncement = '';
 
   function isEditableTarget(node) {
     return Boolean(
@@ -672,6 +675,18 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     });
   }
 
+  function announce(message) {
+    const text = String(message ?? '').trim();
+    if (!liveRegion || !text) {
+      return;
+    }
+    if (lastAnnouncement === text) {
+      liveRegion.textContent = '';
+    }
+    lastAnnouncement = text;
+    liveRegion.textContent = text;
+  }
+
   function syncShortcutHelp() {
     if (shortcutHelpToggle) {
       shortcutHelpToggle.setAttribute('aria-expanded', showShortcutHelp ? 'true' : 'false');
@@ -679,6 +694,27 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
     if (shortcutHelp) {
       shortcutHelp.hidden = !showShortcutHelp;
+    }
+  }
+
+  function setShortcutHelpVisible(nextVisible, announcement) {
+    showShortcutHelp = nextVisible;
+    syncShortcutHelp();
+    if (announcement) {
+      announce(announcement);
+    }
+  }
+
+  function setTimelineFilter(nextFilter, { announcement } = {}) {
+    const normalized = normalizeInteractionFilter(nextFilter);
+    if (normalized === selectedTimelineFilter) {
+      return;
+    }
+    clearPendingTemplateAction();
+    selectedTimelineFilter = normalized;
+    renderCurrentState();
+    if (announcement) {
+      announce(announcement);
     }
   }
 
@@ -693,6 +729,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
     clearPendingTemplateAction();
     syncComposerContext();
+    announce('Draft cleared.');
   }
 
   function applyTemplateToDraft(mode) {
@@ -710,6 +747,9 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     actionNote.focus();
     clearPendingTemplateAction();
     syncComposerContext();
+    announce(
+      `${getInteractionKindLabel(selectedTimelineFilter)} template ${mode === 'append' ? 'appended to' : 'replaced'} draft.`,
+    );
   }
 
   function syncComposerContext() {
@@ -774,6 +814,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
               if (existingValue && existingValue !== nextTemplateValue) {
                 pendingTemplateValue = nextTemplateValue;
                 syncComposerContext();
+                announce('Template selected. Choose Replace, Append, or Cancel.');
                 return;
               }
 
@@ -781,6 +822,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
               actionNote.focus();
               clearPendingTemplateAction();
               syncComposerContext();
+              announce(`${getInteractionKindLabel(selectedTimelineFilter)} template inserted into draft.`);
             }
           });
         });
@@ -821,6 +863,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
             }
             clearPendingTemplateAction();
             syncComposerContext();
+            announce('Template merge cancelled.');
           });
         });
       }
@@ -852,8 +895,10 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         const shortcutButtons = [...composerGuide.querySelectorAll('[data-role="composer-shortcut"]')];
         shortcutButtons.forEach((button) => {
           button.addEventListener('click', () => {
-            selectedTimelineFilter = normalizeInteractionFilter(button.getAttribute('data-shortcut-kind'));
-            renderCurrentState();
+            const nextFilter = normalizeInteractionFilter(button.getAttribute('data-shortcut-kind'));
+            setTimelineFilter(nextFilter, {
+              announcement: `Timeline filter set to ${getInteractionKindLabel(nextFilter)}.`,
+            });
             actionNote?.focus();
           });
         });
@@ -883,8 +928,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   });
 
   shortcutHelpToggle?.addEventListener('click', () => {
-    showShortcutHelp = !showShortcutHelp;
-    syncShortcutHelp();
+    setShortcutHelpVisible(!showShortcutHelp, `Shortcut help ${showShortcutHelp ? 'closed' : 'opened'}.`);
   });
 
   target.ownerDocument.addEventListener('keydown', (event) => {
@@ -892,20 +936,19 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       event.preventDefault();
       clearPendingTemplateAction();
       syncComposerContext();
+      announce('Template merge cancelled.');
       return;
     }
 
     if (event.key === 'Escape' && showShortcutHelp) {
       event.preventDefault();
-      showShortcutHelp = false;
-      syncShortcutHelp();
+      setShortcutHelpVisible(false, 'Shortcut help closed.');
       return;
     }
 
     if (event.key === '?' && !isEditableTarget(event.target)) {
       event.preventDefault();
-      showShortcutHelp = !showShortcutHelp;
-      syncShortcutHelp();
+      setShortcutHelpVisible(!showShortcutHelp, `Shortcut help ${showShortcutHelp ? 'closed' : 'opened'}.`);
       return;
     }
 
@@ -920,12 +963,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
     event.preventDefault();
     const nextFilter = INTERACTION_FILTER_ORDER[filterIndex];
-    if (nextFilter === selectedTimelineFilter) {
-      return;
-    }
-    clearPendingTemplateAction();
-    selectedTimelineFilter = nextFilter;
-    renderCurrentState();
+    setTimelineFilter(nextFilter, { announcement: `Timeline filter set to ${getInteractionKindLabel(nextFilter)}.` });
   });
 
   async function triggerAction(action) {
@@ -937,6 +975,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
     setControlsDisabled(true);
     adapterStatus.textContent = `Adapter: sending ${action}`;
+    announce(`Sending ${getInteractionKindLabel(action)} action.`);
 
     try {
       await adapter.performAction(action, note || undefined);
@@ -946,10 +985,12 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         actionNote.value = '';
       }
       await loadState();
+      announce(`${getInteractionKindLabel(action)} action sent.`);
     } catch (error) {
       content.innerHTML = createErrorMarkup(error);
       adapterStatus.textContent = 'Adapter: action failed';
       setControlsDisabled(false);
+      announce(`${getInteractionKindLabel(action)} action failed.`);
     }
   }
 
@@ -958,6 +999,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       event.preventDefault();
       clearPendingTemplateAction();
       syncComposerContext();
+      announce('Template merge cancelled.');
       return;
     }
 
@@ -981,12 +1023,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     filterButtons.forEach((button) => {
       button.addEventListener('click', () => {
         const nextFilter = normalizeInteractionFilter(button.getAttribute('data-filter-kind'));
-        if (nextFilter === selectedTimelineFilter) {
-          return;
-        }
-        clearPendingTemplateAction();
-        selectedTimelineFilter = nextFilter;
-        renderCurrentState();
+        setTimelineFilter(nextFilter, { announcement: `Timeline filter set to ${getInteractionKindLabel(nextFilter)}.` });
       });
     });
   }

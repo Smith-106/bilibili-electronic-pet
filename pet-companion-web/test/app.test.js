@@ -91,21 +91,25 @@ describe('pet companion surface', () => {
 
     const helpToggle = container.querySelector('[data-role="shortcut-help-toggle"]');
     const helpCard = container.querySelector('[data-role="shortcut-help"]');
+    const liveRegion = container.querySelector('[data-role="live-region"]');
     const noteInput = container.querySelector('[data-role="action-note"]');
 
     helpToggle.click();
     expect(helpCard?.hasAttribute('hidden')).toBe(false);
     expect(helpCard?.textContent).toContain('Alt+1');
     expect(helpCard?.textContent).toContain('Ctrl+Enter');
+    expect(liveRegion?.textContent).toBe('Shortcut help opened.');
 
     container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(helpCard?.hasAttribute('hidden')).toBe(true);
+    expect(liveRegion?.textContent).toBe('Shortcut help closed.');
 
     noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
     expect(helpCard?.hasAttribute('hidden')).toBe(true);
 
     container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
     expect(helpCard?.hasAttribute('hidden')).toBe(false);
+    expect(liveRegion?.textContent).toBe('Shortcut help opened.');
   });
 
   it('refreshes the mood widget when the local adapter returns new state', async () => {
@@ -209,6 +213,7 @@ describe('pet companion surface', () => {
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('feed');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('feed');
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe('Timeline filter set to Feed.');
     expect(container.querySelector('[data-filter-kind="feed"]')?.textContent).toContain('Alt+3');
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Feed note');
     expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
@@ -283,6 +288,7 @@ describe('pet companion surface', () => {
     container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '5', altKey: true, bubbles: true }));
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('signal');
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe('Timeline filter set to Signal.');
     expect(container.querySelector('[data-role="composer-templates"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.querySelector('[data-role="composer-guide"]')?.textContent).toContain(
       'Signal entries are read-only snapshots.',
@@ -292,6 +298,7 @@ describe('pet companion surface', () => {
     wakeShortcut.click();
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('wake');
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe('Timeline filter set to Wake.');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('wake');
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Wake note');
     expect(container.querySelector('[data-role="composer-templates"]')?.textContent).toContain('Suggested wake notes');
@@ -342,6 +349,7 @@ describe('pet companion surface', () => {
     expect(adapter.performAction).toHaveBeenCalledWith('wake', 'keyboard wake');
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(2);
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('wake');
+    expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe('Wake action sent.');
     expect(noteInput.value).toBe('');
     expect(container.textContent).toContain('Wake prompt sent from keyboard shortcut.');
   });
