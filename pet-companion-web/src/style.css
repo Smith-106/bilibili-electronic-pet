@@ -199,11 +199,40 @@ body {
 }
 
 .note-actions {
-  display: flex;
-  justify-content: flex-end;
+  display: grid;
+  gap: 10px;
+}
+
+.note-status {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(18, 51, 73, 0.06);
+}
+
+.note-status[data-status-tone='ready'] {
+  background: rgba(23, 143, 132, 0.12);
+}
+
+.note-status[data-status-tone='pending'] {
+  background: rgba(255, 122, 89, 0.1);
+}
+
+.note-status-label {
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.note-status-detail {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .note-clear-button {
+  justify-self: end;
   border: 1px solid rgba(18, 51, 73, 0.12);
   border-radius: 999px;
   padding: 8px 12px;

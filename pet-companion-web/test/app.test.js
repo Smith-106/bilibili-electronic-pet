@@ -73,6 +73,7 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="composer-guide"]')?.textContent).toContain(
       'Notes publish through Pat, Feed, or Wake actions.',
     );
+    expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Composer idle');
     expect(container.querySelector('[data-role="action-note-clear"]')?.hasAttribute('disabled')).toBe(true);
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
@@ -193,6 +194,7 @@ describe('pet companion surface', () => {
     templateButton.click();
 
     expect(container.querySelector('[data-role="action-note"]')?.value).toContain('Refilled snack tray');
+    expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Feed draft ready');
     expect(container.querySelector('[data-role="action-note-clear"]')?.hasAttribute('disabled')).toBe(false);
 
     const noteInput = container.querySelector('[data-role="action-note"]');
@@ -203,12 +205,14 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="composer-template-actions"]')?.textContent).toContain(
       'Keep the current draft',
     );
+    expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Template waiting');
     expect(container.querySelector('[data-role="action-note-clear"]')?.hasAttribute('disabled')).toBe(false);
 
     container.querySelector('[data-merge-mode="append"]').click();
     expect(container.querySelector('[data-role="action-note"]')?.value).toBe(
       'Existing draft\nRefilled snack tray and appetite stabilized.',
     );
+    expect(container.querySelector('[data-role="action-note-status-label"]')?.textContent).toBe('Feed draft ready');
 
     container.querySelector('[data-role="action-note-clear"]').click();
 

@@ -168,6 +168,49 @@ function getComposerTemplates(filter) {
   return null;
 }
 
+function getComposerStatus(filter, draftValue, pendingTemplateValue) {
+  const normalizedFilter = normalizeInteractionFilter(filter);
+  const trimmedDraft = String(draftValue ?? '').trim();
+
+  if (pendingTemplateValue) {
+    return {
+      label: 'Template waiting',
+      detail: 'Choose Replace, Append, or Cancel to resolve the current draft.',
+      tone: 'pending',
+    };
+  }
+
+  if (trimmedDraft) {
+    if (isActionFilter(normalizedFilter)) {
+      return {
+        label: `${getInteractionKindLabel(normalizedFilter)} draft ready`,
+        detail: `Will publish with the next ${getInteractionKindLabel(normalizedFilter).toLowerCase()} action.`,
+        tone: 'ready',
+      };
+    }
+
+    return {
+      label: 'Draft waiting',
+      detail: 'Pick Pat, Feed, or Wake to send this note.',
+      tone: 'pending',
+    };
+  }
+
+  if (isActionFilter(normalizedFilter)) {
+    return {
+      label: `${getInteractionKindLabel(normalizedFilter)} draft empty`,
+      detail: 'Type a note or pick a template to stage the next action.',
+      tone: 'idle',
+    };
+  }
+
+  return {
+    label: 'Composer idle',
+    detail: 'Select Pat, Feed, or Wake to focus the draft composer.',
+    tone: 'idle',
+  };
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -490,6 +533,12 @@ function createShellMarkup() {
             ></textarea>
             <p class="note-hint" data-role="action-note-hint">Optional context travels into the companion timeline.</p>
             <div class="note-actions">
+              <div class="note-status" data-role="action-note-status" data-status-tone="idle">
+                <span class="note-status-label" data-role="action-note-status-label">Composer idle</span>
+                <span class="note-status-detail" data-role="action-note-status-detail">
+                  Select Pat, Feed, or Wake to focus the draft composer.
+                </span>
+              </div>
               <button class="note-clear-button" type="button" data-role="action-note-clear">Clear draft</button>
             </div>
             <div class="composer-templates" data-role="composer-templates" hidden></div>
@@ -525,6 +574,9 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
+  const actionNoteStatus = target.querySelector('[data-role="action-note-status"]');
+  const actionNoteStatusLabel = target.querySelector('[data-role="action-note-status-label"]');
+  const actionNoteStatusDetail = target.querySelector('[data-role="action-note-status-detail"]');
   const actionNoteClear = target.querySelector('[data-role="action-note-clear"]');
   const composerTemplates = target.querySelector('[data-role="composer-templates"]');
   const composerTemplateActions = target.querySelector('[data-role="composer-template-actions"]');
@@ -575,6 +627,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   function syncComposerContext() {
     const composerCopy = getComposerCopy(selectedTimelineFilter);
+    const composerStatus = getComposerStatus(selectedTimelineFilter, actionNote?.value, pendingTemplateValue);
     const composerTemplateState = getComposerTemplates(selectedTimelineFilter);
     const composerGuideState = getComposerGuide(selectedTimelineFilter);
     const hasDraft = Boolean(actionNote?.value.trim()) || Boolean(pendingTemplateValue);
@@ -587,6 +640,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
     if (actionNoteHint) {
       actionNoteHint.textContent = composerCopy.hint;
+    }
+    if (actionNoteStatus) {
+      actionNoteStatus.setAttribute('data-status-tone', composerStatus.tone);
+    }
+    if (actionNoteStatusLabel) {
+      actionNoteStatusLabel.textContent = composerStatus.label;
+    }
+    if (actionNoteStatusDetail) {
+      actionNoteStatusDetail.textContent = composerStatus.detail;
     }
     if (actionNoteClear) {
       actionNoteClear.disabled = !hasDraft;
