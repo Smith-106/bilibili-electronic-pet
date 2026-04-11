@@ -198,6 +198,43 @@ body {
   line-height: 1.5;
 }
 
+.composer-templates {
+  display: grid;
+  gap: 10px;
+}
+
+.composer-templates-label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.composer-template-list {
+  display: grid;
+  gap: 8px;
+}
+
+.composer-template {
+  border: 1px solid rgba(18, 51, 73, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.composer-template:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 1);
+  border-color: rgba(23, 143, 132, 0.24);
+}
+
 .composer-guide {
   display: grid;
   gap: 10px;

@@ -133,6 +133,41 @@ function getComposerGuide(filter) {
   };
 }
 
+function getComposerTemplates(filter) {
+  const normalizedFilter = normalizeInteractionFilter(filter);
+  if (normalizedFilter === 'pat') {
+    return {
+      label: 'Suggested pat notes',
+      templates: [
+        'Soft pat settled Mochi into a calmer loop.',
+        'Bond signal ticked upward after a gentle tap.',
+        'Comfort pass landed right on time for the next check-in.',
+      ],
+    };
+  }
+  if (normalizedFilter === 'feed') {
+    return {
+      label: 'Suggested feed notes',
+      templates: [
+        'Refilled snack tray and appetite stabilized.',
+        'Quick bite restored energy before the next loop window.',
+        'Treat drop landed cleanly and hunger signal eased.',
+      ],
+    };
+  }
+  if (normalizedFilter === 'wake') {
+    return {
+      label: 'Suggested wake notes',
+      templates: [
+        'Bright nudge reopened the interaction window.',
+        'Wake pulse brought Mochi back into active mode.',
+        'Gentle prompt resumed the browser buddy loop.',
+      ],
+    };
+  }
+  return null;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -454,6 +489,7 @@ function createShellMarkup() {
               placeholder="Optional note for the next pat, feed, or wake."
             ></textarea>
             <p class="note-hint" data-role="action-note-hint">Optional context travels into the companion timeline.</p>
+            <div class="composer-templates" data-role="composer-templates" hidden></div>
             <div class="composer-guide" data-role="composer-guide" hidden></div>
           </div>
           <div class="companion-actions" data-role="action-buttons">
@@ -485,6 +521,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
+  const composerTemplates = target.querySelector('[data-role="composer-templates"]');
   const composerGuide = target.querySelector('[data-role="composer-guide"]');
   const actionButtons = [...target.querySelectorAll('[data-role="action-buttons"] [data-action]')];
   let selectedTimelineFilter = 'all';
@@ -501,6 +538,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   function syncComposerContext() {
     const composerCopy = getComposerCopy(selectedTimelineFilter);
+    const composerTemplateState = getComposerTemplates(selectedTimelineFilter);
     const composerGuideState = getComposerGuide(selectedTimelineFilter);
     if (actionNoteLabel) {
       actionNoteLabel.textContent = composerCopy.label;
@@ -511,6 +549,41 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
     if (actionNoteHint) {
       actionNoteHint.textContent = composerCopy.hint;
+    }
+    if (composerTemplates) {
+      if (!composerTemplateState) {
+        composerTemplates.innerHTML = '';
+        composerTemplates.hidden = true;
+      } else {
+        composerTemplates.hidden = false;
+        composerTemplates.innerHTML = `
+          <p class="composer-templates-label">${escapeHtml(composerTemplateState.label)}</p>
+          <div class="composer-template-list">
+            ${composerTemplateState.templates
+              .map(
+                (template) => `
+                  <button
+                    class="composer-template"
+                    type="button"
+                    data-role="composer-template"
+                    data-template-value="${escapeHtml(template)}"
+                  >${escapeHtml(template)}</button>
+                `,
+              )
+              .join('')}
+          </div>
+        `;
+
+        const templateButtons = [...composerTemplates.querySelectorAll('[data-role="composer-template"]')];
+        templateButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            if (actionNote) {
+              actionNote.value = button.getAttribute('data-template-value') ?? '';
+              actionNote.focus();
+            }
+          });
+        });
+      }
     }
     if (composerGuide) {
       if (!composerGuideState) {

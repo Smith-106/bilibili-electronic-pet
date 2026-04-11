@@ -69,6 +69,7 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="action-note"]')?.getAttribute('placeholder')).toBe(
       'Optional note for the next pat, feed, or wake.',
     );
+    expect(container.querySelector('[data-role="composer-templates"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.querySelector('[data-role="composer-guide"]')?.textContent).toContain(
       'Notes publish through Pat, Feed, or Wake actions.',
     );
@@ -182,9 +183,15 @@ describe('pet companion surface', () => {
       'Optional note for the next feed.',
     );
     expect(container.querySelector('[data-role="action-note-hint"]')?.textContent).toContain('feed entry');
+    expect(container.querySelector('[data-role="composer-templates"]')?.textContent).toContain('Suggested feed notes');
     expect(container.querySelector('[data-role="composer-guide"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.textContent).toContain('A snack tray landed right on time.');
     expect(container.textContent).not.toContain('A calm pat kept Mochi focused on the browser ledge.');
+
+    const templateButton = container.querySelector('[data-role="composer-template"]');
+    templateButton.click();
+
+    expect(container.querySelector('[data-role="action-note"]')?.value).toContain('Refilled snack tray');
 
     container.querySelector('[data-action="refresh"]').click();
     await flushPromises();
@@ -200,6 +207,7 @@ describe('pet companion surface', () => {
     signalFilter.click();
 
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('signal');
+    expect(container.querySelector('[data-role="composer-templates"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.querySelector('[data-role="composer-guide"]')?.textContent).toContain(
       'Signal entries are read-only snapshots.',
     );
@@ -210,6 +218,7 @@ describe('pet companion surface', () => {
     expect(container.querySelector('.timeline-filter.is-active')?.getAttribute('data-filter-kind')).toBe('wake');
     expect(container.querySelector('.action-button.is-linked')?.getAttribute('data-action')).toBe('wake');
     expect(container.querySelector('[data-role="action-note-label"]')?.textContent).toBe('Wake note');
+    expect(container.querySelector('[data-role="composer-templates"]')?.textContent).toContain('Suggested wake notes');
   });
 
   it('shows a degraded panel when the local adapter fails', async () => {
