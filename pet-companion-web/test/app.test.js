@@ -91,6 +91,7 @@ describe('pet companion surface', () => {
 
     const helpToggle = container.querySelector('[data-role="shortcut-help-toggle"]');
     const helpCard = container.querySelector('[data-role="shortcut-help"]');
+    const helpTitle = container.querySelector('[data-role="shortcut-help-title"]');
     const liveRegion = container.querySelector('[data-role="live-region"]');
     const noteInput = container.querySelector('[data-role="action-note"]');
 
@@ -99,10 +100,12 @@ describe('pet companion surface', () => {
     expect(helpCard?.textContent).toContain('Alt+1');
     expect(helpCard?.textContent).toContain('Ctrl+Enter');
     expect(liveRegion?.textContent).toBe('Shortcut help opened.');
+    expect(container.ownerDocument.activeElement).toBe(helpTitle);
 
     container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(helpCard?.hasAttribute('hidden')).toBe(true);
     expect(liveRegion?.textContent).toBe('Shortcut help closed.');
+    expect(container.ownerDocument.activeElement).toBe(helpToggle);
 
     noteInput.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
     expect(helpCard?.hasAttribute('hidden')).toBe(true);
@@ -110,6 +113,7 @@ describe('pet companion surface', () => {
     container.ownerDocument.dispatchEvent(new KeyboardEvent('keydown', { key: '?', bubbles: true }));
     expect(helpCard?.hasAttribute('hidden')).toBe(false);
     expect(liveRegion?.textContent).toBe('Shortcut help opened.');
+    expect(container.ownerDocument.activeElement).toBe(helpTitle);
   });
 
   it('refreshes the mood widget when the local adapter returns new state', async () => {

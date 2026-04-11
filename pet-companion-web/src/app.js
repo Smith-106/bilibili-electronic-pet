@@ -583,7 +583,7 @@ function createShellMarkup() {
             aria-live="polite"
             hidden
           >
-            <p class="shortcut-help-title">Keyboard shortcuts</p>
+            <p class="shortcut-help-title" data-role="shortcut-help-title" tabindex="-1">Keyboard shortcuts</p>
             ${renderShortcutHelpItems()}
           </section>
           <div class="sr-only" data-role="live-region" aria-live="polite" aria-atomic="true"></div>
@@ -639,6 +639,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const adapterStatus = target.querySelector('[data-role="adapter-status"]');
   const shortcutHelpToggle = target.querySelector('[data-role="shortcut-help-toggle"]');
   const shortcutHelp = target.querySelector('[data-role="shortcut-help"]');
+  const shortcutHelpTitle = target.querySelector('[data-role="shortcut-help-title"]');
   const liveRegion = target.querySelector('[data-role="live-region"]');
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
@@ -697,9 +698,16 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
   }
 
-  function setShortcutHelpVisible(nextVisible, announcement) {
+  function setShortcutHelpVisible(nextVisible, announcement, { moveFocus = false } = {}) {
     showShortcutHelp = nextVisible;
     syncShortcutHelp();
+    if (moveFocus) {
+      if (nextVisible) {
+        shortcutHelpTitle?.focus();
+      } else {
+        shortcutHelpToggle?.focus();
+      }
+    }
     if (announcement) {
       announce(announcement);
     }
@@ -928,7 +936,9 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   });
 
   shortcutHelpToggle?.addEventListener('click', () => {
-    setShortcutHelpVisible(!showShortcutHelp, `Shortcut help ${showShortcutHelp ? 'closed' : 'opened'}.`);
+    setShortcutHelpVisible(!showShortcutHelp, `Shortcut help ${showShortcutHelp ? 'closed' : 'opened'}.`, {
+      moveFocus: true,
+    });
   });
 
   target.ownerDocument.addEventListener('keydown', (event) => {
@@ -942,13 +952,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
     if (event.key === 'Escape' && showShortcutHelp) {
       event.preventDefault();
-      setShortcutHelpVisible(false, 'Shortcut help closed.');
+      setShortcutHelpVisible(false, 'Shortcut help closed.', { moveFocus: true });
       return;
     }
 
     if (event.key === '?' && !isEditableTarget(event.target)) {
       event.preventDefault();
-      setShortcutHelpVisible(!showShortcutHelp, `Shortcut help ${showShortcutHelp ? 'closed' : 'opened'}.`);
+      setShortcutHelpVisible(!showShortcutHelp, `Shortcut help ${showShortcutHelp ? 'closed' : 'opened'}.`, {
+        moveFocus: true,
+      });
       return;
     }
 

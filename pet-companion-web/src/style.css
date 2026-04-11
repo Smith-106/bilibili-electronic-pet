@@ -197,6 +197,12 @@ body {
   font-weight: 700;
 }
 
+.shortcut-help-title:focus {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
 .shortcut-help-list {
   margin: 0;
   padding: 0;
