@@ -489,6 +489,9 @@ function createShellMarkup() {
               placeholder="Optional note for the next pat, feed, or wake."
             ></textarea>
             <p class="note-hint" data-role="action-note-hint">Optional context travels into the companion timeline.</p>
+            <div class="note-actions">
+              <button class="note-clear-button" type="button" data-role="action-note-clear">Clear draft</button>
+            </div>
             <div class="composer-templates" data-role="composer-templates" hidden></div>
             <div class="composer-template-actions" data-role="composer-template-actions" hidden></div>
             <div class="composer-guide" data-role="composer-guide" hidden></div>
@@ -522,6 +525,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   const actionNote = target.querySelector('[data-role="action-note"]');
   const actionNoteLabel = target.querySelector('[data-role="action-note-label"]');
   const actionNoteHint = target.querySelector('[data-role="action-note-hint"]');
+  const actionNoteClear = target.querySelector('[data-role="action-note-clear"]');
   const composerTemplates = target.querySelector('[data-role="composer-templates"]');
   const composerTemplateActions = target.querySelector('[data-role="composer-template-actions"]');
   const composerGuide = target.querySelector('[data-role="composer-guide"]');
@@ -541,6 +545,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   function clearPendingTemplateAction() {
     pendingTemplateValue = null;
+  }
+
+  function clearDraft() {
+    if (actionNote) {
+      actionNote.value = '';
+      actionNote.focus();
+    }
+    clearPendingTemplateAction();
+    syncComposerContext();
   }
 
   function applyTemplateToDraft(mode) {
@@ -564,6 +577,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     const composerCopy = getComposerCopy(selectedTimelineFilter);
     const composerTemplateState = getComposerTemplates(selectedTimelineFilter);
     const composerGuideState = getComposerGuide(selectedTimelineFilter);
+    const hasDraft = Boolean(actionNote?.value.trim()) || Boolean(pendingTemplateValue);
     if (actionNoteLabel) {
       actionNoteLabel.textContent = composerCopy.label;
     }
@@ -573,6 +587,9 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
     if (actionNoteHint) {
       actionNoteHint.textContent = composerCopy.hint;
+    }
+    if (actionNoteClear) {
+      actionNoteClear.disabled = !hasDraft;
     }
     if (composerTemplates) {
       if (!composerTemplateState) {
@@ -707,8 +724,12 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   actionNote?.addEventListener('input', () => {
     if (pendingTemplateValue) {
       clearPendingTemplateAction();
-      syncComposerContext();
     }
+    syncComposerContext();
+  });
+
+  actionNoteClear?.addEventListener('click', () => {
+    clearDraft();
   });
 
   function renderCurrentState() {
