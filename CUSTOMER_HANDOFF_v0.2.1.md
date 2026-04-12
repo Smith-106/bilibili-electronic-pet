@@ -1,4 +1,4 @@
-# Customer Handoff: v0.2.1
+# Customer Handoff: v0.2.1 Baseline
 
 Date: 2026-04-10  
 Project: bilibili电子宠物  
@@ -6,7 +6,15 @@ Release tag: `v0.2.1`
 
 ## Delivery Status
 
-The system is ready for formal customer use.
+The v0.2.1 admin plus native-Bilibili baseline was ready for formal customer use.
+
+## Scope Notice
+
+This document is a historical handoff for the verified `v0.2.1` baseline only.
+
+- It covers the admin console and native Bilibili delivery path that were deployed and verified on 2026-04-10.
+- It does not cover the newer repo-local pet-core product surface or the governed external-platform trial added after that checkpoint.
+- For the current upgrade status, use `CURRENT_STATUS_2026-04-13.md` and `.workflow/active/WFS-complete-electronic-pet-multi-platform/.process/ROLL_OUT_SIGNOFF_2026-04-13.md`.
 
 Current public environment:
 
@@ -83,7 +91,7 @@ You can now start formal acceptance and daily use on the delivered environment:
 
 ## Internal Follow-Up Priority
 
-No known repository-owned blocker remains before customer use.
+No known repository-owned blocker remained for the v0.2.1 baseline before customer use.
 
 Future work, if requested, should focus on:
 
