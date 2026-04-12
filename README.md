@@ -14,8 +14,12 @@
 - 队列：BullMQ + Redis
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
+- Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 也已上线；但完整电子宠物闭环仍属于 partial 范围
+- 最新 repo-local 验证快照：`2026-04-13` 本地候选版本已验证，backend `211`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+- 权威客户交付基线：`WFS-bilibili-delivery-readiness-20260408` 记录的 `2026-04-08` public-domain native Bilibili `GO` 仍是最后一条已签收 baseline
+- 当前远端运行状态：pet-core companion 与 admin pet/platform 路由已上线，但 Douyin 外部平台试点仍未完成远端接入配置
 
-> 注意：仓库内仍残留部分 Python/FastAPI/Celery 风格命名；阅读与运行时优先以当前 `backend-ts/` 与 `frontend/` 目录中的实现为准。
+> 注意：仓库内仍残留部分 Python/FastAPI/Celery 风格命名；阅读与运行时优先以当前 `backend-ts/`、`frontend/`、`pet-companion-web/` 与最新 workflow truth sources 为准。
 
 ---
 
@@ -118,8 +122,8 @@
 │  │  ├─ utils/                # 工具函数
 │  │  └─ style.css             # 全局样式
 │  └─ package.json
-├─ pet-companion-web/           # 独立 companion prototype（当前隔离，不接入已签收主运行时）
-│  ├─ src/                      # prototype UI + local adapter
+├─ pet-companion-web/           # 独立 companion web（已接入 backend 托管与 pet-core 适配，产品范围仍属 partial）
+│  ├─ src/                      # companion UI + backend/local adapter
 │  ├─ test/                     # prototype tests
 │  └─ package.json
 ├─ docker-compose.yml           # 本地/容器编排入口
@@ -1732,18 +1736,19 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis` 串成一套可启动的最小部署拓扑
 5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/api/admin.js` 与 `backend-ts/src/main.ts` 的现行契约对齐
 
-当前权威交付基线已不是早期的 `rollout blocked` 结论，而是 `WFS-bilibili-delivery-readiness-20260408` 中记录的原生 B 站 public-domain `GO`。也就是说，主运行链路已经有一条已签收的交付基线。
+当前权威交付基线已不是早期的 `rollout blocked` 结论，而是 `WFS-bilibili-delivery-readiness-20260408` 中记录的原生 B 站 public-domain `GO`。也就是说，主运行链路已经有一条已签收的客户交付基线。
 
-当前代码基线还包含两类后续演进中的隔离面：
+当前代码基线还包含两类后续演进中的扩展面：
 
-- `backend-ts` 下的 memory schema / repository / service 候选能力，当前已经暴露为 admin-management 接口，并开始被 worker / 人工审批流自动写入 companion feed，但仍未进入主发布业务契约
-- `pet-companion-web/` 下的独立 Vite companion prototype，当前仍是 local-stub 原型，不属于已签收主运行时
-  但现在可以由 backend 以 `/companion` 静态托管访问
+- `backend-ts` 下的 memory / pet-core schema、repository、service 能力，当前已经暴露为 admin-management 与 companion state-v2 接口，并被 worker / 人工审批流自动写入 companion feed；它已经进入 companion runtime 支撑链路，但主发布业务契约仍以 admin/automation 为主
+- `pet-companion-web/` 下的独立 Vite companion web，当前已由 backend 以 `/companion` 静态托管，并优先尝试接入 backend companion / memory API；但已实现能力仍主要停留在 pet-core starter state + `pat/feed/wake`，尚未形成完整 electronic-pet 产品闭环
+- `douyin-sidecar` 首个外部平台试点已经在代码与远端治理面中存在，但远端真实 sidecar/webhook 契约尚未完成，因此当前仍不能把它描述为已签收的远端能力
 
 因此，当前最准确的状态表述是：
 
-1. 主运行链路已完成迁移并已有已签收 rollout baseline
-2. 管理后台当前契约与测试已重新对齐
-3. 当前仓库包含一个后续本地 checkpoint，其中 memory 候选能力以管理面接口形式保留、`pet-companion-web` 以 prototype 形式保留，但二者都不视为已签收主运行时的一部分
+1. 主运行链路已完成迁移，并继续以 `WFS-bilibili-delivery-readiness-20260408` 作为最后一条已签收 rollout baseline
+2. `2026-04-13` 的本地候选版本是当前最强 repo-local 证据：backend `211`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+3. 远端当前已经上线 pet-core companion 与 admin pet/platform 路由，但首个外部平台试点仍因 Douyin sidecar 契约未完成而保持 disabled
+4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 partial
 
-这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`WFS-bilibili-delivery-readiness-20260408` 的 truth sources，以及当前 follow-up workflow 中对隔离能力的说明，而非旧的 Python 历史描述。
+这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。
