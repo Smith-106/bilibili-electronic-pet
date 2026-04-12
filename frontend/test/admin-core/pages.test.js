@@ -9,6 +9,7 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     getObservabilitySummary: vi.fn(),
     getReadinessStatus: vi.fn(),
     getPetOverview: vi.fn(),
+    recordPetAction: vi.fn(),
     getPlatformConnections: vi.fn(),
     setPlatformConnectionControl: vi.fn(),
     getJobs: vi.fn(),
@@ -123,9 +124,20 @@ describe('admin-core frontend regression tests', () => {
           petName: 'Mochi',
           loopMode: 'Pet core companion',
           statusLine: 'Pet core is active.',
+          adapterLabel: 'Pet core endpoint',
+          recentInteractions: [
+            {
+              kind: 'pat',
+              title: 'Pat interaction',
+              detail: 'A gentle pat kept the loop stable.',
+              source: 'Pet Core',
+              timestamp: '2026-04-07T00:00:00.000Z',
+            },
+          ],
         },
       },
     });
+    mockApi.recordPetAction.mockResolvedValue({ ok: true, action: 'feed', item_key: 'action:feed-latest' });
     mockApi.getPlatformConnections.mockResolvedValue({
       ok: true,
       items: [
@@ -387,6 +399,22 @@ describe('admin-core frontend regression tests', () => {
     expect(container.textContent).toContain('Growing');
     expect(container.textContent).toContain('Settling loop');
     expect(container.textContent).toContain('Snack reminder');
+    expect(container.textContent).toContain('最近交互');
+    expect(container.textContent).toContain('Pat interaction');
+  });
+
+  it('records a pet action from the pet-core admin page and refreshes the overview', async () => {
+    const container = createPageContainer();
+
+    await renderPetCore(container);
+    container.querySelector('#pet-action-note').value = 'snack top-up';
+    container.querySelector('[data-action="feed"]').click();
+    await flushPromises();
+    await flushPromises();
+
+    expect(mockApi.recordPetAction).toHaveBeenCalledWith('feed', 'snack top-up');
+    expect(mockApi.getPetOverview).toHaveBeenCalledTimes(2);
+    expect(mockShowToast).toHaveBeenCalledWith('Feed 已记录', 'success');
   });
 
   it('renders the platform connections admin page', async () => {

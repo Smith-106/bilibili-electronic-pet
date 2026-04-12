@@ -288,6 +288,75 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('records pet actions through the protected admin pet route', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+        recordCompanionAction: async (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            action: input.action,
+            item_key: `action:${input.action}-latest`,
+          };
+        },
+      }),
+    );
+
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/api/admin/pet/actions',
+      payload: {
+        action: 'feed',
+      },
+    });
+
+    expect(unauthorized.statusCode).toBe(401);
+    expect(unauthorized.json()).toEqual({ detail: 'unauthorized' });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/api/admin/pet/actions',
+      headers: {
+        'x-api-key': 'admin-key',
+      },
+      payload: {
+        action: 'dance',
+      },
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toEqual({ detail: 'action_invalid' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/pet/actions',
+      headers: {
+        'x-api-key': 'admin-key',
+      },
+      payload: {
+        action: 'feed',
+        note: ' snack top-up ',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        action: 'feed',
+        note: 'snack top-up',
+      },
+    ]);
+    expect(response.json()).toEqual({
+      ok: true,
+      action: 'feed',
+      item_key: 'action:feed-latest',
+    });
+
+    await app.close();
+  });
+
   it('returns readiness payload shape', async () => {
     const app = createServer(buildDeps());
 

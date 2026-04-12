@@ -3008,6 +3008,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     getCompanionStateV2: getCompanionStateV2Compat,
     listPlatformConnections,
     updatePlatformConnectionControl,
+    recordCompanionAction,
     normalizeAdminOverviewPayload,
     listAdminJobs,
     parseAdminString,

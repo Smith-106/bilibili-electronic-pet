@@ -1,5 +1,54 @@
 import { createLocalPetAdapter } from './local-adapter.js';
 
+async function getFallbackState(fallback) {
+  try {
+    return await fallback.getCompanionState();
+  } catch {
+    return createLocalPetAdapter().getCompanionState();
+  }
+}
+
+function buildDegradedState(fallbackState, { reason, endpoint, legacyEndpoint }) {
+  const normalizedReason = String(reason || 'backend_unavailable').trim() || 'backend_unavailable';
+  const attemptedEndpoints = [endpoint, legacyEndpoint].filter(Boolean);
+
+  return {
+    ...fallbackState,
+    loopMode: 'Degraded local fallback',
+    adapterLabel: 'Local fallback (backend unavailable)',
+    loopHint:
+      'Backend companion state is unavailable. This labeled fallback keeps the surface explorable, but it is not live backend data.',
+    recentSignals: [
+      `Backend sync failed: ${normalizedReason}.`,
+      'Retry after the companion backend recovers to restore live state.',
+      ...(Array.isArray(fallbackState?.recentSignals) ? fallbackState.recentSignals : []),
+    ],
+    recentInteractions: [
+      {
+        kind: 'fallback',
+        title: 'Fallback mode active',
+        detail: `The backend companion state could not be loaded from ${attemptedEndpoints.join(' -> ') || endpoint}. Showing local fallback data instead.`,
+        timestamp: new Date().toISOString(),
+        source: 'Backend degraded',
+      },
+      ...(Array.isArray(fallbackState?.recentInteractions) ? fallbackState.recentInteractions : []).map((entry) => ({
+        ...entry,
+        source: `${entry?.source || 'Local Stub'} · local fallback`,
+      })),
+    ],
+    degraded: true,
+    dataSource: 'local-fallback',
+    backendStatus: {
+      degraded: true,
+      source: 'backend',
+      reason: normalizedReason,
+      endpoint,
+      legacyEndpoint: legacyEndpoint || null,
+      retryable: true,
+    },
+  };
+}
+
 export function createBackendPetAdapter({
   endpoint = '/companion/state-v2',
   legacyEndpoint = '/companion/state',
@@ -13,6 +62,8 @@ export function createBackendPetAdapter({
         return fallback.getCompanionState();
       }
 
+      let attemptedLegacyEndpoint = false;
+
       try {
         const response = await fetchImpl(endpoint, {
           headers: {
@@ -20,6 +71,7 @@ export function createBackendPetAdapter({
           },
         });
         if (!response.ok && legacyEndpoint) {
+          attemptedLegacyEndpoint = true;
           const legacyResponse = await fetchImpl(legacyEndpoint, {
             headers: {
               Accept: 'application/json',
@@ -42,8 +94,13 @@ export function createBackendPetAdapter({
           throw new Error('companion_state_invalid');
         }
         return data;
-      } catch {
-        return fallback.getCompanionState();
+      } catch (error) {
+        const fallbackState = await getFallbackState(fallback);
+        return buildDegradedState(fallbackState, {
+          reason: error instanceof Error ? error.message : 'backend_unavailable',
+          endpoint,
+          legacyEndpoint: attemptedLegacyEndpoint ? legacyEndpoint : null,
+        });
       }
     },
 

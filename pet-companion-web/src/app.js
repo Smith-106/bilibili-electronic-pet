@@ -343,6 +343,21 @@ function formatInteractionTimestamp(timestamp) {
   };
 }
 
+function normalizeBackendStatus(rootState, safeState) {
+  const rootStatus =
+    rootState.backendStatus && typeof rootState.backendStatus === 'object' ? rootState.backendStatus : {};
+  const stateStatus =
+    safeState.backendStatus && typeof safeState.backendStatus === 'object' ? safeState.backendStatus : {};
+
+  return {
+    degraded: Boolean(rootStatus.degraded || stateStatus.degraded || rootState.degraded || safeState.degraded),
+    reason: rootStatus.reason || stateStatus.reason || '',
+    endpoint: rootStatus.endpoint || stateStatus.endpoint || '',
+    legacyEndpoint: rootStatus.legacyEndpoint || stateStatus.legacyEndpoint || '',
+    retryable: rootStatus.retryable ?? stateStatus.retryable ?? true,
+  };
+}
+
 function normalizeState(state) {
   const rootState = state && typeof state === 'object' ? state : {};
   const safeSnapshot =
@@ -373,6 +388,11 @@ function normalizeState(state) {
       : rootState.profile && typeof rootState.profile === 'object'
         ? rootState.profile
         : {};
+  const backendStatus = normalizeBackendStatus(rootState, safeState);
+  const dataSource =
+    (typeof rootState.dataSource === 'string' && rootState.dataSource.trim()) ||
+    (typeof safeState.dataSource === 'string' && safeState.dataSource.trim()) ||
+    (backendStatus.degraded ? 'local-fallback' : rootState.version === 'v2' ? 'backend-v2' : 'backend');
   const safeRelationship =
     safeSnapshot.relationship && typeof safeSnapshot.relationship === 'object'
       ? safeSnapshot.relationship
@@ -443,6 +463,11 @@ function normalizeState(state) {
       species: safeProfile.species || null,
       archetype: safeProfile.archetype || null,
     },
+    degraded: backendStatus.degraded,
+    dataSource,
+    dataSourceLabel: dataSource === 'local-fallback' ? 'Local fallback' : dataSource,
+    backendStatus,
+    retryGuidance: 'Use Refresh mood after the backend companion endpoint recovers.',
     proactiveSignals,
     onboarding,
     vitals,
@@ -566,11 +591,36 @@ function renderInteractions(interactions, selectedFilter) {
     .join('');
 }
 
+function renderDegradedPanel(state) {
+  if (!state.degraded) {
+    return '';
+  }
+
+  const attemptedEndpoints = [state.backendStatus.endpoint, state.backendStatus.legacyEndpoint].filter(Boolean).join(' -> ');
+
+  return `
+    <section class="panel panel-degraded" aria-live="polite">
+      <p class="section-label">Degraded mode</p>
+      <h2>Backend companion state unavailable</h2>
+      <p class="panel-copy">
+        Showing labeled local fallback data so the surface remains explorable without pretending the backend is healthy.
+      </p>
+      <ul class="signal-list">
+        <li class="signal-item"><strong>Surface source:</strong> ${escapeHtml(state.dataSourceLabel)}</li>
+        <li class="signal-item"><strong>Backend error:</strong> ${escapeHtml(state.backendStatus.reason || 'backend_unavailable')}</li>
+        ${attemptedEndpoints ? `<li class="signal-item"><strong>Attempted endpoints:</strong> ${escapeHtml(attemptedEndpoints)}</li>` : ''}
+        <li class="signal-item"><strong>Retry:</strong> ${escapeHtml(state.retryGuidance)}</li>
+      </ul>
+    </section>
+  `;
+}
+
 function createStateMarkup(rawState, selectedFilter = 'all') {
   const state = normalizeState(rawState);
   const normalizedFilter = normalizeInteractionFilter(selectedFilter);
 
   return `
+    ${renderDegradedPanel(state)}
     <div class="panel-grid">
       <section class="panel panel-pet" aria-labelledby="companion-name">
         <div class="pet-avatar" aria-hidden="true">
@@ -795,6 +845,14 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   let pendingTemplateValue = null;
   let showShortcutHelp = false;
   let lastAnnouncement = '';
+
+  function setAdapterStatus(message, { degraded = false } = {}) {
+    if (!adapterStatus) {
+      return;
+    }
+    adapterStatus.textContent = message;
+    adapterStatus.classList.toggle('is-degraded', degraded);
+  }
 
   function isEditableTarget(node) {
     return Boolean(
@@ -1192,7 +1250,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     }
 
     if (typeof adapter.performAction !== 'function') {
-      adapterStatus.textContent = 'Adapter: action unavailable';
+      setAdapterStatus('Adapter: action unavailable');
       announce(`${getInteractionKindLabel(action)} action is unavailable in this preview.`);
       return;
     }
@@ -1200,7 +1258,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     const note = typeof actionNote?.value === 'string' ? actionNote.value.trim() : '';
 
     setControlsDisabled(true);
-    adapterStatus.textContent = `Adapter: sending ${action}`;
+    setAdapterStatus(`Adapter: sending ${action}`);
     announce(`Sending ${getInteractionKindLabel(action)} action.`);
 
     try {
@@ -1214,7 +1272,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
       announce(`${getInteractionKindLabel(action)} action sent.`);
     } catch (error) {
       content.innerHTML = createErrorMarkup(error);
-      adapterStatus.textContent = 'Adapter: action failed';
+      setAdapterStatus('Adapter: action failed', { degraded: true });
       setControlsDisabled(false);
       announce(`${getInteractionKindLabel(action)} action failed.`);
     }
@@ -1263,18 +1321,18 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   async function loadState() {
     setControlsDisabled(true);
     refreshButton.textContent = 'Refreshing...';
-    adapterStatus.textContent = 'Adapter: syncing local loop';
+    setAdapterStatus('Adapter: syncing companion state');
 
     try {
       const state = await adapter.getCompanionState();
       const normalized = normalizeState(state);
       latestState = normalized;
       renderCurrentState();
-      adapterStatus.textContent = `Adapter: ${normalized.adapterLabel}`;
+      setAdapterStatus(`Adapter: ${normalized.adapterLabel}`, { degraded: normalized.degraded });
     } catch (error) {
       latestState = null;
       content.innerHTML = createErrorMarkup(error);
-      adapterStatus.textContent = 'Adapter: degraded';
+      setAdapterStatus('Adapter: degraded', { degraded: true });
     } finally {
       setControlsDisabled(false);
       refreshButton.textContent = 'Refresh mood';

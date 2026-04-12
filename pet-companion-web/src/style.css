@@ -598,6 +598,11 @@ body {
   font-weight: 600;
 }
 
+.status-pill.is-degraded {
+  background: rgba(245, 163, 56, 0.18);
+  color: #8f520f;
+}
+
 .refresh-button {
   border: none;
   border-radius: 999px;
@@ -633,6 +638,12 @@ body {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 18px;
+}
+
+.panel-degraded {
+  margin-bottom: 18px;
+  background: rgba(255, 244, 229, 0.96);
+  border-color: rgba(245, 163, 56, 0.3);
 }
 
 .panel {

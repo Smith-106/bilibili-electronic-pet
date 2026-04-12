@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { AdminJobsResponse, CompanionStateV2, PlatformConnectionSnapshot, RuntimeSettings } from '../server/contracts.js';
+import { isPetActionName, type PetActionName } from '../server/pet-contracts.js';
 import { isPlatformName } from '../server/platform-contracts.js';
 
 export type AdminCoreRouteDependencies = {
@@ -17,6 +18,10 @@ export type AdminCoreRouteDependencies = {
   }) =>
     | Promise<{ ok: boolean; item: PlatformConnectionSnapshot }>
     | { ok: boolean; item: PlatformConnectionSnapshot };
+  recordCompanionAction: (input: {
+    action: PetActionName;
+    note?: string;
+  }) => Promise<{ ok: boolean; action: string; item_key: string }> | { ok: boolean; action: string; item_key: string };
   normalizeAdminOverviewPayload: (overview: Record<string, unknown>) => Record<string, unknown>;
   listAdminJobs: (input: { status?: string; limit: number; offset: number }) => Promise<AdminJobsResponse> | AdminJobsResponse;
   parseAdminString: (value: unknown) => string | undefined;
@@ -55,6 +60,24 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
     if (!authorize(request, reply, deps)) return;
     const item = await deps.getCompanionStateV2();
     return reply.send({ ok: true, item });
+  });
+
+  app.post('/api/admin/pet/actions', async (request, reply) => {
+    if (!authorize(request, reply, deps)) return;
+
+    const body = request.body as Record<string, unknown>;
+    const action = String(body.action ?? '').trim().toLowerCase();
+    const note = typeof body.note === 'string' ? body.note.trim().slice(0, 256) : undefined;
+
+    if (!isPetActionName(action)) {
+      return reply.code(400).send({ detail: 'action_invalid' });
+    }
+
+    const response = await deps.recordCompanionAction({
+      action,
+      note,
+    });
+    return reply.send(response);
   });
 
   app.get('/api/admin/platforms', async (request, reply) => {

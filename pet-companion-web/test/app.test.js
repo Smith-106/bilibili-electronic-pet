@@ -585,8 +585,38 @@ describe('pet companion surface', () => {
 
     const state = await adapter.getCompanionState();
 
+    expect(state.degraded).toBe(true);
+    expect(state.dataSource).toBe('local-fallback');
     expect(state.petName).toBe('Mochi');
-    expect(state.adapterLabel).toContain('Local');
+    expect(state.adapterLabel).toContain('Local fallback');
+    expect(state.backendStatus).toMatchObject({
+      degraded: true,
+      reason: 'network_down',
+      endpoint: '/companion/state-v2',
+    });
+    expect(state.recentInteractions[0]).toMatchObject({
+      kind: 'fallback',
+      title: 'Fallback mode active',
+      source: 'Backend degraded',
+    });
+  });
+
+  it('renders visible degraded fallback copy when backend sync fails', async () => {
+    const container = createPageContainer();
+    const adapter = createBackendPetAdapter({
+      fetchImpl: vi.fn().mockRejectedValue(new Error('network_down')),
+    });
+
+    await renderPetCompanion(container, { adapter });
+
+    expect(container.textContent).toContain('Degraded mode');
+    expect(container.textContent).toContain('Backend companion state unavailable');
+    expect(container.textContent).toContain('Local fallback');
+    expect(container.textContent).toContain('network_down');
+    expect(container.textContent).toContain('Fallback mode active');
+    expect(container.querySelector('[data-role="adapter-status"]')?.textContent).toBe(
+      'Adapter: Local fallback (backend unavailable)',
+    );
   });
 
   it('prefers the v2 backend state endpoint before falling back to the legacy endpoint', async () => {

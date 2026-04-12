@@ -21,6 +21,13 @@ export function createAdminApi() {
     getPetOverview() {
       return requestJson('/api/admin/pet/overview');
     },
+    recordPetAction(action, note) {
+      return requestJson('/api/admin/pet/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note }),
+      });
+    },
     getPlatformConnections() {
       return requestJson('/api/admin/platforms');
     },
