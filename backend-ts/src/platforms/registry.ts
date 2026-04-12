@@ -40,7 +40,7 @@ const PLATFORM_ADAPTERS: Record<PlatformName, RegisteredPlatformAdapter> = {
     supportsConnectionHealth: true,
     ingressRoutes: [{ path: '/events/comment/bilibili', source: 'bilibili', platform: 'bilibili' }],
     resolvePublishSource: (settings) => settings.platformBilibiliPublishSource.trim() || 'bilibili-bot',
-    isEnabled: (settings) => settings.platformBilibiliEnabled,
+    isEnabled: (settings) => settings.platformBilibiliEnabled || settings.bilibiliEnabled,
     resolvePollingRuntime: (env = process.env) => ({
       enabled: parseBoolean(env.BILIBILI_POLL_ENABLED, false),
       intervalSeconds: parseInteger(env.BILIBILI_POLL_INTERVAL_SECONDS, 300),

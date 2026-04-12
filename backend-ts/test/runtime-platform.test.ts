@@ -58,6 +58,15 @@ describe('runtime-platform boundaries', () => {
     expect(defaultGetPlatformPublishSource('douyin', settings)).toBe('douyin-bot');
     expect(defaultGetPlatformPublishSource('kuaishou', settings)).toBe('kuaishou-custom');
   });
+
+  it('treats bilibili as enabled when the legacy bilibili runtime toggle is active', () => {
+    const settings = buildSettings({
+      platformBilibiliEnabled: false,
+      bilibiliEnabled: true,
+    });
+
+    expect(defaultIsPlatformEnabled('bilibili', settings)).toBe(true);
+  });
 });
 
 describe('contract boundary helpers', () => {

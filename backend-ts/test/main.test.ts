@@ -476,6 +476,54 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('marks external sidecar trials as degraded until the webhook is configured and keeps bilibili aligned with legacy runtime', async () => {
+    const originalDouyinWebhook = process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          bilibiliEnabled: true,
+          platformBilibiliEnabled: false,
+          platformDouyinEnabled: true,
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/api/admin/platforms' });
+    const data = response.json();
+    const bilibili = data.items.find((entry: { platform: string }) => entry.platform === 'bilibili');
+    const douyin = data.items.find((entry: { platform: string }) => entry.platform === 'douyin');
+
+    expect(response.statusCode).toBe(200);
+    expect(bilibili).toMatchObject({
+      platform: 'bilibili',
+      enabled: true,
+      status: 'connected',
+    });
+    expect(douyin).toMatchObject({
+      platform: 'douyin',
+      enabled: true,
+      status: 'degraded',
+      lastError: 'sidecar webhook is not configured',
+    });
+    expect(douyin.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'publish',
+          status: 'partial',
+        }),
+      ]),
+    );
+
+    await app.close();
+    if (originalDouyinWebhook === undefined) {
+      delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_DOUYIN_WEBHOOK_URL = originalDouyinWebhook;
+    }
+  });
+
   it('returns canonical delivery capability names and statuses', async () => {
     const app = createServer(
       buildDeps({

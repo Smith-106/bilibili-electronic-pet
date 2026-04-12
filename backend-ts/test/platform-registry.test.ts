@@ -61,6 +61,15 @@ describe('platform adapter registry', () => {
     expect(resolvePlatformAdapter('douyin').resolvePublishSource(settings)).toBe('douyin-bot');
   });
 
+  it('keeps the bilibili reference adapter enabled when only the legacy bilibili runtime flag is on', () => {
+    const settings = buildSettings({
+      platformBilibiliEnabled: false,
+      bilibiliEnabled: true,
+    });
+
+    expect(resolvePlatformAdapter('bilibili').isEnabled(settings)).toBe(true);
+  });
+
   it('resolves polling runtime through the bilibili adapter', () => {
     expect(resolvePlatformPollingRuntime('bilibili', {
       BILIBILI_POLL_ENABLED: 'true',

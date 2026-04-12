@@ -2675,12 +2675,32 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
       const supportsPolling = adapter.platform === 'bilibili';
       const pollingRuntime = adapter.resolvePollingRuntime(process.env);
       const control = getPlatformControlState(adapter.platform);
-      const status =
-        !enabled
-          ? 'disconnected'
-          : adapter.platform === 'bilibili' && !settings.bilibiliEnabled
-            ? 'degraded'
-            : 'connected';
+      const platformEnvPrefix = `PLATFORM_${adapter.platform.toUpperCase()}`;
+      const sidecarWebhookConfigured =
+        adapter.platform === 'bilibili' ? true : hasText(process.env[`${platformEnvPrefix}_WEBHOOK_URL`]);
+      const status = !enabled
+        ? 'disconnected'
+        : adapter.platform === 'bilibili'
+          ? settings.bilibiliEnabled
+            ? 'connected'
+            : 'degraded'
+          : sidecarWebhookConfigured
+            ? 'connected'
+            : 'degraded';
+      const lastError =
+        status === 'degraded'
+          ? adapter.platform === 'bilibili'
+            ? 'runtime platform enabled but Bilibili runtime toggle is off'
+            : 'sidecar webhook is not configured'
+          : null;
+      const publishCapabilityStatus =
+        !adapter.supportsPublishing ? 'unsupported' : status === 'degraded' ? 'partial' : 'available';
+      const publishCapabilityNote =
+        adapter.platform === 'bilibili'
+          ? adapter.resolvePublishSource(settings)
+          : sidecarWebhookConfigured
+            ? `${adapter.resolvePublishSource(settings)} via sidecar webhook`
+            : `${adapter.resolvePublishSource(settings)} requires PLATFORM_${adapter.platform.toUpperCase()}_WEBHOOK_URL`;
 
       return {
         platform: adapter.platform,
@@ -2688,7 +2708,7 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
         adapterKey: adapter.adapterKey,
         status,
         lastCheckedAt: null,
-        lastError: status === 'degraded' ? 'runtime platform enabled but Bilibili runtime toggle is off' : null,
+        lastError,
         rolloutControl: control
           ? {
               enabled: control.enabled,
@@ -2708,8 +2728,8 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
           },
           {
             key: 'publish',
-            status: adapter.supportsPublishing ? 'available' : 'unsupported',
-            note: adapter.resolvePublishSource(settings),
+            status: publishCapabilityStatus,
+            note: publishCapabilityNote,
           },
           {
             key: 'identity_binding',
