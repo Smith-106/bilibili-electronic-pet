@@ -37,6 +37,39 @@ function createState(overrides = {}) {
   };
 }
 
+function createStateV2(overrides = {}) {
+  const companionOverrides = overrides.companion || {};
+  const snapshotOverrides = overrides.snapshot || {};
+  return {
+    version: 'v2',
+    snapshot: {
+      profile: {
+        petName: 'Mochi',
+        species: 'browser-companion',
+        archetype: 'gentle-helper',
+      },
+      relationship: {
+        level: 'Growing',
+        note: 'The relationship is strengthening through repeated care loops.',
+      },
+      progress: {
+        stage: 'settling',
+        progressLabel: 'Settling loop',
+        nextMilestone: 'Proactive daily rituals',
+      },
+      needs: [
+        { key: 'energy', label: 'Energy', value: '81%' },
+        { key: 'bond', label: 'Bond', value: '58%' },
+      ],
+      proactiveSignals: [
+        { key: 'snack-reminder', label: 'Snack reminder', detail: 'Satiety is dipping. A feed action should restore the loop.' },
+      ],
+      ...snapshotOverrides,
+    },
+    companion: createState(companionOverrides),
+  };
+}
+
 describe('pet companion surface', () => {
   beforeEach(() => {
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-04-10T03:30:00.000Z'));
@@ -80,6 +113,21 @@ describe('pet companion surface', () => {
     expect(container.querySelector('[data-role="shortcut-help"]')?.hasAttribute('hidden')).toBe(true);
     expect(container.querySelector('#nav-list')).toBeNull();
     expect(adapter.getCompanionState).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders relationship, progress, and proactive signals from a v2 companion envelope', async () => {
+    const container = createPageContainer();
+    const adapter = {
+      getCompanionState: vi.fn().mockResolvedValue(createStateV2()),
+    };
+
+    await renderPetCompanion(container, { adapter });
+
+    expect(container.textContent).toContain('Growing');
+    expect(container.textContent).toContain('Settling loop');
+    expect(container.textContent).toContain('Proactive signals');
+    expect(container.textContent).toContain('Snack reminder');
+    expect(container.textContent).toContain('browser-companion');
   });
 
   it('toggles the shortcut help card from button and keyboard', async () => {
@@ -539,6 +587,26 @@ describe('pet companion surface', () => {
 
     expect(state.petName).toBe('Mochi');
     expect(state.adapterLabel).toContain('Local');
+  });
+
+  it('prefers the v2 backend state endpoint before falling back to the legacy endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => createStateV2(),
+    });
+    const adapter = createBackendPetAdapter({
+      fetchImpl: fetchMock,
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/companion/state-v2',
+      expect.objectContaining({
+        headers: { Accept: 'application/json' },
+      }),
+    );
+    expect(state.version).toBe('v2');
   });
 
   it('posts companion actions through the backend adapter', async () => {

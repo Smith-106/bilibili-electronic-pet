@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify';
 
-import type { BilibiliDiagnostics, ConnectionStatus, RuntimeSettings } from '../server/contracts.js';
+import type {
+  BilibiliDiagnostics,
+  CompanionStateV2,
+  ConnectionStatus,
+  PlatformConnectionSnapshot,
+  RuntimeSettings,
+} from '../server/contracts.js';
 
 type DeliveryCapabilityMatrix = {
   blockers: string[];
@@ -18,6 +24,10 @@ export type ReadinessRouteDependencies = {
   checkDatabaseConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
   checkRedisConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
+  getCompanionStateV2: () => Promise<CompanionStateV2> | CompanionStateV2;
+  listPlatformConnections: () =>
+    | Promise<{ ok: boolean; items: PlatformConnectionSnapshot[] }>
+    | { ok: boolean; items: PlatformConnectionSnapshot[] };
   buildDefaultReadinessSummary: (settings: RuntimeSettings) => ReadinessSummary;
   defaultBilibiliDiagnostics: (settings: RuntimeSettings) => Promise<BilibiliDiagnostics>;
   normalizePublishMode: (mode: string) => string;
@@ -28,6 +38,11 @@ export type ReadinessRouteDependencies = {
     effectivePublishMode: string,
   ) => DeliveryCapabilityMatrix;
 };
+
+function isPublishingReady(snapshot: PlatformConnectionSnapshot): boolean {
+  const publishCapability = snapshot.capabilities.find((entry) => entry.key === 'publish');
+  return publishCapability?.status === 'available' || publishCapability?.status === 'partial';
+}
 
 export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRouteDependencies): void {
   app.get('/readiness', async () => {
@@ -143,6 +158,79 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     }
 
     const deliveryReady = deliveryBlockers.length === 0 && deliveryCapabilities.blockers.length === 0;
+    const productBlockers: string[] = [];
+
+    let companionState: CompanionStateV2 | null = null;
+    try {
+      companionState = await deps.getCompanionStateV2();
+    } catch {
+      deps.addBlocker(productBlockers, 'pet_core:state_v2_unavailable');
+    }
+
+    let platformConnections: PlatformConnectionSnapshot[] = [];
+    try {
+      const platformResponse = await deps.listPlatformConnections();
+      platformConnections = Array.isArray(platformResponse.items) ? platformResponse.items : [];
+    } catch {
+      deps.addBlocker(productBlockers, 'platform_trial:status_unavailable');
+    }
+
+    const petCoreReady = companionState?.version === 'v2';
+    if (!petCoreReady) {
+      deps.addBlocker(productBlockers, 'pet_core:state_v2_unavailable');
+    }
+
+    const externalPlatformTrials = platformConnections.filter((entry) => entry.platform !== 'bilibili');
+    const activeExternalPlatformTrials = externalPlatformTrials.filter((entry) => entry.enabled);
+    const connectedExternalPlatformTrials = activeExternalPlatformTrials.filter(
+      (entry) =>
+        entry.status === 'connected' && (entry.rolloutControl?.enabled ?? true) && isPublishingReady(entry),
+    );
+
+    if (activeExternalPlatformTrials.length === 0) {
+      deps.addBlocker(productBlockers, 'platform_trial:no_external_platform_enabled');
+    }
+    if (connectedExternalPlatformTrials.length === 0) {
+      deps.addBlocker(productBlockers, 'platform_trial:no_connected_rollout');
+    }
+
+    const bilibiliReferencePlatform =
+      platformConnections.find((entry) => entry.platform === 'bilibili') ?? null;
+    const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
+    const productReadiness = {
+      pet_core: {
+        ready: petCoreReady,
+        pet_name: companionState?.snapshot.profile.petName ?? null,
+        relationship_level: companionState?.snapshot.relationship.level ?? null,
+        proactive_signal_count: companionState?.snapshot.proactiveSignals.length ?? 0,
+      },
+      companion_surface: {
+        ready: petCoreReady,
+        pet_name: companionState?.companion.petName ?? null,
+        status_line: companionState?.companion.statusLine ?? null,
+        interaction_count: companionState?.companion.recentInteractions.length ?? 0,
+      },
+      admin_control_plane: {
+        ready: foundationReady,
+        platform_count: platformConnections.length,
+        operator_managed_platforms: platformConnections.filter((entry) => entry.rolloutControl != null).length,
+      },
+      bilibili_reference_platform: {
+        ready: bilibiliReferencePlatform != null,
+        status: bilibiliReferencePlatform?.status ?? 'unknown',
+        adapter_key: bilibiliReferencePlatform?.adapterKey ?? null,
+      },
+      external_platform_trial: {
+        ready: connectedExternalPlatformTrials.length > 0,
+        active_platforms: activeExternalPlatformTrials.map((entry) => ({
+          platform: entry.platform,
+          status: entry.status,
+          adapter_key: entry.adapterKey,
+          rollout_enabled: entry.rolloutControl?.enabled ?? entry.enabled,
+          rollout_stage: entry.rolloutControl?.stage ?? null,
+        })),
+      },
+    };
 
     return {
       ready: foundationReady,
@@ -160,6 +248,9 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       delivery_capabilities: deliveryCapabilities,
       delivery_signals: deliverySignals,
       bilibili_diagnostics: bilibiliDiagnostics,
+      product_ready: productReady,
+      product_blockers: productBlockers,
+      product_readiness: productReadiness,
     };
   });
 }

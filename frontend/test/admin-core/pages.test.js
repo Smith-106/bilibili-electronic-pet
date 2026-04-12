@@ -8,6 +8,9 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     getMetricsOverview: vi.fn(),
     getObservabilitySummary: vi.fn(),
     getReadinessStatus: vi.fn(),
+    getPetOverview: vi.fn(),
+    getPlatformConnections: vi.fn(),
+    setPlatformConnectionControl: vi.fn(),
     getJobs: vi.fn(),
     getGatewayLogs: vi.fn(),
     getGatewayPublishLogs: vi.fn(),
@@ -43,6 +46,8 @@ const pages = await Promise.all([
   import('../../src/pages/jobs.js'),
   import('../../src/pages/query.js'),
   import('../../src/pages/gateway.js'),
+  import('../../src/pages/pet-core.js'),
+  import('../../src/pages/connections.js'),
   import('../../src/pages/role-cards.js'),
   import('../../src/pages/knowledge.js'),
   import('../../src/pages/memory.js'),
@@ -53,6 +58,8 @@ const [
   { render: renderJobs },
   { render: renderQuery },
   { render: renderGateway },
+  { render: renderPetCore },
+  { render: renderConnections },
   { render: renderRoleCards },
   { render: renderKnowledge },
   { render: renderMemory },
@@ -101,6 +108,35 @@ describe('admin-core frontend regression tests', () => {
       bilibili_diagnostics: {
         effective_publish_mode: 'native_bilibili',
       },
+    });
+    mockApi.getPetOverview.mockResolvedValue({
+      ok: true,
+      item: {
+        version: 'v2',
+        snapshot: {
+          relationship: { level: 'Growing', note: 'Bond is climbing.' },
+          progress: { stage: 'settling', progressLabel: 'Settling loop', nextMilestone: 'Daily rituals' },
+          needs: [{ key: 'energy', label: 'Energy', value: '80%' }],
+          proactiveSignals: [{ key: 'snack', label: 'Snack reminder', detail: 'Feed soon.' }],
+        },
+        companion: {
+          petName: 'Mochi',
+          loopMode: 'Pet core companion',
+          statusLine: 'Pet core is active.',
+        },
+      },
+    });
+    mockApi.getPlatformConnections.mockResolvedValue({
+      ok: true,
+      items: [
+        {
+          platform: 'bilibili',
+          adapterKey: 'bilibili-reference',
+          status: 'connected',
+          enabled: true,
+          capabilities: [{ key: 'publish', status: 'available', note: 'bilibili-open' }],
+        },
+      ],
     });
     mockApi.getJobs.mockResolvedValue({
       items: [
@@ -340,5 +376,36 @@ describe('admin-core frontend regression tests', () => {
     expect(container.textContent).toContain('Memory 管理');
     expect(container.textContent).toContain('新增 Space');
     expect(mockApi.getMemorySpaces).toHaveBeenCalledWith({ limit: 50 });
+  });
+
+  it('renders the pet-core admin page with pet overview data', async () => {
+    const container = createPageContainer();
+
+    await renderPetCore(container);
+
+    expect(container.textContent).toContain('宠物核心');
+    expect(container.textContent).toContain('Growing');
+    expect(container.textContent).toContain('Settling loop');
+    expect(container.textContent).toContain('Snack reminder');
+  });
+
+  it('renders the platform connections admin page', async () => {
+    const container = createPageContainer();
+
+    await renderConnections(container);
+
+    expect(container.textContent).toContain('平台连接');
+    expect(container.textContent).toContain('bilibili-reference');
+    expect(container.textContent).toContain('connected');
+  });
+
+  it('toggles a platform trial from the connections page', async () => {
+    const container = createPageContainer();
+
+    await renderConnections(container);
+    container.querySelector('[data-role="platform-toggle"]').click();
+    await flushPromises();
+
+    expect(mockApi.setPlatformConnectionControl).toHaveBeenCalledWith('bilibili', false);
   });
 });

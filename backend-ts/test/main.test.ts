@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createServer } from '../src/main.js';
+import { resetPlatformControlState } from '../src/platforms/control-state.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import type { ServerDependencies } from '../src/server/dependencies.js';
 
@@ -59,6 +60,14 @@ function buildDeps(overrides: Partial<ServerDependencies> = {}): Partial<ServerD
     ...overrides,
   };
 }
+
+beforeEach(() => {
+  resetPlatformControlState();
+});
+
+afterEach(() => {
+  resetPlatformControlState();
+});
 
 describe('health/readiness parity', () => {
   it('returns ok for /health', async () => {
@@ -183,6 +192,51 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('returns a v2 companion envelope without admin auth', async () => {
+    const app = createServer(
+      buildDeps({
+        getCompanionState: async () => ({
+          petName: 'Mochi',
+          statusLine: 'Tracking persisted memory.',
+          loopMode: 'Backend memory companion',
+          lastCheckIn: '2026-04-11T00:00:00.000Z',
+          adapterLabel: 'Backend memory endpoint',
+          loopHint: 'Companion state is sourced from backend memory.',
+          mood: {
+            label: 'Attentive',
+            note: 'Companion sees stored spaces.',
+          },
+          memoryTitle: 'Persisted memory summary',
+          memorySummary: 'Known spaces: Alpha Operator.',
+          vitals: [
+            { label: 'Spaces', value: '1' },
+            { label: 'Grants', value: '1' },
+          ],
+          recentSignals: ['Recent spaces: Alpha Operator'],
+          recentInteractions: [
+            {
+              kind: 'pat',
+              title: 'Pat interaction',
+              detail: 'A gentle pat settled Mochi and raised the bond signal.',
+              timestamp: '2026-04-11T00:00:00.000Z',
+              source: 'Companion Action',
+            },
+          ],
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/companion/state-v2' });
+    const data = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(data.version).toBe('v2');
+    expect(data.snapshot.profile.petName).toBe('Mochi');
+    expect(data.companion.petName).toBe('Mochi');
+
+    await app.close();
+  });
+
   it('accepts public companion actions', async () => {
     const captured: Array<Record<string, unknown>> = [];
     const app = createServer(
@@ -256,6 +310,9 @@ describe('health/readiness parity', () => {
     expect(data).toHaveProperty('delivery_capabilities');
     expect(data).toHaveProperty('delivery_signals');
     expect(data).toHaveProperty('bilibili_diagnostics');
+    expect(data).toHaveProperty('product_ready');
+    expect(data).toHaveProperty('product_blockers');
+    expect(data).toHaveProperty('product_readiness');
 
     expect(typeof data.database).toBe('object');
     expect(typeof data.redis).toBe('object');
@@ -263,11 +320,158 @@ describe('health/readiness parity', () => {
     expect(Array.isArray(data.delivery_blockers)).toBe(true);
     expect(Array.isArray(data.blocking_reasons)).toBe(true);
     expect(Array.isArray(data.delivery_capability_blockers)).toBe(true);
+    expect(Array.isArray(data.product_blockers)).toBe(true);
     expect(Array.isArray(data.delivery_capabilities.capabilities)).toBe(true);
     expect(typeof data.delivery_signals).toBe('object');
     expect(typeof data.bilibili_diagnostics).toBe('object');
+    expect(typeof data.product_ready).toBe('boolean');
+    expect(typeof data.product_readiness).toBe('object');
     expect(data.database).toHaveProperty('connected');
     expect(data.redis).toHaveProperty('connected');
+
+    await app.close();
+  });
+
+  it('surfaces product readiness for pet-core and external platform trial gates', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          llmProvider: 'openai',
+          llmApiKeyConfigured: true,
+          searchApiKeyConfigured: true,
+          publisherMode: 'webhook',
+          publisherWebhookUrlConfigured: true,
+          platformDouyinEnabled: true,
+        }),
+        getCompanionStateV2: async () => ({
+          version: 'v2',
+          snapshot: {
+            profile: {
+              petName: 'Mochi',
+              species: 'fox spirit',
+              archetype: 'listener',
+            },
+            relationship: {
+              level: 'bonded',
+              note: 'Operators keep the loop healthy.',
+            },
+            progress: {
+              stage: 'growth',
+              progressLabel: 'Trial-ready',
+              nextMilestone: 'Multi-platform signoff',
+            },
+            needs: [{ key: 'energy', label: 'Energy', value: 'Stable', trend: 'steady' }],
+            proactiveSignals: [
+              {
+                key: 'checkin',
+                label: 'Check-in',
+                detail: 'Prompt the operator to review the douyin rollout.',
+                dueAt: '2026-04-13T00:00:00.000Z',
+              },
+            ],
+          },
+          companion: {
+            petName: 'Mochi',
+            statusLine: 'Trial controls are armed.',
+            loopMode: 'Pet-core',
+            lastCheckIn: '2026-04-13T00:00:00.000Z',
+            adapterLabel: 'Pet-core service',
+            loopHint: 'State comes from the persisted pet core.',
+            mood: {
+              label: 'Confident',
+              note: 'The companion is ready for a staged external rollout.',
+            },
+            memoryTitle: 'Pet-core summary',
+            memorySummary: 'Companion state is live.',
+            vitals: [{ label: 'Signals', value: '1' }],
+            recentSignals: ['Douyin trial connected'],
+            recentInteractions: [
+              {
+                kind: 'signal',
+                title: 'Trial ready',
+                detail: 'The douyin sidecar is connected.',
+                timestamp: '2026-04-13T00:00:00.000Z',
+                source: 'System',
+              },
+            ],
+          },
+        }),
+        listPlatformConnections: async () => ({
+          ok: true,
+          items: [
+            {
+              platform: 'bilibili',
+              enabled: true,
+              adapterKey: 'bilibili-reference',
+              status: 'connected',
+              lastCheckedAt: null,
+              lastError: null,
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+              },
+              capabilities: [
+                { key: 'ingress', status: 'available' },
+                { key: 'publish', status: 'available' },
+              ],
+            },
+            {
+              platform: 'douyin',
+              enabled: true,
+              adapterKey: 'douyin-sidecar-trial',
+              status: 'connected',
+              lastCheckedAt: null,
+              lastError: null,
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+              },
+              capabilities: [
+                { key: 'ingress', status: 'available' },
+                { key: 'publish', status: 'available' },
+              ],
+            },
+          ],
+        }),
+        buildBilibiliDiagnostics: async () => ({
+          ready: true,
+          blocking_reasons: [],
+          effective_publish_mode: 'webhook',
+          checks: {
+            worker_or_publish: { ready: true, errors: [] },
+          },
+          release_gates: {
+            worker_or_publish_ready: true,
+          },
+          signals: {},
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/readiness' });
+    const data = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(data.product_ready).toBe(true);
+    expect(data.product_blockers).toEqual([]);
+    expect(data.product_readiness.pet_core).toMatchObject({
+      ready: true,
+      pet_name: 'Mochi',
+      proactive_signal_count: 1,
+    });
+    expect(data.product_readiness.external_platform_trial).toMatchObject({
+      ready: true,
+    });
+    expect(data.product_readiness.external_platform_trial.active_platforms).toEqual([
+      expect.objectContaining({
+        platform: 'douyin',
+        status: 'connected',
+        rollout_enabled: true,
+        rollout_stage: 'trial',
+      }),
+    ]);
 
     await app.close();
   });
@@ -838,6 +1042,138 @@ describe('gateway/auth parity', () => {
     });
 
     await app.close();
+  });
+
+  it('allows operators to pause and resume a platform trial', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+        publishPlatformReply: () => ({
+          published: true,
+          reason: 'trial_publish_ok',
+          publishedAt: new Date('2026-03-07T02:30:00.000Z'),
+        }),
+      }),
+    );
+
+    const paused = await app.inject({
+      method: 'POST',
+      url: '/api/admin/platforms/douyin/control',
+      payload: { enabled: false },
+    });
+    expect(paused.statusCode).toBe(200);
+    expect(paused.json().item.rolloutControl.enabled).toBe(false);
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-douyin-2',
+        reply_text: 'reply text',
+        trace_id: 'trace-douyin-2',
+      },
+    });
+    expect(blocked.statusCode).toBe(403);
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: '/api/admin/platforms/douyin/control',
+      payload: { enabled: true },
+    });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().item.rolloutControl.enabled).toBe(true);
+
+    const allowed = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-douyin-2',
+        reply_text: 'reply text',
+        trace_id: 'trace-douyin-2',
+      },
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json().published).toBe(true);
+
+    await app.close();
+  });
+
+  it('uses the default sidecar webhook publisher for douyin when configured', async () => {
+    const originalUrl = process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    const originalToken = process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN;
+    process.env.PLATFORM_DOUYIN_WEBHOOK_URL = 'https://sidecar.example.test/publish';
+    process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN = 'secret-token';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        published: true,
+        reason: 'sidecar_publish_ok',
+        published_at: '2026-03-07T03:00:00.000Z',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const finalized: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-dy-sidecar' }),
+        finalizePublishLog: (input) => {
+          finalized.push(input as unknown as Record<string, unknown>);
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-douyin-sidecar',
+        reply_text: 'reply text',
+        trace_id: 'trace-douyin-sidecar',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      published: true,
+      reason: 'sidecar_publish_ok',
+      comment_id: 'comment-douyin-sidecar',
+      published_at: '2026-03-07T03:00:00.000Z',
+      trace_id: 'trace-douyin-sidecar',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://sidecar.example.test/publish',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer secret-token',
+        }),
+      }),
+    );
+    expect(finalized[0]).toMatchObject({
+      source: 'douyin-bot',
+      status: 'published',
+    });
+
+    await app.close();
+    vi.unstubAllGlobals();
+    if (originalUrl === undefined) {
+      delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_DOUYIN_WEBHOOK_URL = originalUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN;
+    } else {
+      process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN = originalToken;
+    }
   });
 
   it('standardizes gateway publish failure reasons', async () => {

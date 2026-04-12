@@ -8,6 +8,7 @@
 
 import { pathToFileURL } from 'node:url';
 
+import { resolvePlatformPollingRuntime } from '../platforms/registry.js';
 import { buildWorkerServices } from '../services/index.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
@@ -38,9 +39,10 @@ export async function main(): Promise<void> {
   const worker = createCommentEventWorker(QUEUE_NAME, services);
   console.log(`[worker] Comment-event worker started (queue: ${QUEUE_NAME})`);
 
-  // ── Bilibili polling scheduler ──
-  const pollEnabled = parseBoolean(process.env.BILIBILI_POLL_ENABLED, false);
-  const pollIntervalSeconds = parseInteger(process.env.BILIBILI_POLL_INTERVAL_SECONDS, 300);
+  // ── Bilibili polling scheduler via platform adapter registry ──
+  const bilibiliPollingRuntime = resolvePlatformPollingRuntime('bilibili', process.env);
+  const pollEnabled = bilibiliPollingRuntime.enabled;
+  const pollIntervalSeconds = bilibiliPollingRuntime.intervalSeconds;
 
   if (pollEnabled) {
     let pollTimer: ReturnType<typeof setInterval> | null = null;

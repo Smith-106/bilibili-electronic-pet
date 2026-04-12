@@ -11,6 +11,8 @@ const { pageIds, mockRequestJson, renderSpies } = vi.hoisted(() => {
     'memory',
     'role-cards',
     'profiles',
+    'pet-core',
+    'connections',
     'gateway',
     'audit',
     'bilibili',
@@ -37,6 +39,8 @@ vi.mock('../../src/pages/knowledge.js', () => ({ render: renderSpies.knowledge }
 vi.mock('../../src/pages/memory.js', () => ({ render: renderSpies.memory }));
 vi.mock('../../src/pages/role-cards.js', () => ({ render: renderSpies['role-cards'] }));
 vi.mock('../../src/pages/profiles.js', () => ({ render: renderSpies.profiles }));
+vi.mock('../../src/pages/pet-core.js', () => ({ render: renderSpies['pet-core'] }));
+vi.mock('../../src/pages/connections.js', () => ({ render: renderSpies.connections }));
 vi.mock('../../src/pages/gateway.js', () => ({ render: renderSpies.gateway }));
 vi.mock('../../src/pages/audit.js', () => ({ render: renderSpies.audit }));
 vi.mock('../../src/pages/bilibili.js', () => ({ render: renderSpies.bilibili }));

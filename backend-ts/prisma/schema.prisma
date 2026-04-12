@@ -254,3 +254,46 @@ model IdentityLink {
   @@index([updated_at])
   @@map("identity_links")
 }
+
+model PetState {
+  id                     Int       @id @default(autoincrement())
+  profile_key            String    @unique @default("default")
+  pet_name               String    @default("Mochi")
+  species                String?
+  archetype              String?
+  mood_label             String    @default("Curious")
+  mood_note              String    @default("Settling into the next interaction loop.")
+  relationship_level     String    @default("Growing")
+  relationship_note      String    @default("Bond is still forming through repeated care actions.")
+  progress_stage         String    @default("starter")
+  progress_label         String    @default("Starter loop")
+  next_milestone         String?
+  last_check_in_at       DateTime?
+  needs_json             String    @default("[]")
+  proactive_signals_json String    @default("[]")
+  state_metadata         String    @default("{}")
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @default(now())
+
+  actions PetAction[]
+
+  @@index([updated_at])
+  @@map("pet_states")
+}
+
+model PetAction {
+  id             Int       @id @default(autoincrement())
+  profile_key    String    @default("default")
+  action         String
+  note           String?
+  event_detail   String
+  state_metadata String    @default("{}")
+  created_at     DateTime  @default(now())
+  pet_state_id   Int?
+
+  pet_state PetState? @relation(fields: [pet_state_id], references: [id], onDelete: SetNull)
+
+  @@index([profile_key, created_at])
+  @@index([pet_state_id, created_at])
+  @@map("pet_actions")
+}

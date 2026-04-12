@@ -87,8 +87,10 @@ async function runStrictWithStubRuntime(envText) {
           ready: true,
           foundation_ready: true,
           delivery_ready: true,
+          product_ready: true,
           foundation_blockers: [],
           delivery_blockers: [],
+          product_blockers: [],
           delivery_capability_blockers: [],
           delivery_capabilities: {
             blockers: [],
@@ -119,7 +121,87 @@ async function runStrictWithStubRuntime(envText) {
             bilibili_publish_enabled: false,
             bilibili_env_credential_configured: false,
           },
+          product_readiness: {
+            pet_core: {
+              ready: true,
+              pet_name: 'Mochi',
+              relationship_level: 'bonded',
+              proactive_signal_count: 1,
+            },
+            companion_surface: {
+              ready: true,
+              pet_name: 'Mochi',
+              status_line: 'Trial ready',
+              interaction_count: 1,
+            },
+            admin_control_plane: {
+              ready: true,
+              platform_count: 2,
+              operator_managed_platforms: 2,
+            },
+            bilibili_reference_platform: {
+              ready: true,
+              status: 'connected',
+              adapter_key: 'bilibili-reference',
+            },
+            external_platform_trial: {
+              ready: true,
+              active_platforms: [
+                {
+                  platform: 'douyin',
+                  status: 'connected',
+                  adapter_key: 'douyin-sidecar-trial',
+                  rollout_enabled: true,
+                  rollout_stage: 'trial',
+                },
+              ],
+            },
+          },
           kill_switch: false,
+        }),
+      );
+      return;
+    }
+    if (url === '/companion/state-v2') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          version: 'v2',
+          snapshot: {
+            profile: {
+              petName: 'Mochi',
+              species: 'fox spirit',
+              archetype: 'listener',
+            },
+            relationship: {
+              level: 'bonded',
+              note: 'Operators keep the loop healthy.',
+            },
+            progress: {
+              stage: 'growth',
+              progressLabel: 'Trial-ready',
+              nextMilestone: 'Signoff',
+            },
+            needs: [],
+            proactiveSignals: [{ key: 'checkin', label: 'Check-in', detail: 'Review douyin rollout.' }],
+          },
+          companion: {
+            petName: 'Mochi',
+            statusLine: 'Trial ready',
+            loopMode: 'Pet-core',
+            lastCheckIn: '2026-04-13T00:00:00.000Z',
+            adapterLabel: 'Pet-core service',
+            loopHint: 'Companion state is live.',
+            mood: {
+              label: 'Confident',
+              note: 'Ready for rollout.',
+            },
+            memoryTitle: 'Pet-core summary',
+            memorySummary: 'Companion state is live.',
+            vitals: [],
+            recentSignals: [],
+            recentInteractions: [],
+          },
         }),
       );
       return;
@@ -127,6 +209,55 @@ async function runStrictWithStubRuntime(envText) {
     if (url === '/api/admin/overview') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url === '/api/admin/pet/overview') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ok: true,
+          item: {
+            version: 'v2',
+            snapshot: {
+              profile: {
+                petName: 'Mochi',
+              },
+              proactiveSignals: [{ key: 'checkin', label: 'Check-in', detail: 'Review douyin rollout.' }],
+            },
+          },
+        }),
+      );
+      return;
+    }
+    if (url === '/api/admin/platforms') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ok: true,
+          items: [
+            {
+              platform: 'bilibili',
+              enabled: true,
+              adapterKey: 'bilibili-reference',
+              status: 'connected',
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+              },
+            },
+            {
+              platform: 'douyin',
+              enabled: true,
+              adapterKey: 'douyin-sidecar-trial',
+              status: 'connected',
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+              },
+            },
+          ],
+        }),
+      );
       return;
     }
     if (url === '/api/admin/bilibili/status') {
@@ -324,9 +455,18 @@ PUBLISHER_MODE=manual_queue
         ready: true,
         foundation_ready: true,
         delivery_ready: true,
+        product_ready: true,
       },
       publish: {
         mode: 'webhook',
+      },
+      pet_core: {
+        public_state_version: 'v2',
+        admin_state_version: 'v2',
+        pet_name: 'Mochi',
+      },
+      platforms: {
+        total: 2,
       },
       bilibili: {
         effective_publish_mode: 'webhook',

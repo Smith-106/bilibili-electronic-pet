@@ -1,5 +1,6 @@
 import type { BilibiliAuthProbeResult } from '../services/bilibili-client.js';
 import type { BilibiliRuntimeConfig } from '../services/bilibili-runtime-config.js';
+import type { PetActionName } from './pet-contracts.js';
 import type {
   AdminAuditSummaryResponse,
   AdminGatewayLogsResponse,
@@ -8,6 +9,7 @@ import type {
   BilibiliVideo,
   CommentEvent,
   CompanionState,
+  CompanionStateV2,
   ConnectionStatus,
   IdentityLink,
   KnowledgeEntry,
@@ -15,6 +17,7 @@ import type {
   MemoryItem,
   MemorySpace,
   PlatformName,
+  PlatformConnectionSnapshot,
   PublishExecutionResult,
   PublishFinalizeInput,
   PublishGatewayInput,
@@ -265,10 +268,20 @@ export type ServerDependencies = {
     pollEnabled?: boolean;
   }) => Promise<{ ok: boolean; item: BilibiliVideo }> | { ok: boolean; item: BilibiliVideo };
   getCompanionState: () => Promise<CompanionState> | CompanionState;
+  getCompanionStateV2: () => Promise<CompanionStateV2> | CompanionStateV2;
   recordCompanionAction: (input: {
-    action: 'pat' | 'feed' | 'wake';
+    action: PetActionName;
     note?: string;
   }) => Promise<{ ok: boolean; action: string; item_key: string }> | { ok: boolean; action: string; item_key: string };
+  listPlatformConnections: () =>
+    | Promise<{ ok: boolean; items: PlatformConnectionSnapshot[] }>
+    | { ok: boolean; items: PlatformConnectionSnapshot[] };
+  updatePlatformConnectionControl: (input: {
+    platform: PlatformName;
+    enabled: boolean;
+  }) =>
+    | Promise<{ ok: boolean; item: PlatformConnectionSnapshot }>
+    | { ok: boolean; item: PlatformConnectionSnapshot };
 };
 
 type PublishLogStore = {
@@ -332,7 +345,13 @@ type DefaultServerDependenciesInput = {
   listBilibiliVideos: ServerDependencies['listBilibiliVideos'];
   addBilibiliVideo: ServerDependencies['addBilibiliVideo'];
   getCompanionState: ServerDependencies['getCompanionState'];
+  getCompanionStateV2: ServerDependencies['getCompanionStateV2'];
   recordCompanionAction: ServerDependencies['recordCompanionAction'];
+  listPlatformConnections: (settings: RuntimeSettings) => ReturnType<ServerDependencies['listPlatformConnections']>;
+  updatePlatformConnectionControl: (
+    settings: RuntimeSettings,
+    input: { platform: PlatformName; enabled: boolean },
+  ) => ReturnType<ServerDependencies['updatePlatformConnectionControl']>;
 };
 
 export function buildDefaultServerDependencies(input: DefaultServerDependenciesInput): ServerDependencies {
@@ -397,6 +416,9 @@ export function buildDefaultServerDependencies(input: DefaultServerDependenciesI
     listBilibiliVideos: (videosInput) => input.listBilibiliVideos(videosInput),
     addBilibiliVideo: (addVideoInput) => input.addBilibiliVideo(addVideoInput),
     getCompanionState: input.getCompanionState,
+    getCompanionStateV2: input.getCompanionStateV2,
     recordCompanionAction: (actionInput) => input.recordCompanionAction(actionInput),
+    listPlatformConnections: () => input.listPlatformConnections(settings),
+    updatePlatformConnectionControl: (controlInput) => input.updatePlatformConnectionControl(settings, controlInput),
   };
 }

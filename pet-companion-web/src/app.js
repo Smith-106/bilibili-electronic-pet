@@ -344,7 +344,13 @@ function formatInteractionTimestamp(timestamp) {
 }
 
 function normalizeState(state) {
-  const safeState = state && typeof state === 'object' ? state : {};
+  const rootState = state && typeof state === 'object' ? state : {};
+  const safeSnapshot =
+    rootState.snapshot && typeof rootState.snapshot === 'object' ? rootState.snapshot : {};
+  const safeState =
+    rootState.version === 'v2' && rootState.companion && typeof rootState.companion === 'object'
+      ? rootState.companion
+      : rootState;
   const mood = safeState.mood && typeof safeState.mood === 'object' ? safeState.mood : {};
   const vitals = Array.isArray(safeState.vitals) && safeState.vitals.length ? safeState.vitals : FALLBACK_VITALS;
   const recentSignals =
@@ -361,8 +367,54 @@ function normalizeState(state) {
           source: entry?.source || 'Memory',
         }))
       : FALLBACK_INTERACTIONS;
+  const safeProfile =
+    safeSnapshot.profile && typeof safeSnapshot.profile === 'object'
+      ? safeSnapshot.profile
+      : rootState.profile && typeof rootState.profile === 'object'
+        ? rootState.profile
+        : {};
+  const safeRelationship =
+    safeSnapshot.relationship && typeof safeSnapshot.relationship === 'object'
+      ? safeSnapshot.relationship
+      : rootState.relationship && typeof rootState.relationship === 'object'
+        ? rootState.relationship
+        : {};
+  const safeProgress =
+    safeSnapshot.progress && typeof safeSnapshot.progress === 'object'
+      ? safeSnapshot.progress
+      : rootState.progress && typeof rootState.progress === 'object'
+        ? rootState.progress
+        : {};
+  const proactiveSignals =
+    Array.isArray(safeSnapshot.proactiveSignals) && safeSnapshot.proactiveSignals.length
+      ? safeSnapshot.proactiveSignals.map((entry) => ({
+          key: entry?.key || 'signal',
+          label: entry?.label || 'Signal',
+          detail: entry?.detail || 'No proactive detail published yet.',
+          dueAt: entry?.dueAt || null,
+        }))
+      : Array.isArray(rootState.proactiveSignals) && rootState.proactiveSignals.length
+        ? rootState.proactiveSignals.map((entry) => ({
+            key: entry?.key || 'signal',
+            label: entry?.label || 'Signal',
+            detail: entry?.detail || 'No proactive detail published yet.',
+            dueAt: entry?.dueAt || null,
+          }))
+      : [];
+  const onboarding =
+    safeProgress.stage === 'starter'
+      ? {
+          title: 'Starter ritual',
+          detail:
+            'The companion is still in its first pet-core loop. Feed, Pat, and Wake actions now build persistent relationship and progression state.',
+        }
+      : {
+          title: 'Stable ritual',
+          detail: 'The companion loop is carrying forward pet-core state instead of relying on prototype-only placeholders.',
+        };
 
   return {
+    version: rootState.version || 'legacy',
     petName: safeState.petName || 'Companion',
     statusLine: safeState.statusLine || 'Waiting for the first local update.',
     loopMode: safeState.loopMode || 'Local placeholder loop',
@@ -378,6 +430,21 @@ function normalizeState(state) {
     memorySummary:
       safeState.memorySummary ||
       'No memory summary is available yet. The prototype stays useful even before backend contracts exist.',
+    relationship: {
+      level: safeRelationship.level || 'Unknown',
+      note: safeRelationship.note || 'Relationship state has not been published yet.',
+    },
+    progress: {
+      stage: safeProgress.stage || 'legacy',
+      progressLabel: safeProgress.progressLabel || 'Legacy loop',
+      nextMilestone: safeProgress.nextMilestone || null,
+    },
+    profile: {
+      species: safeProfile.species || null,
+      archetype: safeProfile.archetype || null,
+    },
+    proactiveSignals,
+    onboarding,
     vitals,
     recentSignals,
     recentInteractions,
@@ -400,6 +467,19 @@ function renderMetrics(vitals) {
 function renderSignals(signals) {
   return signals
     .map((signal) => `<li class="signal-item">${escapeHtml(signal)}</li>`)
+    .join('');
+}
+
+function renderProactiveSignals(signals) {
+  if (!signals.length) {
+    return '<li class="signal-item">No proactive rituals are scheduled yet.</li>';
+  }
+
+  return signals
+    .map((signal) => {
+      const timing = signal.dueAt ? ` <span class="signal-time">${escapeHtml(signal.dueAt)}</span>` : '';
+      return `<li class="signal-item"><strong>${escapeHtml(signal.label)}</strong>: ${escapeHtml(signal.detail)}${timing}</li>`;
+    })
     .join('');
 }
 
@@ -509,6 +589,12 @@ function createStateMarkup(rawState, selectedFilter = 'all') {
               <dt>Last check-in</dt>
               <dd>${escapeHtml(state.lastCheckIn)}</dd>
             </div>
+            <div>
+              <dt>Profile</dt>
+              <dd>${escapeHtml(
+                [state.profile.species, state.profile.archetype].filter(Boolean).join(' · ') || 'Companion profile',
+              )}</dd>
+            </div>
           </dl>
         </div>
       </section>
@@ -520,12 +606,36 @@ function createStateMarkup(rawState, selectedFilter = 'all') {
         <p class="hint-text">${escapeHtml(state.loopHint)}</p>
       </section>
 
+      <section class="panel" aria-labelledby="arc-heading">
+        <p class="section-label">Pet arc</p>
+        <h2 id="arc-heading">${escapeHtml(state.relationship.level)}</h2>
+        <p class="panel-copy">${escapeHtml(state.relationship.note)}</p>
+        <ul class="signal-list">
+          <li class="signal-item"><strong>Stage:</strong> ${escapeHtml(state.progress.progressLabel)}</li>
+          <li class="signal-item"><strong>Ritual:</strong> ${escapeHtml(state.onboarding.title)}</li>
+          <li class="signal-item">${escapeHtml(state.onboarding.detail)}</li>
+          ${
+            state.progress.nextMilestone
+              ? `<li class="signal-item"><strong>Next milestone:</strong> ${escapeHtml(state.progress.nextMilestone)}</li>`
+              : ''
+          }
+        </ul>
+      </section>
+
       <section class="panel panel-memory" aria-labelledby="memory-heading">
         <p class="section-label">Memory summary</p>
         <h2 id="memory-heading">${escapeHtml(state.memoryTitle)}</h2>
         <p class="panel-copy">${escapeHtml(state.memorySummary)}</p>
         <ul class="signal-list">
           ${renderSignals(state.recentSignals)}
+        </ul>
+      </section>
+
+      <section class="panel" aria-labelledby="ritual-heading">
+        <p class="section-label">Active rituals</p>
+        <h2 id="ritual-heading">Proactive signals</h2>
+        <ul class="signal-list">
+          ${renderProactiveSignals(state.proactiveSignals)}
         </ul>
       </section>
 

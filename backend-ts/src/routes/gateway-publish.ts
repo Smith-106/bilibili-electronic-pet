@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { getPrisma } from '../lib/prisma.js';
+import { listPublishingPlatforms } from '../platforms/registry.js';
 import type {
   AdminGatewayLogsResponse,
   GatewayPublishPayload,
@@ -187,7 +188,7 @@ export function registerGatewayPublishRoutes(
     return reply.code(result.statusCode).send(result.body);
   });
 
-  const platformRoutes: PlatformName[] = ['bilibili', 'douyin', 'kuaishou'];
+  const platformRoutes: PlatformName[] = listPublishingPlatforms();
   for (const platform of platformRoutes) {
     app.post(`/gateway/publish/${platform}`, async (request, reply) => {
       if (!deps.isPlatformEnabled(platform, deps.settings)) {

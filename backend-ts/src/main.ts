@@ -4,8 +4,12 @@ import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { Redis } from 'ioredis';
 import { createMemoryService } from './app/memory/index.js';
+import { createPetCoreService } from './app/pet-core/index.js';
 import { COMPANION_SYSTEM_SPACE_KEY, upsertCompanionFeedItem } from './app/memory/companion-feed.js';
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
+import { getPlatformControlState, setPlatformControlState } from './platforms/control-state.js';
+import { publishViaSidecarWebhook } from './platforms/sidecar-webhook.js';
+import { listPlatformAdapters, listPlatformIngressRoutes } from './platforms/registry.js';
 import { registerAdminCoreRoutes } from './routes/admin-core.js';
 import { registerAdminManagementRoutes } from './routes/admin-management.js';
 import { registerAdminReportingRoutes } from './routes/admin-reporting.js';
@@ -26,6 +30,7 @@ import type {
   CompanionInteraction,
   CompanionInteractionKind,
   CompanionState,
+  CompanionStateV2,
   ConnectionStatus,
   GatewayPublishPayload,
   IdentityLink,
@@ -34,7 +39,11 @@ import type {
   MemoryItem,
   MemorySpace,
   PlatformName,
+  PlatformConnectionSnapshot,
+  PublishExecutionResult,
   PublishFinalizeInput,
+  PublishGatewayInput,
+  PublishPlatformInput,
   PublishReservationInput,
   ReplyJob,
   ReservePublishLogResult,
@@ -43,7 +52,13 @@ import type {
   RuntimeSettings,
 } from './server/contracts.js';
 import { buildDefaultServerDependencies, type ServerDependencies } from './server/dependencies.js';
-import { collectCommentEvent } from './services/collector.js';
+import type { PetActionName } from './server/pet-contracts.js';
+import {
+  defaultGetPlatformPublishSource,
+  defaultIsPlatformEnabled,
+  normalizePublishMode,
+} from './server/runtime-platform.js';
+import { collectCommentEvent, type CollectorSource } from './services/collector.js';
 import { probeBilibiliAuth as probeBilibiliRuntimeAuth, type BilibiliAuthProbeResult } from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
@@ -581,10 +596,6 @@ function getAuditLogDetail(payload: Record<string, unknown>): string | null {
   return status || null;
 }
 
-function normalizePublishMode(mode: string): string {
-  return mode.trim().toLowerCase();
-}
-
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value);
@@ -935,16 +946,18 @@ function defaultNormalizePublishFailureReason(reason: string | undefined): strin
   return 'invalid_response';
 }
 
-function defaultIsPlatformEnabled(platform: PlatformName, settings: RuntimeSettings): boolean {
-  if (platform === 'bilibili') return settings.platformBilibiliEnabled;
-  if (platform === 'douyin') return settings.platformDouyinEnabled;
-  return settings.platformKuaishouEnabled;
-}
+async function defaultPublishPlatformReply(input: PublishPlatformInput): Promise<PublishExecutionResult> {
+  if (input.platform === 'bilibili') {
+    return { published: false, reason: 'bilibili_reference_adapter_only' };
+  }
 
-function defaultGetPlatformPublishSource(platform: PlatformName, settings: RuntimeSettings): string {
-  if (platform === 'bilibili') return settings.platformBilibiliPublishSource.trim() || 'bilibili-bot';
-  if (platform === 'douyin') return settings.platformDouyinPublishSource.trim() || 'douyin-bot';
-  return settings.platformKuaishouPublishSource.trim() || 'kuaishou-bot';
+  return publishViaSidecarWebhook({
+    platform: input.platform,
+    commentId: input.commentId,
+    replyText: input.replyText,
+    forcePublish: input.forcePublish,
+    traceId: input.traceId,
+  });
 }
 
 function createInMemoryLogStore() {
@@ -2370,6 +2383,16 @@ function buildFallbackCompanionState(reason?: string): CompanionState {
 
 async function defaultGetCompanionState(): Promise<CompanionState> {
   try {
+    const petCoreService = createPetCoreService();
+    const petCoreState = await petCoreService.getCompanionState();
+    if (petCoreState) {
+      return petCoreState;
+    }
+  } catch {
+    // Fall through to the legacy memory-derived projection until pet-core persistence is available.
+  }
+
+  try {
     const service = createMemoryService();
     const [spaces, items, grants, links] = await Promise.all([
       service.listSpaces(),
@@ -2467,11 +2490,58 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
   }
 }
 
+function buildCompanionStateV2FromLegacy(companion: CompanionState): CompanionStateV2 {
+  return {
+    version: 'v2',
+    snapshot: {
+      profile: {
+        petName: companion.petName,
+      },
+      relationship: {
+        level: companion.mood.label,
+        note: companion.mood.note,
+      },
+      progress: {
+        stage: companion.loopMode,
+        progressLabel: companion.statusLine,
+        nextMilestone: null,
+      },
+      needs: companion.vitals.map((entry) => ({
+        key: entry.label.trim().toLowerCase().replace(/\s+/g, '-'),
+        label: entry.label,
+        value: entry.value,
+      })),
+      proactiveSignals: companion.recentSignals.slice(0, 3).map((detail, index) => ({
+        key: `legacy-signal-${index + 1}`,
+        label: 'Legacy signal',
+        detail,
+        dueAt: null,
+      })),
+    },
+    companion,
+  };
+}
+
+async function defaultGetCompanionStateV2(): Promise<CompanionStateV2> {
+  try {
+    const petCoreService = createPetCoreService();
+    const state = await petCoreService.getCompanionStateV2({ bootstrap: true });
+    if (state) {
+      return state;
+    }
+  } catch {
+    // Fall back to the legacy companion response shape wrapped in a v2 envelope.
+  }
+
+  const companion = await defaultGetCompanionState();
+  return buildCompanionStateV2FromLegacy(companion);
+}
+
 async function defaultRecordCompanionAction(input: {
-  action: 'pat' | 'feed' | 'wake';
+  action: PetActionName;
   note?: string;
 }): Promise<{ ok: boolean; action: string; item_key: string }> {
-  const actionMessages: Record<'pat' | 'feed' | 'wake', string> = {
+  const actionMessages: Record<PetActionName, string> = {
     pat: 'A gentle pat settled Mochi and raised the bond signal.',
     feed: 'A quick snack topped up Mochi and eased the hunger signal.',
     wake: 'A bright nudge woke Mochi up for the next interaction window.',
@@ -2517,6 +2587,20 @@ async function defaultRecordCompanionAction(input: {
       service,
     ),
   ]);
+
+  try {
+    const petCoreService = createPetCoreService();
+    await petCoreService.recordAction(input);
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'pet_core_action_persist_failed',
+        action: input.action,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  }
 
   return {
     ok: true,
@@ -2576,8 +2660,91 @@ function defaultDependencies(): ServerDependencies {
     listBilibiliVideos: defaultListBilibiliVideos,
     addBilibiliVideo: defaultAddBilibiliVideo,
     getCompanionState: defaultGetCompanionState,
+    getCompanionStateV2: defaultGetCompanionStateV2,
     recordCompanionAction: defaultRecordCompanionAction,
+    listPlatformConnections: defaultListPlatformConnections,
+    updatePlatformConnectionControl: defaultUpdatePlatformConnectionControl,
   });
+}
+
+function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolean; items: PlatformConnectionSnapshot[] } {
+  return {
+    ok: true,
+    items: listPlatformAdapters().map((adapter) => {
+      const enabled = defaultIsPlatformEnabled(adapter.platform, settings);
+      const supportsPolling = adapter.platform === 'bilibili';
+      const pollingRuntime = adapter.resolvePollingRuntime(process.env);
+      const control = getPlatformControlState(adapter.platform);
+      const status =
+        !enabled
+          ? 'disconnected'
+          : adapter.platform === 'bilibili' && !settings.bilibiliEnabled
+            ? 'degraded'
+            : 'connected';
+
+      return {
+        platform: adapter.platform,
+        enabled,
+        adapterKey: adapter.adapterKey,
+        status,
+        lastCheckedAt: null,
+        lastError: status === 'degraded' ? 'runtime platform enabled but Bilibili runtime toggle is off' : null,
+        rolloutControl: control
+          ? {
+              enabled: control.enabled,
+              stage: control.stage,
+              updatedAt: control.updatedAt,
+            }
+          : {
+              enabled,
+              stage: enabled ? 'trial' : 'paused',
+              updatedAt: null,
+            },
+        capabilities: [
+          {
+            key: 'ingress',
+            status: adapter.supportsInboundEvents ? 'available' : 'unsupported',
+            note: adapter.ingressRoutes.map((entry) => entry.path).join(', '),
+          },
+          {
+            key: 'publish',
+            status: adapter.supportsPublishing ? 'available' : 'unsupported',
+            note: adapter.resolvePublishSource(settings),
+          },
+          {
+            key: 'identity_binding',
+            status: adapter.supportsIdentityBinding ? 'available' : 'unsupported',
+          },
+          {
+            key: 'connection_health',
+            status: adapter.supportsConnectionHealth ? 'available' : 'unsupported',
+          },
+          {
+            key: 'polling',
+            status: supportsPolling ? (pollingRuntime.enabled ? 'available' : 'partial') : 'planned',
+            note: supportsPolling ? `${pollingRuntime.intervalSeconds}s interval` : 'No worker polling configured for this platform yet',
+          },
+        ],
+      };
+    }),
+  };
+}
+
+function defaultUpdatePlatformConnectionControl(
+  settings: RuntimeSettings,
+  input: { platform: PlatformName; enabled: boolean },
+): { ok: boolean; item: PlatformConnectionSnapshot } {
+  const baseEnabled = listPlatformAdapters().find((adapter) => adapter.platform === input.platform)?.isEnabled(settings) ?? false;
+  if (!baseEnabled && input.enabled) {
+    throw new Error('platform_not_configured');
+  }
+
+  setPlatformControlState(input.platform, { enabled: input.enabled });
+  const item = defaultListPlatformConnections(settings).items.find((entry) => entry.platform === input.platform);
+  if (!item) {
+    throw new Error('platform_not_found');
+  }
+  return { ok: true, item };
 }
 
 function addBlocker(target: string[], message: string): void {
@@ -2702,7 +2869,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const reservePublishLog = overrides.reservePublishLog ?? defaults.reservePublishLog;
   const finalizePublishLog = overrides.finalizePublishLog ?? defaults.finalizePublishLog;
   const publishGatewayReply = overrides.publishGatewayReply ?? defaults.publishGatewayReply;
-  const publishPlatformReply = overrides.publishPlatformReply ?? defaults.publishPlatformReply;
+  const publishPlatformReply = overrides.publishPlatformReply ?? defaultPublishPlatformReply;
   const normalizePublishFailureReason =
     overrides.normalizePublishFailureReason ?? defaults.normalizePublishFailureReason;
   const isPlatformEnabled = overrides.isPlatformEnabled ?? defaults.isPlatformEnabled;
@@ -2752,7 +2919,26 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const listBilibiliVideos = overrides.listBilibiliVideos ?? defaults.listBilibiliVideos;
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
   const getCompanionState = overrides.getCompanionState ?? defaults.getCompanionState;
+  const getCompanionStateV2 = overrides.getCompanionStateV2 ?? defaults.getCompanionStateV2;
   const recordCompanionAction = overrides.recordCompanionAction ?? defaults.recordCompanionAction;
+  const listPlatformConnections =
+    overrides.listPlatformConnections ?? (() => defaultListPlatformConnections(settings));
+  const updatePlatformConnectionControl =
+    overrides.updatePlatformConnectionControl ??
+    ((input) => defaultUpdatePlatformConnectionControl(settings, input));
+  const getCompanionStateV2Compat = async () => {
+    try {
+      const petCoreService = createPetCoreService();
+      const state = await petCoreService.getCompanionStateV2({ bootstrap: true });
+      if (state) {
+        return state;
+      }
+    } catch {
+      // Fall back to the active companion state provider for compatibility.
+    }
+
+    return buildCompanionStateV2FromLegacy(await getCompanionState());
+  };
 
   const app = Fastify();
 
@@ -2763,6 +2949,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     checkDatabaseConnection,
     checkRedisConnection,
     buildBilibiliDiagnostics,
+    getCompanionStateV2: getCompanionStateV2Compat,
+    listPlatformConnections,
     buildDefaultReadinessSummary,
     defaultBilibiliDiagnostics,
     normalizePublishMode,
@@ -2797,6 +2985,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     settings,
     getHeaderValue,
     getAdminOverview,
+    getCompanionStateV2: getCompanionStateV2Compat,
+    listPlatformConnections,
+    updatePlatformConnectionControl,
     normalizeAdminOverviewPayload,
     listAdminJobs,
     parseAdminString,
@@ -2851,13 +3042,11 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   });
 
   // Comments event ingestion — uses collector for source-aware field mapping
-  const commentSources = [
+  const commentSources: Array<{ path: string; source: CollectorSource; platform?: PlatformName }> = [
     { path: '/events/comment', source: 'webhook' as const },
     { path: '/events/comment/poller', source: 'poller' as const },
     { path: '/events/comment/official', source: 'official' as const },
-    { path: '/events/comment/bilibili', source: 'bilibili' as const, platform: 'bilibili' },
-    { path: '/events/comment/douyin', source: 'douyin' as const, platform: 'douyin' },
-    { path: '/events/comment/kuaishou', source: 'kuaishou' as const, platform: 'kuaishou' },
+    ...listPlatformIngressRoutes(),
   ];
 
   for (const { path, source, platform } of commentSources) {
@@ -2920,6 +3109,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   registerCompanionRoutes(app, {
     getCompanionState,
+    getCompanionStateV2: getCompanionStateV2Compat,
     recordCompanionAction,
   });
 

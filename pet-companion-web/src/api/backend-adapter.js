@@ -1,7 +1,8 @@
 import { createLocalPetAdapter } from './local-adapter.js';
 
 export function createBackendPetAdapter({
-  endpoint = '/companion/state',
+  endpoint = '/companion/state-v2',
+  legacyEndpoint = '/companion/state',
   actionEndpoint = '/companion/actions',
   fetchImpl = globalThis.fetch?.bind(globalThis),
   fallback = createLocalPetAdapter(),
@@ -18,6 +19,21 @@ export function createBackendPetAdapter({
             Accept: 'application/json',
           },
         });
+        if (!response.ok && legacyEndpoint) {
+          const legacyResponse = await fetchImpl(legacyEndpoint, {
+            headers: {
+              Accept: 'application/json',
+            },
+          });
+          if (!legacyResponse.ok) {
+            throw new Error(`companion_state_${legacyResponse.status}`);
+          }
+          const legacyData = await legacyResponse.json();
+          if (!legacyData || typeof legacyData !== 'object') {
+            throw new Error('companion_state_invalid');
+          }
+          return legacyData;
+        }
         if (!response.ok) {
           throw new Error(`companion_state_${response.status}`);
         }

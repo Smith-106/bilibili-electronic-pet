@@ -1,9 +1,33 @@
+import type {
+  CompanionActionEnvelope,
+  CompanionInteraction,
+  CompanionInteractionKind,
+  CompanionState,
+  CompanionStateV2,
+  PetActionName,
+  PetCoreStateSnapshot,
+  PetNeedSnapshot,
+  PetProfile,
+  PetProgressState,
+  PetProactiveSignal,
+  PetRelationshipState,
+} from './pet-contracts.js';
+import type {
+  PlatformAdapterContract,
+  PlatformCapabilityDescriptor,
+  PlatformCapabilityStatus,
+  PlatformConnectionSnapshot,
+  PlatformIdentityBinding,
+  PlatformIngressEnvelope,
+  PlatformName,
+  PlatformPublishEnvelope,
+  PlatformPublishOutcome,
+} from './platform-contracts.js';
+
 export type ConnectionStatus = {
   connected: boolean;
   error?: string;
 };
-
-export type PlatformName = 'bilibili' | 'douyin' | 'kuaishou';
 
 export type RuntimeSettings = {
   databaseUrl: string;
@@ -229,30 +253,26 @@ export type BilibiliVideo = {
   updated_at?: string | null;
 };
 
-export type CompanionInteractionKind = 'pat' | 'feed' | 'wake' | 'signal' | 'fallback';
-
-export type CompanionInteraction = {
-  kind: CompanionInteractionKind;
-  title: string;
-  detail: string;
-  timestamp: string;
-  source: string;
-};
-
-export type CompanionState = {
-  petName: string;
-  statusLine: string;
-  loopMode: string;
-  lastCheckIn: string;
-  adapterLabel: string;
-  loopHint: string;
-  mood: {
-    label: string;
-    note: string;
-  };
-  memoryTitle: string;
-  memorySummary: string;
-  vitals: Array<{ label: string; value: string }>;
-  recentSignals: string[];
-  recentInteractions: CompanionInteraction[];
+export type {
+  CompanionActionEnvelope,
+  CompanionInteraction,
+  CompanionInteractionKind,
+  CompanionState,
+  CompanionStateV2,
+  PetActionName,
+  PetCoreStateSnapshot,
+  PetNeedSnapshot,
+  PetProfile,
+  PetProgressState,
+  PetProactiveSignal,
+  PetRelationshipState,
+  PlatformAdapterContract,
+  PlatformCapabilityDescriptor,
+  PlatformCapabilityStatus,
+  PlatformConnectionSnapshot,
+  PlatformIdentityBinding,
+  PlatformIngressEnvelope,
+  PlatformName,
+  PlatformPublishEnvelope,
+  PlatformPublishOutcome,
 };

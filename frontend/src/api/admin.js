@@ -18,6 +18,19 @@ export function createAdminApi() {
     getMetricsOverview() {
       return requestJson('/api/admin/metrics/overview');
     },
+    getPetOverview() {
+      return requestJson('/api/admin/pet/overview');
+    },
+    getPlatformConnections() {
+      return requestJson('/api/admin/platforms');
+    },
+    setPlatformConnectionControl(platform, enabled) {
+      return requestJson(`/api/admin/platforms/${encodeURIComponent(platform)}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+    },
     getObservabilitySummary({ windowMinutes, window_minutes } = {}) {
       return requestJson(`/api/admin/observability/summary${qs({ window_minutes: windowMinutes ?? window_minutes })}`);
     },

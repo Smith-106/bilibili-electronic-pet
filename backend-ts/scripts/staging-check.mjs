@@ -161,10 +161,26 @@ function writeReport(reportPath, report) {
   return outputPath;
 }
 
-function summarizeRuntimeState(readinessPayload, bilibiliPayload) {
+function summarizeRuntimeState(
+  readinessPayload,
+  bilibiliPayload,
+  companionPayload,
+  petOverviewPayload,
+  platformsPayload,
+) {
   const capabilityBlockers =
     readinessPayload?.delivery_capability_blockers ?? readinessPayload?.delivery_capabilities?.blockers ?? [];
   const diagnostics = bilibiliPayload?.diagnostics ?? {};
+  const platformItems = Array.isArray(platformsPayload?.items) ? platformsPayload.items : [];
+  const activeExternalTrials = platformItems
+    .filter((entry) => entry?.platform !== 'bilibili' && entry?.enabled === true)
+    .map((entry) => ({
+      platform: entry.platform,
+      status: entry.status ?? 'unknown',
+      rollout_enabled: entry?.rolloutControl?.enabled ?? entry.enabled === true,
+      rollout_stage: entry?.rolloutControl?.stage ?? null,
+      adapter_key: entry?.adapterKey ?? null,
+    }));
 
   return {
     source: 'target_runtime',
@@ -172,12 +188,32 @@ function summarizeRuntimeState(readinessPayload, bilibiliPayload) {
       ready: readinessPayload?.ready === true,
       foundation_ready: readinessPayload?.foundation_ready === true,
       delivery_ready: readinessPayload?.delivery_ready === true,
+      product_ready: readinessPayload?.product_ready === true,
       foundation_blockers: readinessPayload?.foundation_blockers ?? [],
       delivery_blockers: readinessPayload?.delivery_blockers ?? [],
       delivery_capability_blockers: capabilityBlockers,
+      product_blockers: readinessPayload?.product_blockers ?? [],
     },
     config: readinessPayload?.config ?? {},
     publish: readinessPayload?.publish ?? {},
+    pet_core: {
+      public_state_version: companionPayload?.version ?? null,
+      admin_state_version: petOverviewPayload?.item?.version ?? null,
+      pet_name:
+        companionPayload?.snapshot?.profile?.petName ??
+        petOverviewPayload?.item?.snapshot?.profile?.petName ??
+        null,
+      proactive_signal_count:
+        companionPayload?.snapshot?.proactiveSignals?.length ??
+        petOverviewPayload?.item?.snapshot?.proactiveSignals?.length ??
+        0,
+    },
+    platforms: {
+      total: platformItems.length,
+      active_external_trials: activeExternalTrials,
+      bilibili_reference_status:
+        platformItems.find((entry) => entry?.platform === 'bilibili')?.status ?? 'unknown',
+    },
     bilibili: {
       diagnostics_ready: diagnostics?.ready === true,
       effective_publish_mode: diagnostics?.effective_publish_mode ?? null,
@@ -634,7 +670,8 @@ async function main() {
     delivery_preflight: deliveryPreflight,
     input_scopes: {
       checker_env: 'env_matrix and delivery_preflight describe the environment seen by staging-check itself',
-      target_runtime: 'runtime_summary describes the target service responses returned by /readiness and /api/admin/bilibili/status',
+      target_runtime:
+        'runtime_summary describes the target service responses returned by /readiness, /companion/state-v2, /api/admin/pet/overview, /api/admin/platforms, and /api/admin/bilibili/status',
     },
     checks: [],
     warnings: [],
@@ -770,12 +807,68 @@ async function main() {
     record('admin_overview', 'passed', { http_status: overviewResponse.status });
     logPass('admin overview');
 
+    const companionStateUrl = buildUrl(baseUrl, '/companion/state-v2');
+    const { response: companionResponse, parsed: companionPayload } = await fetchJson(companionStateUrl);
+    if (companionResponse.status !== 200 || companionPayload?.version !== 'v2') {
+      fail('companion_state_v2', `expected version=v2, got status=${companionResponse.status}`, {
+        payload: companionPayload,
+      });
+    }
+    record('companion_state_v2', 'passed', {
+      pet_name: companionPayload?.snapshot?.profile?.petName ?? null,
+      proactive_signal_count: companionPayload?.snapshot?.proactiveSignals?.length ?? 0,
+    });
+    logPass('companion state v2');
+
+    const petOverviewUrl = buildUrl(baseUrl, '/api/admin/pet/overview');
+    const { response: petOverviewResponse, parsed: petOverviewPayload } = await fetchJson(petOverviewUrl, { headers });
+    if (petOverviewResponse.status !== 200 || petOverviewPayload?.ok !== true || petOverviewPayload?.item?.version !== 'v2') {
+      fail('pet_overview', `expected ok=true and item.version=v2, got status=${petOverviewResponse.status}`, {
+        payload: petOverviewPayload,
+      });
+    }
+    record('pet_overview', 'passed', {
+      pet_name: petOverviewPayload?.item?.snapshot?.profile?.petName ?? null,
+    });
+    logPass('pet overview');
+
+    const platformConnectionsUrl = buildUrl(baseUrl, '/api/admin/platforms');
+    const { response: platformConnectionsResponse, parsed: platformConnectionsPayload } = await fetchJson(
+      platformConnectionsUrl,
+      { headers },
+    );
+    if (platformConnectionsResponse.status !== 200 || platformConnectionsPayload?.ok !== true) {
+      fail('platform_connections', `expected ok=true, got status=${platformConnectionsResponse.status}`);
+    }
+    const platformItems = Array.isArray(platformConnectionsPayload?.items) ? platformConnectionsPayload.items : [];
+    if (!Array.isArray(platformConnectionsPayload?.items)) {
+      fail('platform_connections', 'expected items array from /api/admin/platforms');
+    }
+    const activeExternalTrials = platformItems.filter(
+      (entry) => entry?.platform !== 'bilibili' && entry?.enabled === true,
+    );
+    const connectedExternalTrials = activeExternalTrials.filter(
+      (entry) => entry?.status === 'connected' && (entry?.rolloutControl?.enabled ?? true),
+    );
+    record('platform_connections', 'passed', {
+      total: platformItems.length,
+      active_external_trials: activeExternalTrials.map((entry) => entry.platform),
+      connected_external_trials: connectedExternalTrials.map((entry) => entry.platform),
+    });
+    logPass('platform connections');
+
     const bilibiliStatusUrl = buildUrl(baseUrl, '/api/admin/bilibili/status');
     const { response: bilibiliResponse, parsed: bilibiliPayload } = await fetchJson(bilibiliStatusUrl, { headers });
     if (bilibiliResponse.status !== 200 || bilibiliPayload?.ok !== true) {
       fail('bilibili_status', `expected ok=true, got status=${bilibiliResponse.status}`);
     }
-    report.runtime_summary = summarizeRuntimeState(readinessPayload, bilibiliPayload);
+    report.runtime_summary = summarizeRuntimeState(
+      readinessPayload,
+      bilibiliPayload,
+      companionPayload,
+      petOverviewPayload,
+      platformConnectionsPayload,
+    );
     record('bilibili_status', 'passed', {
       diagnostics: summarizeDiagnostics(bilibiliPayload.diagnostics),
     });
@@ -850,6 +943,34 @@ async function main() {
         webhook_publish_status: webhookCapabilityStatus,
       });
       logPass(`strict delivery contract (${effectivePublishMode})`);
+
+      const productBlockers = Array.isArray(readinessPayload?.product_blockers)
+        ? readinessPayload.product_blockers
+        : [];
+      if (readinessPayload?.product_ready !== true) {
+        fail(
+          'strict_product',
+          `product readiness is not ready (${productBlockers.join(',') || 'unknown'})`,
+        );
+      }
+      if (companionPayload?.version !== 'v2') {
+        fail('strict_product', `companion state version is ${String(companionPayload?.version ?? 'unknown')}`);
+      }
+      if (petOverviewPayload?.item?.version !== 'v2') {
+        fail(
+          'strict_product',
+          `admin pet overview version is ${String(petOverviewPayload?.item?.version ?? 'unknown')}`,
+        );
+      }
+      if (connectedExternalTrials.length === 0) {
+        fail('strict_product', 'no connected external platform trial reported by /api/admin/platforms');
+      }
+
+      record('strict_product', 'passed', {
+        pet_name: companionPayload?.snapshot?.profile?.petName ?? null,
+        connected_external_trials: connectedExternalTrials.map((entry) => entry.platform),
+      });
+      logPass('strict product contract');
 
       if (preReleaseRealChain) {
         const diagnostics = bilibiliPayload?.diagnostics ?? {};
