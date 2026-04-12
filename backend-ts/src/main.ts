@@ -59,7 +59,11 @@ import {
   normalizePublishMode,
 } from './server/runtime-platform.js';
 import { collectCommentEvent, type CollectorSource } from './services/collector.js';
-import { probeBilibiliAuth as probeBilibiliRuntimeAuth, type BilibiliAuthProbeResult } from './services/bilibili-client.js';
+import {
+  postReply,
+  probeBilibiliAuth as probeBilibiliRuntimeAuth,
+  type BilibiliAuthProbeResult,
+} from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
 
@@ -120,7 +124,20 @@ export type {
 } from './server/contracts.js';
 export type { ServerDependencies } from './server/dependencies.js';
 
-const STANDARD_PUBLISH_FAILURE_REASONS = new Set(['timeout', '5xx', 'auth', 'invalid_response', 'not_configured']);
+const STANDARD_PUBLISH_FAILURE_REASONS = new Set([
+  'timeout',
+  '5xx',
+  'auth',
+  'invalid_response',
+  'not_configured',
+  'webhook_not_configured',
+  'sidecar_webhook_not_configured',
+  'platform_disabled',
+  'bilibili_reference_adapter_only',
+  'bilibili_not_configured',
+  'publish_failed',
+  'runtime_credentials_required',
+]);
 const TIMEOUT_HINTS = ['timeout', 'timedout', 'readtimeout', 'connecttimeout'];
 const AUTH_HINTS = ['401', '403', 'unauthorized', 'forbidden', 'token', 'signature', 'auth'];
 
@@ -943,64 +960,230 @@ function defaultNormalizePublishFailureReason(reason: string | undefined): strin
   if (AUTH_HINTS.some((hint) => normalized.includes(hint))) {
     return 'auth';
   }
+  if (normalized.includes('webhook_not_configured')) {
+    return 'webhook_not_configured';
+  }
+  if (normalized.includes('sidecar') && normalized.includes('not_configured')) {
+    return 'sidecar_webhook_not_configured';
+  }
+  if (normalized.includes('reference_adapter_only')) {
+    return 'bilibili_reference_adapter_only';
+  }
+  if (normalized.includes('runtime_credentials_required')) {
+    return 'runtime_credentials_required';
+  }
+  if (normalized.includes('publish_failed')) {
+    return 'publish_failed';
+  }
   return 'invalid_response';
+}
+
+async function defaultPublishGatewayReply(
+  settings: RuntimeSettings,
+  input: PublishGatewayInput,
+): Promise<PublishExecutionResult> {
+  const normalizedMode = normalizePublishMode(settings.publisherMode);
+  const publishedAt = new Date();
+
+  if (normalizedMode === 'manual_queue') {
+    return {
+      published: true,
+      reason: 'manual_queued',
+      publishedAt,
+      status: 'pending_review',
+    };
+  }
+
+  if (normalizedMode === 'simulated') {
+    return {
+      published: true,
+      reason: 'simulated',
+      publishedAt,
+      status: 'published',
+    };
+  }
+
+  if (normalizedMode === 'webhook') {
+    const webhookUrl = process.env.PUBLISHER_WEBHOOK_URL;
+    const webhookToken = process.env.PUBLISHER_WEBHOOK_TOKEN;
+
+    if (!webhookUrl) {
+      return { published: false, reason: 'webhook_not_configured', status: 'failed' };
+    }
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(webhookToken ? { Authorization: `Bearer ${webhookToken}` } : {}),
+        },
+        body: JSON.stringify({
+          comment_id: input.commentId,
+          reply_text: input.replyText,
+          force_publish: input.forcePublish,
+          source: input.source,
+          trace_id: input.traceId,
+        }),
+      });
+
+      if (!response.ok) {
+        return {
+          published: false,
+          reason: `webhook_http_${response.status}`,
+          publishedAt,
+          status: 'failed',
+        };
+      }
+
+      const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      const resolvedPublishedAt =
+        typeof payload.published_at === 'string' && payload.published_at ? new Date(payload.published_at) : publishedAt;
+
+      return {
+        published: payload.published !== false,
+        reason: typeof payload.reason === 'string' && payload.reason ? payload.reason : 'webhook_published',
+        publishedAt: resolvedPublishedAt,
+        status: payload.published === false ? 'failed' : 'published',
+      };
+    } catch (error) {
+      return {
+        published: false,
+        reason: error instanceof Error ? error.message : 'webhook_failed',
+        publishedAt,
+        status: 'failed',
+      };
+    }
+  }
+
+  if (normalizedMode === 'native_bilibili' || normalizedMode === 'real_publish') {
+    if (!settings.bilibiliEnabled || !settings.bilibiliPublishEnabled) {
+      return {
+        published: false,
+        reason: 'bilibili_not_configured',
+        publishedAt,
+        status: 'failed',
+      };
+    }
+
+    const result = await postReply(input.commentId, input.replyText);
+    if (!result.success) {
+      return {
+        published: false,
+        reason: 'publish_failed',
+        publishedAt,
+        status: 'failed',
+      };
+    }
+
+    return {
+      published: true,
+      reason: 'published',
+      publishedAt,
+      status: 'published',
+    };
+  }
+
+  return {
+    published: false,
+    reason: 'not_configured',
+    status: 'failed',
+  };
 }
 
 async function defaultPublishPlatformReply(input: PublishPlatformInput): Promise<PublishExecutionResult> {
   if (input.platform === 'bilibili') {
-    return { published: false, reason: 'bilibili_reference_adapter_only' };
+    return { published: false, reason: 'bilibili_reference_adapter_only', status: 'failed' };
   }
 
-  return publishViaSidecarWebhook({
+  const result = await publishViaSidecarWebhook({
     platform: input.platform,
     commentId: input.commentId,
     replyText: input.replyText,
     forcePublish: input.forcePublish,
     traceId: input.traceId,
   });
-}
 
-function createInMemoryLogStore() {
-  const entries = new Map<
-    string,
-    {
-      reservationKey: string;
-      status: 'reserved' | 'published' | 'failed';
-      source: string;
-      failureReason?: string;
-      publishedAt?: Date;
-    }
-  >();
+  if (!result.published && result.reason === 'not_configured') {
+    return {
+      ...result,
+      reason: 'sidecar_webhook_not_configured',
+      status: 'failed',
+    };
+  }
 
   return {
-    reserve(input: PublishReservationInput): ReservePublishLogResult {
-      const idempotencyKey = `${input.canonicalCommentId}::${input.replyHash}`;
-      const existing = entries.get(idempotencyKey);
+    ...result,
+    status: result.published ? 'published' : 'failed',
+  };
+}
+
+function createDurablePublishLogStore() {
+  return {
+    async reserve(input: PublishReservationInput): Promise<ReservePublishLogResult> {
+      const prisma = getPrisma();
+      const existing = await prisma.publishLog.findUnique({
+        where: {
+          uq_publish_logs_canonical_reply: {
+            canonical_comment_id: input.canonicalCommentId,
+            reply_hash: input.replyHash,
+          },
+        },
+      });
       if (existing) {
-        return { duplicate: true, reservationKey: existing.reservationKey };
+        return {
+          duplicate: true,
+          reservationKey: existing.reservation_key ?? `publish-log:${existing.id}`,
+        };
       }
 
-      const reservationKey = `${input.canonicalCommentId}:${randomUUID()}`;
-      entries.set(idempotencyKey, {
-        reservationKey,
-        status: 'reserved',
-        source: input.source,
-      });
+      const reservationKey = `publish-log:${randomUUID()}`;
+      try {
+        await prisma.publishLog.create({
+          data: {
+            platform: input.platform,
+            reservation_key: reservationKey,
+            canonical_comment_id: input.canonicalCommentId,
+            comment_id: input.commentId,
+            reply_hash: input.replyHash,
+            source: input.source,
+            status: 'pending',
+            published_at: null,
+            failure_reason: null,
+          },
+        });
+      } catch (error) {
+        const conflict = await prisma.publishLog.findUnique({
+          where: {
+            uq_publish_logs_canonical_reply: {
+              canonical_comment_id: input.canonicalCommentId,
+              reply_hash: input.replyHash,
+            },
+          },
+        });
+        if (conflict) {
+          return {
+            duplicate: true,
+            reservationKey: conflict.reservation_key ?? `publish-log:${conflict.id}`,
+          };
+        }
+        throw error;
+      }
+
       return { duplicate: false, reservationKey };
     },
-    finalize(input: PublishFinalizeInput): void {
-      for (const [idempotencyKey, entry] of entries.entries()) {
-        if (entry.reservationKey === input.reservationKey) {
-          entries.set(idempotencyKey, {
-            ...entry,
-            status: input.status,
-            source: input.source,
-            failureReason: input.failureReason,
-            publishedAt: input.publishedAt,
-          });
-          return;
-        }
-      }
+    async finalize(input: PublishFinalizeInput): Promise<void> {
+      const prisma = getPrisma();
+      await prisma.publishLog.updateMany({
+        where: { reservation_key: input.reservationKey },
+        data: {
+          status: input.status,
+          source: input.source,
+          failure_reason: input.failureReason ?? null,
+          published_at: input.publishedAt ?? null,
+          reservation_key: null,
+        },
+      });
     },
   };
 }
@@ -1728,21 +1911,139 @@ function defaultGetObservabilitySummary(_input: { windowMinutes: number }): {
   };
 }
 
+type CommentQueueRecovery = {
+  backlog_id: number;
+  status: 'pending_requeue' | 'requeued';
+  recoverable: true;
+  recovered?: boolean;
+};
+
+function buildCommentEventQueuePayload(input: {
+  event: CommentEvent;
+  source: string;
+  platform: string;
+  traceId: string;
+}): Record<string, unknown> {
+  return {
+    comment_id: input.event.comment_id,
+    video_id: input.event.video_id,
+    user_id: input.event.user_id,
+    content: input.event.content,
+    parent_id: input.event.parent_id,
+    platform: input.platform,
+    source: input.source,
+    trace_id: input.traceId,
+  };
+}
+
+async function getPendingCommentQueueBacklog(prisma: PrismaClient, canonicalCommentId: string) {
+  const backlog = await prisma.commentQueueBacklog.findUnique({
+    where: { canonical_comment_id: canonicalCommentId },
+  });
+  if (!backlog || backlog.status !== 'pending_requeue') {
+    return null;
+  }
+  return backlog;
+}
+
+async function upsertCommentQueueBacklog(
+  prisma: PrismaClient,
+  input: {
+    canonicalCommentId: string;
+    commentId: string;
+    platform: string;
+    source: string;
+    payload: Record<string, unknown>;
+    error?: string;
+  },
+): Promise<CommentQueueRecovery> {
+  const now = new Date();
+  const backlog = await prisma.commentQueueBacklog.upsert({
+    where: { canonical_comment_id: input.canonicalCommentId },
+    update: {
+      platform: input.platform,
+      comment_id: input.commentId,
+      source: input.source,
+      payload_json: JSON.stringify(input.payload),
+      status: 'pending_requeue',
+      last_error: input.error ?? 'queue_unavailable',
+      queue_attempts: { increment: 1 },
+      last_attempt_at: now,
+      updated_at: now,
+    },
+    create: {
+      platform: input.platform,
+      canonical_comment_id: input.canonicalCommentId,
+      comment_id: input.commentId,
+      source: input.source,
+      payload_json: JSON.stringify(input.payload),
+      status: 'pending_requeue',
+      last_error: input.error ?? 'queue_unavailable',
+      queue_attempts: 1,
+      last_attempt_at: now,
+      updated_at: now,
+    },
+  });
+
+  return {
+    backlog_id: backlog.id,
+    status: 'pending_requeue',
+    recoverable: true,
+  };
+}
+
+async function resolveCommentQueueBacklog(
+  prisma: PrismaClient,
+  input: {
+    canonicalCommentId: string;
+    payload: Record<string, unknown>;
+    source: string;
+  },
+): Promise<CommentQueueRecovery | null> {
+  const existing = await getPendingCommentQueueBacklog(prisma, input.canonicalCommentId);
+  if (!existing) {
+    return null;
+  }
+
+  const now = new Date();
+  const backlog = await prisma.commentQueueBacklog.update({
+    where: { canonical_comment_id: input.canonicalCommentId },
+    data: {
+      source: input.source,
+      payload_json: JSON.stringify(input.payload),
+      status: 'requeued',
+      last_error: null,
+      queue_attempts: { increment: 1 },
+      last_attempt_at: now,
+      recovered_at: now,
+      updated_at: now,
+    },
+  });
+
+  return {
+    backlog_id: backlog.id,
+    status: 'requeued',
+    recoverable: true,
+    recovered: true,
+  };
+}
+
 async function enqueueCommentEventJob(
   payload: Record<string, unknown>,
 ): Promise<{ queued: boolean; error?: string }> {
   try {
     const { createCommentEventQueue } = await import('./workers/tasks/comment-event.task.js');
+    const { tryEnqueueTask } = await import('./workers/task-queue.js');
     const queue = createCommentEventQueue('comment-event');
     try {
-      await queue.add('comment-event', payload as never, {
+      const jobId = `comment-event:${String(payload.platform ?? 'bilibili')}:${String(payload.comment_id ?? '')}`;
+      return await tryEnqueueTask(queue, payload as never, jobId, {
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
       });
     } finally {
       await queue.close().catch(() => undefined);
     }
-    return { queued: true };
   } catch (error) {
     return {
       queued: false,
@@ -1754,10 +2055,23 @@ async function enqueueCommentEventJob(
 async function defaultIngestCommentEvent(input: {
   event: CommentEvent;
   source: string;
-}): Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }> {
+}): Promise<{
+  ok: boolean;
+  comment_id: string;
+  trace_id: string;
+  queued?: boolean;
+  message?: string;
+  recovery?: CommentQueueRecovery;
+}> {
   const traceId = input.event.trace_id || randomUUID();
   const platform = input.event.platform || 'bilibili';
   const canonicalCommentId = `${platform}:${input.event.comment_id}`;
+  const queuePayload = buildCommentEventQueuePayload({
+    event: input.event,
+    source: input.source,
+    platform,
+    traceId,
+  });
 
   const prisma = getPrisma();
   try {
@@ -1775,23 +2089,93 @@ async function defaultIngestCommentEvent(input: {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('UNIQUE') || msg.includes('unique') || msg.includes('duplicate')) {
-      return { ok: true, message: 'duplicate_ignored', comment_id: input.event.comment_id, trace_id: traceId };
+      const pendingBacklog = await getPendingCommentQueueBacklog(prisma, canonicalCommentId);
+      if (!pendingBacklog) {
+        return { ok: true, message: 'duplicate_ignored', comment_id: input.event.comment_id, trace_id: traceId };
+      }
+
+      const backlogPayload = parseJsonRecord(pendingBacklog.payload_json);
+      const recoveredPayload = {
+        ...backlogPayload,
+        ...queuePayload,
+        platform,
+        source: input.source,
+        trace_id: traceId,
+      };
+      const queueResult = await enqueueCommentEventJob(recoveredPayload);
+
+      if (!queueResult.queued) {
+        const recovery = await upsertCommentQueueBacklog(prisma, {
+          canonicalCommentId,
+          commentId: input.event.comment_id,
+          platform,
+          source: input.source,
+          payload: recoveredPayload,
+          error: queueResult.error,
+        });
+        await writeAuditLog(prisma, {
+          action: 'comment_ingest_recovery',
+          targetId: null,
+          ok: false,
+          traceId,
+          commentId: input.event.comment_id,
+          status: 'pending_requeue',
+          payload: {
+            backlog_id: recovery.backlog_id,
+            queue_error: queueResult.error ?? 'queue_unavailable',
+            platform,
+          },
+        });
+        return {
+          ok: false,
+          queued: false,
+          message: 'queue_unavailable',
+          comment_id: input.event.comment_id,
+          trace_id: traceId,
+          recovery,
+        };
+      }
+
+      const recovery = await resolveCommentQueueBacklog(prisma, {
+        canonicalCommentId,
+        payload: recoveredPayload,
+        source: input.source,
+      });
+      await writeAuditLog(prisma, {
+        action: 'comment_ingest_recovery',
+        targetId: null,
+        ok: true,
+        traceId,
+        commentId: input.event.comment_id,
+        status: 'requeued',
+        payload: {
+          backlog_id: recovery?.backlog_id ?? pendingBacklog.id,
+          platform,
+        },
+      });
+      return {
+        ok: true,
+        queued: true,
+        message: 'requeued_from_backlog',
+        comment_id: input.event.comment_id,
+        trace_id: traceId,
+        ...(recovery ? { recovery } : {}),
+      };
     }
     throw err;
   }
 
-  const queueResult = await enqueueCommentEventJob({
-    comment_id: input.event.comment_id,
-    video_id: input.event.video_id,
-    user_id: input.event.user_id,
-    content: input.event.content,
-    parent_id: input.event.parent_id,
-    platform,
-    source: input.source,
-    trace_id: traceId,
-  });
+  const queueResult = await enqueueCommentEventJob(queuePayload);
 
   if (!queueResult.queued) {
+    const recovery = await upsertCommentQueueBacklog(prisma, {
+      canonicalCommentId,
+      commentId: input.event.comment_id,
+      platform,
+      source: input.source,
+      payload: queuePayload,
+      error: queueResult.error,
+    });
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -1799,16 +2183,45 @@ async function defaultIngestCommentEvent(input: {
         trace_id: traceId,
         comment_id: input.event.comment_id,
         error: queueResult.error,
+        backlog_id: recovery.backlog_id,
       }),
     );
+    await writeAuditLog(prisma, {
+      action: 'comment_ingest',
+      targetId: null,
+      ok: false,
+      traceId,
+      commentId: input.event.comment_id,
+      status: 'pending_requeue',
+      payload: {
+        backlog_id: recovery.backlog_id,
+        queue_error: queueResult.error ?? 'queue_unavailable',
+        platform,
+      },
+    });
+    return {
+      ok: false,
+      queued: false,
+      message: 'queue_unavailable',
+      comment_id: input.event.comment_id,
+      trace_id: traceId,
+      recovery,
+    };
   }
 
+  const recovery = await resolveCommentQueueBacklog(prisma, {
+    canonicalCommentId,
+    payload: queuePayload,
+    source: input.source,
+  });
+
   return {
-    ok: queueResult.queued,
-    queued: queueResult.queued,
-    message: queueResult.queued ? 'queued' : 'queue_unavailable',
+    ok: true,
+    queued: true,
+    message: 'queued',
     comment_id: input.event.comment_id,
     trace_id: traceId,
+    ...(recovery ? { recovery } : {}),
   };
 }
 
@@ -2612,7 +3025,7 @@ async function defaultRecordCompanionAction(input: {
 function defaultDependencies(): ServerDependencies {
   return buildDefaultServerDependencies({
     buildSettings: buildDefaultSettings,
-    createLogStore: createInMemoryLogStore,
+    createLogStore: createDurablePublishLogStore,
     checkDatabaseConnection: defaultCheckDatabaseConnection,
     checkRedisConnection: defaultCheckRedisConnection,
     probeBilibiliAuth: probeBilibiliRuntimeAuth,
@@ -2888,7 +3301,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const verifyPayloadSignature = overrides.verifyPayloadSignature ?? defaults.verifyPayloadSignature;
   const reservePublishLog = overrides.reservePublishLog ?? defaults.reservePublishLog;
   const finalizePublishLog = overrides.finalizePublishLog ?? defaults.finalizePublishLog;
-  const publishGatewayReply = overrides.publishGatewayReply ?? defaults.publishGatewayReply;
+  const publishGatewayReply = overrides.publishGatewayReply ?? ((input) => defaultPublishGatewayReply(settings, input));
   const publishPlatformReply = overrides.publishPlatformReply ?? defaultPublishPlatformReply;
   const normalizePublishFailureReason =
     overrides.normalizePublishFailureReason ?? defaults.normalizePublishFailureReason;

@@ -61,6 +61,7 @@ model UserState {
 model PublishLog {
   id                  Int      @id @default(autoincrement())
   platform            String   @default("bilibili")
+  reservation_key     String?  @unique
   canonical_comment_id String
   comment_id          String
   reply_hash          String
@@ -74,7 +75,29 @@ model PublishLog {
   @@index([platform])
   @@index([canonical_comment_id])
   @@index([comment_id])
+  @@index([status])
   @@map("publish_logs")
+}
+
+model CommentQueueBacklog {
+  id                  Int      @id @default(autoincrement())
+  platform            String   @default("bilibili")
+  canonical_comment_id String   @unique
+  comment_id          String
+  source              String   @default("webhook")
+  payload_json        String   @default("{}")
+  status              String   @default("pending_requeue")
+  last_error          String?
+  queue_attempts      Int      @default(0)
+  last_attempt_at     DateTime?
+  recovered_at        DateTime?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+
+  @@index([status])
+  @@index([created_at])
+  @@index([updated_at])
+  @@map("comment_queue_backlogs")
 }
 
 model KnowledgeEntry {

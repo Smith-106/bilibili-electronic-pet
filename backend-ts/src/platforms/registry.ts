@@ -82,6 +82,10 @@ export function resolvePlatformAdapter(platform: PlatformName): RegisteredPlatfo
   return PLATFORM_ADAPTERS[platform];
 }
 
+export function resolvePlatformBaseEnabled(platform: PlatformName, settings: RuntimeSettings): boolean {
+  return resolvePlatformAdapter(platform).isEnabled(settings);
+}
+
 export function listPlatformAdapters(): RegisteredPlatformAdapter[] {
   return PLATFORM_NAMES.map((platform) => PLATFORM_ADAPTERS[platform]);
 }

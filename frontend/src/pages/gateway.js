@@ -51,6 +51,7 @@ export async function render(container) {
         <label class="form-label" for="gw-status">发布状态</label>
         <select id="gw-status" class="form-input">
           <option value="">全部</option>
+          <option value="pending">pending</option>
           <option value="published">published</option>
           <option value="failed">failed</option>
           <option value="pending_review">pending_review</option>
@@ -161,9 +162,20 @@ export async function render(container) {
       const data = await api.getGatewayPublishLogs({ limit, status });
       const items = Array.isArray(data?.items) ? data.items : [];
       const total = Number(data?.total ?? items.length) || items.length;
+      const byStatus = items.reduce((summary, item) => {
+        const key = item.status || 'unknown';
+        summary[key] = (summary[key] || 0) + 1;
+        return summary;
+      }, {});
       meta.textContent = status
         ? `状态 ${status}，返回 ${items.length} / ${total} 条发布日志`
         : `返回 ${items.length} / ${total} 条发布日志`;
+      const statusSummary = Object.entries(byStatus)
+        .map(([key, count]) => `${key}:${count}`)
+        .join('，');
+      if (statusSummary) {
+        meta.textContent += `；当前页状态 ${statusSummary}`;
+      }
 
       if (items.length === 0) {
         wrapper.innerHTML = '<div class="table-empty">暂无发布日志</div>';
@@ -173,6 +185,7 @@ export async function render(container) {
       wrapper.innerHTML = renderTable({
         columns: [
           { key: 'comment_id', label: 'Comment ID', class: 'cell-id', render: (row) => escapeHtml((row.comment_id || row.canonical_comment_id || '-').toString().substring(0, 16)) },
+          { key: 'platform', label: '平台', render: (row) => escapeHtml(row.platform || '-') },
           { key: 'status', label: '状态', render: (row) => renderBadge(row.status) },
           { key: 'source', label: '来源', render: (row) => escapeHtml(row.source || '-') },
           { key: 'failure_reason', label: '失败原因', class: 'cell-truncate', render: (row) => escapeHtml(row.failure_reason || '-') },

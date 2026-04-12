@@ -79,6 +79,7 @@ export type PublishExecutionResult = {
   published: boolean;
   reason: string;
   publishedAt?: Date;
+  status?: 'published' | 'failed' | 'pending' | 'pending_review';
 };
 
 export type PublishReservationInput = {
@@ -91,7 +92,7 @@ export type PublishReservationInput = {
 
 export type PublishFinalizeInput = {
   reservationKey: string;
-  status: 'published' | 'failed';
+  status: 'published' | 'failed' | 'pending' | 'pending_review';
   source: string;
   failureReason?: string;
   publishedAt?: Date;

@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createServer } from '../src/main.js';
@@ -67,6 +71,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetPlatformControlState();
+  delete process.env.PLATFORM_CONTROL_STATE_FILE;
 });
 
 describe('health/readiness parity', () => {
@@ -1167,6 +1172,8 @@ describe('gateway/auth parity', () => {
         settings: buildSettings({
           platformDouyinEnabled: true,
         }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-douyin-control' }),
+        finalizePublishLog: () => undefined,
         publishPlatformReply: () => ({
           published: true,
           reason: 'trial_publish_ok',
@@ -1215,6 +1222,64 @@ describe('gateway/auth parity', () => {
     expect(allowed.json().published).toBe(true);
 
     await app.close();
+  });
+
+  it('keeps platform rollout controls durable across server restarts', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'platform-control-main-'));
+    process.env.PLATFORM_CONTROL_STATE_FILE = join(tempDir, 'control-state.json');
+
+    const { createServer: createFirstServer } = await import('../src/main.js');
+    const firstApp = createFirstServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+      }),
+    );
+
+    const paused = await firstApp.inject({
+      method: 'POST',
+      url: '/api/admin/platforms/douyin/control',
+      payload: { enabled: false },
+    });
+    expect(paused.statusCode).toBe(200);
+    await firstApp.close();
+
+    vi.resetModules();
+    const { createServer: createSecondServer } = await import('../src/main.js');
+    const secondApp = createSecondServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+      }),
+    );
+
+    const platformResponse = await secondApp.inject({ method: 'GET', url: '/api/admin/platforms' });
+    const douyin = platformResponse
+      .json()
+      .items.find((entry: { platform: string }) => entry.platform === 'douyin');
+    expect(douyin).toMatchObject({
+      platform: 'douyin',
+      enabled: false,
+      rolloutControl: {
+        enabled: false,
+        stage: 'paused',
+      },
+    });
+
+    const blocked = await secondApp.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-durable-douyin',
+        reply_text: 'reply text',
+      },
+    });
+    expect(blocked.statusCode).toBe(403);
+
+    await secondApp.close();
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
   it('uses the default sidecar webhook publisher for douyin when configured', async () => {
@@ -1304,6 +1369,7 @@ describe('gateway/auth parity', () => {
       const app = createServer(
         buildDeps({
           reservePublishLog: () => ({ duplicate: false, reservationKey: `reservation-${testCase.expected}` }),
+          finalizePublishLog: () => undefined,
           publishGatewayReply: () => ({ published: false, reason: testCase.input }),
         }),
       );

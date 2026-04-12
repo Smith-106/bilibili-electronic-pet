@@ -64,7 +64,7 @@ export type UserState = {
 /**
  * Publish log status
  */
-export type PublishLogStatus = 'published' | 'failed' | 'pending';
+export type PublishLogStatus = 'published' | 'failed' | 'pending' | 'pending_review';
 
 /**
  * Publish log entity

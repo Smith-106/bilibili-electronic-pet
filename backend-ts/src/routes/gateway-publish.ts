@@ -162,7 +162,7 @@ export function registerGatewayPublishRoutes(
 
     await deps.finalizePublishLog({
       reservationKey: reservation.reservationKey,
-      status: 'published',
+      status: publishResult.status ?? 'published',
       source: sourceValue,
       publishedAt: publishResult.publishedAt,
     });

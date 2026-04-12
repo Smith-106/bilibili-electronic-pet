@@ -184,8 +184,32 @@ export type ServerDependencies = {
     event: CommentEvent;
     source: string;
   }) =>
-    | Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }>
-    | { ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string };
+    | Promise<{
+        ok: boolean;
+        comment_id: string;
+        trace_id: string;
+        queued?: boolean;
+        message?: string;
+        recovery?: {
+          backlog_id: number;
+          status: 'pending_requeue' | 'requeued';
+          recoverable: true;
+          recovered?: boolean;
+        };
+      }>
+    | {
+        ok: boolean;
+        comment_id: string;
+        trace_id: string;
+        queued?: boolean;
+        message?: string;
+        recovery?: {
+          backlog_id: number;
+          status: 'pending_requeue' | 'requeued';
+          recoverable: true;
+          recovered?: boolean;
+        };
+      };
   retryJob: (input: {
     jobId: number;
     forceLong?: boolean;
@@ -285,8 +309,8 @@ export type ServerDependencies = {
 };
 
 type PublishLogStore = {
-  reserve: (input: PublishReservationInput) => ReservePublishLogResult;
-  finalize: (input: PublishFinalizeInput) => void;
+  reserve: (input: PublishReservationInput) => Promise<ReservePublishLogResult> | ReservePublishLogResult;
+  finalize: (input: PublishFinalizeInput) => Promise<void> | void;
 };
 
 type DefaultServerDependenciesInput = {

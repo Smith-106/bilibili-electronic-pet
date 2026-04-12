@@ -6,6 +6,7 @@ import {
   listPlatformIngressRoutes,
   listPublishingPlatforms,
   resolvePlatformAdapter,
+  resolvePlatformBaseEnabled,
   resolvePlatformPollingRuntime,
 } from '../src/platforms/registry.js';
 
@@ -68,6 +69,14 @@ describe('platform adapter registry', () => {
     });
 
     expect(resolvePlatformAdapter('bilibili').isEnabled(settings)).toBe(true);
+  });
+
+  it('exposes base enabled resolution separately from runtime rollout overrides', () => {
+    const settings = buildSettings({
+      platformDouyinEnabled: true,
+    });
+
+    expect(resolvePlatformBaseEnabled('douyin', settings)).toBe(true);
   });
 
   it('resolves polling runtime through the bilibili adapter', () => {

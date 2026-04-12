@@ -135,3 +135,32 @@ export async function enqueueTask<P extends BaseTaskPayload>(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (queue as any).add('process', payload, options);
 }
+
+export function normalizeQueueError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message.trim();
+  }
+  return 'queue_unavailable';
+}
+
+export async function tryEnqueueTask<P extends BaseTaskPayload>(
+  queue: Queue<P>,
+  payload: P,
+  jobId?: string,
+  options?: Record<string, unknown>,
+): Promise<{ queued: true } | { queued: false; error: string }> {
+  try {
+    const addOptions = {
+      ...(options ?? {}),
+      ...(jobId ? { jobId } : {}),
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (queue as any).add('process', payload, addOptions);
+    return { queued: true };
+  } catch (error) {
+    return {
+      queued: false,
+      error: normalizeQueueError(error),
+    };
+  }
+}

@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { resetPlatformControlState, setPlatformControlState } from '../src/platforms/control-state.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import { isPetActionName, PET_ACTION_NAMES } from '../src/server/pet-contracts.js';
 import { isPlatformName, PLATFORM_NAMES } from '../src/server/platform-contracts.js';
@@ -41,6 +46,15 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
   };
 }
 
+beforeEach(() => {
+  resetPlatformControlState();
+});
+
+afterEach(() => {
+  resetPlatformControlState();
+  delete process.env.PLATFORM_CONTROL_STATE_FILE;
+});
+
 describe('runtime-platform boundaries', () => {
   it('normalizes publish mode text consistently', () => {
     expect(normalizePublishMode('  Native_Bilibili  ')).toBe('native_bilibili');
@@ -66,6 +80,24 @@ describe('runtime-platform boundaries', () => {
     });
 
     expect(defaultIsPlatformEnabled('bilibili', settings)).toBe(true);
+  });
+
+  it('reloads persisted rollout overrides after a module restart', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'platform-control-'));
+    process.env.PLATFORM_CONTROL_STATE_FILE = join(tempDir, 'control-state.json');
+
+    setPlatformControlState('douyin', {
+      enabled: false,
+      updatedAt: '2026-04-13T00:00:00.000Z',
+    });
+    expect(defaultIsPlatformEnabled('douyin', buildSettings({ platformDouyinEnabled: true }))).toBe(false);
+
+    vi.resetModules();
+    const runtimePlatform = await import('../src/server/runtime-platform.js');
+
+    expect(runtimePlatform.defaultIsPlatformEnabled('douyin', buildSettings({ platformDouyinEnabled: true }))).toBe(false);
+
+    rmSync(tempDir, { recursive: true, force: true });
   });
 });
 

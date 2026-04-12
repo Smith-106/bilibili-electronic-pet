@@ -342,7 +342,9 @@ describe('admin-core frontend regression tests', () => {
 
     expect(mockApi.getGatewayPublishLogs).toHaveBeenLastCalledWith({ limit: '20', status: 'failed' });
     expect(container.textContent).toContain('发布日志诊断');
+    expect(container.textContent).toContain('bilibili');
     expect(container.textContent).toContain('auth');
+    expect(container.textContent).toContain('failed:1');
   });
 
   it('shows activate action for disabled role cards and triggers reactivation', async () => {
