@@ -87,6 +87,22 @@ services:
       retries: 5
     restart: unless-stopped
 
+  douyin-sidecar:
+    profiles: ["sidecar"]
+    build:
+      context: ./douyin-sidecar
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - DOUYIN_SIDECAR_TOKEN=${DOUYIN_SIDECAR_TOKEN:-replace-with-sidecar-token}
+      - DOUYIN_DRIVER_MODE=${DOUYIN_DRIVER_MODE:-mock}
+      - DOUYIN_UPSTREAM_URL=${DOUYIN_UPSTREAM_URL:-}
+      - DOUYIN_UPSTREAM_TOKEN=${DOUYIN_UPSTREAM_TOKEN:-}
+    restart: unless-stopped
+
 volumes:
   sqlite-data:
   redis-data:

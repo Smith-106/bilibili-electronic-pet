@@ -40,6 +40,26 @@ Headers:
 - `Accept: application/json`
 - optional `Authorization: Bearer <PLATFORM_DOUYIN_WEBHOOK_TOKEN>`
 
+## Optional Local Docker Rehearsal
+
+If you want to validate the contract locally before touching the remote host:
+
+```powershell
+docker compose --profile sidecar up -d douyin-sidecar
+```
+
+Default local endpoints:
+
+- `http://127.0.0.1:8081/health`
+- `http://127.0.0.1:8081/publish`
+
+When wiring the main app to this local sidecar, use:
+
+- `PLATFORM_DOUYIN_ENABLED=true`
+- `PLATFORM_DOUYIN_WEBHOOK_URL=http://127.0.0.1:8081/publish`
+- `PLATFORM_DOUYIN_WEBHOOK_TOKEN=<same value as DOUYIN_SIDECAR_TOKEN>`
+- `PLATFORM_DOUYIN_PUBLISH_SOURCE=douyin-sidecar-trial`
+
 ## Dry Plan
 
 ```powershell

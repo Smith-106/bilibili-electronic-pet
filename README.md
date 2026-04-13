@@ -1534,6 +1534,23 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时，会优先走 B 站原生发布，覆盖普通 `PUBLISHER_MODE`
 - 如果启用网关签名校验，调用方必须与 `GATEWAY_HMAC_SECRET` 保持一致
 - 如果接入 `/gateway/publish/:platform`，还应补充检查 `PLATFORM_BILIBILI_ENABLED`、`PLATFORM_DOUYIN_ENABLED`、`PLATFORM_KUAISHOU_ENABLED` 以及对应的 `*_PUBLISH_SOURCE`
+- 如果你要本地把 Douyin sidecar 一起跑起来，可以使用：
+
+```bash
+docker compose --profile sidecar up -d douyin-sidecar
+```
+
+默认会暴露：
+
+- `http://127.0.0.1:8081/health`
+- `http://127.0.0.1:8081/publish`
+
+本地接主项目时可设置：
+
+- `PLATFORM_DOUYIN_ENABLED=true`
+- `PLATFORM_DOUYIN_WEBHOOK_URL=http://127.0.0.1:8081/publish`
+- `PLATFORM_DOUYIN_WEBHOOK_TOKEN=<与 DOUYIN_SIDECAR_TOKEN 相同>`
+- `PLATFORM_DOUYIN_PUBLISH_SOURCE=douyin-sidecar-trial`
 
 这些变量可按下面的层次理解：
 
