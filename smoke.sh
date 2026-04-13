@@ -7,10 +7,11 @@ SCRIPT_PATH="$SCRIPT_DIR/backend-ts/scripts/staging-check.mjs"
 usage() {
   cat <<'EOF'
 Usage:
-  bash smoke.sh [preflight|strict|real-chain] [staging-check args...]
+  bash smoke.sh [preflight|expanded-preflight|strict|real-chain] [staging-check args...]
 
 Modes:
   preflight   => --preflight-only
+  expanded-preflight => --preflight-only --expanded-scope-trial
   strict      => --strict
   real-chain  => --strict --pre-release-real-chain
 
@@ -38,6 +39,11 @@ case "${1:-}" in
     mode="preflight"
     shift
     args=(--preflight-only "$@")
+    ;;
+  expanded-preflight)
+    mode="expanded-preflight"
+    shift
+    args=(--preflight-only --expanded-scope-trial "$@")
     ;;
   strict)
     mode="strict"

@@ -24,7 +24,7 @@ function buildSpawnEnv() {
   };
 }
 
-function runPreflight(envText) {
+function runPreflight(envText, extraArgs = []) {
   const tempDir = mkdtempSync(join(tmpdir(), 'staging-check-'));
   const envFile = join(tempDir, 'preflight.env');
   const reportPath = join(tempDir, 'report.json');
@@ -34,7 +34,7 @@ function runPreflight(envText) {
 
   const result = spawnSync(
     process.execPath,
-    [scriptPath, '--preflight-only', '--env-file', envFile, '--report', reportPath],
+    [scriptPath, '--preflight-only', ...extraArgs, '--env-file', envFile, '--report', reportPath],
     {
       cwd: backendRoot,
       env: buildSpawnEnv(),
@@ -379,6 +379,7 @@ BILIBILI_PUBLISH_ENABLED=true
       'search_enrichment',
       'webhook_publish',
       'native_bilibili_publish',
+      'external_platform_trial',
     ]);
   });
 
@@ -406,9 +407,13 @@ CREDENTIAL_ENCRYPTION_KEY=test-secret
     expect(result.stdout).toContain('preflight native_bilibili_publish: status=configured');
     expect(report.status).toBe('preflight_ready');
     expect(report.delivery_preflight.blockers).toEqual([]);
-    expect(
-      report.delivery_preflight.capabilities.every((entry) => entry.status === 'configured'),
-    ).toBe(true);
+    expect(report.delivery_preflight.capabilities).toEqual([
+      expect.objectContaining({ capability: 'llm_generation', status: 'configured' }),
+      expect.objectContaining({ capability: 'search_enrichment', status: 'configured' }),
+      expect.objectContaining({ capability: 'webhook_publish', status: 'configured' }),
+      expect.objectContaining({ capability: 'native_bilibili_publish', status: 'configured' }),
+      expect.objectContaining({ capability: 'external_platform_trial', status: 'inactive' }),
+    ]);
   });
 
   it('treats real_publish mode as native delivery capability and reports missing credentials', () => {
@@ -433,6 +438,38 @@ PUBLISHER_MODE=real_publish
       mode: 'real_publish',
       status: 'runtime_credentials_required',
     });
+  });
+
+  it('reports missing expanded-scope trial prerequisites when requested', () => {
+    const { result, report } = runPreflight(
+      `
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-test
+SEARCH_PROVIDER=serpapi
+SEARCH_API_KEY=search-key
+PUBLISHER_MODE=manual_queue
+`,
+      ['--expanded-scope-trial'],
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('preflight external_platform_trial: status=missing_inputs');
+    expect(report.expanded_scope_trial).toBe(true);
+    expect(report.delivery_preflight.blockers).toContain('external_platform_trial');
+
+    const externalTrial = report.delivery_preflight.capabilities.find(
+      (entry) => entry.capability === 'external_platform_trial',
+    );
+    expect(externalTrial).toMatchObject({
+      active: true,
+      mode: 'expanded_scope_trial',
+      status: 'missing_inputs',
+    });
+    expect(externalTrial.missing_inputs).toEqual([
+      'PLATFORM_DOUYIN_ENABLED=true',
+      'PLATFORM_DOUYIN_WEBHOOK_URL',
+      'PLATFORM_DOUYIN_PUBLISH_SOURCE',
+    ]);
   });
 
   it('records runtime summary and warns when checker env differs from the target runtime', async () => {

@@ -27,6 +27,7 @@ function parseArgs(argv) {
     apiKey: null,
     envFile: null,
     preflightOnly: false,
+    expandedScopeTrial: false,
     reportPath: null,
     strict: false,
     preReleaseRealChain: false,
@@ -54,6 +55,11 @@ function parseArgs(argv) {
 
     if (current === '--preflight-only') {
       result.preflightOnly = true;
+      continue;
+    }
+
+    if (current === '--expanded-scope-trial') {
+      result.expandedScopeTrial = true;
       continue;
     }
 
@@ -129,6 +135,7 @@ Options:
   --api-key <key>                Admin API key used for authenticated checks
   --env-file <path>              Explicit env file to load before checks
   --preflight-only               Print and optionally report external-delivery prerequisites without hitting the runtime
+  --expanded-scope-trial         Require external-platform trial inputs during preflight
   --strict                       Require delivery-capable diagnostics checks
   --pre-release-real-chain       Require native Bilibili pre-release gates
   --report <path>                Write JSON report to the given path (preflight/pass/fail)
@@ -264,6 +271,7 @@ function extractAssetPaths(html) {
 function buildEnvMatrix(env, options) {
   const nativeRealChain = options.preReleaseRealChain;
   const strict = options.strict;
+  const expandedScopeTrial = options.expandedScopeTrial;
   const publisherMode = String(env.PUBLISHER_MODE ?? 'manual_queue').trim().toLowerCase();
   const webhookMode = publisherMode === 'webhook';
   const envCredentialPresent =
@@ -284,6 +292,15 @@ function buildEnvMatrix(env, options) {
     { name: 'LLM_API_KEY', required: String(env.LLM_PROVIDER ?? '').trim().toLowerCase() !== 'mock', present: hasText(env.LLM_API_KEY) },
     { name: 'PUBLISHER_MODE', required: strict, present: hasText(env.PUBLISHER_MODE) },
     { name: 'PUBLISHER_WEBHOOK_URL', required: strict && webhookMode, present: hasText(env.PUBLISHER_WEBHOOK_URL) },
+    { name: 'PLATFORM_DOUYIN_ENABLED', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_ENABLED) },
+    { name: 'PLATFORM_DOUYIN_WEBHOOK_URL', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_WEBHOOK_URL) },
+    {
+      name: 'PLATFORM_DOUYIN_WEBHOOK_TOKEN',
+      required: false,
+      present: hasText(env.PLATFORM_DOUYIN_WEBHOOK_TOKEN),
+      note: 'Optional unless the external Douyin sidecar contract requires bearer authentication.',
+    },
+    { name: 'PLATFORM_DOUYIN_PUBLISH_SOURCE', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_PUBLISH_SOURCE) },
     { name: 'BILIBILI_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_ENABLED) },
     { name: 'BILIBILI_PUBLISH_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_PUBLISH_ENABLED) },
     { name: 'BILIBILI_POLL_ENABLED', required: false, present: hasText(env.BILIBILI_POLL_ENABLED) },
@@ -439,7 +456,8 @@ function createPreflightCapability({
   };
 }
 
-function buildDeliveryPreflight(env) {
+function buildDeliveryPreflight(env, options = {}) {
+  const expandedScopeTrial = options.expandedScopeTrial === true;
   const llmProvider = String(env.LLM_PROVIDER ?? 'mock').trim().toLowerCase() || 'mock';
   const llmMissing = [];
   const llmNotes = [];
@@ -523,6 +541,27 @@ function buildDeliveryPreflight(env) {
     nativeNotes.push('real_publish mode uses native Bilibili runtime credentials and delivery checks.');
   }
 
+  const douyinTrialMissing = [];
+  const douyinTrialNotes = [];
+  let douyinTrialStatus = expandedScopeTrial ? 'configured' : 'inactive';
+
+  if (expandedScopeTrial && !parseBoolean(env.PLATFORM_DOUYIN_ENABLED, false)) {
+    douyinTrialStatus = 'missing_inputs';
+    douyinTrialMissing.push('PLATFORM_DOUYIN_ENABLED=true');
+  }
+  if (expandedScopeTrial && !hasText(env.PLATFORM_DOUYIN_WEBHOOK_URL)) {
+    douyinTrialStatus = 'missing_inputs';
+    douyinTrialMissing.push('PLATFORM_DOUYIN_WEBHOOK_URL');
+  }
+  if (expandedScopeTrial && !hasText(env.PLATFORM_DOUYIN_PUBLISH_SOURCE)) {
+    douyinTrialStatus = 'missing_inputs';
+    douyinTrialMissing.push('PLATFORM_DOUYIN_PUBLISH_SOURCE');
+  }
+  if (expandedScopeTrial) {
+    douyinTrialNotes.push('PLATFORM_DOUYIN_WEBHOOK_TOKEN is optional unless the external Douyin sidecar contract requires bearer auth.');
+    douyinTrialNotes.push('This preflight only validates checker-side inputs. It does not prove the live host can reach the endpoint through WAF/Cloudflare.');
+  }
+
   const capabilities = [
     createPreflightCapability({
       capability: 'llm_generation',
@@ -566,6 +605,20 @@ function buildDeliveryPreflight(env) {
       optionalInputs: ['CREDENTIAL_ENCRYPTION_KEY', 'BILIBILI_BUVID4', 'BILIBILI_DEDEUSERID'],
       missingInputs: nativeMissing,
       notes: nativeNotes,
+    }),
+    createPreflightCapability({
+      capability: 'external_platform_trial',
+      active: expandedScopeTrial,
+      status: douyinTrialStatus,
+      mode: expandedScopeTrial ? 'expanded_scope_trial' : 'inactive',
+      requiredInputs: [
+        'PLATFORM_DOUYIN_ENABLED=true',
+        'PLATFORM_DOUYIN_WEBHOOK_URL',
+        'PLATFORM_DOUYIN_PUBLISH_SOURCE',
+      ],
+      optionalInputs: ['PLATFORM_DOUYIN_WEBHOOK_TOKEN'],
+      missingInputs: douyinTrialMissing,
+      notes: douyinTrialNotes,
     }),
   ];
 
@@ -652,21 +705,23 @@ async function main() {
   const baseUrl = normalizeBaseUrl(parsedArgs.baseUrl ?? process.env.BASE_URL);
   const apiKey = String(parsedArgs.apiKey ?? process.env.API_KEY ?? '').trim();
   const strict = parsedArgs.strict || parseBoolean(process.env.STRICT_SMOKE, false);
+  const expandedScopeTrial = parsedArgs.expandedScopeTrial;
   const preReleaseRealChain =
     parsedArgs.preReleaseRealChain || parseBoolean(process.env.PRE_RELEASE_REAL_CHAIN, false);
   const preflightOnly = parsedArgs.preflightOnly;
   const reportPath = parsedArgs.reportPath ?? process.env.REPORT_PATH ?? null;
 
-  const deliveryPreflight = buildDeliveryPreflight(process.env);
+  const deliveryPreflight = buildDeliveryPreflight(process.env, { expandedScopeTrial });
 
   const report = {
     started_at: new Date().toISOString(),
     base_url: baseUrl.replace(/\/$/, ''),
     preflight_only: preflightOnly,
+    expanded_scope_trial: expandedScopeTrial,
     strict,
     pre_release_real_chain: preReleaseRealChain,
     env_files: envFiles,
-    env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, apiKey }),
+    env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, expandedScopeTrial, apiKey }),
     delivery_preflight: deliveryPreflight,
     input_scopes: {
       checker_env: 'env_matrix and delivery_preflight describe the environment seen by staging-check itself',

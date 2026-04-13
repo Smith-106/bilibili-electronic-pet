@@ -1380,10 +1380,12 @@ npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" 
 
 ```bash
 bash smoke.sh preflight --report ./staging-preflight.json
+bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
 bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
 bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
+pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
 pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
@@ -1394,6 +1396,9 @@ pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:AP
 Copy-Item .env.strict.local.example .env.strict.local
 pwsh ./rehearse-local.ps1 strict
 
+Copy-Item .env.expanded-scope.preflight.example .env.expanded-scope.preflight
+pwsh ./smoke.ps1 expanded-preflight --env-file .\.env.expanded-scope.preflight
+
 Copy-Item .env.real-chain.local.example .env.real-chain.local
 pwsh ./rehearse-local.ps1 real-chain
 ```
@@ -1403,6 +1408,9 @@ pwsh ./rehearse-local.ps1 real-chain
 ```bash
 cp .env.strict.local.example .env.strict.local
 bash ./rehearse-local.sh strict
+
+cp .env.expanded-scope.preflight.example .env.expanded-scope.preflight
+bash ./smoke.sh expanded-preflight --env-file ./.env.expanded-scope.preflight
 
 cp .env.real-chain.local.example .env.real-chain.local
 bash ./rehearse-local.sh real-chain
@@ -1419,6 +1427,7 @@ bash ./rehearse-local.sh real-chain
 注意：
 
 - `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
+- `.env.expanded-scope.preflight.example` 用来检查 expanded scope 的 `PLATFORM_DOUYIN_*` 前置条件是否齐全；它不证明远端 endpoint/WAF 已经打通。
 - `rehearse-local.ps1` / `rehearse-local.sh` 默认会按模式选择 env 文件：
   - `strict` → `.env.strict.local`
   - `real-chain` → `.env.real-chain.local`

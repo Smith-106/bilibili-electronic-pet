@@ -11,10 +11,12 @@ It can also be invoked from the repository root through the wrappers:
 
 ```bash
 bash smoke.sh preflight --report ./staging-preflight.json
+bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
 bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
 bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
+pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
 pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 ```
@@ -58,6 +60,29 @@ npm run staging:check -- \
   --env-file .env.staging \
   --report ../staging-preflight.json
 ```
+
+### Expanded-Scope Preflight
+
+Checks:
+- standard preflight capability checks
+- expanded-scope external platform trial inputs:
+  - `PLATFORM_DOUYIN_ENABLED=true`
+  - `PLATFORM_DOUYIN_WEBHOOK_URL`
+  - `PLATFORM_DOUYIN_PUBLISH_SOURCE`
+- optional `PLATFORM_DOUYIN_WEBHOOK_TOKEN`
+
+Use when:
+- you want to validate the checker-side prerequisites for the expanded-scope staging run
+- you need to separate missing `PLATFORM_DOUYIN_*` inputs from later remote/WAF/runtime failures
+
+Examples:
+
+```bash
+bash smoke.sh expanded-preflight --env-file ../.env.expanded-scope.preflight.example
+pwsh ./smoke.ps1 expanded-preflight --env-file ..\.env.expanded-scope.preflight.example
+```
+
+This mode validates checker-side inputs only. It does not prove the live host can reach the configured endpoint.
 
 ### Baseline
 
@@ -174,6 +199,9 @@ npm run staging:check -- \
 - For a repo-managed local strict rehearsal path, copy `.env.strict.local.example` to `.env.strict.local` and run:
   - `pwsh ./rehearse-local.ps1 strict`
   - or `bash ./rehearse-local.sh strict`
+- For an expanded-scope preflight scaffold, copy `.env.expanded-scope.preflight.example` to a local file and run:
+  - `pwsh ./smoke.ps1 expanded-preflight --env-file .\.env.expanded-scope.preflight`
+  - or `bash ./smoke.sh expanded-preflight --env-file ./.env.expanded-scope.preflight`
 - For a repo-managed local native real-chain rehearsal scaffold, copy `.env.real-chain.local.example` to `.env.real-chain.local` and run:
   - `pwsh ./rehearse-local.ps1 real-chain`
   - or `bash ./rehearse-local.sh real-chain`

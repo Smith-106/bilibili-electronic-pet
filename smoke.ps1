@@ -9,10 +9,11 @@ $finalArgs = @($RemainingArgs)
 function Show-Usage {
   @'
 Usage:
-  pwsh ./smoke.ps1 [preflight|strict|real-chain] [staging-check args...]
+  pwsh ./smoke.ps1 [preflight|expanded-preflight|strict|real-chain] [staging-check args...]
 
 Modes:
   preflight   => --preflight-only
+  expanded-preflight => --preflight-only --expanded-scope-trial
   strict      => --strict
   real-chain  => --strict --pre-release-real-chain
 
@@ -48,6 +49,10 @@ if ($finalArgs.Count -gt 0) {
     'preflight' {
       $mode = 'preflight'
       $finalArgs = @('--preflight-only') + $tailArgs
+    }
+    'expanded-preflight' {
+      $mode = 'expanded-preflight'
+      $finalArgs = @('--preflight-only', '--expanded-scope-trial') + $tailArgs
     }
     'strict' {
       $mode = 'strict'
