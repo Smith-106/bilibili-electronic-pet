@@ -84,6 +84,11 @@ pwsh ./smoke.ps1 expanded-preflight --env-file ..\.env.expanded-scope.preflight.
 
 This mode validates checker-side inputs only. It does not prove the live host can reach the configured endpoint.
 
+For the final expanded-scope evidence package, use these repo-managed templates:
+
+- `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
+- `backend-ts/staging-report.expanded-scope.template.json`
+
 ### Baseline
 
 Checks:
@@ -202,6 +207,9 @@ npm run staging:check -- \
 - For an expanded-scope preflight scaffold, copy `.env.expanded-scope.preflight.example` to a local file and run:
   - `pwsh ./smoke.ps1 expanded-preflight --env-file .\.env.expanded-scope.preflight`
   - or `bash ./smoke.sh expanded-preflight --env-file ./.env.expanded-scope.preflight`
+- For the final operator summary and JSON evidence shape, copy or reference:
+  - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
+  - `backend-ts/staging-report.expanded-scope.template.json`
 - For a repo-managed local native real-chain rehearsal scaffold, copy `.env.real-chain.local.example` to `.env.real-chain.local` and run:
   - `pwsh ./rehearse-local.ps1 real-chain`
   - or `bash ./rehearse-local.sh real-chain`

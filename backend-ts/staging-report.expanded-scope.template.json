@@ -1,0 +1,50 @@
+{
+  "template": true,
+  "kind": "expanded_scope_strict_staging",
+  "instructions": "Copy this file or use it as a shape reference only after a real expanded-scope staging run. Do not treat placeholder values as evidence.",
+  "header": {
+    "date": "<ISO8601>",
+    "operator": "<name>",
+    "target_base_url": "<https://pet.nikoniko.tech>",
+    "target_revision": "<git-or-image-ref>",
+    "source_session": "PEX-delivery-completion-plan-2026-04-13"
+  },
+  "preconditions": {
+    "exec_001_completed": true,
+    "exec_002_completed": true,
+    "exec_003a_completed": true,
+    "ext_003b_completed": false
+  },
+  "preflight": {
+    "expanded_scope_trial": {
+      "report_path": "<.artifacts/staging/expanded-preflight-*.json>",
+      "status": "<preflight_ready|preflight_incomplete>",
+      "missing_inputs": []
+    }
+  },
+  "strict_runtime": {
+    "report_path": "<.artifacts/staging/strict-expanded-scope-*.json>",
+    "product_ready": false,
+    "product_blockers": [],
+    "companion_state_v2_ok": false,
+    "pet_overview_ok": false,
+    "platform_connections_ok": false
+  },
+  "douyin_trial": {
+    "env_verified": false,
+    "endpoint_reachable_from_live_host": false,
+    "waf_bypass_verified": false,
+    "smoke_publish_ok": false,
+    "smoke_publish_evidence": "<path>"
+  },
+  "evidence_links": {
+    "remote_env_probe": "<path>",
+    "public_probe": "<path>",
+    "internal_admin_probe": "<path>",
+    "signoff_doc": "<path>"
+  },
+  "verdict": {
+    "expanded_scope_customer_ready": false,
+    "summary": "<final summary after real execution>"
+  }
+}

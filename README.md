@@ -1428,6 +1428,9 @@ bash ./rehearse-local.sh real-chain
 
 - `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
 - `.env.expanded-scope.preflight.example` 用来检查 expanded scope 的 `PLATFORM_DOUYIN_*` 前置条件是否齐全；它不证明远端 endpoint/WAF 已经打通。
+- expanded scope 最终 strict 验收的说明模板和 JSON 骨架在：
+  - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
+  - `backend-ts/staging-report.expanded-scope.template.json`
 - `rehearse-local.ps1` / `rehearse-local.sh` 默认会按模式选择 env 文件：
   - `strict` → `.env.strict.local`
   - `real-chain` → `.env.real-chain.local`
