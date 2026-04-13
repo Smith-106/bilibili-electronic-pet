@@ -4,27 +4,29 @@ All notable changes to the TypeScript backend migration project.
 
 Entries below describe the migration snapshot that was current on each release date. They are historical release notes, not a statement of the repository's current runtime completeness.
 
-## [Unreleased] - 2026-04-07
+## [Unreleased]
+
+## [1.1.0] - 2026-04-14
 
 ### Added
 
-- `staging-check` gained explicit preflight diagnostics (`--preflight-only`) with canonical capability reporting for:
-  - `llm_generation`
-  - `search_enrichment`
-  - `webhook_publish`
-  - `native_bilibili_publish`
-- `/readiness` now surfaces `delivery_capability_blockers` and `delivery_capabilities` so runtime probes and staging checks share one capability contract.
-- Backend integration coverage was expanded for configured vs fallback branches across generator/search/publisher/bilibili-runtime flows.
+- Pet-core companion surface is now bundled and served from the backend, with `/companion` and `/companion/state-v2` supporting the operator-facing electronic pet experience.
+- Companion interaction flows gained timeline, action note, keyboard shortcut, focus-management, and live-status improvements across the shipped web surface.
+- Admin control plane now includes memory management, pet/platform routes, and richer readiness diagnostics for delivery and product gates.
+- External platform trial groundwork was added for Douyin via the governed `douyin-sidecar` service, sidecar deployment profile, retry tooling, and operator runbook.
+- Expanded-scope delivery preflight and strict-check flows were added so release rehearsals can validate canonical capability blockers before rollout.
 
 ### Changed
 
-- Release rehearsal entrypoints are now aligned across wrappers and CI (`preflight | strict | real-chain`).
-- Admin UI diagnostics flow consumes `/readiness` capability output (via frontend integration) to expose foundation/delivery status and canonical capability blockers.
-- Backend test suite count increased from `161` to `172` after delivery-contract and branch-coverage additions.
+- `/readiness` now reports foundation, delivery, and product-level gates together, including external-platform trial blockers and canonical delivery capability details.
+- Frontend/admin assets and companion bundle are refreshed to align with the backend-delivered runtime.
+- Local release verification now covers backend, frontend, companion, and Douyin sidecar test/build flows as one candidate checkpoint.
 
 ### Notes
 
-- This branch is close to pre-release hardening completion, but production-grade external delivery still depends on runtime secrets, active credentials, and target environment health.
+- This release is suitable as the formal Bilibili-first baseline for the current repository state.
+- Douyin remains a trial capability: code and local validation are present, but remote rollout still depends on a verified external sidecar endpoint and final `PLATFORM_DOUYIN_*` runtime configuration.
+- QQ and 微信 are not part of the supported platform scope for this release.
 
 ## [1.0.0] - 2026-03-28
 
