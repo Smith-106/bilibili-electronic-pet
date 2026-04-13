@@ -1118,22 +1118,51 @@ async function defaultPublishPlatformReply(input: PublishPlatformInput): Promise
   };
 }
 
+function isMissingReservationKeyColumnError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const normalized = error.message.toLowerCase();
+  return normalized.includes('no such column') && normalized.includes('reservation_key');
+}
+
 function createDurablePublishLogStore() {
   return {
     async reserve(input: PublishReservationInput): Promise<ReservePublishLogResult> {
       const prisma = getPrisma();
-      const existing = await prisma.publishLog.findUnique({
-        where: {
-          uq_publish_logs_canonical_reply: {
+      let existing;
+      try {
+        existing = await prisma.publishLog.findUnique({
+          where: {
+            uq_publish_logs_canonical_reply: {
+              canonical_comment_id: input.canonicalCommentId,
+              reply_hash: input.replyHash,
+            },
+          },
+          select: {
+            id: true,
+            reservation_key: true,
+          },
+        });
+      } catch (error) {
+        if (!isMissingReservationKeyColumnError(error)) {
+          throw error;
+        }
+        existing = await prisma.publishLog.findFirst({
+          where: {
             canonical_comment_id: input.canonicalCommentId,
             reply_hash: input.replyHash,
           },
-        },
-      });
+          select: {
+            id: true,
+          },
+        });
+      }
       if (existing) {
+        const existingWithReservationKey = existing as { id: number; reservation_key?: string | null };
         return {
           duplicate: true,
-          reservationKey: existing.reservation_key ?? `publish-log:${existing.id}`,
+          reservationKey: existingWithReservationKey.reservation_key ?? `publish-log:${existing.id}`,
         };
       }
 
@@ -1153,12 +1182,56 @@ function createDurablePublishLogStore() {
           },
         });
       } catch (error) {
+        const fallbackConflict = async () => {
+          const conflict = await prisma.publishLog.findFirst({
+            where: {
+              canonical_comment_id: input.canonicalCommentId,
+              reply_hash: input.replyHash,
+            },
+            select: { id: true },
+          });
+          if (conflict) {
+            return {
+              duplicate: true,
+              reservationKey: `publish-log:${conflict.id}`,
+            };
+          }
+          throw error;
+        };
+
+        if (isMissingReservationKeyColumnError(error)) {
+          try {
+            await prisma.publishLog.create({
+              data: {
+                platform: input.platform,
+                canonical_comment_id: input.canonicalCommentId,
+                comment_id: input.commentId,
+                reply_hash: input.replyHash,
+                source: input.source,
+                status: 'pending',
+                published_at: null,
+                failure_reason: null,
+              },
+            });
+            return { duplicate: false, reservationKey };
+          } catch (retryError) {
+            if (isMissingReservationKeyColumnError(retryError)) {
+              return fallbackConflict();
+            }
+            throw retryError;
+          }
+        }
+
         const conflict = await prisma.publishLog.findUnique({
           where: {
             uq_publish_logs_canonical_reply: {
               canonical_comment_id: input.canonicalCommentId,
               reply_hash: input.replyHash,
             },
+          },
+          select: {
+            id: true,
+            reservation_key: true,
           },
         });
         if (conflict) {
@@ -1174,16 +1247,22 @@ function createDurablePublishLogStore() {
     },
     async finalize(input: PublishFinalizeInput): Promise<void> {
       const prisma = getPrisma();
-      await prisma.publishLog.updateMany({
-        where: { reservation_key: input.reservationKey },
-        data: {
-          status: input.status,
-          source: input.source,
-          failure_reason: input.failureReason ?? null,
-          published_at: input.publishedAt ?? null,
-          reservation_key: null,
-        },
-      });
+      try {
+        await prisma.publishLog.updateMany({
+          where: { reservation_key: input.reservationKey },
+          data: {
+            status: input.status,
+            source: input.source,
+            failure_reason: input.failureReason ?? null,
+            published_at: input.publishedAt ?? null,
+            reservation_key: null,
+          },
+        });
+      } catch (error) {
+        if (!isMissingReservationKeyColumnError(error)) {
+          throw error;
+        }
+      }
     },
   };
 }
@@ -3352,7 +3431,6 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const listBilibiliVideos = overrides.listBilibiliVideos ?? defaults.listBilibiliVideos;
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
   const getCompanionState = overrides.getCompanionState ?? defaults.getCompanionState;
-  const getCompanionStateV2 = overrides.getCompanionStateV2 ?? defaults.getCompanionStateV2;
   const recordCompanionAction = overrides.recordCompanionAction ?? defaults.recordCompanionAction;
   const listPlatformConnections =
     overrides.listPlatformConnections ?? (() => defaultListPlatformConnections(settings));

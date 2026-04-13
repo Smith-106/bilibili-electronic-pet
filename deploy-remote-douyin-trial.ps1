@@ -79,9 +79,9 @@ function Invoke-Apply {
     throw "WebhookUrl is required for apply/full modes."
   }
 
-  $escapedWebhookUrl = $WebhookUrl.Replace("'", "'\"'\"'")
-  $escapedWebhookToken = $WebhookToken.Replace("'", "'\"'\"'")
-  $escapedPublishSource = $PublishSource.Replace("'", "'\"'\"'")
+  $escapedWebhookUrl = $WebhookUrl.Replace("'", "'`"'`"'")
+  $escapedWebhookToken = $WebhookToken.Replace("'", "'`"'`"'")
+  $escapedPublishSource = $PublishSource.Replace("'", "'`"'`"'")
 
   $remoteScript = @"
 set -euo pipefail
@@ -141,9 +141,9 @@ function Invoke-Smoke {
   }
 
   $actualCommentId = if ($CommentId) { $CommentId } else { "douyin-trial-smoke-" + [guid]::NewGuid().ToString("N").Substring(0, 8) }
-  $escapedApiKey = $ApiKey.Replace("'", "'\"'\"'")
-  $escapedCommentId = $actualCommentId.Replace("'", "'\"'\"'")
-  $escapedReplyText = $ReplyText.Replace("'", "'\"'\"'")
+  $escapedApiKey = $ApiKey.Replace("'", "'`"'`"'")
+  $escapedCommentId = $actualCommentId.Replace("'", "'`"'`"'")
+  $escapedReplyText = $ReplyText.Replace("'", "'`"'`"'")
 
   $remoteScript = @"
 set -euo pipefail

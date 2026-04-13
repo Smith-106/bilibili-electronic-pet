@@ -515,6 +515,7 @@ describe('gateway/auth parity', () => {
       const app = createServer(
         buildDeps({
           reservePublishLog: () => ({ duplicate: false, reservationKey: `reservation-${testCase.expected}` }),
+          finalizePublishLog: () => undefined,
           publishGatewayReply: () => ({ published: false, reason: testCase.input }),
         }),
       );

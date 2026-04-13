@@ -16,27 +16,29 @@ The current local workspace now contains:
 
 ## Locally Verified Evidence
 
-- `backend-ts`: `208` tests passed
+- `backend-ts`: `221` tests passed
 - `backend-ts`: build passed
 - `frontend`: `39` tests passed
 - `frontend`: build passed
 - `pet-companion-web`: `19` tests passed
 - `pet-companion-web`: build passed
+- local strict staging gate passed: `staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key`
+- expanded-scope preflight passed: `npm --prefix backend-ts run staging:check -- --preflight-only --expanded-scope-trial --env-file ../.env.expanded-scope.preflight.example`
 
 ## What Is Honest To Claim Now
 
 - The upgraded pet-first plus multi-platform scope is verified locally in this repository.
+- A fresh local strict staging verification has now been recorded for the upgraded scope (`staging:check` + `staging:check:strict` passed against the local rehearsal runtime).
 - The upgraded pet-core code is now deployed remotely enough to expose `/companion/state-v2`, the new admin pet/platform routes, and product-level `/readiness` fields.
-- The deployed runtime still lacks external-platform trial environment configuration, so the full upgraded scope is not yet customer-ready.
+- The deployed runtime still lacks a verified external-platform trial endpoint and environment configuration, so the full upgraded scope is not yet customer-ready.
 - The historical `v0.2.1` handoff remains the last customer-facing deployed baseline.
 
 ## Current Blockers Before Expanded-Scope Customer Claim
 
-- `README.md` already has uncommitted user-side changes, so the root customer-facing summary was not reconciled in this pass.
-- The deployed runtime still has no external-platform trial environment variables, so `/readiness` reports `platform_trial:no_external_platform_enabled` and `platform_trial:no_connected_rollout`.
-- A fresh strict staging verification with admin credentials has still not been recorded for the expanded scope.
-- The remote env does contain a generic `PUBLISHER_WEBHOOK_URL`, but a controlled reuse experiment failed with `reason=auth`, so it cannot currently be treated as a verified Douyin sidecar target.
-- Customer release messaging should stay in “candidate checkpoint” language until those two items are closed.
+- The deployed runtime still reports `platform_trial:no_external_platform_enabled` and `platform_trial:no_connected_rollout`, so `product_ready` remains `false`.
+- No verified Douyin sidecar endpoint / token has been provided yet, so remote `apply -> status -> smoke` cannot be completed honestly.
+- The remote env does contain a generic `PUBLISHER_WEBHOOK_URL`, but prior reuse validation hit auth / challenge failures and it cannot be treated as a verified Douyin sidecar target.
+- Customer release messaging should stay in “candidate checkpoint” language until remote platform-trial blockers are cleared and smoke evidence is archived.
 
 ## Reference Artifacts
 

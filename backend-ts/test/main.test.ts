@@ -113,8 +113,8 @@ describe('health/readiness parity', () => {
     const companionResponse = await app.inject({ method: 'GET', url: '/companion' });
     expect(companionResponse.statusCode).toBe(200);
 
-    const cssMatch = companionResponse.body.match(/href=\"([^\"]+\.css)\"/);
-    const jsMatch = companionResponse.body.match(/src=\"([^\"]+\.js)\"/);
+    const cssMatch = companionResponse.body.match(/href="([^"]+\.css)"/);
+    const jsMatch = companionResponse.body.match(/src="([^"]+\.js)"/);
 
     expect(cssMatch?.[1]).toBeTruthy();
     expect(jsMatch?.[1]).toBeTruthy();

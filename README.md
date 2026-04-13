@@ -15,7 +15,9 @@
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
 - Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 也已上线；但完整电子宠物闭环仍属于 partial 范围
-- 最新 repo-local 验证快照：`2026-04-13` 本地候选版本已验证，backend `211`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+- 最新 repo-local 验证快照：`2026-04-13` 本地候选版本已验证，backend `221`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+- 本地 strict 门禁已通过：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key`
+- expanded-scope preflight 已通过：`npm --prefix backend-ts run staging:check -- --preflight-only --expanded-scope-trial --env-file ../.env.expanded-scope.preflight.example`
 - 权威客户交付基线：`WFS-bilibili-delivery-readiness-20260408` 记录的 `2026-04-08` public-domain native Bilibili `GO` 仍是最后一条已签收 baseline
 - 当前远端运行状态：pet-core companion 与 admin pet/platform 路由已上线，但 Douyin 外部平台试点仍未完成远端接入配置
 
@@ -1381,13 +1383,13 @@ npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" 
 ```bash
 bash smoke.sh preflight --report ./staging-preflight.json
 bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
-bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
-bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+bash smoke.sh strict --base-url http://127.0.0.1:18002 --api-key "$API_KEY"
+bash smoke.sh real-chain --base-url http://127.0.0.1:18002 --api-key "$API_KEY"
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
 pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
-pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
-pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18002 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18002 --api-key "$env:API_KEY"
 ```
 
 如果你的目标只是快速复现一个**本地 strict-capable** 运行态，而不是手工启动 Redis、API、再自己拼 `staging-check` 参数，可以使用仓库根目录的一键 helper：
@@ -1428,6 +1430,7 @@ bash ./rehearse-local.sh real-chain
 
 - `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
 - `.env.expanded-scope.preflight.example` 用来检查 expanded scope 的 `PLATFORM_DOUYIN_*` 前置条件是否齐全；它不证明远端 endpoint/WAF 已经打通。
+- 2026-04-13 已完成一次本地 strict 合同演练：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key` 全通过；这只能证明本地 strict-capable 运行态成立，不能替代远端 Douyin trial 证据。
 - expanded scope 最终 strict 验收的说明模板和 JSON 骨架在：
   - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
   - `backend-ts/staging-report.expanded-scope.template.json`
@@ -1776,7 +1779,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 因此，当前最准确的状态表述是：
 
 1. 主运行链路已完成迁移，并继续以 `WFS-bilibili-delivery-readiness-20260408` 作为最后一条已签收 rollout baseline
-2. `2026-04-13` 的本地候选版本是当前最强 repo-local 证据：backend `211`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+2. `2026-04-13` 的本地候选版本是当前最强 repo-local 证据：backend `221`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
 3. 远端当前已经上线 pet-core companion 与 admin pet/platform 路由，但首个外部平台试点仍因 Douyin sidecar 契约未完成而保持 disabled
 4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 partial
 
