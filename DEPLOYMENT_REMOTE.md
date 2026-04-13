@@ -145,6 +145,16 @@ The following are not sufficient to mark Douyin trial as enabled:
     - `./deploy-remote.ps1 ghcr`
     - `./deploy-remote.ps1 status`
 
+- `deploy-remote-douyin-trial.ps1`
+  - Dedicated helper for the blocked external-platform retry path.
+  - Modes:
+    - `pwsh ./deploy-remote-douyin-trial.ps1 plan`
+    - `pwsh ./deploy-remote-douyin-trial.ps1 apply -WebhookUrl <verified-endpoint>`
+    - `pwsh ./deploy-remote-douyin-trial.ps1 status`
+    - `pwsh ./deploy-remote-douyin-trial.ps1 smoke -ApiKey <admin-api-key>`
+    - `pwsh ./deploy-remote-douyin-trial.ps1 full -WebhookUrl <verified-endpoint> -ApiKey <admin-api-key>`
+  - It does not invent rollout evidence; it only packages the apply/status/smoke sequence once external prerequisites are actually available.
+
 - `deploy-admin-remote.ps1`
   - Use only when the live runtime is intentionally on the local-image compose path, or when you explicitly want an ephemeral container-only admin hot patch.
   - Uploads `backend-ts/public/admin/**`, injects the files into the running `api` container, and can persist or recreate against the local-image compose path.
