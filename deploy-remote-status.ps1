@@ -38,6 +38,14 @@ echo "== containers =="
 sudo -n docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}' | grep '^bilibili-electronic-pet_' || true
 echo "== health =="
 sudo -n docker inspect --format '{{.Name}}|{{.Config.Image}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bilibili-electronic-pet_api_1 bilibili-electronic-pet_worker_1 2>/dev/null || true
+echo "== redacted env =="
+for key in PUBLISHER_WEBHOOK_URL PUBLISHER_WEBHOOK_TOKEN PLATFORM_DOUYIN_ENABLED PLATFORM_DOUYIN_WEBHOOK_URL PLATFORM_DOUYIN_WEBHOOK_TOKEN PLATFORM_DOUYIN_PUBLISH_SOURCE; do
+  if sudo -n grep -q "^${key}=" /etc/bilibili-pet/pre-release.env 2>/dev/null; then
+    echo "${key}=present"
+  else
+    echo "${key}=absent"
+  fi
+done
 echo "== deploy files =="
 ls -l $RemoteAppDir/docker-compose.deploy*.yml 2>/dev/null || true
 echo "== swap =="
@@ -67,6 +75,12 @@ cat /proc/swaps 2>/dev/null || true
     Write-Output "admin_asset=$asset"
     Write-Output "health=$health"
     Write-Output ("readiness_ready={0} foundation_ready={1} delivery_ready={2}" -f $readinessObj.ready, $readinessObj.foundation_ready, $readinessObj.delivery_ready)
+    if ($null -ne $readinessObj.product_ready) {
+      Write-Output ("product_ready={0}" -f $readinessObj.product_ready)
+    }
+    if ($readinessObj.product_blockers) {
+      Write-Output ("product_blockers={0}" -f (($readinessObj.product_blockers | ForEach-Object { $_ }) -join ';'))
+    }
 
     $effectiveMode = $null
     if ($readinessObj.bilibili_diagnostics -and $readinessObj.bilibili_diagnostics.effective_publish_mode) {

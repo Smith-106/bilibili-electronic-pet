@@ -4,6 +4,54 @@ function getPlatformEnvPrefix(platform: PlatformName): string {
   return `PLATFORM_${platform.toUpperCase()}`;
 }
 
+export interface SidecarWebhookPublishPayload {
+  platform: PlatformName;
+  comment_id: string;
+  reply_text: string;
+  force_publish: boolean;
+  trace_id: string;
+}
+
+export interface SidecarWebhookConfig {
+  envPrefix: string;
+  webhookUrlEnv: string;
+  webhookTokenEnv: string;
+  webhookUrl?: string;
+  hasToken: boolean;
+}
+
+export function getSidecarWebhookConfig(platform: PlatformName): SidecarWebhookConfig {
+  const envPrefix = getPlatformEnvPrefix(platform);
+  const webhookUrlEnv = `${envPrefix}_WEBHOOK_URL`;
+  const webhookTokenEnv = `${envPrefix}_WEBHOOK_TOKEN`;
+  const webhookUrl = process.env[webhookUrlEnv];
+  const webhookToken = process.env[webhookTokenEnv];
+
+  return {
+    envPrefix,
+    webhookUrlEnv,
+    webhookTokenEnv,
+    webhookUrl,
+    hasToken: Boolean(webhookToken),
+  };
+}
+
+export function buildSidecarWebhookPayload(input: {
+  platform: PlatformName;
+  commentId: string;
+  replyText: string;
+  forcePublish: boolean;
+  traceId: string;
+}): SidecarWebhookPublishPayload {
+  return {
+    platform: input.platform,
+    comment_id: input.commentId,
+    reply_text: input.replyText,
+    force_publish: input.forcePublish,
+    trace_id: input.traceId,
+  };
+}
+
 export async function publishViaSidecarWebhook(input: {
   platform: PlatformName;
   commentId: string;
@@ -11,9 +59,9 @@ export async function publishViaSidecarWebhook(input: {
   forcePublish: boolean;
   traceId: string;
 }): Promise<PublishExecutionResult> {
-  const prefix = getPlatformEnvPrefix(input.platform);
-  const webhookUrl = process.env[`${prefix}_WEBHOOK_URL`];
-  const webhookToken = process.env[`${prefix}_WEBHOOK_TOKEN`];
+  const config = getSidecarWebhookConfig(input.platform);
+  const webhookUrl = config.webhookUrl;
+  const webhookToken = process.env[config.webhookTokenEnv];
 
   if (!webhookUrl) {
     return { published: false, reason: 'not_configured' };
@@ -27,13 +75,7 @@ export async function publishViaSidecarWebhook(input: {
         'Content-Type': 'application/json',
         ...(webhookToken ? { Authorization: `Bearer ${webhookToken}` } : {}),
       },
-      body: JSON.stringify({
-        platform: input.platform,
-        comment_id: input.commentId,
-        reply_text: input.replyText,
-        force_publish: input.forcePublish,
-        trace_id: input.traceId,
-      }),
+      body: JSON.stringify(buildSidecarWebhookPayload(input)),
     });
 
     if (!response.ok) {

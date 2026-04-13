@@ -130,6 +130,18 @@ curl -fsS http://127.0.0.1:18000/health
     if ($LASTEXITCODE -ne 0) {
       throw "public health verification failed"
     }
+
+    $readinessJson = & curl.exe -fsS https://pet.nikoniko.tech/readiness
+    if ($LASTEXITCODE -ne 0) {
+      throw "public readiness verification failed"
+    }
+    $readinessObj = $readinessJson | ConvertFrom-Json
+    if ($null -ne $readinessObj.product_ready) {
+      Write-Output ("[deploy-source] product_ready={0}" -f $readinessObj.product_ready)
+    }
+    if ($readinessObj.product_blockers) {
+      Write-Output ("[deploy-source] product_blockers={0}" -f (($readinessObj.product_blockers | ForEach-Object { $_ }) -join ';'))
+    }
   }
 } finally {
   if (Test-Path $archivePath) {

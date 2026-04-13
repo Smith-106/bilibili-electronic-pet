@@ -47,6 +47,94 @@ Remote status probe on 2026-04-13 also confirmed the live host is healthy but st
   - `platform_trial:no_connected_rollout`
 - This means the pet-core surface is live, but the first external-platform trial is not yet operational on the deployed host.
 
+## Douyin Trial Verification (2026-04-13)
+
+- A fresh read-only probe confirmed:
+  - `PUBLISHER_WEBHOOK_URL` is present
+  - `PUBLISHER_WEBHOOK_TOKEN` is absent
+  - `PLATFORM_DOUYIN_ENABLED` is absent
+  - `PLATFORM_DOUYIN_WEBHOOK_URL` is absent
+  - `PLATFORM_DOUYIN_WEBHOOK_TOKEN` is absent
+  - `PLATFORM_DOUYIN_PUBLISH_SOURCE` is absent
+- The current generic webhook target redacts to:
+  - `https://hooks.nikoniko.tech/<redacted:0chars>`
+- Direct POSTs from the live host to that generic target were repeated with both payload shapes:
+  - legacy webhook body `{ comment_id, reply_text }`
+  - Douyin sidecar body `{ platform, comment_id, reply_text, force_publish, trace_id }`
+- Both requests returned HTTP `403` with a Cloudflare challenge page (`Just a moment...`), so the existing generic webhook is not a verified Douyin-capable sidecar endpoint.
+- No dedicated Douyin endpoint path or extra external credential was found in the repo or in the live env, so EXEC-003 did not apply any new `PLATFORM_DOUYIN_*` values.
+- Current live evidence after the blocked verification remains:
+  - public `GET /readiness` -> `product_ready=false`
+  - `product_blockers=["platform_trial:no_external_platform_enabled","platform_trial:no_connected_rollout"]`
+  - internal `GET /api/admin/platforms` -> `douyin.enabled=false`, `adapterKey="douyin-sidecar-trial"`
+  - internal `POST /gateway/publish/douyin` -> `403 {"detail":"platform_disabled"}`
+- Conclusion: remote Douyin trial enablement is blocked by missing external sidecar infrastructure or WAF/endpoint provisioning outside this repository. Do not claim the external-platform rollout is enabled until a dedicated verified endpoint path exists.
+
+## Repo-Local Retry Pack For Douyin Trial
+
+The repo can still prepare the next retry even before the external endpoint exists.
+
+### Required Sidecar Contract
+
+The runtime currently posts this JSON body for sidecar publishing:
+
+```json
+{
+  "platform": "douyin",
+  "comment_id": "<comment-id>",
+  "reply_text": "<reply-text>",
+  "force_publish": false,
+  "trace_id": "<trace-id>"
+}
+```
+
+Request headers:
+
+- `Content-Type: application/json`
+- `Accept: application/json`
+- `Authorization: Bearer <PLATFORM_DOUYIN_WEBHOOK_TOKEN>` only when token is configured
+
+Expected downstream behavior:
+
+- accepts the payload from the live host without Cloudflare/WAF challenge
+- returns JSON
+- may include:
+  - `published`
+  - `reason`
+  - `published_at`
+
+### Required Remote Env For Honest Enablement
+
+At minimum the live env must set:
+
+- `PLATFORM_DOUYIN_ENABLED=true`
+- `PLATFORM_DOUYIN_WEBHOOK_URL=<verified douyin sidecar endpoint>`
+
+Recommended:
+
+- `PLATFORM_DOUYIN_WEBHOOK_TOKEN=<bearer token>`
+- `PLATFORM_DOUYIN_PUBLISH_SOURCE=<operator-visible label>`
+
+### Deterministic Retry Sequence
+
+1. Confirm the external endpoint path and auth contract outside the repo.
+2. Apply the final `PLATFORM_DOUYIN_*` env on `/etc/bilibili-pet/pre-release.env`.
+3. Recreate remote `api` and `worker`.
+4. Run `./deploy-remote.ps1 status` and confirm:
+   - `PLATFORM_DOUYIN_*` is no longer absent in the redacted env section
+   - public `/readiness` no longer reports `platform_trial:no_external_platform_enabled`
+5. Run remote/public/internal probes again.
+6. Run a real `/gateway/publish/douyin` smoke publish and archive the result.
+
+### Do Not Treat These As Evidence
+
+The following are not sufficient to mark Douyin trial as enabled:
+
+- only having `PUBLISHER_WEBHOOK_URL`
+- local-only tests with `https://sidecar.example.test/publish`
+- a public `/health` success without updated `product_ready` / `product_blockers`
+- any path that still returns Cloudflare challenge HTML from the live host
+
 ## Current Deployment Modes
 
 - `deploy-remote.ps1`
