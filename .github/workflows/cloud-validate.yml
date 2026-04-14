@@ -99,12 +99,35 @@ jobs:
           PUBLISHER_MODE: webhook
           PUBLISHER_WEBHOOK_URL: https://example.invalid/strict
         run: |
+          APP_LOG="$RUNNER_TEMP/backend-ts-strict.log"
           (
             cd backend-ts
-            node dist/index.js
+            node dist/index.js >"$APP_LOG" 2>&1
           ) &
           APP_PID=$!
-          trap 'kill $APP_PID' EXIT
+          trap 'kill $APP_PID 2>/dev/null || true' EXIT
+
+          READY=0
+          for _ in {1..30}; do
+            if curl -fsS "$BASE_URL/health" >/dev/null; then
+              READY=1
+              break
+            fi
+
+            if ! kill -0 "$APP_PID" 2>/dev/null; then
+              echo "backend-ts exited before strict smoke started"
+              cat "$APP_LOG"
+              exit 1
+            fi
+
+            sleep 1
+          done
+
+          if [[ "$READY" != "1" ]]; then
+            echo "backend-ts did not become ready for strict smoke"
+            cat "$APP_LOG"
+            exit 1
+          fi
 
           bash smoke.sh strict --base-url "$BASE_URL" --api-key "$API_KEY"
 
