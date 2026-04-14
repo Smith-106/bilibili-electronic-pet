@@ -99,6 +99,13 @@ export function createAdminApi() {
         body: JSON.stringify(body),
       });
     },
+    publishPlatformReply(platform, body) {
+      return requestJson(`/gateway/publish/${encodeURIComponent(platform)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    },
 
     // Audit
     getAuditSummary({ days, action, ok } = {}) {

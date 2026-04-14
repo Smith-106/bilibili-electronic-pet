@@ -20,6 +20,7 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     getComment: vi.fn(),
     getJob: vi.fn(),
     publishGatewayReply: vi.fn(),
+    publishPlatformReply: vi.fn(),
     getRoleCards: vi.fn(),
     activateRoleCard: vi.fn(),
     getKnowledgeEntries: vi.fn(),
@@ -156,6 +157,13 @@ describe('admin-core frontend regression tests', () => {
           id: 'job-12345678',
           status: 'pending_review',
           comment_text: '测试评论内容',
+          route_context: {
+            platform: 'qq',
+            container_id: 'group-42',
+            user_id: 'user-42',
+            parent_external_id: 'message-root-42',
+            chat_type: 'group',
+          },
           reply_text: '测试回复',
           risk_flags: [],
           created_at: '2026-04-07T00:00:00.000Z',
@@ -202,9 +210,16 @@ describe('admin-core frontend regression tests', () => {
           id: 1,
           canonical_comment_id: 'comment-1',
           comment_id: 'comment-1',
-          platform: 'bilibili',
-          source: 'native_bilibili',
+          platform: 'qq',
+          source: 'qq',
           content: '列表中的评论',
+          route_context: {
+            platform: 'qq',
+            container_id: 'group-7',
+            user_id: 'user-7',
+            parent_external_id: 'message-root-7',
+            chat_type: 'group',
+          },
           created_at: '2026-04-07T00:00:00.000Z',
         },
       ],
@@ -220,6 +235,7 @@ describe('admin-core frontend regression tests', () => {
       status: 'published',
     });
     mockApi.publishGatewayReply.mockResolvedValue({ ok: true });
+    mockApi.publishPlatformReply.mockResolvedValue({ ok: true });
     mockApi.getRoleCards.mockResolvedValue({
       items: [
         {
@@ -285,6 +301,7 @@ describe('admin-core frontend regression tests', () => {
     expect(mockApi.getJobs).toHaveBeenCalled();
     expect(container.textContent).toContain('任务管理');
     expect(container.textContent).toContain('测试评论内容');
+    expect(container.textContent).toContain('QQ群 group-42');
     expect(container.querySelector('.job-approve')).toBeTruthy();
   });
 
@@ -306,6 +323,7 @@ describe('admin-core frontend regression tests', () => {
     await renderQuery(container);
 
     expect(mockApi.getComments).toHaveBeenCalledWith({ limit: '10', offset: '0' });
+    expect(container.textContent).toContain('QQ群 group-7');
 
     container.querySelector('.query-comment-open').click();
     await flushPromises();
@@ -326,6 +344,40 @@ describe('admin-core frontend regression tests', () => {
     expect(mockApi.publishGatewayReply).toHaveBeenCalledWith({
       comment_id: 'comment-1',
       reply_text: 'hello world',
+      source: 'manual',
+      force_publish: false,
+    });
+    expect(mockShowToast).toHaveBeenCalledWith('发布成功', 'success');
+  });
+
+  it('publishes QQ route context from gateway page through the platform endpoint', async () => {
+    const container = createPageContainer();
+
+    await renderGateway(container);
+    container.querySelector('#gw-platform').value = 'qq';
+    container.querySelector('#gw-platform').dispatchEvent(new Event('change'));
+    container.querySelector('#gw-comment-id').value = 'message-1';
+    container.querySelector('#gw-canonical-id').value = 'qq:message-1';
+    container.querySelector('#gw-container-id').value = 'group-7';
+    container.querySelector('#gw-user-id').value = 'user-7';
+    container.querySelector('#gw-parent-external-id').value = 'message-root-7';
+    container.querySelector('#gw-chat-type').value = 'group';
+    container.querySelector('#gw-adapter').value = 'napcat';
+    container.querySelector('#gw-reply').value = 'hello qq';
+    container.querySelector('#gw-publish-btn').click();
+    await flushPromises();
+
+    expect(mockApi.publishPlatformReply).toHaveBeenCalledWith('qq', {
+      comment_id: 'message-1',
+      canonical_id: 'qq:message-1',
+      container_id: 'group-7',
+      user_id: 'user-7',
+      parent_external_id: 'message-root-7',
+      routing_metadata: {
+        chat_type: 'group',
+        adapter: 'napcat',
+      },
+      reply_text: 'hello qq',
       source: 'manual',
       force_publish: false,
     });

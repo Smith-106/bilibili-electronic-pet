@@ -90,9 +90,14 @@ describe('admin utility-page regression tests', () => {
           id: 1,
           canonical_comment_id: 'c-1',
           comment_id: 'c-1',
-          platform: 'bilibili',
-          source: 'native_bilibili',
+          platform: 'qq',
+          source: 'qq',
           content: 'comment list row',
+          route_context: {
+            platform: 'qq',
+            user_id: 'user-1',
+            chat_type: 'private',
+          },
           created_at: '2026-04-07T00:00:00.000Z',
         },
       ],
@@ -229,6 +234,7 @@ describe('admin utility-page regression tests', () => {
 
     await renderQuery(container);
     expect(mockApi.getComments).toHaveBeenCalledWith({ limit: '10', offset: '0' });
+    expect(container.textContent).toContain('QQ私聊 user-1');
 
     container.querySelector('#query-job-id').value = 'job-1';
     container.querySelector('#query-job-btn').click();

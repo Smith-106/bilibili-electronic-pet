@@ -1,5 +1,5 @@
 import { createAdminApi } from '../api/admin.js';
-import { escapeHtml, formatIsoDateTime, renderTimestamp } from '../utils/format.js';
+import { escapeHtml, formatRouteContextLabel, renderTimestamp } from '../utils/format.js';
 import { renderBadge } from '../components/badge.js';
 import { showToast } from '../components/toast.js';
 
@@ -72,7 +72,7 @@ export async function render(container) {
         <table class="data-table">
           <thead><tr>
             <th class="cell-check"><input type="checkbox" id="jobs-select-all" /></th>
-            <th>ID</th><th>状态</th><th>评论内容</th><th>回复</th><th>风险</th><th>时间</th><th>操作</th>
+            <th>ID</th><th>状态</th><th>评论内容</th><th>路由</th><th>回复</th><th>风险</th><th>时间</th><th>操作</th>
           </tr></thead>
           <tbody>
             ${items.map(j => `
@@ -81,6 +81,7 @@ export async function render(container) {
                 <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(j.id?.substring(0, 8))}</td>
                 <td>${renderBadge(j.status)}</td>
                 <td class="cell-truncate" title="${escapeHtml(j.comment_text)}">${escapeHtml(j.comment_text?.substring(0, 80))}</td>
+                <td class="cell-truncate" title="${escapeHtml(formatRouteContextLabel(j.route_context))}">${escapeHtml(formatRouteContextLabel(j.route_context))}</td>
                 <td class="cell-truncate">${escapeHtml(j.reply_text?.substring(0, 60))}</td>
                 <td>${j.risk_flags?.length ? j.risk_flags.map(f => `<span class="risk-flag">${escapeHtml(f)}</span>`).join(' ') : '-'}</td>
                 <td class="cell-time">${renderTimestamp(j.created_at)}</td>

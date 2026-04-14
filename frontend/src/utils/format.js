@@ -76,3 +76,39 @@ export function getErrorText(error, fallback = '操作失败') {
   if (error.message) return error.message || fallback;
   return fallback;
 }
+
+export function formatRouteContextLabel(routeContext) {
+  if (!routeContext || typeof routeContext !== 'object') return '-';
+
+  const platform = typeof routeContext.platform === 'string' ? routeContext.platform.trim().toLowerCase() : '';
+  const containerId = typeof routeContext.container_id === 'string' ? routeContext.container_id.trim() : '';
+  const userId = typeof routeContext.user_id === 'string' ? routeContext.user_id.trim() : '';
+  const parentExternalId =
+    typeof routeContext.parent_external_id === 'string' ? routeContext.parent_external_id.trim() : '';
+  const chatType = typeof routeContext.chat_type === 'string' ? routeContext.chat_type.trim().toLowerCase() : '';
+
+  const parts = [];
+  if (platform === 'qq') {
+    if (chatType === 'group' && containerId) {
+      parts.push(`QQ群 ${containerId}`);
+    } else if (chatType === 'private' && userId) {
+      parts.push(`QQ私聊 ${userId}`);
+    } else if (containerId) {
+      parts.push(`QQ容器 ${containerId}`);
+    }
+  } else if (containerId) {
+    parts.push(`容器 ${containerId}`);
+  }
+
+  if (!parts.length && userId) {
+    parts.push(`用户 ${userId}`);
+  } else if (parts.length && userId && !(platform === 'qq' && chatType === 'private')) {
+    parts.push(`用户 ${userId}`);
+  }
+
+  if (parentExternalId) {
+    parts.push(`回复 ${parentExternalId}`);
+  }
+
+  return parts.length ? parts.join(' / ') : '-';
+}

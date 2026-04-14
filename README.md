@@ -1414,11 +1414,15 @@ bash smoke.sh preflight --report ./staging-preflight.json
 bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
 bash smoke.sh strict --base-url http://127.0.0.1:18002 --api-key "$API_KEY"
 bash smoke.sh real-chain --base-url http://127.0.0.1:18002 --api-key "$API_KEY"
+bash smoke.sh qq-onebot
+bash smoke.sh qq-e2e
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
 pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
 pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18002 --api-key "$env:API_KEY"
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18002 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 qq-onebot
+pwsh ./smoke.ps1 qq-e2e
 ```
 
 如果你的目标只是快速复现一个**本地 strict-capable** 运行态，而不是手工启动 Redis、API、再自己拼 `staging-check` 参数，可以使用仓库根目录的一键 helper：
@@ -1612,6 +1616,32 @@ docker compose --profile sidecar up -d qq-sidecar
 
 - 群聊消息：通过 `container_id` 或 `routing_metadata.group_id`
 - 私聊消息：通过 `routing_metadata.user_id`
+
+如果只想在本地快速验证 `qq-sidecar -> OneBot HTTP` 契约，不必手工起 NapCat，可直接运行：
+
+```bash
+npm --prefix qq-sidecar run smoke:onebot
+```
+
+这个脚本会临时启动一个本地 OneBot mock，并验证：
+
+- `GET /health` 在 `QQ_DRIVER_MODE=onebot_http` 下返回已配置状态
+- 群聊发布会命中 `send_group_msg`
+- 私聊发布会命中 `send_private_msg`
+
+如果还要把主服务一起串上，验证 `backend-ts /gateway/publish/qq -> qq-sidecar -> OneBot mock`，可以运行：
+
+```bash
+npm --prefix backend-ts run smoke:qq-sidecar
+```
+
+这个 smoke 会临时拉起：
+
+- 一个 OneBot mock server
+- 一个 `qq-sidecar` 实例
+- 一个使用桩依赖的 `backend-ts` Fastify 实例
+
+然后分别验证 QQ 群聊和私聊两条发布链路都能贯通。
 
 如果要直接调用主服务的 `POST /gateway/publish/qq`，现在也可以显式带上 QQ 路由上下文。常用字段有：
 
