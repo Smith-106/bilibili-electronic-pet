@@ -6,7 +6,8 @@
  * + Bilibili API integration
  */
 
-import type { PublishReplyService } from './interfaces.js';
+import type { PublishIntentService, PublishReplyService } from './interfaces.js';
+import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
 import { createHash } from 'node:crypto';
@@ -91,6 +92,17 @@ async function safeCreatePublishLog(data: {
 function createReplyHash(commentId: string, replyText: string): string {
   const raw = `${commentId}::${replyText.trim()}`;
   return createHash('sha256').update(raw, 'utf8').digest('hex');
+}
+
+function resolveIntentCommentId(intent: PublishIntent): string {
+  if (intent.target.targetKind !== 'comment-reply') {
+    throw new Error(`unsupported_publish_target:${intent.target.targetKind}`);
+  }
+  return intent.target.externalId;
+}
+
+function resolveIntentReplyText(intent: PublishIntent): string {
+  return intent.payload.text.trim();
 }
 
 // ── Mode implementations ───────────────────────────────────
@@ -244,6 +256,25 @@ async function publishReal(
  * - real_publish: Call Bilibili API directly
  */
 export const publishReplyWithResult: PublishReplyService = async (commentId, replyText, _traceId?: string) => {
+  return publishIntentWithResult({
+    traceId: _traceId,
+    source: 'legacy-reply-publish',
+    target: {
+      platform: 'bilibili',
+      targetKind: 'comment-reply',
+      externalId: commentId,
+      canonicalId: `bilibili:${commentId}`,
+    },
+    payload: {
+      text: replyText,
+    },
+  });
+};
+
+export const publishIntentWithResult: PublishIntentService = async (intent) => {
+  const commentId = resolveIntentCommentId(intent);
+  const replyText = resolveIntentReplyText(intent);
+
   try {
     // 1. Check duplicate via Publish log
     const prisma = getPrisma();

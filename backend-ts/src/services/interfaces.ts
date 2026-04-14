@@ -4,12 +4,14 @@
  */
 
 import type { Comment, ReplyJob, KnowledgeEntry, RoleCard, RoleCardValue } from '../models/entities.js';
+import type { InteractionEvent } from '../domain/interaction/types.js';
+import type { PublishIntent } from '../domain/publish/types.js';
 
 /**
  * Decision service: should_reply
  * Maps to: app.services.decider.should_reply
  */
-export type ShouldReplyService = (event: {
+export type LegacyShouldReplyInput = {
   comment_id: string;
   video_id?: string;
   user_id?: string;
@@ -21,7 +23,21 @@ export type ShouldReplyService = (event: {
   style_profile?: string;
   role_profile?: string;
   role_card_key?: string;
-}) => Promise<[boolean, string, string]>; // [should_reply, style_mode, length_mode]
+};
+
+export type ShouldReplyService = (event: LegacyShouldReplyInput) => Promise<[boolean, string, string]>; // [should_reply, style_mode, length_mode]
+
+export type InteractionDecisionInput = {
+  interaction: InteractionEvent;
+  forceLong?: boolean;
+  styleProfile?: string;
+  roleProfile?: string;
+  roleCardKey?: string;
+};
+
+export type ShouldReplyForInteractionService = (
+  input: InteractionDecisionInput,
+) => Promise<[boolean, string, string]>;
 
 /**
  * Safety service: safety_check
@@ -92,6 +108,10 @@ export type PublishReplyService = (
   traceId?: string,
 ) => Promise<[boolean, string, Date | null, Record<string, unknown> | null]>;
 // [published, reason, published_at, result]
+
+export type PublishIntentService = (
+  intent: PublishIntent,
+) => Promise<[boolean, string, Date | null, Record<string, unknown> | null]>;
 
 /**
  * Knowledge service: search_knowledge
@@ -165,6 +185,7 @@ export type WorkerServices = {
 
   // Decision
   shouldReply: ShouldReplyService;
+  shouldReplyForInteraction: ShouldReplyForInteractionService;
   decideSafetyAction: DecideSafetyActionService;
 
   // Safety
@@ -178,6 +199,7 @@ export type WorkerServices = {
   rememberReplyPhrase: RememberReplyPhraseService;
 
   // Publishing
+  publishIntentWithResult: PublishIntentService;
   publishReplyWithResult: PublishReplyService;
 
   // Knowledge

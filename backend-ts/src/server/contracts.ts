@@ -23,6 +23,14 @@ import type {
   PlatformPublishEnvelope,
   PlatformPublishOutcome,
 } from './platform-contracts.js';
+import type {
+  InteractionActor,
+  InteractionContent,
+  InteractionEvent,
+  InteractionReference,
+  InteractionSubjectKind,
+  LegacyCommentReference,
+} from '../domain/interaction/types.js';
 
 export type ConnectionStatus = {
   connected: boolean;
@@ -258,6 +266,12 @@ export type {
   CompanionActionEnvelope,
   CompanionInteraction,
   CompanionInteractionKind,
+  InteractionActor,
+  InteractionContent,
+  InteractionEvent,
+  InteractionReference,
+  InteractionSubjectKind,
+  LegacyCommentReference,
   CompanionState,
   CompanionStateV2,
   PetActionName,

@@ -32,6 +32,7 @@ import type {
   CompanionState,
   CompanionStateV2,
   ConnectionStatus,
+  InteractionEvent,
   GatewayPublishPayload,
   IdentityLink,
   KnowledgeEntry,
@@ -58,7 +59,12 @@ import {
   defaultIsPlatformEnabled,
   normalizePublishMode,
 } from './server/runtime-platform.js';
-import { collectCommentEvent, type CollectorSource } from './services/collector.js';
+import {
+  collectCommentEvent,
+  normalizeCommentEventToInteractionEvent,
+  normalizeInteractionEventToCommentEvent,
+  type CollectorSource,
+} from './services/collector.js';
 import {
   postReply,
   probeBilibiliAuth as probeBilibiliRuntimeAuth,
@@ -1998,20 +2004,26 @@ type CommentQueueRecovery = {
 };
 
 function buildCommentEventQueuePayload(input: {
-  event: CommentEvent;
+  event: InteractionEvent;
   source: string;
-  platform: string;
   traceId: string;
 }): Record<string, unknown> {
+  const legacy = normalizeInteractionEventToCommentEvent(input.event);
+
   return {
-    comment_id: input.event.comment_id,
-    video_id: input.event.video_id,
-    user_id: input.event.user_id,
-    content: input.event.content,
-    parent_id: input.event.parent_id,
-    platform: input.platform,
+    comment_id: legacy.comment_id,
+    video_id: legacy.video_id,
+    user_id: legacy.user_id,
+    content: legacy.content,
+    parent_id: legacy.parent_id,
+    platform: input.event.platform,
     source: input.source,
     trace_id: input.traceId,
+    interaction: {
+      ...input.event,
+      ingressSource: input.source,
+      traceId: input.traceId,
+    },
   };
 }
 
@@ -2142,13 +2154,33 @@ async function defaultIngestCommentEvent(input: {
   message?: string;
   recovery?: CommentQueueRecovery;
 }> {
-  const traceId = input.event.trace_id || randomUUID();
-  const platform = input.event.platform || 'bilibili';
-  const canonicalCommentId = `${platform}:${input.event.comment_id}`;
+  return defaultIngestInteractionEvent({
+    event: normalizeCommentEventToInteractionEvent({
+      ...input.event,
+      source: input.source as CollectorSource,
+    }),
+    source: input.source,
+  });
+}
+
+async function defaultIngestInteractionEvent(input: {
+  event: InteractionEvent;
+  source: string;
+}): Promise<{
+  ok: boolean;
+  comment_id: string;
+  trace_id: string;
+  queued?: boolean;
+  message?: string;
+  recovery?: CommentQueueRecovery;
+}> {
+  const commentEvent = normalizeInteractionEventToCommentEvent(input.event);
+  const traceId = input.event.traceId || randomUUID();
+  const platform = input.event.platform || 'unknown';
+  const canonicalCommentId = input.event.reference.canonicalId;
   const queuePayload = buildCommentEventQueuePayload({
     event: input.event,
     source: input.source,
-    platform,
     traceId,
   });
 
@@ -2158,11 +2190,11 @@ async function defaultIngestCommentEvent(input: {
       data: {
         platform,
         canonical_comment_id: canonicalCommentId,
-        comment_id: input.event.comment_id,
-        video_id: input.event.video_id || '',
-        user_id: input.event.user_id || '',
-        content: input.event.content || '',
-        parent_id: input.event.parent_id || null,
+        comment_id: commentEvent.comment_id,
+        video_id: commentEvent.video_id || '',
+        user_id: commentEvent.user_id || '',
+        content: commentEvent.content || '',
+        parent_id: commentEvent.parent_id || null,
       },
     });
   } catch (err: unknown) {
@@ -2170,7 +2202,7 @@ async function defaultIngestCommentEvent(input: {
     if (msg.includes('UNIQUE') || msg.includes('unique') || msg.includes('duplicate')) {
       const pendingBacklog = await getPendingCommentQueueBacklog(prisma, canonicalCommentId);
       if (!pendingBacklog) {
-        return { ok: true, message: 'duplicate_ignored', comment_id: input.event.comment_id, trace_id: traceId };
+        return { ok: true, message: 'duplicate_ignored', comment_id: commentEvent.comment_id, trace_id: traceId };
       }
 
       const backlogPayload = parseJsonRecord(pendingBacklog.payload_json);
@@ -2186,7 +2218,7 @@ async function defaultIngestCommentEvent(input: {
       if (!queueResult.queued) {
         const recovery = await upsertCommentQueueBacklog(prisma, {
           canonicalCommentId,
-          commentId: input.event.comment_id,
+          commentId: commentEvent.comment_id,
           platform,
           source: input.source,
           payload: recoveredPayload,
@@ -2197,7 +2229,7 @@ async function defaultIngestCommentEvent(input: {
           targetId: null,
           ok: false,
           traceId,
-          commentId: input.event.comment_id,
+          commentId: commentEvent.comment_id,
           status: 'pending_requeue',
           payload: {
             backlog_id: recovery.backlog_id,
@@ -2209,7 +2241,7 @@ async function defaultIngestCommentEvent(input: {
           ok: false,
           queued: false,
           message: 'queue_unavailable',
-          comment_id: input.event.comment_id,
+          comment_id: commentEvent.comment_id,
           trace_id: traceId,
           recovery,
         };
@@ -2225,7 +2257,7 @@ async function defaultIngestCommentEvent(input: {
         targetId: null,
         ok: true,
         traceId,
-        commentId: input.event.comment_id,
+        commentId: commentEvent.comment_id,
         status: 'requeued',
         payload: {
           backlog_id: recovery?.backlog_id ?? pendingBacklog.id,
@@ -2236,7 +2268,7 @@ async function defaultIngestCommentEvent(input: {
         ok: true,
         queued: true,
         message: 'requeued_from_backlog',
-        comment_id: input.event.comment_id,
+        comment_id: commentEvent.comment_id,
         trace_id: traceId,
         ...(recovery ? { recovery } : {}),
       };
@@ -2249,7 +2281,7 @@ async function defaultIngestCommentEvent(input: {
   if (!queueResult.queued) {
     const recovery = await upsertCommentQueueBacklog(prisma, {
       canonicalCommentId,
-      commentId: input.event.comment_id,
+      commentId: commentEvent.comment_id,
       platform,
       source: input.source,
       payload: queuePayload,
@@ -2260,7 +2292,7 @@ async function defaultIngestCommentEvent(input: {
         level: 'warn',
         message: 'comment_event_queue_unavailable',
         trace_id: traceId,
-        comment_id: input.event.comment_id,
+        comment_id: commentEvent.comment_id,
         error: queueResult.error,
         backlog_id: recovery.backlog_id,
       }),
@@ -2270,7 +2302,7 @@ async function defaultIngestCommentEvent(input: {
       targetId: null,
       ok: false,
       traceId,
-      commentId: input.event.comment_id,
+      commentId: commentEvent.comment_id,
       status: 'pending_requeue',
       payload: {
         backlog_id: recovery.backlog_id,
@@ -2282,7 +2314,7 @@ async function defaultIngestCommentEvent(input: {
       ok: false,
       queued: false,
       message: 'queue_unavailable',
-      comment_id: input.event.comment_id,
+      comment_id: commentEvent.comment_id,
       trace_id: traceId,
       recovery,
     };
@@ -2298,7 +2330,7 @@ async function defaultIngestCommentEvent(input: {
     ok: true,
     queued: true,
     message: 'queued',
-    comment_id: input.event.comment_id,
+    comment_id: commentEvent.comment_id,
     trace_id: traceId,
     ...(recovery ? { recovery } : {}),
   };
