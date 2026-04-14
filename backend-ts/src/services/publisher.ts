@@ -304,16 +304,23 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     const prisma = getPrisma();
     const replyHash = createReplyHash(commentId, replyText);
 
-    const existing = await prisma.publishLog.findFirst({
-      where: {
-        canonical_comment_id: canonicalCommentId,
-        reply_hash: replyHash,
-      },
-      select: {
-        id: true,
-        published_at: true,
-      },
-    });
+    let existing: { id: number; published_at: Date | null } | null = null;
+    try {
+      existing = await prisma.publishLog.findFirst({
+        where: {
+          canonical_comment_id: canonicalCommentId,
+          reply_hash: replyHash,
+        },
+        select: {
+          id: true,
+          published_at: true,
+        },
+      });
+    } catch (error) {
+      if (!isPublishLogStorageError(error)) {
+        throw error;
+      }
+    }
 
     if (existing) {
       console.log(`[publisher] Duplicate reply for comment ${commentId}, skipping`);
