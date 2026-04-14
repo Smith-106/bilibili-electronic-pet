@@ -6,6 +6,35 @@
 
 ---
 
+## 最新版本状态
+
+当前正式版本：**v1.1.0**
+
+v1.1.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-first 正式版**。
+
+本版本已完成：
+
+- TypeScript 后端正式基线固化
+- Bilibili 主平台链路运行能力
+- companion 电子宠物页面接入与体验增强
+- 管理后台 pet / platform / memory 等运营能力增强
+- `/readiness` foundation / delivery / product 多层门禁升级
+- backend / frontend / pet-companion-web / douyin-sidecar 本地测试与构建验证
+
+平台支持范围：
+
+| 平台 | 状态 |
+|---|---|
+| Bilibili | 正式支持 |
+| Douyin / 抖音 | 试点能力，代码与本地验证已具备，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_DOUYIN_*` 配置 |
+| Kuaishou / 快手 | 预留脚手架，不作为正式交付能力 |
+| QQ | 暂不支持 |
+| 微信 | 暂不支持 |
+
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.1.0
+
+---
+
 ## 1. 当前状态
 
 - 后端：TypeScript + Fastify + Prisma + BullMQ
