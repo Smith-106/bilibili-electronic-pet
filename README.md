@@ -28,7 +28,7 @@ v1.1.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-firs
 | Bilibili | 正式支持 |
 | Douyin / 抖音 | 试点能力，代码与本地验证已具备，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_DOUYIN_*` 配置 |
 | Kuaishou / 快手 | 预留脚手架，不作为正式交付能力 |
-| QQ | 暂不支持 |
+| QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证 |
 | 微信 | 暂不支持 |
 
 Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.1.0
@@ -1473,11 +1473,11 @@ bash ./rehearse-local.sh real-chain
 - `real-chain` 仍然需要真实 native auth 可用的目标运行时；`.env.real-chain.local.example` 只是字段模板，不会靠 placeholder 自动通过。
 - helper 在 `real-chain` 模式下会对 `BILIBILI_*` 凭证和 `CREDENTIAL_ENCRYPTION_KEY` 做 fail-fast 校验；如果还是模板值，会在启动 Redis/API 之前直接退出。
 
-如果用 wrapper 模式（`preflight` / `strict` / `real-chain`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
+如果用 wrapper 模式（`preflight` / `strict` / `real-chain` / `qq-onebot` / `qq-e2e`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
 
 - `./.artifacts/staging/<mode>-<UTC timestamp>.json`
 
-可通过 `SMOKE_REPORT_DIR` 覆盖这个默认目录。若显式传入 `--report`（或环境变量 `REPORT_PATH`），`staging-check` 会在 preflight、通过、失败三种结果下都写出 JSON 报告，便于 CI 与人工留档。
+可通过 `SMOKE_REPORT_DIR` 覆盖这个默认目录。若显式传入 `--report`（或环境变量 `REPORT_PATH`），`staging-check` 会在 preflight、通过、失败三种结果下都写出 JSON 报告，QQ smoke 也会固定输出到指定 JSON，便于 CI 与人工留档。
 
 strict / real-chain 报告里现在还会额外写出：
 
@@ -1629,6 +1629,12 @@ npm --prefix qq-sidecar run smoke:onebot
 - 群聊发布会命中 `send_group_msg`
 - 私聊发布会命中 `send_private_msg`
 
+如果希望保留机器可读证据，可附带：
+
+```bash
+npm --prefix qq-sidecar run smoke:onebot -- --report ./.artifacts/staging/qq-onebot-local.json
+```
+
 如果还要把主服务一起串上，验证 `backend-ts /gateway/publish/qq -> qq-sidecar -> OneBot mock`，可以运行：
 
 ```bash
@@ -1642,6 +1648,14 @@ npm --prefix backend-ts run smoke:qq-sidecar
 - 一个使用桩依赖的 `backend-ts` Fastify 实例
 
 然后分别验证 QQ 群聊和私聊两条发布链路都能贯通。
+
+同样可以显式输出报告：
+
+```bash
+npm --prefix backend-ts run smoke:qq-sidecar -- --report ./.artifacts/staging/qq-e2e-local.json
+```
+
+GitHub Actions 的 `cloud-validate` 任务会自动上传 `.artifacts/staging/*.json` 与 `backend-ts/ci-preflight-report.json`，方便回看 QQ smoke 和 staging 合同证据。
 
 如果要直接调用主服务的 `POST /gateway/publish/qq`，现在也可以显式带上 QQ 路由上下文。常用字段有：
 

@@ -1,9 +1,11 @@
 import { createServer as createHttpServer } from 'node:http';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { AddressInfo } from 'node:net';
+import type { AddressInfo } from 'node:net';
 import { dirname, resolve } from 'node:path';
 
-import { createServer } from '../src/server.js';
+import { createServer as createBackendServer } from '../src/main.js';
+import type { RuntimeSettings, ServerDependencies } from '../src/server/contracts.js';
+import { createServer as createQqSidecarServer } from '../../qq-sidecar/src/server.js';
 
 type RecordedRequest = {
   url: string;
@@ -42,12 +44,7 @@ function writeReport(reportPath: string | null, report: Record<string, unknown>)
   return outputPath;
 }
 
-async function readJsonBody(request: Parameters<typeof createHttpServer>[0] extends (
-  req: infer T,
-  ...args: never[]
-) => unknown
-  ? T
-  : never): Promise<Record<string, unknown>> {
+async function readJsonBody(request: Parameters<typeof createHttpServer>[0] extends (req: infer T, ...args: never[]) => unknown ? T : never) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -56,7 +53,7 @@ async function readJsonBody(request: Parameters<typeof createHttpServer>[0] exte
   return text.trim() ? (JSON.parse(text) as Record<string, unknown>) : {};
 }
 
-async function listen(server: ReturnType<typeof createHttpServer>): Promise<AddressInfo> {
+async function listenNodeServer(server: ReturnType<typeof createHttpServer>): Promise<AddressInfo> {
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(0, '127.0.0.1', () => resolve());
@@ -64,22 +61,50 @@ async function listen(server: ReturnType<typeof createHttpServer>): Promise<Addr
   return server.address() as AddressInfo;
 }
 
+function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
+  return {
+    databaseUrl: 'file:./smoke.db',
+    celeryBrokerUrl: 'redis://localhost:6379/0',
+    celeryResultBackend: 'redis://localhost:6379/1',
+    apiKey: '',
+    llmProvider: 'mock',
+    llmApiKeyConfigured: false,
+    llmFallbackToMock: true,
+    searchProvider: 'serpapi',
+    searchApiKeyConfigured: false,
+    searchCxConfigured: false,
+    publisherMode: 'webhook',
+    publisherWebhookUrlConfigured: false,
+    bilibiliEnabled: false,
+    bilibiliPollEnabled: false,
+    bilibiliPollIntervalSeconds: 300,
+    bilibiliPublishEnabled: false,
+    bilibiliEnvCredentialConfigured: false,
+    killSwitch: false,
+    gatewayToken: '',
+    gatewayHmacSecret: '',
+    platformBilibiliEnabled: false,
+    platformQqEnabled: true,
+    platformDouyinEnabled: false,
+    platformKuaishouEnabled: false,
+    platformBilibiliPublishSource: 'bilibili-bot',
+    platformQqPublishSource: 'qq-sidecar',
+    platformDouyinPublishSource: 'douyin-bot',
+    platformKuaishouPublishSource: 'kuaishou-bot',
+    ...overrides,
+  };
+}
+
 async function main(): Promise<void> {
   const { reportPath } = parseArgs(process.argv.slice(2));
   const recordedRequests: RecordedRequest[] = [];
   const report: Record<string, unknown> = {
     started_at: new Date().toISOString(),
-    mode: 'qq-onebot',
+    mode: 'qq-e2e',
     status: 'running',
   };
 
   const onebotServer = createHttpServer(async (request, response) => {
-    if (request.method !== 'POST') {
-      response.writeHead(405, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ status: 'failed', retcode: 1405 }));
-      return;
-    }
-
     const payload = await readJsonBody(request);
     recordedRequests.push({
       url: request.url ?? '/',
@@ -97,30 +122,48 @@ async function main(): Promise<void> {
     );
   });
 
-  const onebotAddress = await listen(onebotServer);
+  const onebotAddress = await listenNodeServer(onebotServer);
   const onebotBaseUrl = `http://127.0.0.1:${onebotAddress.port}`;
   report.onebot_base_url = onebotBaseUrl;
 
-  const sidecar = createServer({
+  const sidecar = createQqSidecarServer({
     QQ_DRIVER_MODE: 'onebot_http',
     QQ_ONEBOT_URL: onebotBaseUrl,
     QQ_ONEBOT_TOKEN: 'onebot-token',
     QQ_SIDECAR_TOKEN: 'sidecar-token',
   });
+  const sidecarUrl = await sidecar.listen({ port: 0, host: '127.0.0.1' });
+  report.sidecar_url = sidecarUrl;
+
+  const originalWebhookUrl = process.env.PLATFORM_QQ_WEBHOOK_URL;
+  const originalWebhookToken = process.env.PLATFORM_QQ_WEBHOOK_TOKEN;
+  process.env.PLATFORM_QQ_WEBHOOK_URL = `${sidecarUrl}/publish`;
+  process.env.PLATFORM_QQ_WEBHOOK_TOKEN = 'sidecar-token';
+
+  const finalized: Array<Record<string, unknown>> = [];
+  const backend = createBackendServer({
+    settings: buildSettings(),
+    checkDatabaseConnection: async () => ({ connected: true }),
+    checkRedisConnection: async () => ({ connected: true }),
+    buildBilibiliDiagnostics: async () => ({
+      ready: false,
+      blocking_reasons: [],
+      effective_publish_mode: 'webhook',
+      signals: {},
+      checks: { worker_or_publish: { ready: true, errors: [] } },
+      release_gates: { worker_or_publish_ready: true },
+    }),
+    reservePublishLog: () => ({ duplicate: false, reservationKey: `reservation-${finalized.length + 1}` }),
+    finalizePublishLog: (input) => {
+      finalized.push(input as unknown as Record<string, unknown>);
+    },
+  } satisfies Partial<ServerDependencies>);
 
   try {
-    const health = await sidecar.inject({ method: 'GET', url: '/health' });
-    assert(health.statusCode === 200, `health expected 200, got ${health.statusCode}`);
-    const healthBody = health.json();
-    assert(healthBody.mode === 'onebot_http', 'health mode should be onebot_http');
-    assert(healthBody.onebot_configured === true, 'health should report onebot_configured=true');
-
-    const groupPublish = await sidecar.inject({
+    const groupResponse = await backend.inject({
       method: 'POST',
-      url: '/publish',
-      headers: { authorization: 'Bearer sidecar-token' },
+      url: '/gateway/publish/qq',
       payload: {
-        platform: 'qq',
         comment_id: 'message-group-1',
         canonical_id: 'qq:message-group-1',
         container_id: 'group-42',
@@ -131,65 +174,62 @@ async function main(): Promise<void> {
           adapter: 'napcat',
         },
         reply_text: 'hello group',
+        source: 'manual',
         force_publish: false,
         trace_id: 'trace-group-1',
       },
     });
-    assert(groupPublish.statusCode === 200, `group publish expected 200, got ${groupPublish.statusCode}`);
-    assert(groupPublish.json().reason === 'onebot_http_ok', 'group publish should return onebot_http_ok');
+    assert(groupResponse.statusCode === 200, `group publish expected 200, got ${groupResponse.statusCode}`);
+    assert(groupResponse.json().published === true, 'group publish should succeed');
 
-    const privatePublish = await sidecar.inject({
+    const privateResponse = await backend.inject({
       method: 'POST',
-      url: '/publish',
-      headers: { authorization: 'Bearer sidecar-token' },
+      url: '/gateway/publish/qq',
       payload: {
-        platform: 'qq',
         comment_id: 'message-private-1',
         canonical_id: 'qq:message-private-1',
+        user_id: 'user-99',
         routing_metadata: {
           chat_type: 'private',
-          user_id: 'user-99',
+          adapter: 'napcat',
         },
         reply_text: 'hello private',
+        source: 'manual',
         force_publish: false,
         trace_id: 'trace-private-1',
       },
     });
-    assert(privatePublish.statusCode === 200, `private publish expected 200, got ${privatePublish.statusCode}`);
-    assert(privatePublish.json().reason === 'onebot_http_ok', 'private publish should return onebot_http_ok');
+    assert(privateResponse.statusCode === 200, `private publish expected 200, got ${privateResponse.statusCode}`);
+    assert(privateResponse.json().published === true, 'private publish should succeed');
 
-    assert(recordedRequests.length === 2, `expected 2 recorded requests, got ${recordedRequests.length}`);
+    assert(recordedRequests.length === 2, `expected 2 OneBot requests, got ${recordedRequests.length}`);
+    assert(finalized.length === 2, `expected 2 finalized publish logs, got ${finalized.length}`);
 
     const [groupRequest, privateRequest] = recordedRequests;
     assert(groupRequest.url === '/send_group_msg', `group request url mismatch: ${groupRequest.url}`);
     assert(groupRequest.authorization === 'Bearer onebot-token', 'group request token mismatch');
     assert(groupRequest.payload.group_id === 'group-42', 'group request should include group_id');
-    assert(Array.isArray(groupRequest.payload.message), 'group request message should be an array');
 
     assert(privateRequest.url === '/send_private_msg', `private request url mismatch: ${privateRequest.url}`);
     assert(privateRequest.authorization === 'Bearer onebot-token', 'private request token mismatch');
     assert(privateRequest.payload.user_id === 'user-99', 'private request should include user_id');
-    assert(Array.isArray(privateRequest.payload.message), 'private request message should be an array');
 
     report.completed_at = new Date().toISOString();
     report.status = 'passed';
-    report.checks = ['health:onebot_http', 'publish:group', 'publish:private'];
+    report.finalized = finalized;
     report.recorded_requests = recordedRequests;
     const outputPath = writeReport(reportPath, report);
 
-    console.log('QQ sidecar OneBot smoke passed.');
+    console.log('Backend -> QQ sidecar -> OneBot smoke passed.');
     if (outputPath) {
       console.log(`Report written to ${outputPath}`);
     }
     console.log(
       JSON.stringify(
         {
+          sidecar_url: sidecarUrl,
           onebot_base_url: onebotBaseUrl,
-          checks: [
-            'health:onebot_http',
-            'publish:group',
-            'publish:private',
-          ],
+          finalized,
           recorded_requests: recordedRequests,
         },
         null,
@@ -197,6 +237,7 @@ async function main(): Promise<void> {
       ),
     );
   } finally {
+    await backend.close();
     await sidecar.close();
     await new Promise<void>((resolve, reject) => {
       onebotServer.close((error) => {
@@ -204,6 +245,17 @@ async function main(): Promise<void> {
         else resolve();
       });
     });
+
+    if (originalWebhookUrl === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_URL = originalWebhookUrl;
+    }
+    if (originalWebhookToken === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_TOKEN;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_TOKEN = originalWebhookToken;
+    }
   }
 }
 
@@ -212,7 +264,7 @@ main().catch((error) => {
   const report = {
     started_at: new Date().toISOString(),
     completed_at: new Date().toISOString(),
-    mode: 'qq-onebot',
+    mode: 'qq-e2e',
     status: 'failed',
     error: error instanceof Error ? error.message : String(error),
   };
