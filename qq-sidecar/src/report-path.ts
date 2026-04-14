@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { resolve, win32 } from 'node:path';
 
 export function normalizeReportPath(reportPath: string, platform: NodeJS.Platform = process.platform): string {
   if (platform !== 'win32') {
@@ -30,5 +30,10 @@ export function resolveReportOutputPath(
   const platform = options.platform ?? process.platform;
   const normalizedPath = normalizeReportPath(reportPath, platform);
   const normalizedBaseDirectory = normalizeReportPath(baseDirectory, platform);
-  return normalizedPath.match(/^(?:[A-Za-z]:[\\/]|\\\\)/) ? normalizedPath : resolve(normalizedBaseDirectory, normalizedPath);
+
+  if (platform === 'win32') {
+    return win32.isAbsolute(normalizedPath) ? normalizedPath : win32.resolve(normalizedBaseDirectory, normalizedPath);
+  }
+
+  return resolve(normalizedBaseDirectory, normalizedPath);
 }
