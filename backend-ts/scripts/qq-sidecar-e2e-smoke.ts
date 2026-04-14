@@ -36,9 +36,27 @@ function parseArgs(argv: string[]): { reportPath: string | null } {
   return { reportPath };
 }
 
+function normalizeReportPath(reportPath: string): string {
+  if (process.platform !== 'win32') {
+    return reportPath;
+  }
+
+  const normalized = reportPath.replace(/\\/g, '/');
+  const gitBashPathMatch = /^(?:[A-Za-z]:)?\/Program Files\/Git\/mnt\/([a-zA-Z])\/(.*)$/.exec(normalized);
+  const wslPathMatch = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(normalized);
+  const match = gitBashPathMatch ?? wslPathMatch;
+  if (!match) {
+    return reportPath;
+  }
+
+  const [, driveLetter, remainder] = match;
+  const windowsRemainder = remainder.replace(/\//g, '\\');
+  return `${driveLetter.toUpperCase()}:\\${windowsRemainder}`;
+}
+
 function writeReport(reportPath: string | null, report: Record<string, unknown>): string | null {
   if (!reportPath) return null;
-  const outputPath = resolve(process.cwd(), reportPath);
+  const outputPath = resolve(process.cwd(), normalizeReportPath(reportPath));
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   return outputPath;
