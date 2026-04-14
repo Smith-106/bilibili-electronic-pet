@@ -14,18 +14,28 @@ bash smoke.sh preflight --report ./staging-preflight.json
 bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
 bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
 bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+bash smoke.sh qq-onebot --report ./.artifacts/staging/qq-onebot-local.json
+bash smoke.sh qq-e2e --report ./.artifacts/staging/qq-e2e-local.json
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
 pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
 pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 qq-onebot --report .\.artifacts\staging\qq-onebot-local.json
+pwsh ./smoke.ps1 qq-e2e --report .\.artifacts\staging\qq-e2e-local.json
 ```
 
-When wrapper modes (`preflight`, `strict`, `real-chain`) run without `--report`, wrappers now auto-write evidence JSON to:
+When wrapper modes (`preflight`, `expanded-preflight`, `strict`, `real-chain`, `qq-onebot`, `qq-e2e`) run without `--report`, wrappers now auto-write evidence JSON to:
 
 - `./.artifacts/staging/<mode>-<UTC timestamp>.json`
 
 Override the output directory with `SMOKE_REPORT_DIR`.
+
+For direct `npm --prefix ... -- --report <relative-path>` smoke invocations launched from the repository root, QQ smoke scripts also resolve relative report paths against the original invocation directory, so `./.artifacts/staging/...` still lands in the repository-root evidence folder.
+
+QQ-specific smoke layers:
+- `qq-onebot`: validates `qq-sidecar -> OneBot HTTP` against a local mock OneBot endpoint
+- `qq-e2e`: validates `backend-ts /gateway/publish/qq -> qq-sidecar -> OneBot HTTP` with local mock dependencies
 
 ## Modes
 

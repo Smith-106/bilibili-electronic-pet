@@ -21,7 +21,7 @@ Modes:
   qq-e2e      => npm --prefix backend-ts run smoke:qq-sidecar -- [--report <path>]
 
 Report behavior:
-  If mode is preflight/strict/real-chain and no --report is provided,
+  If mode is preflight/expanded-preflight/strict/real-chain/qq-onebot/qq-e2e and no --report is provided,
   smoke.ps1 auto-writes JSON evidence to:
     .\.artifacts\staging\<mode>-<UTC timestamp>.json
   Override directory via SMOKE_REPORT_DIR.
@@ -30,6 +30,8 @@ Examples:
   pwsh ./smoke.ps1 preflight --report .\preflight.json
   pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key $env:API_KEY
   pwsh ./smoke.ps1 real-chain --base-url $env:BASE_URL --api-key $env:API_KEY
+  pwsh ./smoke.ps1 qq-onebot --report .\.artifacts\staging\qq-onebot-local.json
+  pwsh ./smoke.ps1 qq-e2e --report .\.artifacts\staging\qq-e2e-local.json
 '@ | Write-Output
 }
 

@@ -1,11 +1,13 @@
-import { createServer as createHttpServer } from 'node:http';
+import { createServer as createHttpServer, type IncomingMessage } from 'node:http';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { dirname, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { createServer as createBackendServer } from '../src/main.js';
 import type { RuntimeSettings, ServerDependencies } from '../src/server/contracts.js';
 import { createServer as createQqSidecarServer } from '../../qq-sidecar/src/server.js';
+import { resolveReportOutputPath } from '../../qq-sidecar/src/report-path.js';
 
 type RecordedRequest = {
   url: string;
@@ -36,33 +38,18 @@ function parseArgs(argv: string[]): { reportPath: string | null } {
   return { reportPath };
 }
 
-function normalizeReportPath(reportPath: string): string {
-  if (process.platform !== 'win32') {
-    return reportPath;
-  }
-
-  const normalized = reportPath.replace(/\\/g, '/');
-  const gitBashPathMatch = /^(?:[A-Za-z]:)?\/Program Files\/Git\/mnt\/([a-zA-Z])\/(.*)$/.exec(normalized);
-  const wslPathMatch = /^\/mnt\/([a-zA-Z])\/(.*)$/.exec(normalized);
-  const match = gitBashPathMatch ?? wslPathMatch;
-  if (!match) {
-    return reportPath;
-  }
-
-  const [, driveLetter, remainder] = match;
-  const windowsRemainder = remainder.replace(/\//g, '\\');
-  return `${driveLetter.toUpperCase()}:\\${windowsRemainder}`;
-}
-
 function writeReport(reportPath: string | null, report: Record<string, unknown>): string | null {
   if (!reportPath) return null;
-  const outputPath = resolve(process.cwd(), normalizeReportPath(reportPath));
+  const outputPath = resolveReportOutputPath(reportPath, {
+    currentWorkingDirectory: process.cwd(),
+    initWorkingDirectory: process.env.INIT_CWD,
+  });
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   return outputPath;
 }
 
-async function readJsonBody(request: Parameters<typeof createHttpServer>[0] extends (req: infer T, ...args: never[]) => unknown ? T : never) {
+async function readJsonBody(request: IncomingMessage) {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
@@ -277,19 +264,26 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error) => {
-  const { reportPath } = parseArgs(process.argv.slice(2));
-  const report = {
-    started_at: new Date().toISOString(),
-    completed_at: new Date().toISOString(),
-    mode: 'qq-e2e',
-    status: 'failed',
-    error: error instanceof Error ? error.message : String(error),
-  };
-  const outputPath = writeReport(reportPath, report);
-  console.error(error);
-  if (outputPath) {
-    console.error(`Report written to ${outputPath}`);
-  }
-  process.exit(1);
-});
+function isDirectExecution(): boolean {
+  const entry = process.argv[1];
+  return Boolean(entry) && import.meta.url === pathToFileURL(resolve(entry)).href;
+}
+
+if (isDirectExecution()) {
+  main().catch((error) => {
+    const { reportPath } = parseArgs(process.argv.slice(2));
+    const report = {
+      started_at: new Date().toISOString(),
+      completed_at: new Date().toISOString(),
+      mode: 'qq-e2e',
+      status: 'failed',
+      error: error instanceof Error ? error.message : String(error),
+    };
+    const outputPath = writeReport(reportPath, report);
+    console.error(error);
+    if (outputPath) {
+      console.error(`Report written to ${outputPath}`);
+    }
+    process.exit(1);
+  });
+}

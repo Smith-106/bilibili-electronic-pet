@@ -1475,7 +1475,7 @@ bash ./rehearse-local.sh real-chain
 - `real-chain` 仍然需要真实 native auth 可用的目标运行时；`.env.real-chain.local.example` 只是字段模板，不会靠 placeholder 自动通过。
 - helper 在 `real-chain` 模式下会对 `BILIBILI_*` 凭证和 `CREDENTIAL_ENCRYPTION_KEY` 做 fail-fast 校验；如果还是模板值，会在启动 Redis/API 之前直接退出。
 
-如果用 wrapper 模式（`preflight` / `strict` / `real-chain` / `qq-onebot` / `qq-e2e`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
+如果用 wrapper 模式（`preflight` / `expanded-preflight` / `strict` / `real-chain` / `qq-onebot` / `qq-e2e`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
 
 - `./.artifacts/staging/<mode>-<UTC timestamp>.json`
 
@@ -1607,12 +1607,27 @@ docker compose --profile sidecar up -d qq-sidecar
 - `PLATFORM_QQ_WEBHOOK_URL=http://127.0.0.1:8082/publish`
 - `PLATFORM_QQ_WEBHOOK_TOKEN=<与 QQ_SIDECAR_TOKEN 相同>`
 - `PLATFORM_QQ_PUBLISH_SOURCE=qq-sidecar`
+- `QQ_SIDECAR_TOKEN=<qq-sidecar /publish 鉴权 token>`
 
 如果 QQ sidecar 要直连 NapCat / OneBot HTTP，可以额外设置：
 
 - `QQ_DRIVER_MODE=onebot_http`
 - `QQ_ONEBOT_URL=http://127.0.0.1:3000`
 - `QQ_ONEBOT_TOKEN=<NapCat/OneBot access token>`
+
+如果 `qq-sidecar` 是直接跑在宿主机上的，`QQ_ONEBOT_URL=http://127.0.0.1:3000` 是合理的。
+
+如果 `qq-sidecar` 是通过 `docker compose --profile sidecar up -d qq-sidecar` 跑在容器里的，`127.0.0.1` 只会指向容器自身。这种情况下应改成容器内可达地址，例如 Docker Desktop 常见写法：
+
+- `QQ_ONEBOT_URL=http://host.docker.internal:3000`
+
+当前仓库的 [docker-compose.yml](/D:/工作目录/bilibili电子宠物/docker-compose.yml) 已为 `qq-sidecar` 注入 `host.docker.internal:host-gateway`，因此在支持 `host-gateway` 的 Docker/Compose 环境中，这个地址也能覆盖常见的 Linux 宿主机场景。
+
+如果你要把 `qq-sidecar` 当作一个简单 webhook 转发层，也可以改用：
+
+- `QQ_DRIVER_MODE=webhook_proxy`
+- `QQ_UPSTREAM_URL=<上游 QQ webhook endpoint>`
+- `QQ_UPSTREAM_TOKEN=<可选上游 bearer token>`
 
 当前 `onebot_http` 模式优先支持两类目标：
 
@@ -1637,6 +1652,8 @@ npm --prefix qq-sidecar run smoke:onebot
 npm --prefix qq-sidecar run smoke:onebot -- --report ./.artifacts/staging/qq-onebot-local.json
 ```
 
+如果你是在仓库根目录执行这条命令，脚本会优先按当前调用目录解析相对 `--report`，因此报告会写回仓库根的 `./.artifacts/staging/`，而不是 `qq-sidecar/.artifacts/`。
+
 如果还要把主服务一起串上，验证 `backend-ts /gateway/publish/qq -> qq-sidecar -> OneBot mock`，可以运行：
 
 ```bash
@@ -1656,6 +1673,8 @@ npm --prefix backend-ts run smoke:qq-sidecar
 ```bash
 npm --prefix backend-ts run smoke:qq-sidecar -- --report ./.artifacts/staging/qq-e2e-local.json
 ```
+
+同样地，从仓库根执行时，相对 `--report` 会落到仓库根的 `./.artifacts/staging/`。
 
 GitHub Actions 的 `cloud-validate` 任务会自动上传 `.artifacts/staging/*.json` 与 `backend-ts/ci-preflight-report.json`，方便回看 QQ smoke 和 staging 合同证据。
 
