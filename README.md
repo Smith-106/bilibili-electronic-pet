@@ -1385,6 +1385,8 @@ npm run staging:check -- --preflight-only --env-file .env.staging --report ../st
 
 这里的 CI preflight 主要用于防止 wrapper / workflow / env 契约漂移。它会注入一组 CI placeholder 输入来确保能力矩阵本身保持完整；这并不等价于真实外部交付已经可用。
 
+同一个 `cloud-validate` workflow 现在还会直接执行 `qq-sidecar` 的 `test` 与 `build`，再通过根目录 wrapper 依次运行 `qq-onebot` 与 `qq-e2e` 两条 smoke，避免 QQ 链路只通过后端间接冒烟而缺少 sidecar 自身回归保护，同时确保 CI 自动落盘 JSON 证据。
+
 另外，默认分支 release 路径和手动 release dispatch 现在也会对 `PRE_RELEASE_SMOKE_BASE_URL` / `PRE_RELEASE_SMOKE_API_KEY` 采用 fail-closed 策略：缺少这些 secrets 时，release workflow 会直接失败，而不是静默跳过 real-chain 校验。
 
 如果你在本地跑 `--strict`，还需要满足两条额外前提：
@@ -1656,6 +1658,8 @@ npm --prefix backend-ts run smoke:qq-sidecar -- --report ./.artifacts/staging/qq
 ```
 
 GitHub Actions 的 `cloud-validate` 任务会自动上传 `.artifacts/staging/*.json` 与 `backend-ts/ci-preflight-report.json`，方便回看 QQ smoke 和 staging 合同证据。
+
+默认分支的 `build-and-push-ghcr` 和手动触发的 `manual-ghcr-release` 也会上传 `.artifacts/staging/*.json`，这样 release/pre-release smoke 与日常 validate 使用同一套机器可读证据目录。
 
 如果要直接调用主服务的 `POST /gateway/publish/qq`，现在也可以显式带上 QQ 路由上下文。常用字段有：
 

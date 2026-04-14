@@ -40,6 +40,12 @@ jobs:
       - name: Install qq-sidecar dependencies
         run: npm --prefix qq-sidecar ci
 
+      - name: Run qq-sidecar tests
+        run: npm --prefix qq-sidecar test
+
+      - name: Build qq-sidecar
+        run: npm --prefix qq-sidecar run build
+
       - name: Generate Prisma client
         run: npm --prefix backend-ts run prisma:generate
 
@@ -49,8 +55,11 @@ jobs:
       - name: Build backend-ts
         run: npm --prefix backend-ts run build
 
+      - name: Run QQ OneBot smoke
+        run: bash smoke.sh qq-onebot
+
       - name: Run QQ sidecar e2e smoke
-        run: npm --prefix backend-ts run smoke:qq-sidecar
+        run: bash smoke.sh qq-e2e
 
       - name: Prepare SQLite schema for strict staging check
         env:
@@ -146,10 +155,21 @@ jobs:
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: backend-ts/package-lock.json
+          cache-dependency-path: |
+            backend-ts/package-lock.json
+            qq-sidecar/package-lock.json
 
       - name: Install backend-ts dependencies
         run: npm --prefix backend-ts ci
+
+      - name: Install qq-sidecar dependencies
+        run: npm --prefix qq-sidecar ci
+
+      - name: Run qq-sidecar tests
+        run: npm --prefix qq-sidecar test
+
+      - name: Build qq-sidecar
+        run: npm --prefix qq-sidecar run build
 
       - name: Generate Prisma client
         run: npm --prefix backend-ts run prisma:generate
