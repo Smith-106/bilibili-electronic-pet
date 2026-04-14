@@ -1565,7 +1565,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `.env.example:1` 中给出的 `DATABASE_URL` 仍带有 Python 时代风格的示例值，实际部署要与当前 Prisma / 运行环境匹配
 - `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时，会优先走 B 站原生发布，覆盖普通 `PUBLISHER_MODE`
 - 如果启用网关签名校验，调用方必须与 `GATEWAY_HMAC_SECRET` 保持一致
-- 如果接入 `/gateway/publish/:platform`，还应补充检查 `PLATFORM_BILIBILI_ENABLED`、`PLATFORM_DOUYIN_ENABLED`、`PLATFORM_KUAISHOU_ENABLED` 以及对应的 `*_PUBLISH_SOURCE`
+- 如果接入 `/gateway/publish/:platform`，还应补充检查 `PLATFORM_BILIBILI_ENABLED`、`PLATFORM_QQ_ENABLED`、`PLATFORM_DOUYIN_ENABLED`、`PLATFORM_KUAISHOU_ENABLED` 以及对应的 `*_PUBLISH_SOURCE`
 - 如果你要本地把 Douyin sidecar 一起跑起来，可以使用：
 
 ```bash
@@ -1583,6 +1583,74 @@ docker compose --profile sidecar up -d douyin-sidecar
 - `PLATFORM_DOUYIN_WEBHOOK_URL=http://127.0.0.1:8081/publish`
 - `PLATFORM_DOUYIN_WEBHOOK_TOKEN=<与 DOUYIN_SIDECAR_TOKEN 相同>`
 - `PLATFORM_DOUYIN_PUBLISH_SOURCE=douyin-sidecar-trial`
+
+如果你要本地把 QQ sidecar 一起跑起来，可以使用：
+
+```bash
+docker compose --profile sidecar up -d qq-sidecar
+```
+
+默认会暴露：
+
+- `http://127.0.0.1:8082/health`
+- `http://127.0.0.1:8082/publish`
+
+本地接主项目时可设置：
+
+- `PLATFORM_QQ_ENABLED=true`
+- `PLATFORM_QQ_WEBHOOK_URL=http://127.0.0.1:8082/publish`
+- `PLATFORM_QQ_WEBHOOK_TOKEN=<与 QQ_SIDECAR_TOKEN 相同>`
+- `PLATFORM_QQ_PUBLISH_SOURCE=qq-sidecar`
+
+如果 QQ sidecar 要直连 NapCat / OneBot HTTP，可以额外设置：
+
+- `QQ_DRIVER_MODE=onebot_http`
+- `QQ_ONEBOT_URL=http://127.0.0.1:3000`
+- `QQ_ONEBOT_TOKEN=<NapCat/OneBot access token>`
+
+当前 `onebot_http` 模式优先支持两类目标：
+
+- 群聊消息：通过 `container_id` 或 `routing_metadata.group_id`
+- 私聊消息：通过 `routing_metadata.user_id`
+
+如果要直接调用主服务的 `POST /gateway/publish/qq`，现在也可以显式带上 QQ 路由上下文。常用字段有：
+
+- `canonical_id`：可选，建议传 `qq:<message_id>`
+- `container_id`：群聊时的 group/chat id
+- `user_id`：私聊用户 id，或作为 QQ sidecar 的补充路由信息
+- `parent_external_id`：被回复的上级消息 id
+- `routing_metadata`：透传给 QQ sidecar / OneBot 适配层的附加字段
+
+群聊示例：
+
+```json
+{
+  "comment_id": "message-123",
+  "canonical_id": "qq:message-123",
+  "container_id": "group-42",
+  "user_id": "user-42",
+  "parent_external_id": "message-root",
+  "routing_metadata": {
+    "chat_type": "group",
+    "adapter": "napcat"
+  },
+  "reply_text": "reply text"
+}
+```
+
+私聊示例：
+
+```json
+{
+  "comment_id": "message-456",
+  "canonical_id": "qq:message-456",
+  "user_id": "user-456",
+  "routing_metadata": {
+    "chat_type": "private"
+  },
+  "reply_text": "reply text"
+}
+```
 
 这些变量可按下面的层次理解：
 

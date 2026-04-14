@@ -32,9 +32,11 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     gatewayToken: '',
     gatewayHmacSecret: '',
     platformBilibiliEnabled: false,
+    platformQqEnabled: false,
     platformDouyinEnabled: false,
     platformKuaishouEnabled: false,
     platformBilibiliPublishSource: 'bilibili-bot',
+    platformQqPublishSource: 'qq-sidecar',
     platformDouyinPublishSource: 'douyin-bot',
     platformKuaishouPublishSource: 'kuaishou-bot',
     ...overrides,
@@ -550,8 +552,10 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
-  it('marks external sidecar trials as degraded until the webhook is configured and keeps bilibili aligned with legacy runtime', async () => {
+  it('marks external sidecar platforms as degraded until their webhooks are configured and keeps bilibili aligned with legacy runtime', async () => {
+    const originalQqWebhook = process.env.PLATFORM_QQ_WEBHOOK_URL;
     const originalDouyinWebhook = process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    delete process.env.PLATFORM_QQ_WEBHOOK_URL;
     delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
 
     const app = createServer(
@@ -559,6 +563,7 @@ describe('health/readiness parity', () => {
         settings: buildSettings({
           bilibiliEnabled: true,
           platformBilibiliEnabled: false,
+          platformQqEnabled: true,
           platformDouyinEnabled: true,
         }),
       }),
@@ -567,6 +572,7 @@ describe('health/readiness parity', () => {
     const response = await app.inject({ method: 'GET', url: '/api/admin/platforms' });
     const data = response.json();
     const bilibili = data.items.find((entry: { platform: string }) => entry.platform === 'bilibili');
+    const qq = data.items.find((entry: { platform: string }) => entry.platform === 'qq');
     const douyin = data.items.find((entry: { platform: string }) => entry.platform === 'douyin');
 
     expect(response.statusCode).toBe(200);
@@ -575,6 +581,20 @@ describe('health/readiness parity', () => {
       enabled: true,
       status: 'connected',
     });
+    expect(qq).toMatchObject({
+      platform: 'qq',
+      enabled: true,
+      status: 'degraded',
+      lastError: 'sidecar webhook is not configured',
+    });
+    expect(qq.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'publish',
+          status: 'partial',
+        }),
+      ]),
+    );
     expect(douyin).toMatchObject({
       platform: 'douyin',
       enabled: true,
@@ -591,6 +611,11 @@ describe('health/readiness parity', () => {
     );
 
     await app.close();
+    if (originalQqWebhook === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_URL = originalQqWebhook;
+    }
     if (originalDouyinWebhook === undefined) {
       delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
     } else {
@@ -1042,6 +1067,7 @@ describe('gateway/auth parity', () => {
       buildDeps({
         settings: buildSettings({
           platformBilibiliEnabled: false,
+          platformQqEnabled: false,
           platformDouyinEnabled: false,
           platformKuaishouEnabled: false,
         }),
@@ -1049,13 +1075,16 @@ describe('gateway/auth parity', () => {
     );
 
     const bilibili = await app.inject({ method: 'POST', url: '/gateway/publish/bilibili', payload: basePayload });
+    const qq = await app.inject({ method: 'POST', url: '/gateway/publish/qq', payload: basePayload });
     const douyin = await app.inject({ method: 'POST', url: '/gateway/publish/douyin', payload: basePayload });
     const kuaishou = await app.inject({ method: 'POST', url: '/gateway/publish/kuaishou', payload: basePayload });
 
     expect(bilibili.statusCode).toBe(403);
+    expect(qq.statusCode).toBe(403);
     expect(douyin.statusCode).toBe(403);
     expect(kuaishou.statusCode).toBe(403);
     expect(bilibili.json()).toEqual({ detail: 'platform_disabled' });
+    expect(qq.json()).toEqual({ detail: 'platform_disabled' });
     expect(douyin.json()).toEqual({ detail: 'platform_disabled' });
     expect(kuaishou.json()).toEqual({ detail: 'platform_disabled' });
 
@@ -1356,6 +1385,167 @@ describe('gateway/auth parity', () => {
     } else {
       process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN = originalToken;
     }
+  });
+
+  it('uses the default sidecar webhook publisher for qq when configured', async () => {
+    const originalUrl = process.env.PLATFORM_QQ_WEBHOOK_URL;
+    const originalToken = process.env.PLATFORM_QQ_WEBHOOK_TOKEN;
+    process.env.PLATFORM_QQ_WEBHOOK_URL = 'https://qq-sidecar.example.test/publish';
+    process.env.PLATFORM_QQ_WEBHOOK_TOKEN = 'qq-secret-token';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        published: true,
+        reason: 'qq_sidecar_publish_ok',
+        published_at: '2026-04-14T12:30:00.000Z',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const finalized: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformQqEnabled: true,
+          platformQqPublishSource: 'qq-sidecar',
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-qq-sidecar' }),
+        finalizePublishLog: (input) => {
+          finalized.push(input as unknown as Record<string, unknown>);
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/qq',
+      payload: {
+        comment_id: 'comment-qq-sidecar',
+        canonical_id: 'qq:comment-qq-sidecar',
+        container_id: 'group-42',
+        user_id: 'user-42',
+        parent_external_id: 'message-0',
+        routing_metadata: {
+          chat_type: 'group',
+          adapter: 'napcat',
+        },
+        reply_text: 'reply text',
+        trace_id: 'trace-qq-sidecar',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      published: true,
+      reason: 'qq_sidecar_publish_ok',
+      comment_id: 'comment-qq-sidecar',
+      published_at: '2026-04-14T12:30:00.000Z',
+      trace_id: 'trace-qq-sidecar',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://qq-sidecar.example.test/publish',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer qq-secret-token',
+        }),
+        body: JSON.stringify({
+          platform: 'qq',
+          target_kind: 'comment-reply',
+          comment_id: 'comment-qq-sidecar',
+          canonical_id: 'qq:comment-qq-sidecar',
+          container_id: 'group-42',
+          parent_external_id: 'message-0',
+          routing_metadata: {
+            chat_type: 'group',
+            adapter: 'napcat',
+            user_id: 'user-42',
+          },
+          reply_text: 'reply text',
+          force_publish: false,
+          trace_id: 'trace-qq-sidecar',
+        }),
+      }),
+    );
+    expect(finalized[0]).toMatchObject({
+      source: 'qq-sidecar',
+      status: 'published',
+    });
+
+    await app.close();
+    vi.unstubAllGlobals();
+    if (originalUrl === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_URL = originalUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_TOKEN;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_TOKEN = originalToken;
+    }
+  });
+
+  it('passes QQ route context through platform publish input when a platform route is mocked', async () => {
+    let capturedInput: Record<string, unknown> | null = null;
+
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformQqEnabled: true,
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-qq-context' }),
+        finalizePublishLog: () => undefined,
+        publishPlatformReply: (input) => {
+          capturedInput = input as unknown as Record<string, unknown>;
+          return {
+            published: true,
+            reason: 'platform_publish_ok',
+            publishedAt: new Date('2026-04-14T13:00:00.000Z'),
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/qq',
+      payload: {
+        comment_id: 'message-qq-1',
+        canonical_id: 'qq:message-qq-1',
+        container_id: 'group-99',
+        user_id: 'user-99',
+        parent_external_id: 'message-root',
+        routing_metadata: {
+          chat_type: 'group',
+          adapter: 'napcat',
+        },
+        reply_text: 'reply text',
+        force_publish: true,
+        trace_id: 'trace-qq-1',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(capturedInput).toEqual({
+      platform: 'qq',
+      commentId: 'message-qq-1',
+      canonicalId: 'qq:message-qq-1',
+      containerId: 'group-99',
+      userId: 'user-99',
+      parentExternalId: 'message-root',
+      routingMetadata: {
+        chat_type: 'group',
+        adapter: 'napcat',
+      },
+      replyText: 'reply text',
+      forcePublish: true,
+      traceId: 'trace-qq-1',
+    });
+
+    await app.close();
   });
 
   it('standardizes gateway publish failure reasons', async () => {

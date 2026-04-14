@@ -67,6 +67,14 @@ function buildPublishIntent(input: {
   traceId: string;
   source?: string;
 }): PublishIntent {
+  const routeMetadata =
+    input.interaction.platform === 'qq'
+      ? {
+          chat_type: input.interaction.reference.containerId ? 'group' : 'private',
+          ...(input.interaction.actor?.platformUserId ? { user_id: input.interaction.actor.platformUserId } : {}),
+        }
+      : undefined;
+
   return {
     traceId: input.traceId,
     source: input.source ?? 'comment-event-worker',
@@ -75,6 +83,11 @@ function buildPublishIntent(input: {
       targetKind: 'comment-reply',
       externalId: input.interaction.reference.externalId,
       canonicalId: input.interaction.reference.canonicalId,
+      route: {
+        containerId: input.interaction.reference.containerId,
+        parentExternalId: input.interaction.reference.parentExternalId,
+        metadata: routeMetadata,
+      },
     },
     payload: {
       text: input.replyText,

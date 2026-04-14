@@ -1,4 +1,5 @@
 import type { PlatformName, PublishExecutionResult } from '../server/contracts.js';
+import type { PublishTargetKind, PublishTargetRoute } from '../domain/publish/types.js';
 
 function getPlatformEnvPrefix(platform: PlatformName): string {
   return `PLATFORM_${platform.toUpperCase()}`;
@@ -6,7 +7,12 @@ function getPlatformEnvPrefix(platform: PlatformName): string {
 
 export interface SidecarWebhookPublishPayload {
   platform: PlatformName;
+  target_kind?: PublishTargetKind;
   comment_id: string;
+  canonical_id?: string;
+  container_id?: string;
+  parent_external_id?: string;
+  routing_metadata?: Record<string, string>;
   reply_text: string;
   force_publish: boolean;
   trace_id: string;
@@ -39,13 +45,21 @@ export function getSidecarWebhookConfig(platform: PlatformName): SidecarWebhookC
 export function buildSidecarWebhookPayload(input: {
   platform: PlatformName;
   commentId: string;
+  canonicalId?: string;
+  targetKind?: PublishTargetKind;
+  route?: PublishTargetRoute;
   replyText: string;
   forcePublish: boolean;
   traceId: string;
 }): SidecarWebhookPublishPayload {
   return {
     platform: input.platform,
+    target_kind: input.targetKind,
     comment_id: input.commentId,
+    canonical_id: input.canonicalId,
+    container_id: input.route?.containerId,
+    parent_external_id: input.route?.parentExternalId,
+    routing_metadata: input.route?.metadata,
     reply_text: input.replyText,
     force_publish: input.forcePublish,
     trace_id: input.traceId,
@@ -55,6 +69,9 @@ export function buildSidecarWebhookPayload(input: {
 export async function publishViaSidecarWebhook(input: {
   platform: PlatformName;
   commentId: string;
+  canonicalId?: string;
+  targetKind?: PublishTargetKind;
+  route?: PublishTargetRoute;
   replyText: string;
   forcePublish: boolean;
   traceId: string;

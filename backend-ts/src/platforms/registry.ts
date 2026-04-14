@@ -46,6 +46,21 @@ const PLATFORM_ADAPTERS: Record<PlatformName, RegisteredPlatformAdapter> = {
       intervalSeconds: parseInteger(env.BILIBILI_POLL_INTERVAL_SECONDS, 300),
     }),
   },
+  qq: {
+    platform: 'qq',
+    adapterKey: 'qq-sidecar-scaffold',
+    supportsInboundEvents: true,
+    supportsPublishing: true,
+    supportsIdentityBinding: true,
+    supportsConnectionHealth: true,
+    ingressRoutes: [{ path: '/events/comment/qq', source: 'qq', platform: 'qq' }],
+    resolvePublishSource: (settings) => settings.platformQqPublishSource.trim() || 'qq-sidecar',
+    isEnabled: (settings) => settings.platformQqEnabled,
+    resolvePollingRuntime: () => ({
+      enabled: false,
+      intervalSeconds: 300,
+    }),
+  },
   douyin: {
     platform: 'douyin',
     adapterKey: 'douyin-sidecar-trial',

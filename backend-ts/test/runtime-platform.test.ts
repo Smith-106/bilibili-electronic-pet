@@ -37,9 +37,11 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     gatewayToken: '',
     gatewayHmacSecret: '',
     platformBilibiliEnabled: true,
+    platformQqEnabled: false,
     platformDouyinEnabled: false,
     platformKuaishouEnabled: true,
     platformBilibiliPublishSource: 'bilibili-custom',
+    platformQqPublishSource: '',
     platformDouyinPublishSource: '',
     platformKuaishouPublishSource: 'kuaishou-custom',
     ...overrides,
@@ -65,10 +67,12 @@ describe('runtime-platform boundaries', () => {
     const settings = buildSettings();
 
     expect(defaultIsPlatformEnabled('bilibili', settings)).toBe(true);
+    expect(defaultIsPlatformEnabled('qq', settings)).toBe(false);
     expect(defaultIsPlatformEnabled('douyin', settings)).toBe(false);
     expect(defaultIsPlatformEnabled('kuaishou', settings)).toBe(true);
 
     expect(defaultGetPlatformPublishSource('bilibili', settings)).toBe('bilibili-custom');
+    expect(defaultGetPlatformPublishSource('qq', settings)).toBe('qq-sidecar');
     expect(defaultGetPlatformPublishSource('douyin', settings)).toBe('douyin-bot');
     expect(defaultGetPlatformPublishSource('kuaishou', settings)).toBe('kuaishou-custom');
   });
@@ -103,8 +107,9 @@ describe('runtime-platform boundaries', () => {
 
 describe('contract boundary helpers', () => {
   it('exposes known platform names as a reusable contract boundary', () => {
-    expect(PLATFORM_NAMES).toEqual(['bilibili', 'douyin', 'kuaishou']);
+    expect(PLATFORM_NAMES).toEqual(['bilibili', 'qq', 'douyin', 'kuaishou']);
     expect(isPlatformName('bilibili')).toBe(true);
+    expect(isPlatformName('qq')).toBe(true);
     expect(isPlatformName('wechat')).toBe(false);
   });
 

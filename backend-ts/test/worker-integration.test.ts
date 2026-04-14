@@ -303,10 +303,17 @@ describe('worker integration tests', () => {
           traceId: 'intent-trace-1',
           source: 'worker-test',
           target: {
-            platform: 'bilibili',
+            platform: 'qq',
             targetKind: 'comment-reply',
-            externalId: `intent-comment-${Date.now()}`,
-            canonicalId: `bilibili:intent-comment-${Date.now()}`,
+            externalId: `intent-message-${Date.now()}`,
+            canonicalId: `qq:intent-message-${Date.now()}`,
+            route: {
+              containerId: 'group-42',
+              parentExternalId: 'message-0',
+              metadata: {
+                chat_type: 'group',
+              },
+            },
           },
           payload: {
             text: 'intent reply',

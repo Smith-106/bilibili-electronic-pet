@@ -138,6 +138,24 @@ const mapDouyin: Mapper = (p) => ({
   trace_id: pickFirst(p, 'trace_id', 'traceId', 'event.trace_id', 'event.traceId', 'meta.trace_id'),
 });
 
+const mapQq: Mapper = (p) => ({
+  comment_id: pickFirst(
+    p,
+    'comment_id',
+    'commentId',
+    'message_id',
+    'messageId',
+    'event.comment_id',
+    'event.message_id',
+    'event.messageId',
+  ),
+  video_id: pickFirst(p, 'video_id', 'videoId', 'group_id', 'groupId', 'chat_id', 'event.group_id', 'event.chat_id'),
+  user_id: pickFirst(p, 'user_id', 'userId', 'sender_id', 'senderId', 'event.user_id', 'event.sender_id'),
+  content: pickFirst(p, 'content', 'text', 'message', 'raw_message', 'event.content', 'event.text', 'event.message'),
+  parent_id: pickFirst(p, 'parent_id', 'parentId', 'reply_to', 'event.parent_id', 'event.reply_to'),
+  trace_id: pickFirst(p, 'trace_id', 'traceId', 'event.trace_id', 'event.traceId', 'meta.trace_id'),
+});
+
 const mapKuaishou: Mapper = (p) => ({
   comment_id: pickFirst(p, 'comment_id', 'commentId', 'comment_id_str', 'event.comment_id'),
   video_id: pickFirst(p, 'video_id', 'videoId', 'photo_id', 'event.video_id', 'event.photo_id'),
@@ -152,13 +170,14 @@ const SOURCE_MAPPERS: Record<string, Mapper> = {
   poller: mapPoller,
   official: mapOfficial,
   bilibili: mapBilibili,
+  qq: mapQq,
   douyin: mapDouyin,
   kuaishou: mapKuaishou,
 };
 
 // ── Public API ─────────────────────────────────────────────
 
-export type CollectorSource = 'webhook' | 'poller' | 'official' | 'bilibili' | 'douyin' | 'kuaishou';
+export type CollectorSource = 'webhook' | 'poller' | 'official' | 'bilibili' | 'qq' | 'douyin' | 'kuaishou';
 
 export interface CollectedCommentEvent {
   comment_id: string;
@@ -176,7 +195,7 @@ function resolveInteractionPlatform(event: Pick<CollectedCommentEvent, 'platform
   if (candidate && !['webhook', 'poller', 'official'].includes(candidate)) {
     return candidate;
   }
-  if (['bilibili', 'douyin', 'kuaishou'].includes(event.source)) {
+  if (['bilibili', 'qq', 'douyin', 'kuaishou'].includes(event.source)) {
     return event.source;
   }
   return 'unknown';

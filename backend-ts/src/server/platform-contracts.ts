@@ -1,4 +1,4 @@
-export const PLATFORM_NAMES = ['bilibili', 'douyin', 'kuaishou'] as const;
+export const PLATFORM_NAMES = ['bilibili', 'qq', 'douyin', 'kuaishou'] as const;
 
 export type PlatformName = (typeof PLATFORM_NAMES)[number];
 

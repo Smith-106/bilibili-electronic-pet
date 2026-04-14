@@ -59,9 +59,11 @@ export type RuntimeSettings = {
   gatewayToken: string;
   gatewayHmacSecret: string;
   platformBilibiliEnabled: boolean;
+  platformQqEnabled: boolean;
   platformDouyinEnabled: boolean;
   platformKuaishouEnabled: boolean;
   platformBilibiliPublishSource: string;
+  platformQqPublishSource: string;
   platformDouyinPublishSource: string;
   platformKuaishouPublishSource: string;
 };
@@ -81,6 +83,11 @@ export type GatewayPublishPayload = {
   force_publish: boolean;
   source: string;
   trace_id?: string;
+  canonical_id?: string;
+  container_id?: string;
+  user_id?: string;
+  parent_external_id?: string;
+  routing_metadata?: Record<string, string>;
 };
 
 export type PublishExecutionResult = {
@@ -125,6 +132,11 @@ export type PublishPlatformInput = {
   replyText: string;
   forcePublish: boolean;
   traceId: string;
+  canonicalId?: string;
+  containerId?: string;
+  userId?: string;
+  parentExternalId?: string;
+  routingMetadata?: Record<string, string>;
 };
 
 export type AdminJobsResponse = {
@@ -241,6 +253,13 @@ export type ReplyJob = {
   role_card_key: string | null;
   force_long: boolean | null;
   platform: string | null;
+  route_context?: {
+    platform?: string;
+    container_id?: string;
+    user_id?: string;
+    parent_external_id?: string;
+    chat_type?: 'group' | 'private';
+  } | null;
   created_at: string | null;
   updated_at: string | null;
   comment_content: string | null;

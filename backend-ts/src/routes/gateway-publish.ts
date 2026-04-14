@@ -129,6 +129,11 @@ export function registerGatewayPublishRoutes(
           replyText: payload.reply_text,
           forcePublish: payload.force_publish,
           traceId,
+          canonicalId: payload.canonical_id,
+          containerId: payload.container_id,
+          userId: payload.user_id,
+          parentExternalId: payload.parent_external_id,
+          routingMetadata: payload.routing_metadata,
         })
       : await deps.publishGatewayReply({
           commentId: payload.comment_id,

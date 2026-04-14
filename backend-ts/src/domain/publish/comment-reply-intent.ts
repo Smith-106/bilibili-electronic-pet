@@ -1,5 +1,5 @@
 import type { PublishGatewayInput, PublishPlatformInput } from '../../server/contracts.js';
-import type { PublishIntent } from './types.js';
+import type { PublishIntent, PublishTargetRoute } from './types.js';
 
 export function buildCommentReplyPublishIntent(input: {
   platform: string;
@@ -7,6 +7,8 @@ export function buildCommentReplyPublishIntent(input: {
   replyText: string;
   traceId?: string;
   source?: string;
+  canonicalId?: string;
+  route?: PublishTargetRoute;
 }): PublishIntent {
   const platform = input.platform.trim().toLowerCase() || 'unknown';
   const commentId = input.commentId.trim();
@@ -18,7 +20,8 @@ export function buildCommentReplyPublishIntent(input: {
       platform,
       targetKind: 'comment-reply',
       externalId: commentId,
-      canonicalId: `${platform}:${commentId}`,
+      canonicalId: input.canonicalId?.trim() || `${platform}:${commentId}`,
+      route: input.route,
     },
     payload: {
       text: input.replyText,
@@ -43,12 +46,27 @@ export function buildPlatformPublishIntent(input: PublishPlatformInput): Publish
     replyText: input.replyText,
     traceId: input.traceId,
     source: 'platform-publish',
+    canonicalId: input.canonicalId,
+    route: {
+      containerId: input.containerId,
+      parentExternalId: input.parentExternalId,
+      metadata: {
+        ...(input.routingMetadata ?? {}),
+        ...(input.userId ? { user_id: input.userId } : {}),
+      },
+    },
   });
 }
 
 export function resolveCommentReplyIntentParts(
   intent: PublishIntent,
-): { commentId: string; replyText: string; platform: string } {
+): {
+  commentId: string;
+  replyText: string;
+  platform: string;
+  canonicalId: string;
+  route?: PublishTargetRoute;
+} {
   if (intent.target.targetKind !== 'comment-reply') {
     throw new Error(`unsupported_publish_target:${intent.target.targetKind}`);
   }
@@ -57,5 +75,7 @@ export function resolveCommentReplyIntentParts(
     commentId: intent.target.externalId,
     replyText: intent.payload.text,
     platform: intent.target.platform,
+    canonicalId: intent.target.canonicalId,
+    route: intent.target.route,
   };
 }

@@ -33,9 +33,11 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     gatewayToken: '',
     gatewayHmacSecret: '',
     platformBilibiliEnabled: true,
+    platformQqEnabled: false,
     platformDouyinEnabled: false,
     platformKuaishouEnabled: true,
     platformBilibiliPublishSource: 'bilibili-open',
+    platformQqPublishSource: '',
     platformDouyinPublishSource: '',
     platformKuaishouPublishSource: 'kuaishou-open',
     ...overrides,
@@ -44,10 +46,11 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
 
 describe('platform adapter registry', () => {
   it('lists stable adapter contracts and ingress routes', () => {
-    expect(listPlatformAdapters().map((adapter) => adapter.platform)).toEqual(['bilibili', 'douyin', 'kuaishou']);
-    expect(listPublishingPlatforms()).toEqual(['bilibili', 'douyin', 'kuaishou']);
+    expect(listPlatformAdapters().map((adapter) => adapter.platform)).toEqual(['bilibili', 'qq', 'douyin', 'kuaishou']);
+    expect(listPublishingPlatforms()).toEqual(['bilibili', 'qq', 'douyin', 'kuaishou']);
     expect(listPlatformIngressRoutes()).toEqual([
       { path: '/events/comment/bilibili', source: 'bilibili', platform: 'bilibili' },
+      { path: '/events/comment/qq', source: 'qq', platform: 'qq' },
       { path: '/events/comment/douyin', source: 'douyin', platform: 'douyin' },
       { path: '/events/comment/kuaishou', source: 'kuaishou', platform: 'kuaishou' },
     ]);
@@ -57,8 +60,10 @@ describe('platform adapter registry', () => {
     const settings = buildSettings();
 
     expect(resolvePlatformAdapter('bilibili').isEnabled(settings)).toBe(true);
+    expect(resolvePlatformAdapter('qq').isEnabled(settings)).toBe(false);
     expect(resolvePlatformAdapter('douyin').isEnabled(settings)).toBe(false);
     expect(resolvePlatformAdapter('kuaishou').resolvePublishSource(settings)).toBe('kuaishou-open');
+    expect(resolvePlatformAdapter('qq').resolvePublishSource(settings)).toBe('qq-sidecar');
     expect(resolvePlatformAdapter('douyin').resolvePublishSource(settings)).toBe('douyin-bot');
   });
 

@@ -165,6 +165,17 @@ async function approveJob(
       replyText,
       traceId,
       source: 'approve-job',
+      route: {
+        containerId: comment.video_id || undefined,
+        parentExternalId: comment.parent_id || undefined,
+        metadata:
+          (comment.platform || 'bilibili') === 'qq'
+            ? {
+                chat_type: comment.video_id ? 'group' : 'private',
+                ...(comment.user_id ? { user_id: comment.user_id } : {}),
+              }
+            : undefined,
+      },
     }),
   );
 
