@@ -98,6 +98,8 @@ jobs:
           SEARCH_API_KEY: ci-strict-placeholder
           PUBLISHER_MODE: webhook
           PUBLISHER_WEBHOOK_URL: https://example.invalid/strict
+          PLATFORM_QQ_ENABLED: "true"
+          PLATFORM_QQ_WEBHOOK_URL: https://example.invalid/qq-sidecar
         run: |
           APP_LOG="$RUNNER_TEMP/backend-ts-strict.log"
           (
