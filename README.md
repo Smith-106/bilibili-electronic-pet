@@ -8,9 +8,9 @@
 
 ## 最新版本状态
 
-当前正式版本：**v1.1.0**
+当前正式版本：**v1.2.0**
 
-v1.1.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-first 正式版**。
+v1.2.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-first 正式版（含 QQ 试点发布链路）**。
 
 本版本已完成：
 
@@ -31,7 +31,7 @@ v1.1.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-firs
 | QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证 |
 | 微信 | 暂不支持 |
 
-Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.1.0
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.0
 
 ---
 

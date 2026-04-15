@@ -6,6 +6,25 @@ Entries below describe the migration snapshot that was current on each release d
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-04-15
+
+### Added
+
+- QQ sidecar 发布链路已纳入正式发布基线，新增 `qq-sidecar` 服务、OneBot smoke 脚本、QQ 端到端 smoke 校验与对应的 Docker/Compose 接入。
+- 后端新增 interaction event 兼容层、interaction-aware reply decision 入口与 QQ 路由上下文控制，为多平台发布演进提供兼容迁移面。
+
+### Changed
+
+- `cloud-validate`、`e2e-user-simulation` 与 `manual-ghcr-release` workflow 已补齐 strict smoke 与 QQ trial 所需环境，并修复 strict smoke 启动等待与分支触发范围。
+- QQ smoke 报告路径在 Git Bash / Windows / CI 场景下统一规范化，发布日志兼容旧 `publish_log` schema 漂移。
+- README 与发布说明更新为 v1.2.0 基线，明确当前平台范围为 Bilibili 正式支持、QQ 试点支持、Douyin 试点能力、微信暂不支持。
+
+### Notes
+
+- 本次版本是在 v1.1.0 基础上增加 QQ 试点发布能力与发布流程加固的次版本发布。
+- QQ 当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，但仍按试点支持管理，不作为与 Bilibili 等同等级的正式主平台。
+- Douyin 仍为试点能力，远端 rollout 仍依赖 verified sidecar endpoint 与最终运行时配置。
+
 ## [1.1.0] - 2026-04-14
 
 ### Added
