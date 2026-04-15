@@ -11,19 +11,31 @@ It can also be invoked from the repository root through the wrappers:
 
 ```bash
 bash smoke.sh preflight --report ./staging-preflight.json
+bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
 bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
 bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+bash smoke.sh qq-onebot --report ./.artifacts/staging/qq-onebot-local.json
+bash smoke.sh qq-e2e --report ./.artifacts/staging/qq-e2e-local.json
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
+pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
 pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
 pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 qq-onebot --report .\.artifacts\staging\qq-onebot-local.json
+pwsh ./smoke.ps1 qq-e2e --report .\.artifacts\staging\qq-e2e-local.json
 ```
 
-When wrapper modes (`preflight`, `strict`, `real-chain`) run without `--report`, wrappers now auto-write evidence JSON to:
+When wrapper modes (`preflight`, `expanded-preflight`, `strict`, `real-chain`, `qq-onebot`, `qq-e2e`) run without `--report`, wrappers now auto-write evidence JSON to:
 
 - `./.artifacts/staging/<mode>-<UTC timestamp>.json`
 
 Override the output directory with `SMOKE_REPORT_DIR`.
+
+For direct `npm --prefix ... -- --report <relative-path>` smoke invocations launched from the repository root, QQ smoke scripts also resolve relative report paths against the original invocation directory, so `./.artifacts/staging/...` still lands in the repository-root evidence folder.
+
+QQ-specific smoke layers:
+- `qq-onebot`: validates `qq-sidecar -> OneBot HTTP` against a local mock OneBot endpoint
+- `qq-e2e`: validates `backend-ts /gateway/publish/qq -> qq-sidecar -> OneBot HTTP` with local mock dependencies
 
 ## Modes
 
@@ -58,6 +70,34 @@ npm run staging:check -- \
   --env-file .env.staging \
   --report ../staging-preflight.json
 ```
+
+### Expanded-Scope Preflight
+
+Checks:
+- standard preflight capability checks
+- expanded-scope external platform trial inputs:
+  - `PLATFORM_DOUYIN_ENABLED=true`
+  - `PLATFORM_DOUYIN_WEBHOOK_URL`
+  - `PLATFORM_DOUYIN_PUBLISH_SOURCE`
+- optional `PLATFORM_DOUYIN_WEBHOOK_TOKEN`
+
+Use when:
+- you want to validate the checker-side prerequisites for the expanded-scope staging run
+- you need to separate missing `PLATFORM_DOUYIN_*` inputs from later remote/WAF/runtime failures
+
+Examples:
+
+```bash
+bash smoke.sh expanded-preflight --env-file ../.env.expanded-scope.preflight.example
+pwsh ./smoke.ps1 expanded-preflight --env-file ..\.env.expanded-scope.preflight.example
+```
+
+This mode validates checker-side inputs only. It does not prove the live host can reach the configured endpoint.
+
+For the final expanded-scope evidence package, use these repo-managed templates:
+
+- `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
+- `backend-ts/staging-report.expanded-scope.template.json`
 
 ### Baseline
 
@@ -174,6 +214,12 @@ npm run staging:check -- \
 - For a repo-managed local strict rehearsal path, copy `.env.strict.local.example` to `.env.strict.local` and run:
   - `pwsh ./rehearse-local.ps1 strict`
   - or `bash ./rehearse-local.sh strict`
+- For an expanded-scope preflight scaffold, copy `.env.expanded-scope.preflight.example` to a local file and run:
+  - `pwsh ./smoke.ps1 expanded-preflight --env-file .\.env.expanded-scope.preflight`
+  - or `bash ./smoke.sh expanded-preflight --env-file ./.env.expanded-scope.preflight`
+- For the final operator summary and JSON evidence shape, copy or reference:
+  - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
+  - `backend-ts/staging-report.expanded-scope.template.json`
 - For a repo-managed local native real-chain rehearsal scaffold, copy `.env.real-chain.local.example` to `.env.real-chain.local` and run:
   - `pwsh ./rehearse-local.ps1 real-chain`
   - or `bash ./rehearse-local.sh real-chain`

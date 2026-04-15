@@ -9,6 +9,10 @@ local.db
 **/local.db
 .env
 frontend/node_modules/
+node_modules/
 backend-ts/coverage/
 *.sqlite3
+*.db
+*.db-journal
+dev.db
 celerybeat-schedule

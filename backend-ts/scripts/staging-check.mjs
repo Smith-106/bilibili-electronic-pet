@@ -27,6 +27,7 @@ function parseArgs(argv) {
     apiKey: null,
     envFile: null,
     preflightOnly: false,
+    expandedScopeTrial: false,
     reportPath: null,
     strict: false,
     preReleaseRealChain: false,
@@ -54,6 +55,11 @@ function parseArgs(argv) {
 
     if (current === '--preflight-only') {
       result.preflightOnly = true;
+      continue;
+    }
+
+    if (current === '--expanded-scope-trial') {
+      result.expandedScopeTrial = true;
       continue;
     }
 
@@ -129,6 +135,7 @@ Options:
   --api-key <key>                Admin API key used for authenticated checks
   --env-file <path>              Explicit env file to load before checks
   --preflight-only               Print and optionally report external-delivery prerequisites without hitting the runtime
+  --expanded-scope-trial         Require external-platform trial inputs during preflight
   --strict                       Require delivery-capable diagnostics checks
   --pre-release-real-chain       Require native Bilibili pre-release gates
   --report <path>                Write JSON report to the given path (preflight/pass/fail)
@@ -161,10 +168,26 @@ function writeReport(reportPath, report) {
   return outputPath;
 }
 
-function summarizeRuntimeState(readinessPayload, bilibiliPayload) {
+function summarizeRuntimeState(
+  readinessPayload,
+  bilibiliPayload,
+  companionPayload,
+  petOverviewPayload,
+  platformsPayload,
+) {
   const capabilityBlockers =
     readinessPayload?.delivery_capability_blockers ?? readinessPayload?.delivery_capabilities?.blockers ?? [];
   const diagnostics = bilibiliPayload?.diagnostics ?? {};
+  const platformItems = Array.isArray(platformsPayload?.items) ? platformsPayload.items : [];
+  const activeExternalTrials = platformItems
+    .filter((entry) => entry?.platform !== 'bilibili' && entry?.enabled === true)
+    .map((entry) => ({
+      platform: entry.platform,
+      status: entry.status ?? 'unknown',
+      rollout_enabled: entry?.rolloutControl?.enabled ?? entry.enabled === true,
+      rollout_stage: entry?.rolloutControl?.stage ?? null,
+      adapter_key: entry?.adapterKey ?? null,
+    }));
 
   return {
     source: 'target_runtime',
@@ -172,12 +195,32 @@ function summarizeRuntimeState(readinessPayload, bilibiliPayload) {
       ready: readinessPayload?.ready === true,
       foundation_ready: readinessPayload?.foundation_ready === true,
       delivery_ready: readinessPayload?.delivery_ready === true,
+      product_ready: readinessPayload?.product_ready === true,
       foundation_blockers: readinessPayload?.foundation_blockers ?? [],
       delivery_blockers: readinessPayload?.delivery_blockers ?? [],
       delivery_capability_blockers: capabilityBlockers,
+      product_blockers: readinessPayload?.product_blockers ?? [],
     },
     config: readinessPayload?.config ?? {},
     publish: readinessPayload?.publish ?? {},
+    pet_core: {
+      public_state_version: companionPayload?.version ?? null,
+      admin_state_version: petOverviewPayload?.item?.version ?? null,
+      pet_name:
+        companionPayload?.snapshot?.profile?.petName ??
+        petOverviewPayload?.item?.snapshot?.profile?.petName ??
+        null,
+      proactive_signal_count:
+        companionPayload?.snapshot?.proactiveSignals?.length ??
+        petOverviewPayload?.item?.snapshot?.proactiveSignals?.length ??
+        0,
+    },
+    platforms: {
+      total: platformItems.length,
+      active_external_trials: activeExternalTrials,
+      bilibili_reference_status:
+        platformItems.find((entry) => entry?.platform === 'bilibili')?.status ?? 'unknown',
+    },
     bilibili: {
       diagnostics_ready: diagnostics?.ready === true,
       effective_publish_mode: diagnostics?.effective_publish_mode ?? null,
@@ -228,6 +271,7 @@ function extractAssetPaths(html) {
 function buildEnvMatrix(env, options) {
   const nativeRealChain = options.preReleaseRealChain;
   const strict = options.strict;
+  const expandedScopeTrial = options.expandedScopeTrial;
   const publisherMode = String(env.PUBLISHER_MODE ?? 'manual_queue').trim().toLowerCase();
   const webhookMode = publisherMode === 'webhook';
   const envCredentialPresent =
@@ -248,6 +292,15 @@ function buildEnvMatrix(env, options) {
     { name: 'LLM_API_KEY', required: String(env.LLM_PROVIDER ?? '').trim().toLowerCase() !== 'mock', present: hasText(env.LLM_API_KEY) },
     { name: 'PUBLISHER_MODE', required: strict, present: hasText(env.PUBLISHER_MODE) },
     { name: 'PUBLISHER_WEBHOOK_URL', required: strict && webhookMode, present: hasText(env.PUBLISHER_WEBHOOK_URL) },
+    { name: 'PLATFORM_DOUYIN_ENABLED', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_ENABLED) },
+    { name: 'PLATFORM_DOUYIN_WEBHOOK_URL', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_WEBHOOK_URL) },
+    {
+      name: 'PLATFORM_DOUYIN_WEBHOOK_TOKEN',
+      required: false,
+      present: hasText(env.PLATFORM_DOUYIN_WEBHOOK_TOKEN),
+      note: 'Optional unless the external Douyin sidecar contract requires bearer authentication.',
+    },
+    { name: 'PLATFORM_DOUYIN_PUBLISH_SOURCE', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_PUBLISH_SOURCE) },
     { name: 'BILIBILI_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_ENABLED) },
     { name: 'BILIBILI_PUBLISH_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_PUBLISH_ENABLED) },
     { name: 'BILIBILI_POLL_ENABLED', required: false, present: hasText(env.BILIBILI_POLL_ENABLED) },
@@ -403,7 +456,8 @@ function createPreflightCapability({
   };
 }
 
-function buildDeliveryPreflight(env) {
+function buildDeliveryPreflight(env, options = {}) {
+  const expandedScopeTrial = options.expandedScopeTrial === true;
   const llmProvider = String(env.LLM_PROVIDER ?? 'mock').trim().toLowerCase() || 'mock';
   const llmMissing = [];
   const llmNotes = [];
@@ -487,6 +541,27 @@ function buildDeliveryPreflight(env) {
     nativeNotes.push('real_publish mode uses native Bilibili runtime credentials and delivery checks.');
   }
 
+  const douyinTrialMissing = [];
+  const douyinTrialNotes = [];
+  let douyinTrialStatus = expandedScopeTrial ? 'configured' : 'inactive';
+
+  if (expandedScopeTrial && !parseBoolean(env.PLATFORM_DOUYIN_ENABLED, false)) {
+    douyinTrialStatus = 'missing_inputs';
+    douyinTrialMissing.push('PLATFORM_DOUYIN_ENABLED=true');
+  }
+  if (expandedScopeTrial && !hasText(env.PLATFORM_DOUYIN_WEBHOOK_URL)) {
+    douyinTrialStatus = 'missing_inputs';
+    douyinTrialMissing.push('PLATFORM_DOUYIN_WEBHOOK_URL');
+  }
+  if (expandedScopeTrial && !hasText(env.PLATFORM_DOUYIN_PUBLISH_SOURCE)) {
+    douyinTrialStatus = 'missing_inputs';
+    douyinTrialMissing.push('PLATFORM_DOUYIN_PUBLISH_SOURCE');
+  }
+  if (expandedScopeTrial) {
+    douyinTrialNotes.push('PLATFORM_DOUYIN_WEBHOOK_TOKEN is optional unless the external Douyin sidecar contract requires bearer auth.');
+    douyinTrialNotes.push('This preflight only validates checker-side inputs. It does not prove the live host can reach the endpoint through WAF/Cloudflare.');
+  }
+
   const capabilities = [
     createPreflightCapability({
       capability: 'llm_generation',
@@ -530,6 +605,20 @@ function buildDeliveryPreflight(env) {
       optionalInputs: ['CREDENTIAL_ENCRYPTION_KEY', 'BILIBILI_BUVID4', 'BILIBILI_DEDEUSERID'],
       missingInputs: nativeMissing,
       notes: nativeNotes,
+    }),
+    createPreflightCapability({
+      capability: 'external_platform_trial',
+      active: expandedScopeTrial,
+      status: douyinTrialStatus,
+      mode: expandedScopeTrial ? 'expanded_scope_trial' : 'inactive',
+      requiredInputs: [
+        'PLATFORM_DOUYIN_ENABLED=true',
+        'PLATFORM_DOUYIN_WEBHOOK_URL',
+        'PLATFORM_DOUYIN_PUBLISH_SOURCE',
+      ],
+      optionalInputs: ['PLATFORM_DOUYIN_WEBHOOK_TOKEN'],
+      missingInputs: douyinTrialMissing,
+      notes: douyinTrialNotes,
     }),
   ];
 
@@ -616,25 +705,28 @@ async function main() {
   const baseUrl = normalizeBaseUrl(parsedArgs.baseUrl ?? process.env.BASE_URL);
   const apiKey = String(parsedArgs.apiKey ?? process.env.API_KEY ?? '').trim();
   const strict = parsedArgs.strict || parseBoolean(process.env.STRICT_SMOKE, false);
+  const expandedScopeTrial = parsedArgs.expandedScopeTrial;
   const preReleaseRealChain =
     parsedArgs.preReleaseRealChain || parseBoolean(process.env.PRE_RELEASE_REAL_CHAIN, false);
   const preflightOnly = parsedArgs.preflightOnly;
   const reportPath = parsedArgs.reportPath ?? process.env.REPORT_PATH ?? null;
 
-  const deliveryPreflight = buildDeliveryPreflight(process.env);
+  const deliveryPreflight = buildDeliveryPreflight(process.env, { expandedScopeTrial });
 
   const report = {
     started_at: new Date().toISOString(),
     base_url: baseUrl.replace(/\/$/, ''),
     preflight_only: preflightOnly,
+    expanded_scope_trial: expandedScopeTrial,
     strict,
     pre_release_real_chain: preReleaseRealChain,
     env_files: envFiles,
-    env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, apiKey }),
+    env_matrix: buildEnvMatrix(process.env, { strict, preReleaseRealChain, expandedScopeTrial, apiKey }),
     delivery_preflight: deliveryPreflight,
     input_scopes: {
       checker_env: 'env_matrix and delivery_preflight describe the environment seen by staging-check itself',
-      target_runtime: 'runtime_summary describes the target service responses returned by /readiness and /api/admin/bilibili/status',
+      target_runtime:
+        'runtime_summary describes the target service responses returned by /readiness, /companion/state-v2, /api/admin/pet/overview, /api/admin/platforms, and /api/admin/bilibili/status',
     },
     checks: [],
     warnings: [],
@@ -770,12 +862,68 @@ async function main() {
     record('admin_overview', 'passed', { http_status: overviewResponse.status });
     logPass('admin overview');
 
+    const companionStateUrl = buildUrl(baseUrl, '/companion/state-v2');
+    const { response: companionResponse, parsed: companionPayload } = await fetchJson(companionStateUrl);
+    if (companionResponse.status !== 200 || companionPayload?.version !== 'v2') {
+      fail('companion_state_v2', `expected version=v2, got status=${companionResponse.status}`, {
+        payload: companionPayload,
+      });
+    }
+    record('companion_state_v2', 'passed', {
+      pet_name: companionPayload?.snapshot?.profile?.petName ?? null,
+      proactive_signal_count: companionPayload?.snapshot?.proactiveSignals?.length ?? 0,
+    });
+    logPass('companion state v2');
+
+    const petOverviewUrl = buildUrl(baseUrl, '/api/admin/pet/overview');
+    const { response: petOverviewResponse, parsed: petOverviewPayload } = await fetchJson(petOverviewUrl, { headers });
+    if (petOverviewResponse.status !== 200 || petOverviewPayload?.ok !== true || petOverviewPayload?.item?.version !== 'v2') {
+      fail('pet_overview', `expected ok=true and item.version=v2, got status=${petOverviewResponse.status}`, {
+        payload: petOverviewPayload,
+      });
+    }
+    record('pet_overview', 'passed', {
+      pet_name: petOverviewPayload?.item?.snapshot?.profile?.petName ?? null,
+    });
+    logPass('pet overview');
+
+    const platformConnectionsUrl = buildUrl(baseUrl, '/api/admin/platforms');
+    const { response: platformConnectionsResponse, parsed: platformConnectionsPayload } = await fetchJson(
+      platformConnectionsUrl,
+      { headers },
+    );
+    if (platformConnectionsResponse.status !== 200 || platformConnectionsPayload?.ok !== true) {
+      fail('platform_connections', `expected ok=true, got status=${platformConnectionsResponse.status}`);
+    }
+    const platformItems = Array.isArray(platformConnectionsPayload?.items) ? platformConnectionsPayload.items : [];
+    if (!Array.isArray(platformConnectionsPayload?.items)) {
+      fail('platform_connections', 'expected items array from /api/admin/platforms');
+    }
+    const activeExternalTrials = platformItems.filter(
+      (entry) => entry?.platform !== 'bilibili' && entry?.enabled === true,
+    );
+    const connectedExternalTrials = activeExternalTrials.filter(
+      (entry) => entry?.status === 'connected' && (entry?.rolloutControl?.enabled ?? true),
+    );
+    record('platform_connections', 'passed', {
+      total: platformItems.length,
+      active_external_trials: activeExternalTrials.map((entry) => entry.platform),
+      connected_external_trials: connectedExternalTrials.map((entry) => entry.platform),
+    });
+    logPass('platform connections');
+
     const bilibiliStatusUrl = buildUrl(baseUrl, '/api/admin/bilibili/status');
     const { response: bilibiliResponse, parsed: bilibiliPayload } = await fetchJson(bilibiliStatusUrl, { headers });
     if (bilibiliResponse.status !== 200 || bilibiliPayload?.ok !== true) {
       fail('bilibili_status', `expected ok=true, got status=${bilibiliResponse.status}`);
     }
-    report.runtime_summary = summarizeRuntimeState(readinessPayload, bilibiliPayload);
+    report.runtime_summary = summarizeRuntimeState(
+      readinessPayload,
+      bilibiliPayload,
+      companionPayload,
+      petOverviewPayload,
+      platformConnectionsPayload,
+    );
     record('bilibili_status', 'passed', {
       diagnostics: summarizeDiagnostics(bilibiliPayload.diagnostics),
     });
@@ -850,6 +998,34 @@ async function main() {
         webhook_publish_status: webhookCapabilityStatus,
       });
       logPass(`strict delivery contract (${effectivePublishMode})`);
+
+      const productBlockers = Array.isArray(readinessPayload?.product_blockers)
+        ? readinessPayload.product_blockers
+        : [];
+      if (readinessPayload?.product_ready !== true) {
+        fail(
+          'strict_product',
+          `product readiness is not ready (${productBlockers.join(',') || 'unknown'})`,
+        );
+      }
+      if (companionPayload?.version !== 'v2') {
+        fail('strict_product', `companion state version is ${String(companionPayload?.version ?? 'unknown')}`);
+      }
+      if (petOverviewPayload?.item?.version !== 'v2') {
+        fail(
+          'strict_product',
+          `admin pet overview version is ${String(petOverviewPayload?.item?.version ?? 'unknown')}`,
+        );
+      }
+      if (connectedExternalTrials.length === 0) {
+        fail('strict_product', 'no connected external platform trial reported by /api/admin/platforms');
+      }
+
+      record('strict_product', 'passed', {
+        pet_name: companionPayload?.snapshot?.profile?.petName ?? null,
+        connected_external_trials: connectedExternalTrials.map((entry) => entry.platform),
+      });
+      logPass('strict product contract');
 
       if (preReleaseRealChain) {
         const diagnostics = bilibiliPayload?.diagnostics ?? {};

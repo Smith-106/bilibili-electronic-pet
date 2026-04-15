@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import type { ServerDependencies } from '../src/server/dependencies.js';
 
+const { mockCommentQueueAdd, mockCommentQueueClose } = vi.hoisted(() => ({
+  mockCommentQueueAdd: vi.fn(),
+  mockCommentQueueClose: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockPrisma = {
   bilibiliCredential: {
     findFirst: vi.fn(),
@@ -24,8 +29,14 @@ const mockPrisma = {
   },
   comment: {
     count: vi.fn(),
+    create: vi.fn(),
     findMany: vi.fn(),
     findFirst: vi.fn(),
+  },
+  commentQueueBacklog: {
+    findUnique: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
   },
   knowledgeEntry: {
     findMany: vi.fn(),
@@ -45,9 +56,14 @@ const mockPrisma = {
     findUnique: vi.fn(),
   },
   publishLog: {
+    count: vi.fn(),
+    create: vi.fn(),
+    findUnique: vi.fn(),
     findMany: vi.fn(),
+    updateMany: vi.fn(),
   },
   operationAuditLog: {
+    create: vi.fn(),
     count: vi.fn(),
     findMany: vi.fn(),
   },
@@ -64,6 +80,13 @@ vi.mock('../src/lib/prisma.js', () => ({
 vi.mock('../src/services/bilibili-poller.js', () => ({
   pollAllVideos: mockPollAllVideos,
   pollVideoById: mockPollVideoById,
+}));
+
+vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
+  createCommentEventQueue: () => ({
+    add: mockCommentQueueAdd,
+    close: mockCommentQueueClose,
+  }),
 }));
 
 const { createServer } = await import('../src/main.js');
@@ -85,9 +108,11 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     gatewayToken: '',
     gatewayHmacSecret: '',
     platformBilibiliEnabled: false,
+    platformQqEnabled: false,
     platformDouyinEnabled: false,
     platformKuaishouEnabled: false,
     platformBilibiliPublishSource: 'bilibili-bot',
+    platformQqPublishSource: 'qq-sidecar',
     platformDouyinPublishSource: 'douyin-bot',
     platformKuaishouPublishSource: 'kuaishou-bot',
     ...overrides,
@@ -130,6 +155,11 @@ beforeEach(() => {
   resetMockPrisma();
   mockPollAllVideos.mockReset();
   mockPollVideoById.mockReset();
+  mockCommentQueueAdd.mockReset();
+  mockCommentQueueClose.mockClear();
+  delete process.env.PUBLISHER_MODE;
+  delete process.env.PUBLISHER_WEBHOOK_URL;
+  delete process.env.PUBLISHER_WEBHOOK_TOKEN;
 });
 
 describe('default admin data providers', () => {
@@ -1358,26 +1388,193 @@ describe('default admin data providers', () => {
 
     await app.close();
   });
+
+  it('records durable pending gateway reservations and keeps webhook misconfiguration visible', async () => {
+    process.env.PUBLISHER_MODE = 'webhook';
+
+    mockPrisma.publishLog.findUnique.mockResolvedValue(null);
+    mockPrisma.publishLog.create.mockResolvedValue({
+      id: 91,
+      reservation_key: 'publish-log:reservation-1',
+    });
+    mockPrisma.publishLog.updateMany.mockResolvedValue({ count: 1 });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish',
+      payload: {
+        comment_id: 'comment-gateway-1',
+        reply_text: 'hello gateway',
+        source: 'gateway',
+        trace_id: 'trace-gateway-1',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: false,
+      published: false,
+      reason: 'webhook_not_configured',
+      comment_id: 'comment-gateway-1',
+      trace_id: 'trace-gateway-1',
+    });
+    expect(mockPrisma.publishLog.create).toHaveBeenCalledWith({
+      data: {
+        platform: 'bilibili',
+        reservation_key: expect.any(String),
+        canonical_comment_id: 'bilibili:comment-gateway-1',
+        comment_id: 'comment-gateway-1',
+        reply_hash: expect.any(String),
+        source: 'gateway',
+        status: 'pending',
+        published_at: null,
+        failure_reason: null,
+      },
+    });
+    expect(mockPrisma.publishLog.updateMany).toHaveBeenCalledWith({
+      where: { reservation_key: expect.any(String) },
+      data: {
+        status: 'failed',
+        source: 'gateway',
+        failure_reason: 'webhook_not_configured',
+        published_at: null,
+        reservation_key: null,
+      },
+    });
+
+    await app.close();
+  });
+
+  it('persists a recoverable queue backlog when comment ingest cannot enqueue', async () => {
+    mockPrisma.comment.create.mockResolvedValue({
+      id: 1,
+      canonical_comment_id: 'bilibili:comment-queue-1',
+    });
+    mockCommentQueueAdd.mockRejectedValue(new Error('redis offline'));
+    mockPrisma.commentQueueBacklog.upsert.mockResolvedValue({
+      id: 77,
+    });
+    mockPrisma.operationAuditLog.create.mockResolvedValue({ id: 500 });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/events/comment',
+      payload: {
+        comment_id: 'comment-queue-1',
+        content: 'queue me later',
+        trace_id: 'trace-queue-1',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: false,
+      queued: false,
+      message: 'queue_unavailable',
+      comment_id: 'comment-queue-1',
+      trace_id: 'trace-queue-1',
+      recovery: {
+        backlog_id: 77,
+        status: 'pending_requeue',
+        recoverable: true,
+      },
+    });
+    expect(mockPrisma.commentQueueBacklog.upsert).toHaveBeenCalled();
+    expect(mockPrisma.operationAuditLog.create).toHaveBeenCalledWith({
+      data: {
+        action: 'comment_ingest',
+        target_type: 'reply_job',
+        target_id: null,
+        ok: false,
+        payload: expect.stringContaining('"status":"pending_requeue"'),
+      },
+    });
+
+    await app.close();
+  });
+
+  it('requeues duplicate comment ingests from the durable backlog once the queue returns', async () => {
+    mockPrisma.comment.create.mockRejectedValue(new Error('UNIQUE constraint failed: comments.canonical_comment_id'));
+    mockPrisma.commentQueueBacklog.findUnique.mockResolvedValue({
+      id: 88,
+      canonical_comment_id: 'bilibili:comment-queue-2',
+      status: 'pending_requeue',
+      payload_json: JSON.stringify({
+        comment_id: 'comment-queue-2',
+        content: 'stored payload',
+        platform: 'bilibili',
+        source: 'webhook',
+      }),
+    });
+    mockCommentQueueAdd.mockResolvedValue({ id: 'job-queue-2' });
+    mockPrisma.commentQueueBacklog.update.mockResolvedValue({
+      id: 88,
+    });
+    mockPrisma.operationAuditLog.create.mockResolvedValue({ id: 501 });
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'POST',
+      url: '/events/comment',
+      payload: {
+        comment_id: 'comment-queue-2',
+        content: 'retry now',
+        trace_id: 'trace-queue-2',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      queued: true,
+      message: 'requeued_from_backlog',
+      comment_id: 'comment-queue-2',
+      trace_id: 'trace-queue-2',
+      recovery: {
+        backlog_id: 88,
+        status: 'requeued',
+        recoverable: true,
+        recovered: true,
+      },
+    });
+    expect(mockPrisma.commentQueueBacklog.update).toHaveBeenCalledWith({
+      where: { canonical_comment_id: 'webhook:comment-queue-2' },
+      data: {
+        source: 'webhook',
+        payload_json: expect.any(String),
+        status: 'requeued',
+        last_error: null,
+        queue_attempts: { increment: 1 },
+        last_attempt_at: expect.any(Date),
+        recovered_at: expect.any(Date),
+        updated_at: expect.any(Date),
+      },
+    });
+
+    await app.close();
+  });
 });
 
 describe('default query and export providers', () => {
   it('returns comment details with related jobs from prisma', async () => {
     mockPrisma.comment.findFirst.mockResolvedValue({
       id: 11,
-      platform: 'bilibili',
-      canonical_comment_id: 'bilibili:comment-2',
+      platform: 'qq',
+      canonical_comment_id: 'qq:comment-2',
       comment_id: 'comment-2',
-      video_id: 'video-2',
+      video_id: 'group-2',
       user_id: 'user-2',
       content: '这是评论正文',
-      parent_id: null,
+      parent_id: 'message-root-2',
       created_at: new Date('2026-04-04T08:00:00.000Z'),
     });
     mockPrisma.replyJob.findMany.mockResolvedValue([
       {
         id: 7,
         comment_id: 'comment-2',
-        canonical_comment_id: 'bilibili:comment-2',
+        canonical_comment_id: 'qq:comment-2',
         status: 'published',
         reply_text: '已回复',
         created_at: new Date('2026-04-04T09:00:00.000Z'),
@@ -1398,20 +1595,34 @@ describe('default query and export providers', () => {
       ok: true,
       comment: {
         comment_id: 'comment-2',
-        canonical_comment_id: 'bilibili:comment-2',
-        platform: 'bilibili',
+        canonical_comment_id: 'qq:comment-2',
+        platform: 'qq',
         content: '这是评论正文',
+        route_context: {
+          platform: 'qq',
+          container_id: 'group-2',
+          user_id: 'user-2',
+          parent_external_id: 'message-root-2',
+          chat_type: 'group',
+        },
         created_at: '2026-04-04T08:00:00.000Z',
       },
       jobs: [
         {
           id: 7,
           comment_id: 'comment-2',
-          canonical_comment_id: 'bilibili:comment-2',
+          canonical_comment_id: 'qq:comment-2',
           status: 'published',
           reply_text: '已回复',
           comment_content: '这是评论正文',
-          platform: 'bilibili',
+          platform: 'qq',
+          route_context: {
+            platform: 'qq',
+            container_id: 'group-2',
+            user_id: 'user-2',
+            parent_external_id: 'message-root-2',
+            chat_type: 'group',
+          },
           created_at: '2026-04-04T09:00:00.000Z',
         },
       ],
@@ -1424,20 +1635,20 @@ describe('default query and export providers', () => {
     mockPrisma.replyJob.findUnique.mockResolvedValue({
       id: 101,
       comment_id: 'comment-9',
-      canonical_comment_id: 'bilibili:comment-9',
+      canonical_comment_id: 'qq:comment-9',
       status: 'manual_queue',
       reply_text: '待人工审核回复',
       created_at: new Date('2026-04-04T10:00:00.000Z'),
     });
     mockPrisma.comment.findFirst.mockResolvedValue({
       id: 12,
-      platform: 'bilibili',
-      canonical_comment_id: 'bilibili:comment-9',
+      platform: 'qq',
+      canonical_comment_id: 'qq:comment-9',
       comment_id: 'comment-9',
-      video_id: 'video-9',
+      video_id: 'group-9',
       user_id: 'user-9',
       content: '关联评论内容',
-      parent_id: null,
+      parent_id: 'message-root-9',
       created_at: new Date('2026-04-04T09:30:00.000Z'),
     });
 
@@ -1449,11 +1660,18 @@ describe('default query and export providers', () => {
       ok: true,
       id: 101,
       comment_id: 'comment-9',
-      canonical_comment_id: 'bilibili:comment-9',
+      canonical_comment_id: 'qq:comment-9',
       status: 'manual_queue',
       reply_text: '待人工审核回复',
       comment_content: '关联评论内容',
-      platform: 'bilibili',
+      platform: 'qq',
+      route_context: {
+        platform: 'qq',
+        container_id: 'group-9',
+        user_id: 'user-9',
+        parent_external_id: 'message-root-9',
+        chat_type: 'group',
+      },
       item: {
         id: 101,
         comment_id: 'comment-9',
@@ -1469,7 +1687,7 @@ describe('default query and export providers', () => {
       {
         id: 15,
         comment_id: 'comment-15',
-        canonical_comment_id: 'bilibili:comment-15',
+        canonical_comment_id: 'qq:comment-15',
         status: 'blocked',
         reply_text: null,
         created_at: new Date('2026-04-04T11:00:00.000Z'),
@@ -1478,10 +1696,10 @@ describe('default query and export providers', () => {
     mockPrisma.comment.findMany.mockResolvedValue([
       {
         id: 15,
-        platform: 'bilibili',
-        canonical_comment_id: 'bilibili:comment-15',
+        platform: 'qq',
+        canonical_comment_id: 'qq:comment-15',
         comment_id: 'comment-15',
-        video_id: 'video-15',
+        video_id: '',
         user_id: 'user-15',
         content: '被拦截的评论',
         parent_id: null,
@@ -1512,14 +1730,19 @@ describe('default query and export providers', () => {
         {
           id: 15,
           comment_id: 'comment-15',
-          canonical_comment_id: 'bilibili:comment-15',
+          canonical_comment_id: 'qq:comment-15',
           status: 'blocked',
           reply_text: null,
           style_profile: null,
           role_profile: null,
           role_card_key: null,
           force_long: null,
-          platform: 'bilibili',
+          platform: 'qq',
+          route_context: {
+            platform: 'qq',
+            user_id: 'user-15',
+            chat_type: 'private',
+          },
           created_at: '2026-04-04T11:00:00.000Z',
           updated_at: null,
           comment_content: '被拦截的评论',
@@ -1562,6 +1785,52 @@ describe('default query and export providers', () => {
     expect(response.body).toBe(
       'job_id,comment_id,status,created_at\n21,comment-21,manual_queue,2026-04-04T12:00:00.000Z\n',
     );
+
+    await app.close();
+  });
+
+  it('lists comments with derived route context for QQ records', async () => {
+    mockPrisma.comment.count.mockResolvedValue(1);
+    mockPrisma.comment.findMany.mockResolvedValue([
+      {
+        id: 51,
+        platform: 'qq',
+        canonical_comment_id: 'qq:comment-51',
+        comment_id: 'comment-51',
+        video_id: 'group-51',
+        user_id: 'user-51',
+        content: 'QQ comment',
+        parent_id: 'message-root-51',
+        created_at: new Date('2026-04-04T14:00:00.000Z'),
+      },
+    ]);
+
+    const app = createServer(buildDeps());
+    const response = await app.inject({
+      method: 'GET',
+      url: '/comments?limit=10&offset=0',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      ok: true,
+      total: 1,
+      items: [
+        {
+          id: 51,
+          platform: 'qq',
+          canonical_comment_id: 'qq:comment-51',
+          comment_id: 'comment-51',
+          route_context: {
+            platform: 'qq',
+            container_id: 'group-51',
+            user_id: 'user-51',
+            parent_external_id: 'message-root-51',
+            chat_type: 'group',
+          },
+        },
+      ],
+    });
 
     await app.close();
   });

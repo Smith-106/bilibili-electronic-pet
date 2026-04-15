@@ -25,6 +25,7 @@ export function buildWorkerServices(config: { killSwitch: boolean; roleProfileDe
 
     // Decision
     shouldReply: decider.shouldReply,
+    shouldReplyForInteraction: decider.shouldReplyForInteraction,
     decideSafetyAction: decider.decideSafetyAction,
 
     // Safety
@@ -38,6 +39,7 @@ export function buildWorkerServices(config: { killSwitch: boolean; roleProfileDe
     rememberReplyPhrase: dedupe.rememberReplyPhrase,
 
     // Publishing
+    publishIntentWithResult: publisher.publishIntentWithResult,
     publishReplyWithResult: publisher.publishReplyWithResult,
 
     // Knowledge

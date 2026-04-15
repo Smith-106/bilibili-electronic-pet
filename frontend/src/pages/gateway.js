@@ -19,12 +19,55 @@ export async function render(container) {
         <div style="padding: 16px;">
           <div class="form-row">
             <div class="form-group">
+              <label class="form-label" for="gw-platform">平台</label>
+              <select id="gw-platform" class="form-input">
+                <option value="bilibili">bilibili</option>
+                <option value="qq">qq</option>
+                <option value="douyin">douyin</option>
+                <option value="kuaishou">kuaishou</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label class="form-label" for="gw-comment-id">Comment ID</label>
               <input type="text" id="gw-comment-id" class="form-input" placeholder="评论 ID" />
             </div>
             <div class="form-group">
               <label class="form-label" for="gw-source">来源</label>
               <input type="text" id="gw-source" class="form-input" value="manual" />
+            </div>
+          </div>
+          <div id="gw-qq-route-fields" style="display:none;">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="gw-canonical-id">Canonical ID</label>
+                <input type="text" id="gw-canonical-id" class="form-input" placeholder="qq:message-123" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="gw-container-id">Container ID</label>
+                <input type="text" id="gw-container-id" class="form-input" placeholder="group-42" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="gw-user-id">User ID</label>
+                <input type="text" id="gw-user-id" class="form-input" placeholder="user-42" />
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" for="gw-parent-external-id">Parent External ID</label>
+                <input type="text" id="gw-parent-external-id" class="form-input" placeholder="message-root-42" />
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="gw-chat-type">Chat Type</label>
+                <select id="gw-chat-type" class="form-input">
+                  <option value="">auto</option>
+                  <option value="group">group</option>
+                  <option value="private">private</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="gw-adapter">Adapter</label>
+                <input type="text" id="gw-adapter" class="form-input" value="napcat" />
+              </div>
             </div>
           </div>
           <div class="form-group">
@@ -51,6 +94,7 @@ export async function render(container) {
         <label class="form-label" for="gw-status">发布状态</label>
         <select id="gw-status" class="form-input">
           <option value="">全部</option>
+          <option value="pending">pending</option>
           <option value="published">published</option>
           <option value="failed">failed</option>
           <option value="pending_review">pending_review</option>
@@ -82,13 +126,23 @@ export async function render(container) {
   // Char counter for reply textarea
   const replyEl = container.querySelector('#gw-reply');
   const charCountEl = container.querySelector('#gw-char-count');
+  const platformEl = container.querySelector('#gw-platform');
+  const qqRouteFieldsEl = container.querySelector('#gw-qq-route-fields');
   replyEl.addEventListener('input', () => {
     charCountEl.textContent = `${replyEl.value.length} 字`;
   });
 
+  function syncPlatformFields() {
+    qqRouteFieldsEl.style.display = platformEl.value === 'qq' ? 'block' : 'none';
+  }
+
+  platformEl.addEventListener('change', syncPlatformFields);
+  syncPlatformFields();
+
   // Publish button
   container.querySelector('#gw-publish-btn').addEventListener('click', async () => {
     const btn = container.querySelector('#gw-publish-btn');
+    const platform = container.querySelector('#gw-platform').value.trim();
     const commentId = container.querySelector('#gw-comment-id').value.trim();
     const replyText = container.querySelector('#gw-reply').value.trim();
     const source = container.querySelector('#gw-source').value.trim();
@@ -102,10 +156,46 @@ export async function render(container) {
     btn.disabled = true;
     btn.textContent = '发布中...';
     try {
-      await api.publishGatewayReply({ comment_id: commentId, reply_text: replyText, source, force_publish: force });
+      const payload = {
+        comment_id: commentId,
+        reply_text: replyText,
+        source,
+        force_publish: force,
+      };
+
+      if (platform === 'qq') {
+        const canonicalId = container.querySelector('#gw-canonical-id').value.trim();
+        const containerId = container.querySelector('#gw-container-id').value.trim();
+        const userId = container.querySelector('#gw-user-id').value.trim();
+        const parentExternalId = container.querySelector('#gw-parent-external-id').value.trim();
+        const chatType = container.querySelector('#gw-chat-type').value.trim();
+        const adapter = container.querySelector('#gw-adapter').value.trim();
+        const routingMetadata = {
+          ...(chatType ? { chat_type: chatType } : {}),
+          ...(adapter ? { adapter } : {}),
+        };
+
+        await api.publishPlatformReply('qq', {
+          ...payload,
+          ...(canonicalId ? { canonical_id: canonicalId } : {}),
+          ...(containerId ? { container_id: containerId } : {}),
+          ...(userId ? { user_id: userId } : {}),
+          ...(parentExternalId ? { parent_external_id: parentExternalId } : {}),
+          ...(Object.keys(routingMetadata).length ? { routing_metadata: routingMetadata } : {}),
+        });
+      } else if (platform === 'bilibili') {
+        await api.publishGatewayReply(payload);
+      } else {
+        await api.publishPlatformReply(platform, payload);
+      }
       showToast('发布成功', 'success');
       container.querySelector('#gw-comment-id').value = '';
       container.querySelector('#gw-reply').value = '';
+      container.querySelector('#gw-canonical-id').value = '';
+      container.querySelector('#gw-container-id').value = '';
+      container.querySelector('#gw-user-id').value = '';
+      container.querySelector('#gw-parent-external-id').value = '';
+      container.querySelector('#gw-chat-type').value = '';
       charCountEl.textContent = '0 字';
       await loadAll();
     } catch (err) {
@@ -161,9 +251,20 @@ export async function render(container) {
       const data = await api.getGatewayPublishLogs({ limit, status });
       const items = Array.isArray(data?.items) ? data.items : [];
       const total = Number(data?.total ?? items.length) || items.length;
+      const byStatus = items.reduce((summary, item) => {
+        const key = item.status || 'unknown';
+        summary[key] = (summary[key] || 0) + 1;
+        return summary;
+      }, {});
       meta.textContent = status
         ? `状态 ${status}，返回 ${items.length} / ${total} 条发布日志`
         : `返回 ${items.length} / ${total} 条发布日志`;
+      const statusSummary = Object.entries(byStatus)
+        .map(([key, count]) => `${key}:${count}`)
+        .join('，');
+      if (statusSummary) {
+        meta.textContent += `；当前页状态 ${statusSummary}`;
+      }
 
       if (items.length === 0) {
         wrapper.innerHTML = '<div class="table-empty">暂无发布日志</div>';
@@ -173,6 +274,7 @@ export async function render(container) {
       wrapper.innerHTML = renderTable({
         columns: [
           { key: 'comment_id', label: 'Comment ID', class: 'cell-id', render: (row) => escapeHtml((row.comment_id || row.canonical_comment_id || '-').toString().substring(0, 16)) },
+          { key: 'platform', label: '平台', render: (row) => escapeHtml(row.platform || '-') },
           { key: 'status', label: '状态', render: (row) => renderBadge(row.status) },
           { key: 'source', label: '来源', render: (row) => escapeHtml(row.source || '-') },
           { key: 'failure_reason', label: '失败原因', class: 'cell-truncate', render: (row) => escapeHtml(row.failure_reason || '-') },

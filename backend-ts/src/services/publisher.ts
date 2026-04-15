@@ -6,7 +6,8 @@
  * + Bilibili API integration
  */
 
-import type { PublishReplyService } from './interfaces.js';
+import type { PublishIntentService, PublishReplyService } from './interfaces.js';
+import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
 import { createHash } from 'node:crypto';
@@ -58,6 +59,34 @@ function isCircuitBreakerEnabled(): boolean {
   return process.env.PUBLISHER_CIRCUIT_BREAKER_ENABLED !== 'false';
 }
 
+function isPublishLogStorageError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes('no such table: main.publish_logs') || message.includes('no such column') && message.includes('reservation_key');
+}
+
+async function safeCreatePublishLog(data: {
+  platform: string;
+  canonical_comment_id: string;
+  comment_id: string;
+  reply_hash: string;
+  source: string;
+  status: string;
+  published_at: Date | null;
+  failure_reason: string | null;
+}): Promise<void> {
+  const prisma = getPrisma();
+  try {
+    await prisma.publishLog.create({ data });
+  } catch (error) {
+    if (!isPublishLogStorageError(error)) {
+      throw error;
+    }
+  }
+}
+
 // ── Hash helper ────────────────────────────────────────────
 
 function createReplyHash(commentId: string, replyText: string): string {
@@ -65,33 +94,56 @@ function createReplyHash(commentId: string, replyText: string): string {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
 }
 
+function resolveIntentCommentId(intent: PublishIntent): string {
+  if (intent.target.targetKind !== 'comment-reply') {
+    throw new Error(`unsupported_publish_target:${intent.target.targetKind}`);
+  }
+  return intent.target.externalId;
+}
+
+function resolveIntentReplyText(intent: PublishIntent): string {
+  return intent.payload.text.trim();
+}
+
+function resolveIntentCanonicalCommentId(intent: PublishIntent): string {
+  return intent.target.canonicalId;
+}
+
+function resolveIntentPlatform(intent: PublishIntent): string {
+  return intent.target.platform.trim() || 'unknown';
+}
+
+type PublishLogContext = {
+  platform: string;
+  canonicalCommentId: string;
+  commentId: string;
+  source: string;
+};
+
 // ── Mode implementations ───────────────────────────────────
 
 /**
  * manual_queue mode: Record job for human review
  */
 async function publishManualQueue(
-  commentId: string,
+  context: PublishLogContext,
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
-  const prisma = getPrisma();
-  const replyHash = createReplyHash(commentId, replyText);
+  const replyHash = createReplyHash(context.commentId, replyText);
   const now = new Date();
 
-  await prisma.publishLog.create({
-    data: {
-      platform: 'bilibili',
-      canonical_comment_id: commentId,
-      comment_id: commentId,
-      reply_hash: replyHash,
-      source: 'manual_queue',
-      status: 'pending_review',
-      published_at: now,
-      failure_reason: null,
-    },
+  await safeCreatePublishLog({
+    platform: context.platform,
+    canonical_comment_id: context.canonicalCommentId,
+    comment_id: context.commentId,
+    reply_hash: replyHash,
+    source: context.source,
+    status: 'pending_review',
+    published_at: now,
+    failure_reason: null,
   });
 
-  console.log(`[publisher] Queued for manual review: comment ${commentId}`);
+  console.log(`[publisher] Queued for manual review: comment ${context.commentId}`);
   return [true, 'manual_queued', now, null];
 }
 
@@ -99,27 +151,24 @@ async function publishManualQueue(
  * simulated mode: Simulate successful publish without calling API
  */
 async function publishSimulated(
-  commentId: string,
+  context: PublishLogContext,
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
-  const prisma = getPrisma();
-  const replyHash = createReplyHash(commentId, replyText);
+  const replyHash = createReplyHash(context.commentId, replyText);
   const now = new Date();
 
-  await prisma.publishLog.create({
-    data: {
-      platform: 'bilibili',
-      canonical_comment_id: commentId,
-      comment_id: commentId,
-      reply_hash: replyHash,
-      source: 'simulated',
-      status: 'published',
-      published_at: now,
-      failure_reason: null,
-    },
+  await safeCreatePublishLog({
+    platform: context.platform,
+    canonical_comment_id: context.canonicalCommentId,
+    comment_id: context.commentId,
+    reply_hash: replyHash,
+    source: context.source,
+    status: 'published',
+    published_at: now,
+    failure_reason: null,
   });
 
-  console.log(`[publisher] Simulated publish: comment ${commentId}`);
+  console.log(`[publisher] Simulated publish: comment ${context.commentId}`);
   return [true, 'simulated', now, null];
 }
 
@@ -170,46 +219,40 @@ async function publishWebhook(
  * real_publish mode: Post reply via Bilibili API
  */
 async function publishReal(
-  commentId: string,
+  context: PublishLogContext,
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
-  const result = await postReply(commentId, replyText);
+  const result = await postReply(context.commentId, replyText);
   const publishedAt = new Date();
 
   if (!result.success) {
-    const prisma = getPrisma();
-    const replyHash = createReplyHash(commentId, replyText);
+    const replyHash = createReplyHash(context.commentId, replyText);
 
-    await prisma.publishLog.create({
-      data: {
-        platform: 'bilibili',
-        canonical_comment_id: commentId,
-        comment_id: commentId,
-        reply_hash: replyHash,
-        source: 'bili-pet-bot',
-        status: 'failed',
-        failure_reason: 'publish_failed',
-        published_at: publishedAt,
-      },
+    await safeCreatePublishLog({
+      platform: context.platform,
+      canonical_comment_id: context.canonicalCommentId,
+      comment_id: context.commentId,
+      reply_hash: replyHash,
+      source: context.source,
+      status: 'failed',
+      failure_reason: 'publish_failed',
+      published_at: publishedAt,
     });
 
     return [false, 'publish_failed', publishedAt, null];
   }
 
-  const prisma = getPrisma();
-  const replyHash = createReplyHash(commentId, replyText);
+  const replyHash = createReplyHash(context.commentId, replyText);
 
-  await prisma.publishLog.create({
-    data: {
-      platform: 'bilibili',
-      canonical_comment_id: commentId,
-      comment_id: commentId,
-      reply_hash: replyHash,
-      source: 'bili-pet-bot',
-      status: 'published',
-      published_at: publishedAt,
-      failure_reason: null,
-    },
+  await safeCreatePublishLog({
+    platform: context.platform,
+    canonical_comment_id: context.canonicalCommentId,
+    comment_id: context.commentId,
+    reply_hash: replyHash,
+    source: context.source,
+    status: 'published',
+    published_at: publishedAt,
+    failure_reason: null,
   });
 
   return [true, 'published', publishedAt, { new_rpid: result.rpid }];
@@ -228,17 +271,56 @@ async function publishReal(
  * - real_publish: Call Bilibili API directly
  */
 export const publishReplyWithResult: PublishReplyService = async (commentId, replyText, _traceId?: string) => {
+  return publishIntentWithResult({
+    traceId: _traceId,
+    source: 'legacy-reply-publish',
+    target: {
+      platform: 'bilibili',
+      targetKind: 'comment-reply',
+      externalId: commentId,
+      canonicalId: `bilibili:${commentId}`,
+    },
+    payload: {
+      text: replyText,
+    },
+  });
+};
+
+export const publishIntentWithResult: PublishIntentService = async (intent) => {
+  const commentId = resolveIntentCommentId(intent);
+  const replyText = resolveIntentReplyText(intent);
+  const canonicalCommentId = resolveIntentCanonicalCommentId(intent);
+  const platform = resolveIntentPlatform(intent);
+  const source = intent.source?.trim() || getPublisherMode();
+  const context: PublishLogContext = {
+    platform,
+    canonicalCommentId,
+    commentId,
+    source,
+  };
+
   try {
     // 1. Check duplicate via Publish log
     const prisma = getPrisma();
     const replyHash = createReplyHash(commentId, replyText);
 
-    const existing = await prisma.publishLog.findFirst({
-      where: {
-        canonical_comment_id: commentId,
-        reply_hash: replyHash,
-      },
-    });
+    let existing: { id: number; published_at: Date | null } | null = null;
+    try {
+      existing = await prisma.publishLog.findFirst({
+        where: {
+          canonical_comment_id: canonicalCommentId,
+          reply_hash: replyHash,
+        },
+        select: {
+          id: true,
+          published_at: true,
+        },
+      });
+    } catch (error) {
+      if (!isPublishLogStorageError(error)) {
+        throw error;
+      }
+    }
 
     if (existing) {
       console.log(`[publisher] Duplicate reply for comment ${commentId}, skipping`);
@@ -257,17 +339,17 @@ export const publishReplyWithResult: PublishReplyService = async (commentId, rep
 
     switch (mode) {
       case 'manual_queue':
-        result = await publishManualQueue(commentId, replyText);
+        result = await publishManualQueue(context, replyText);
         break;
       case 'simulated':
-        result = await publishSimulated(commentId, replyText);
+        result = await publishSimulated(context, replyText);
         break;
       case 'webhook':
         result = await publishWebhook(commentId, replyText);
         break;
       case 'real_publish':
       default:
-        result = await publishReal(commentId, replyText);
+        result = await publishReal(context, replyText);
         break;
     }
 
@@ -286,19 +368,16 @@ export const publishReplyWithResult: PublishReplyService = async (commentId, rep
     const publishedAt = new Date();
 
     try {
-      const prisma = getPrisma();
       const replyHash = createReplyHash(commentId, replyText);
-      await prisma.publishLog.create({
-        data: {
-          platform: 'bilibili',
-          canonical_comment_id: commentId,
-          comment_id: commentId,
-          reply_hash: replyHash,
-          source: 'bili-pet-bot',
-          status: 'failed',
-          failure_reason: errorMsg,
-          published_at: publishedAt,
-        },
+      await safeCreatePublishLog({
+        platform,
+        canonical_comment_id: canonicalCommentId,
+        comment_id: commentId,
+        reply_hash: replyHash,
+        source,
+        status: 'failed',
+        failure_reason: errorMsg,
+        published_at: publishedAt,
       });
     } catch (dbError) {
       console.error('[publisher] Failed to record publish log:', dbError);

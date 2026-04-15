@@ -178,6 +178,31 @@ describe('worker integration tests', () => {
       expect(typeof lengthMode).toBe('string');
     });
 
+    it('should reply decision accepts interaction input', async () => {
+      const [should, styleMode, lengthMode] = await mockServices.shouldReplyForInteraction({
+        interaction: {
+          platform: 'bilibili',
+          ingressSource: 'test',
+          reference: {
+            subjectKind: 'comment',
+            externalId: 'test-comment',
+            canonicalId: 'bilibili:test-comment',
+          },
+          content: {
+            text: 'hello there',
+          },
+          legacyComment: {
+            commentId: 'test-comment',
+          },
+        },
+        styleProfile: 'doro',
+      });
+
+      expect(typeof should).toBe('boolean');
+      expect(typeof styleMode).toBe('string');
+      expect(typeof lengthMode).toBe('string');
+    });
+
     it('safety check returns result', async () => {
       const [safe, riskFlags] = await mockServices.safetyCheck('test content');
 
@@ -256,6 +281,44 @@ describe('worker integration tests', () => {
           'test reply',
           'test-trace',
         );
+
+        expect(published).toBe(true);
+        expect(reason).toBe('manual_queued');
+        expect(publishedAt).toBeDefined();
+      } finally {
+        if (originalPublisherMode !== undefined) {
+          process.env.PUBLISHER_MODE = originalPublisherMode;
+        } else {
+          delete process.env.PUBLISHER_MODE;
+        }
+      }
+    });
+
+    it('publishes a platform-agnostic intent through the compatibility publisher', async () => {
+      const originalPublisherMode = process.env.PUBLISHER_MODE;
+      delete process.env.PUBLISHER_MODE;
+
+      try {
+        const [published, reason, publishedAt] = await mockServices.publishIntentWithResult({
+          traceId: 'intent-trace-1',
+          source: 'worker-test',
+          target: {
+            platform: 'qq',
+            targetKind: 'comment-reply',
+            externalId: `intent-message-${Date.now()}`,
+            canonicalId: `qq:intent-message-${Date.now()}`,
+            route: {
+              containerId: 'group-42',
+              parentExternalId: 'message-0',
+              metadata: {
+                chat_type: 'group',
+              },
+            },
+          },
+          payload: {
+            text: 'intent reply',
+          },
+        });
 
         expect(published).toBe(true);
         expect(reason).toBe('manual_queued');

@@ -1,6 +1,7 @@
 .ace-tool/
 node_modules/
 dist/
+.runtime/
 
 /src/generated/prisma
 

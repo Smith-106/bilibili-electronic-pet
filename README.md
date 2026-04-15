@@ -6,6 +6,35 @@
 
 ---
 
+## 最新版本状态
+
+当前正式版本：**v1.2.0**
+
+v1.2.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-first 正式版（含 QQ 试点发布链路）**。
+
+本版本已完成：
+
+- TypeScript 后端正式基线固化
+- Bilibili 主平台链路运行能力
+- companion 电子宠物页面接入与体验增强
+- 管理后台 pet / platform / memory 等运营能力增强
+- `/readiness` foundation / delivery / product 多层门禁升级
+- backend / frontend / pet-companion-web / douyin-sidecar 本地测试与构建验证
+
+平台支持范围：
+
+| 平台 | 状态 |
+|---|---|
+| Bilibili | 正式支持 |
+| Douyin / 抖音 | 试点能力，代码与本地验证已具备，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_DOUYIN_*` 配置 |
+| Kuaishou / 快手 | 预留脚手架，不作为正式交付能力 |
+| QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证 |
+| 微信 | 暂不支持 |
+
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.0
+
+---
+
 ## 1. 当前状态
 
 - 后端：TypeScript + Fastify + Prisma + BullMQ
@@ -14,8 +43,14 @@
 - 队列：BullMQ + Redis
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
+- Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 也已上线；但完整电子宠物闭环仍属于 partial 范围
+- 最新 repo-local 验证快照：`2026-04-13` 本地候选版本已验证，backend `221`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+- 本地 strict 门禁已通过：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key`
+- expanded-scope preflight 已通过：`npm --prefix backend-ts run staging:check -- --preflight-only --expanded-scope-trial --env-file ../.env.expanded-scope.preflight.example`
+- 权威客户交付基线：`WFS-bilibili-delivery-readiness-20260408` 记录的 `2026-04-08` public-domain native Bilibili `GO` 仍是最后一条已签收 baseline
+- 当前远端运行状态：pet-core companion 与 admin pet/platform 路由已上线，但 Douyin 外部平台试点仍未完成远端接入配置
 
-> 注意：仓库内仍残留部分 Python/FastAPI/Celery 风格命名；阅读与运行时优先以当前 `backend-ts/` 与 `frontend/` 目录中的实现为准。
+> 注意：仓库内仍残留部分 Python/FastAPI/Celery 风格命名；阅读与运行时优先以当前 `backend-ts/`、`frontend/`、`pet-companion-web/` 与最新 workflow truth sources 为准。
 
 ---
 
@@ -44,6 +79,7 @@
 - 任务管理
 - 每日指标
 - 知识库管理
+- Memory 管理（spaces / items / grants / identity links）
 - 角色卡管理
 - 风格配置
 - 网关日志
@@ -116,6 +152,10 @@
 │  │  ├─ pages/                # 各页面渲染逻辑
 │  │  ├─ utils/                # 工具函数
 │  │  └─ style.css             # 全局样式
+│  └─ package.json
+├─ pet-companion-web/           # 独立 companion web（已接入 backend 托管与 pet-core 适配，产品范围仍属 partial）
+│  ├─ src/                      # companion UI + backend/local adapter
+│  ├─ test/                     # prototype tests
 │  └─ package.json
 ├─ docker-compose.yml           # 本地/容器编排入口
 ├─ docker-compose.ghcr.yml      # GHCR 镜像部署编排
@@ -226,6 +266,7 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 - `jobs`：任务管理
 - `daily-metrics`：每日指标
 - `knowledge`：知识库
+- `memory`：memory spaces / grants / identity links 管理
 - `role-cards`：角色卡
 - `profiles`：风格配置
 - `gateway`：网关
@@ -1344,6 +1385,8 @@ npm run staging:check -- --preflight-only --env-file .env.staging --report ../st
 
 这里的 CI preflight 主要用于防止 wrapper / workflow / env 契约漂移。它会注入一组 CI placeholder 输入来确保能力矩阵本身保持完整；这并不等价于真实外部交付已经可用。
 
+同一个 `cloud-validate` workflow 现在还会直接执行 `qq-sidecar` 的 `test` 与 `build`，再通过根目录 wrapper 依次运行 `qq-onebot` 与 `qq-e2e` 两条 smoke，避免 QQ 链路只通过后端间接冒烟而缺少 sidecar 自身回归保护，同时确保 CI 自动落盘 JSON 证据。
+
 另外，默认分支 release 路径和手动 release dispatch 现在也会对 `PRE_RELEASE_SMOKE_BASE_URL` / `PRE_RELEASE_SMOKE_API_KEY` 采用 fail-closed 策略：缺少这些 secrets 时，release workflow 会直接失败，而不是静默跳过 real-chain 校验。
 
 如果你在本地跑 `--strict`，还需要满足两条额外前提：
@@ -1370,12 +1413,18 @@ npm run staging:check -- --base-url http://127.0.0.1:18000 --api-key "$API_KEY" 
 
 ```bash
 bash smoke.sh preflight --report ./staging-preflight.json
-bash smoke.sh strict --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
-bash smoke.sh real-chain --base-url http://127.0.0.1:18000 --api-key "$API_KEY"
+bash smoke.sh expanded-preflight --report ./expanded-scope-preflight.json
+bash smoke.sh strict --base-url http://127.0.0.1:18002 --api-key "$API_KEY"
+bash smoke.sh real-chain --base-url http://127.0.0.1:18002 --api-key "$API_KEY"
+bash smoke.sh qq-onebot
+bash smoke.sh qq-e2e
 
 pwsh ./smoke.ps1 preflight --report .\staging-preflight.json
-pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
-pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 expanded-preflight --report .\expanded-scope-preflight.json
+pwsh ./smoke.ps1 strict --base-url http://127.0.0.1:18002 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18002 --api-key "$env:API_KEY"
+pwsh ./smoke.ps1 qq-onebot
+pwsh ./smoke.ps1 qq-e2e
 ```
 
 如果你的目标只是快速复现一个**本地 strict-capable** 运行态，而不是手工启动 Redis、API、再自己拼 `staging-check` 参数，可以使用仓库根目录的一键 helper：
@@ -1383,6 +1432,9 @@ pwsh ./smoke.ps1 real-chain --base-url http://127.0.0.1:18000 --api-key "$env:AP
 ```powershell
 Copy-Item .env.strict.local.example .env.strict.local
 pwsh ./rehearse-local.ps1 strict
+
+Copy-Item .env.expanded-scope.preflight.example .env.expanded-scope.preflight
+pwsh ./smoke.ps1 expanded-preflight --env-file .\.env.expanded-scope.preflight
 
 Copy-Item .env.real-chain.local.example .env.real-chain.local
 pwsh ./rehearse-local.ps1 real-chain
@@ -1393,6 +1445,9 @@ pwsh ./rehearse-local.ps1 real-chain
 ```bash
 cp .env.strict.local.example .env.strict.local
 bash ./rehearse-local.sh strict
+
+cp .env.expanded-scope.preflight.example .env.expanded-scope.preflight
+bash ./smoke.sh expanded-preflight --env-file ./.env.expanded-scope.preflight
 
 cp .env.real-chain.local.example .env.real-chain.local
 bash ./rehearse-local.sh real-chain
@@ -1409,17 +1464,22 @@ bash ./rehearse-local.sh real-chain
 注意：
 
 - `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
+- `.env.expanded-scope.preflight.example` 用来检查 expanded scope 的 `PLATFORM_DOUYIN_*` 前置条件是否齐全；它不证明远端 endpoint/WAF 已经打通。
+- 2026-04-13 已完成一次本地 strict 合同演练：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key` 全通过；这只能证明本地 strict-capable 运行态成立，不能替代远端 Douyin trial 证据。
+- expanded scope 最终 strict 验收的说明模板和 JSON 骨架在：
+  - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
+  - `backend-ts/staging-report.expanded-scope.template.json`
 - `rehearse-local.ps1` / `rehearse-local.sh` 默认会按模式选择 env 文件：
   - `strict` → `.env.strict.local`
   - `real-chain` → `.env.real-chain.local`
 - `real-chain` 仍然需要真实 native auth 可用的目标运行时；`.env.real-chain.local.example` 只是字段模板，不会靠 placeholder 自动通过。
 - helper 在 `real-chain` 模式下会对 `BILIBILI_*` 凭证和 `CREDENTIAL_ENCRYPTION_KEY` 做 fail-fast 校验；如果还是模板值，会在启动 Redis/API 之前直接退出。
 
-如果用 wrapper 模式（`preflight` / `strict` / `real-chain`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
+如果用 wrapper 模式（`preflight` / `expanded-preflight` / `strict` / `real-chain` / `qq-onebot` / `qq-e2e`）但没显式传 `--report`，脚本会自动把机器可读证据写到：
 
 - `./.artifacts/staging/<mode>-<UTC timestamp>.json`
 
-可通过 `SMOKE_REPORT_DIR` 覆盖这个默认目录。若显式传入 `--report`（或环境变量 `REPORT_PATH`），`staging-check` 会在 preflight、通过、失败三种结果下都写出 JSON 报告，便于 CI 与人工留档。
+可通过 `SMOKE_REPORT_DIR` 覆盖这个默认目录。若显式传入 `--report`（或环境变量 `REPORT_PATH`），`staging-check` 会在 preflight、通过、失败三种结果下都写出 JSON 报告，QQ smoke 也会固定输出到指定 JSON，便于 CI 与人工留档。
 
 strict / real-chain 报告里现在还会额外写出：
 
@@ -1511,7 +1571,153 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `.env.example:1` 中给出的 `DATABASE_URL` 仍带有 Python 时代风格的示例值，实际部署要与当前 Prisma / 运行环境匹配
 - `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时，会优先走 B 站原生发布，覆盖普通 `PUBLISHER_MODE`
 - 如果启用网关签名校验，调用方必须与 `GATEWAY_HMAC_SECRET` 保持一致
-- 如果接入 `/gateway/publish/:platform`，还应补充检查 `PLATFORM_BILIBILI_ENABLED`、`PLATFORM_DOUYIN_ENABLED`、`PLATFORM_KUAISHOU_ENABLED` 以及对应的 `*_PUBLISH_SOURCE`
+- 如果接入 `/gateway/publish/:platform`，还应补充检查 `PLATFORM_BILIBILI_ENABLED`、`PLATFORM_QQ_ENABLED`、`PLATFORM_DOUYIN_ENABLED`、`PLATFORM_KUAISHOU_ENABLED` 以及对应的 `*_PUBLISH_SOURCE`
+- 如果你要本地把 Douyin sidecar 一起跑起来，可以使用：
+
+```bash
+docker compose --profile sidecar up -d douyin-sidecar
+```
+
+默认会暴露：
+
+- `http://127.0.0.1:8081/health`
+- `http://127.0.0.1:8081/publish`
+
+本地接主项目时可设置：
+
+- `PLATFORM_DOUYIN_ENABLED=true`
+- `PLATFORM_DOUYIN_WEBHOOK_URL=http://127.0.0.1:8081/publish`
+- `PLATFORM_DOUYIN_WEBHOOK_TOKEN=<与 DOUYIN_SIDECAR_TOKEN 相同>`
+- `PLATFORM_DOUYIN_PUBLISH_SOURCE=douyin-sidecar-trial`
+
+如果你要本地把 QQ sidecar 一起跑起来，可以使用：
+
+```bash
+docker compose --profile sidecar up -d qq-sidecar
+```
+
+默认会暴露：
+
+- `http://127.0.0.1:8082/health`
+- `http://127.0.0.1:8082/publish`
+
+本地接主项目时可设置：
+
+- `PLATFORM_QQ_ENABLED=true`
+- `PLATFORM_QQ_WEBHOOK_URL=http://127.0.0.1:8082/publish`
+- `PLATFORM_QQ_WEBHOOK_TOKEN=<与 QQ_SIDECAR_TOKEN 相同>`
+- `PLATFORM_QQ_PUBLISH_SOURCE=qq-sidecar`
+- `QQ_SIDECAR_TOKEN=<qq-sidecar /publish 鉴权 token>`
+
+如果 QQ sidecar 要直连 NapCat / OneBot HTTP，可以额外设置：
+
+- `QQ_DRIVER_MODE=onebot_http`
+- `QQ_ONEBOT_URL=http://127.0.0.1:3000`
+- `QQ_ONEBOT_TOKEN=<NapCat/OneBot access token>`
+
+如果 `qq-sidecar` 是直接跑在宿主机上的，`QQ_ONEBOT_URL=http://127.0.0.1:3000` 是合理的。
+
+如果 `qq-sidecar` 是通过 `docker compose --profile sidecar up -d qq-sidecar` 跑在容器里的，`127.0.0.1` 只会指向容器自身。这种情况下应改成容器内可达地址，例如 Docker Desktop 常见写法：
+
+- `QQ_ONEBOT_URL=http://host.docker.internal:3000`
+
+当前仓库的 [docker-compose.yml](/D:/工作目录/bilibili电子宠物/docker-compose.yml) 已为 `qq-sidecar` 注入 `host.docker.internal:host-gateway`，因此在支持 `host-gateway` 的 Docker/Compose 环境中，这个地址也能覆盖常见的 Linux 宿主机场景。
+
+如果你要把 `qq-sidecar` 当作一个简单 webhook 转发层，也可以改用：
+
+- `QQ_DRIVER_MODE=webhook_proxy`
+- `QQ_UPSTREAM_URL=<上游 QQ webhook endpoint>`
+- `QQ_UPSTREAM_TOKEN=<可选上游 bearer token>`
+
+当前 `onebot_http` 模式优先支持两类目标：
+
+- 群聊消息：通过 `container_id` 或 `routing_metadata.group_id`
+- 私聊消息：通过 `routing_metadata.user_id`
+
+如果只想在本地快速验证 `qq-sidecar -> OneBot HTTP` 契约，不必手工起 NapCat，可直接运行：
+
+```bash
+npm --prefix qq-sidecar run smoke:onebot
+```
+
+这个脚本会临时启动一个本地 OneBot mock，并验证：
+
+- `GET /health` 在 `QQ_DRIVER_MODE=onebot_http` 下返回已配置状态
+- 群聊发布会命中 `send_group_msg`
+- 私聊发布会命中 `send_private_msg`
+
+如果希望保留机器可读证据，可附带：
+
+```bash
+npm --prefix qq-sidecar run smoke:onebot -- --report ./.artifacts/staging/qq-onebot-local.json
+```
+
+如果你是在仓库根目录执行这条命令，脚本会优先按当前调用目录解析相对 `--report`，因此报告会写回仓库根的 `./.artifacts/staging/`，而不是 `qq-sidecar/.artifacts/`。
+
+如果还要把主服务一起串上，验证 `backend-ts /gateway/publish/qq -> qq-sidecar -> OneBot mock`，可以运行：
+
+```bash
+npm --prefix backend-ts run smoke:qq-sidecar
+```
+
+这个 smoke 会临时拉起：
+
+- 一个 OneBot mock server
+- 一个 `qq-sidecar` 实例
+- 一个使用桩依赖的 `backend-ts` Fastify 实例
+
+然后分别验证 QQ 群聊和私聊两条发布链路都能贯通。
+
+同样可以显式输出报告：
+
+```bash
+npm --prefix backend-ts run smoke:qq-sidecar -- --report ./.artifacts/staging/qq-e2e-local.json
+```
+
+同样地，从仓库根执行时，相对 `--report` 会落到仓库根的 `./.artifacts/staging/`。
+
+GitHub Actions 的 `cloud-validate` 任务会自动上传 `.artifacts/staging/*.json` 与 `backend-ts/ci-preflight-report.json`，方便回看 QQ smoke 和 staging 合同证据。
+
+默认分支的 `build-and-push-ghcr` 和手动触发的 `manual-ghcr-release` 也会上传 `.artifacts/staging/*.json`，这样 release/pre-release smoke 与日常 validate 使用同一套机器可读证据目录。
+
+如果要直接调用主服务的 `POST /gateway/publish/qq`，现在也可以显式带上 QQ 路由上下文。常用字段有：
+
+- `canonical_id`：可选，建议传 `qq:<message_id>`
+- `container_id`：群聊时的 group/chat id
+- `user_id`：私聊用户 id，或作为 QQ sidecar 的补充路由信息
+- `parent_external_id`：被回复的上级消息 id
+- `routing_metadata`：透传给 QQ sidecar / OneBot 适配层的附加字段
+
+群聊示例：
+
+```json
+{
+  "comment_id": "message-123",
+  "canonical_id": "qq:message-123",
+  "container_id": "group-42",
+  "user_id": "user-42",
+  "parent_external_id": "message-root",
+  "routing_metadata": {
+    "chat_type": "group",
+    "adapter": "napcat"
+  },
+  "reply_text": "reply text"
+}
+```
+
+私聊示例：
+
+```json
+{
+  "comment_id": "message-456",
+  "canonical_id": "qq:message-456",
+  "user_id": "user-456",
+  "routing_metadata": {
+    "chat_type": "private"
+  },
+  "reply_text": "reply text"
+}
+```
 
 这些变量可按下面的层次理解：
 
@@ -1726,4 +1932,19 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis` 串成一套可启动的最小部署拓扑
 5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/api/admin.js` 与 `backend-ts/src/main.ts` 的现行契约对齐
 
-这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/` 以及 compose / Dockerfile 中的现行实现，而非旧的 Python 历史描述。
+当前权威交付基线已不是早期的 `rollout blocked` 结论，而是 `WFS-bilibili-delivery-readiness-20260408` 中记录的原生 B 站 public-domain `GO`。也就是说，主运行链路已经有一条已签收的客户交付基线。
+
+当前代码基线还包含两类后续演进中的扩展面：
+
+- `backend-ts` 下的 memory / pet-core schema、repository、service 能力，当前已经暴露为 admin-management 与 companion state-v2 接口，并被 worker / 人工审批流自动写入 companion feed；它已经进入 companion runtime 支撑链路，但主发布业务契约仍以 admin/automation 为主
+- `pet-companion-web/` 下的独立 Vite companion web，当前已由 backend 以 `/companion` 静态托管，并优先尝试接入 backend companion / memory API；但已实现能力仍主要停留在 pet-core starter state + `pat/feed/wake`，尚未形成完整 electronic-pet 产品闭环
+- `douyin-sidecar` 首个外部平台试点已经在代码与远端治理面中存在，但远端真实 sidecar/webhook 契约尚未完成，因此当前仍不能把它描述为已签收的远端能力
+
+因此，当前最准确的状态表述是：
+
+1. 主运行链路已完成迁移，并继续以 `WFS-bilibili-delivery-readiness-20260408` 作为最后一条已签收 rollout baseline
+2. `2026-04-13` 的本地候选版本是当前最强 repo-local 证据：backend `221`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
+3. 远端当前已经上线 pet-core companion 与 admin pet/platform 路由，但首个外部平台试点仍因 Douyin sidecar 契约未完成而保持 disabled
+4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 partial
+
+这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。

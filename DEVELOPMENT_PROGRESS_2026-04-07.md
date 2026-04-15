@@ -108,3 +108,13 @@ Current status can be summarized as:
 3. The public pre-release target is now delivery-ready; remaining risk is operational ownership of external credentials and runtime hygiene, not missing core feature code.
 
 The project is repo-local closed and target-environment validated: backend tests/build and frontend tests/build were already green locally, and the public target now also proves `foundation_ready=true`, `delivery_ready=true`, and `effective_publish_mode=native_bilibili`.
+
+## Follow-Up Snapshot (2026-04-10)
+
+- The authoritative rollout baseline remains the signed-off `GO` state from `WFS-bilibili-delivery-readiness-20260408`; that baseline should continue to be treated as the delivery truth source.
+- A frontend follow-up regression in dashboard smoke coverage was corrected by aligning the smoke harness with the current admin API wrapper contract; frontend tests and build are green again.
+- Two local follow-up surfaces are now explicitly isolated rather than implicitly treated as shipped product code:
+  - backend memory-domain candidate (`schema + repository/service + tests`, now with admin-management routes but still no worker or shipped-frontend consumer)
+  - `pet-companion-web` companion prototype (`local stub` Vite surface, not part of the signed-off runtime path)
+- The current backend suite now validates `187` tests locally, including the new memory admin-management coverage.
+- A follow-up local checkpoint can now include those isolated surfaces without changing the signed-off rollout claim, as long as they continue to be described as candidate/prototype-only rather than active runtime features.

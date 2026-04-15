@@ -1,5 +1,6 @@
 import type { BilibiliAuthProbeResult } from '../services/bilibili-client.js';
 import type { BilibiliRuntimeConfig } from '../services/bilibili-runtime-config.js';
+import type { PetActionName } from './pet-contracts.js';
 import type {
   AdminAuditSummaryResponse,
   AdminGatewayLogsResponse,
@@ -7,9 +8,16 @@ import type {
   BilibiliDiagnostics,
   BilibiliVideo,
   CommentEvent,
+  CompanionState,
+  CompanionStateV2,
   ConnectionStatus,
+  IdentityLink,
   KnowledgeEntry,
+  MemoryGrant,
+  MemoryItem,
+  MemorySpace,
   PlatformName,
+  PlatformConnectionSnapshot,
   PublishExecutionResult,
   PublishFinalizeInput,
   PublishGatewayInput,
@@ -68,6 +76,63 @@ export type ServerDependencies = {
   }) =>
     | Promise<{ ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } }>
     | { ok: boolean; item: { id: number; enabled: boolean; updated_at: string | null } };
+  listMemorySpaces: (input: {
+    limit: number;
+    offset: number;
+    spaceType?: string;
+    subjectType?: string;
+    subjectId?: string;
+  }) => Promise<{ ok: boolean; items: MemorySpace[] }> | { ok: boolean; items: MemorySpace[] };
+  createMemorySpace: (input: {
+    space_key: string;
+    space_type?: string;
+    title: string;
+    summary?: string;
+  }) => Promise<{ ok: boolean; item: MemorySpace }> | { ok: boolean; item: MemorySpace };
+  listMemoryItems: (input: {
+    limit: number;
+    offset: number;
+    spaceId?: number;
+    itemKey?: string;
+    contentType?: string;
+    source?: string;
+  }) => Promise<{ ok: boolean; items: MemoryItem[] }> | { ok: boolean; items: MemoryItem[] };
+  upsertMemoryItem: (input: {
+    space_id: number;
+    item_key: string;
+    content: string;
+    content_type?: string;
+    source?: string;
+    item_metadata?: Record<string, unknown>;
+  }) => Promise<{ ok: boolean; item: MemoryItem }> | { ok: boolean; item: MemoryItem };
+  listMemoryGrants: (input: {
+    limit: number;
+    offset: number;
+    spaceId?: number;
+    subjectType?: string;
+    subjectId?: string;
+  }) => Promise<{ ok: boolean; items: MemoryGrant[] }> | { ok: boolean; items: MemoryGrant[] };
+  grantMemorySpaceAccess: (input: {
+    space_id: number;
+    subject_type: string;
+    subject_id: string;
+    access_level?: string;
+  }) => Promise<{ ok: boolean; item: MemoryGrant }> | { ok: boolean; item: MemoryGrant };
+  listMemoryIdentityLinks: (input: {
+    limit: number;
+    offset: number;
+    subjectType?: string;
+    subjectId?: string;
+    platform?: string;
+    externalId?: string;
+  }) => Promise<{ ok: boolean; items: IdentityLink[] }> | { ok: boolean; items: IdentityLink[] };
+  linkMemoryIdentity: (input: {
+    subject_type: string;
+    subject_id: string;
+    platform?: string;
+    external_id: string;
+    display_name?: string | null;
+  }) => Promise<{ ok: boolean; item: IdentityLink }> | { ok: boolean; item: IdentityLink };
   getStyleProfile: () =>
     | Promise<{ ok: boolean; style_profile: string; preset_profiles: string[] }>
     | { ok: boolean; style_profile: string; preset_profiles: string[] };
@@ -119,8 +184,32 @@ export type ServerDependencies = {
     event: CommentEvent;
     source: string;
   }) =>
-    | Promise<{ ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string }>
-    | { ok: boolean; comment_id: string; trace_id: string; queued?: boolean; message?: string };
+    | Promise<{
+        ok: boolean;
+        comment_id: string;
+        trace_id: string;
+        queued?: boolean;
+        message?: string;
+        recovery?: {
+          backlog_id: number;
+          status: 'pending_requeue' | 'requeued';
+          recoverable: true;
+          recovered?: boolean;
+        };
+      }>
+    | {
+        ok: boolean;
+        comment_id: string;
+        trace_id: string;
+        queued?: boolean;
+        message?: string;
+        recovery?: {
+          backlog_id: number;
+          status: 'pending_requeue' | 'requeued';
+          recoverable: true;
+          recovered?: boolean;
+        };
+      };
   retryJob: (input: {
     jobId: number;
     forceLong?: boolean;
@@ -202,11 +291,26 @@ export type ServerDependencies = {
     bvid: string;
     pollEnabled?: boolean;
   }) => Promise<{ ok: boolean; item: BilibiliVideo }> | { ok: boolean; item: BilibiliVideo };
+  getCompanionState: () => Promise<CompanionState> | CompanionState;
+  getCompanionStateV2: () => Promise<CompanionStateV2> | CompanionStateV2;
+  recordCompanionAction: (input: {
+    action: PetActionName;
+    note?: string;
+  }) => Promise<{ ok: boolean; action: string; item_key: string }> | { ok: boolean; action: string; item_key: string };
+  listPlatformConnections: () =>
+    | Promise<{ ok: boolean; items: PlatformConnectionSnapshot[] }>
+    | { ok: boolean; items: PlatformConnectionSnapshot[] };
+  updatePlatformConnectionControl: (input: {
+    platform: PlatformName;
+    enabled: boolean;
+  }) =>
+    | Promise<{ ok: boolean; item: PlatformConnectionSnapshot }>
+    | { ok: boolean; item: PlatformConnectionSnapshot };
 };
 
 type PublishLogStore = {
-  reserve: (input: PublishReservationInput) => ReservePublishLogResult;
-  finalize: (input: PublishFinalizeInput) => void;
+  reserve: (input: PublishReservationInput) => Promise<ReservePublishLogResult> | ReservePublishLogResult;
+  finalize: (input: PublishFinalizeInput) => Promise<void> | void;
 };
 
 type DefaultServerDependenciesInput = {
@@ -231,6 +335,14 @@ type DefaultServerDependenciesInput = {
   listKnowledgeEntries: ServerDependencies['listKnowledgeEntries'];
   createKnowledgeEntry: ServerDependencies['createKnowledgeEntry'];
   disableKnowledgeEntry: ServerDependencies['disableKnowledgeEntry'];
+  listMemorySpaces: ServerDependencies['listMemorySpaces'];
+  createMemorySpace: ServerDependencies['createMemorySpace'];
+  listMemoryItems: ServerDependencies['listMemoryItems'];
+  upsertMemoryItem: ServerDependencies['upsertMemoryItem'];
+  listMemoryGrants: ServerDependencies['listMemoryGrants'];
+  grantMemorySpaceAccess: ServerDependencies['grantMemorySpaceAccess'];
+  listMemoryIdentityLinks: ServerDependencies['listMemoryIdentityLinks'];
+  linkMemoryIdentity: ServerDependencies['linkMemoryIdentity'];
   getStyleProfile: ServerDependencies['getStyleProfile'];
   setStyleProfile: ServerDependencies['setStyleProfile'];
   getRoleProfile: ServerDependencies['getRoleProfile'];
@@ -256,6 +368,14 @@ type DefaultServerDependenciesInput = {
   }) => ReturnType<ServerDependencies['getBilibiliStatus']>;
   listBilibiliVideos: ServerDependencies['listBilibiliVideos'];
   addBilibiliVideo: ServerDependencies['addBilibiliVideo'];
+  getCompanionState: ServerDependencies['getCompanionState'];
+  getCompanionStateV2: ServerDependencies['getCompanionStateV2'];
+  recordCompanionAction: ServerDependencies['recordCompanionAction'];
+  listPlatformConnections: (settings: RuntimeSettings) => ReturnType<ServerDependencies['listPlatformConnections']>;
+  updatePlatformConnectionControl: (
+    settings: RuntimeSettings,
+    input: { platform: PlatformName; enabled: boolean },
+  ) => ReturnType<ServerDependencies['updatePlatformConnectionControl']>;
 };
 
 export function buildDefaultServerDependencies(input: DefaultServerDependenciesInput): ServerDependencies {
@@ -285,6 +405,14 @@ export function buildDefaultServerDependencies(input: DefaultServerDependenciesI
     listKnowledgeEntries: (knowledgeListInput) => input.listKnowledgeEntries(knowledgeListInput),
     createKnowledgeEntry: (knowledgeCreateInput) => input.createKnowledgeEntry(knowledgeCreateInput),
     disableKnowledgeEntry: (knowledgeDisableInput) => input.disableKnowledgeEntry(knowledgeDisableInput),
+    listMemorySpaces: (memorySpaceListInput) => input.listMemorySpaces(memorySpaceListInput),
+    createMemorySpace: (memorySpaceCreateInput) => input.createMemorySpace(memorySpaceCreateInput),
+    listMemoryItems: (memoryItemListInput) => input.listMemoryItems(memoryItemListInput),
+    upsertMemoryItem: (memoryItemInput) => input.upsertMemoryItem(memoryItemInput),
+    listMemoryGrants: (memoryGrantListInput) => input.listMemoryGrants(memoryGrantListInput),
+    grantMemorySpaceAccess: (memoryGrantInput) => input.grantMemorySpaceAccess(memoryGrantInput),
+    listMemoryIdentityLinks: (memoryIdentityListInput) => input.listMemoryIdentityLinks(memoryIdentityListInput),
+    linkMemoryIdentity: (memoryIdentityInput) => input.linkMemoryIdentity(memoryIdentityInput),
     getStyleProfile: input.getStyleProfile,
     setStyleProfile: (styleProfileInput) => input.setStyleProfile(styleProfileInput),
     getRoleProfile: input.getRoleProfile,
@@ -311,5 +439,10 @@ export function buildDefaultServerDependencies(input: DefaultServerDependenciesI
       }),
     listBilibiliVideos: (videosInput) => input.listBilibiliVideos(videosInput),
     addBilibiliVideo: (addVideoInput) => input.addBilibiliVideo(addVideoInput),
+    getCompanionState: input.getCompanionState,
+    getCompanionStateV2: input.getCompanionStateV2,
+    recordCompanionAction: (actionInput) => input.recordCompanionAction(actionInput),
+    listPlatformConnections: () => input.listPlatformConnections(settings),
+    updatePlatformConnectionControl: (controlInput) => input.updatePlatformConnectionControl(settings, controlInput),
   };
 }

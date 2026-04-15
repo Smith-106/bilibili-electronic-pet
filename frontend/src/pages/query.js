@@ -1,5 +1,5 @@
 import { createAdminApi } from '../api/admin.js';
-import { escapeHtml, renderTimestamp } from '../utils/format.js';
+import { escapeHtml, formatRouteContextLabel, renderTimestamp } from '../utils/format.js';
 import { showToast } from '../components/toast.js';
 import { renderTable } from '../components/table.js';
 
@@ -259,6 +259,12 @@ export async function render(container) {
             label: '评论内容',
             class: 'cell-truncate',
             render: (row) => escapeHtml((row.content || '-').toString().substring(0, 80)),
+          },
+          {
+            key: 'route_context',
+            label: '路由',
+            class: 'cell-truncate',
+            render: (row) => escapeHtml(formatRouteContextLabel(row.route_context)),
           },
           {
             key: 'created_at',

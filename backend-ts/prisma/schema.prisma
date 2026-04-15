@@ -61,6 +61,7 @@ model UserState {
 model PublishLog {
   id                  Int      @id @default(autoincrement())
   platform            String   @default("bilibili")
+  reservation_key     String?  @unique
   canonical_comment_id String
   comment_id          String
   reply_hash          String
@@ -74,7 +75,29 @@ model PublishLog {
   @@index([platform])
   @@index([canonical_comment_id])
   @@index([comment_id])
+  @@index([status])
   @@map("publish_logs")
+}
+
+model CommentQueueBacklog {
+  id                  Int      @id @default(autoincrement())
+  platform            String   @default("bilibili")
+  canonical_comment_id String   @unique
+  comment_id          String
+  source              String   @default("webhook")
+  payload_json        String   @default("{}")
+  status              String   @default("pending_requeue")
+  last_error          String?
+  queue_attempts      Int      @default(0)
+  last_attempt_at     DateTime?
+  recovered_at        DateTime?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+
+  @@index([status])
+  @@index([created_at])
+  @@index([updated_at])
+  @@map("comment_queue_backlogs")
 }
 
 model KnowledgeEntry {
@@ -184,4 +207,116 @@ model BilibiliVideo {
   @@index([last_polled_at])
   @@index([updated_at])
   @@map("bilibili_videos")
+}
+
+model MemorySpace {
+  id         Int      @id @default(autoincrement())
+  space_key  String   @unique
+  space_type String   @default("operator")
+  title      String
+  summary    String   @default("")
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  items  MemoryItem[]
+  grants MemoryGrant[]
+
+  @@index([space_type])
+  @@index([updated_at])
+  @@map("memory_spaces")
+}
+
+model MemoryItem {
+  id            Int      @id @default(autoincrement())
+  space_id      Int
+  item_key      String
+  content       String
+  content_type  String   @default("note")
+  source        String   @default("operator")
+  item_metadata String   @default("{}")
+  created_at    DateTime @default(now())
+  updated_at    DateTime @default(now())
+
+  space MemorySpace @relation(fields: [space_id], references: [id], onDelete: Cascade)
+
+  @@unique([space_id, item_key], name: "uq_memory_items_space_key")
+  @@index([space_id, content_type])
+  @@index([updated_at])
+  @@map("memory_items")
+}
+
+model MemoryGrant {
+  id           Int      @id @default(autoincrement())
+  space_id     Int
+  subject_type String   @default("user")
+  subject_id   String
+  access_level String   @default("read")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+
+  space MemorySpace @relation(fields: [space_id], references: [id], onDelete: Cascade)
+
+  @@unique([space_id, subject_type, subject_id], name: "uq_memory_grants_subject")
+  @@index([subject_type, subject_id])
+  @@index([updated_at])
+  @@map("memory_grants")
+}
+
+model IdentityLink {
+  id           Int      @id @default(autoincrement())
+  subject_type String   @default("user")
+  subject_id   String
+  platform     String   @default("bilibili")
+  external_id  String
+  display_name String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime @default(now())
+
+  @@unique([platform, external_id], name: "uq_identity_links_platform_external")
+  @@index([subject_type, subject_id])
+  @@index([updated_at])
+  @@map("identity_links")
+}
+
+model PetState {
+  id                     Int       @id @default(autoincrement())
+  profile_key            String    @unique @default("default")
+  pet_name               String    @default("Mochi")
+  species                String?
+  archetype              String?
+  mood_label             String    @default("Curious")
+  mood_note              String    @default("Settling into the next interaction loop.")
+  relationship_level     String    @default("Growing")
+  relationship_note      String    @default("Bond is still forming through repeated care actions.")
+  progress_stage         String    @default("starter")
+  progress_label         String    @default("Starter loop")
+  next_milestone         String?
+  last_check_in_at       DateTime?
+  needs_json             String    @default("[]")
+  proactive_signals_json String    @default("[]")
+  state_metadata         String    @default("{}")
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @default(now())
+
+  actions PetAction[]
+
+  @@index([updated_at])
+  @@map("pet_states")
+}
+
+model PetAction {
+  id             Int       @id @default(autoincrement())
+  profile_key    String    @default("default")
+  action         String
+  note           String?
+  event_detail   String
+  state_metadata String    @default("{}")
+  created_at     DateTime  @default(now())
+  pet_state_id   Int?
+
+  pet_state PetState? @relation(fields: [pet_state_id], references: [id], onDelete: SetNull)
+
+  @@index([profile_key, created_at])
+  @@index([pet_state_id, created_at])
+  @@map("pet_actions")
 }

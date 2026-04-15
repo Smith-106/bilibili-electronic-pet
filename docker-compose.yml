@@ -87,6 +87,42 @@ services:
       retries: 5
     restart: unless-stopped
 
+  douyin-sidecar:
+    profiles: ["sidecar"]
+    build:
+      context: ./douyin-sidecar
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - DOUYIN_SIDECAR_TOKEN=${DOUYIN_SIDECAR_TOKEN:-replace-with-sidecar-token}
+      - DOUYIN_DRIVER_MODE=${DOUYIN_DRIVER_MODE:-mock}
+      - DOUYIN_UPSTREAM_URL=${DOUYIN_UPSTREAM_URL:-}
+      - DOUYIN_UPSTREAM_TOKEN=${DOUYIN_UPSTREAM_TOKEN:-}
+    restart: unless-stopped
+
+  qq-sidecar:
+    profiles: ["sidecar"]
+    build:
+      context: ./qq-sidecar
+      dockerfile: Dockerfile
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8082:8080"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8080
+      - QQ_SIDECAR_TOKEN=${QQ_SIDECAR_TOKEN:-replace-with-sidecar-token}
+      - QQ_DRIVER_MODE=${QQ_DRIVER_MODE:-mock}
+      - QQ_UPSTREAM_URL=${QQ_UPSTREAM_URL:-}
+      - QQ_UPSTREAM_TOKEN=${QQ_UPSTREAM_TOKEN:-}
+      - QQ_ONEBOT_URL=${QQ_ONEBOT_URL:-}
+      - QQ_ONEBOT_TOKEN=${QQ_ONEBOT_TOKEN:-}
+    restart: unless-stopped
+
 volumes:
   sqlite-data:
   redis-data:

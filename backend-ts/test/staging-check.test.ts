@@ -24,7 +24,7 @@ function buildSpawnEnv() {
   };
 }
 
-function runPreflight(envText) {
+function runPreflight(envText, extraArgs = []) {
   const tempDir = mkdtempSync(join(tmpdir(), 'staging-check-'));
   const envFile = join(tempDir, 'preflight.env');
   const reportPath = join(tempDir, 'report.json');
@@ -34,7 +34,7 @@ function runPreflight(envText) {
 
   const result = spawnSync(
     process.execPath,
-    [scriptPath, '--preflight-only', '--env-file', envFile, '--report', reportPath],
+    [scriptPath, '--preflight-only', ...extraArgs, '--env-file', envFile, '--report', reportPath],
     {
       cwd: backendRoot,
       env: buildSpawnEnv(),
@@ -87,8 +87,10 @@ async function runStrictWithStubRuntime(envText) {
           ready: true,
           foundation_ready: true,
           delivery_ready: true,
+          product_ready: true,
           foundation_blockers: [],
           delivery_blockers: [],
+          product_blockers: [],
           delivery_capability_blockers: [],
           delivery_capabilities: {
             blockers: [],
@@ -119,7 +121,87 @@ async function runStrictWithStubRuntime(envText) {
             bilibili_publish_enabled: false,
             bilibili_env_credential_configured: false,
           },
+          product_readiness: {
+            pet_core: {
+              ready: true,
+              pet_name: 'Mochi',
+              relationship_level: 'bonded',
+              proactive_signal_count: 1,
+            },
+            companion_surface: {
+              ready: true,
+              pet_name: 'Mochi',
+              status_line: 'Trial ready',
+              interaction_count: 1,
+            },
+            admin_control_plane: {
+              ready: true,
+              platform_count: 2,
+              operator_managed_platforms: 2,
+            },
+            bilibili_reference_platform: {
+              ready: true,
+              status: 'connected',
+              adapter_key: 'bilibili-reference',
+            },
+            external_platform_trial: {
+              ready: true,
+              active_platforms: [
+                {
+                  platform: 'douyin',
+                  status: 'connected',
+                  adapter_key: 'douyin-sidecar-trial',
+                  rollout_enabled: true,
+                  rollout_stage: 'trial',
+                },
+              ],
+            },
+          },
           kill_switch: false,
+        }),
+      );
+      return;
+    }
+    if (url === '/companion/state-v2') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          version: 'v2',
+          snapshot: {
+            profile: {
+              petName: 'Mochi',
+              species: 'fox spirit',
+              archetype: 'listener',
+            },
+            relationship: {
+              level: 'bonded',
+              note: 'Operators keep the loop healthy.',
+            },
+            progress: {
+              stage: 'growth',
+              progressLabel: 'Trial-ready',
+              nextMilestone: 'Signoff',
+            },
+            needs: [],
+            proactiveSignals: [{ key: 'checkin', label: 'Check-in', detail: 'Review douyin rollout.' }],
+          },
+          companion: {
+            petName: 'Mochi',
+            statusLine: 'Trial ready',
+            loopMode: 'Pet-core',
+            lastCheckIn: '2026-04-13T00:00:00.000Z',
+            adapterLabel: 'Pet-core service',
+            loopHint: 'Companion state is live.',
+            mood: {
+              label: 'Confident',
+              note: 'Ready for rollout.',
+            },
+            memoryTitle: 'Pet-core summary',
+            memorySummary: 'Companion state is live.',
+            vitals: [],
+            recentSignals: [],
+            recentInteractions: [],
+          },
         }),
       );
       return;
@@ -127,6 +209,55 @@ async function runStrictWithStubRuntime(envText) {
     if (url === '/api/admin/overview') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url === '/api/admin/pet/overview') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ok: true,
+          item: {
+            version: 'v2',
+            snapshot: {
+              profile: {
+                petName: 'Mochi',
+              },
+              proactiveSignals: [{ key: 'checkin', label: 'Check-in', detail: 'Review douyin rollout.' }],
+            },
+          },
+        }),
+      );
+      return;
+    }
+    if (url === '/api/admin/platforms') {
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ok: true,
+          items: [
+            {
+              platform: 'bilibili',
+              enabled: true,
+              adapterKey: 'bilibili-reference',
+              status: 'connected',
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+              },
+            },
+            {
+              platform: 'douyin',
+              enabled: true,
+              adapterKey: 'douyin-sidecar-trial',
+              status: 'connected',
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+              },
+            },
+          ],
+        }),
+      );
       return;
     }
     if (url === '/api/admin/bilibili/status') {
@@ -248,6 +379,7 @@ BILIBILI_PUBLISH_ENABLED=true
       'search_enrichment',
       'webhook_publish',
       'native_bilibili_publish',
+      'external_platform_trial',
     ]);
   });
 
@@ -275,9 +407,13 @@ CREDENTIAL_ENCRYPTION_KEY=test-secret
     expect(result.stdout).toContain('preflight native_bilibili_publish: status=configured');
     expect(report.status).toBe('preflight_ready');
     expect(report.delivery_preflight.blockers).toEqual([]);
-    expect(
-      report.delivery_preflight.capabilities.every((entry) => entry.status === 'configured'),
-    ).toBe(true);
+    expect(report.delivery_preflight.capabilities).toEqual([
+      expect.objectContaining({ capability: 'llm_generation', status: 'configured' }),
+      expect.objectContaining({ capability: 'search_enrichment', status: 'configured' }),
+      expect.objectContaining({ capability: 'webhook_publish', status: 'configured' }),
+      expect.objectContaining({ capability: 'native_bilibili_publish', status: 'configured' }),
+      expect.objectContaining({ capability: 'external_platform_trial', status: 'inactive' }),
+    ]);
   });
 
   it('treats real_publish mode as native delivery capability and reports missing credentials', () => {
@@ -304,6 +440,38 @@ PUBLISHER_MODE=real_publish
     });
   });
 
+  it('reports missing expanded-scope trial prerequisites when requested', () => {
+    const { result, report } = runPreflight(
+      `
+LLM_PROVIDER=openai
+LLM_API_KEY=sk-test
+SEARCH_PROVIDER=serpapi
+SEARCH_API_KEY=search-key
+PUBLISHER_MODE=manual_queue
+`,
+      ['--expanded-scope-trial'],
+    );
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('preflight external_platform_trial: status=missing_inputs');
+    expect(report.expanded_scope_trial).toBe(true);
+    expect(report.delivery_preflight.blockers).toContain('external_platform_trial');
+
+    const externalTrial = report.delivery_preflight.capabilities.find(
+      (entry) => entry.capability === 'external_platform_trial',
+    );
+    expect(externalTrial).toMatchObject({
+      active: true,
+      mode: 'expanded_scope_trial',
+      status: 'missing_inputs',
+    });
+    expect(externalTrial.missing_inputs).toEqual([
+      'PLATFORM_DOUYIN_ENABLED=true',
+      'PLATFORM_DOUYIN_WEBHOOK_URL',
+      'PLATFORM_DOUYIN_PUBLISH_SOURCE',
+    ]);
+  });
+
   it('records runtime summary and warns when checker env differs from the target runtime', async () => {
     const { result, report } = await runStrictWithStubRuntime(`
 LLM_PROVIDER=mock
@@ -324,9 +492,18 @@ PUBLISHER_MODE=manual_queue
         ready: true,
         foundation_ready: true,
         delivery_ready: true,
+        product_ready: true,
       },
       publish: {
         mode: 'webhook',
+      },
+      pet_core: {
+        public_state_version: 'v2',
+        admin_state_version: 'v2',
+        pet_name: 'Mochi',
+      },
+      platforms: {
+        total: 2,
       },
       bilibili: {
         effective_publish_mode: 'webhook',

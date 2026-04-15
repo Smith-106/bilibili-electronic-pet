@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createServer } from '../src/main.js';
+import { resetPlatformControlState } from '../src/platforms/control-state.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import type { ServerDependencies } from '../src/server/dependencies.js';
 
@@ -27,9 +32,11 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     gatewayToken: '',
     gatewayHmacSecret: '',
     platformBilibiliEnabled: false,
+    platformQqEnabled: false,
     platformDouyinEnabled: false,
     platformKuaishouEnabled: false,
     platformBilibiliPublishSource: 'bilibili-bot',
+    platformQqPublishSource: 'qq-sidecar',
     platformDouyinPublishSource: 'douyin-bot',
     platformKuaishouPublishSource: 'kuaishou-bot',
     ...overrides,
@@ -59,6 +66,15 @@ function buildDeps(overrides: Partial<ServerDependencies> = {}): Partial<ServerD
     ...overrides,
   };
 }
+
+beforeEach(() => {
+  resetPlatformControlState();
+});
+
+afterEach(() => {
+  resetPlatformControlState();
+  delete process.env.PLATFORM_CONTROL_STATE_FILE;
+});
 
 describe('health/readiness parity', () => {
   it('returns ok for /health', async () => {
@@ -93,6 +109,261 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
+  it('serves the companion HTML and referenced hashed assets', async () => {
+    const app = createServer(buildDeps());
+
+    const companionResponse = await app.inject({ method: 'GET', url: '/companion' });
+    expect(companionResponse.statusCode).toBe(200);
+
+    const cssMatch = companionResponse.body.match(/href="([^"]+\.css)"/);
+    const jsMatch = companionResponse.body.match(/src="([^"]+\.js)"/);
+
+    expect(cssMatch?.[1]).toBeTruthy();
+    expect(jsMatch?.[1]).toBeTruthy();
+
+    const cssResponse = await app.inject({ method: 'GET', url: String(cssMatch?.[1]) });
+    const jsResponse = await app.inject({ method: 'GET', url: String(jsMatch?.[1]) });
+
+    expect(cssResponse.statusCode).toBe(200);
+    expect(jsResponse.statusCode).toBe(200);
+
+    await app.close();
+  });
+
+  it('returns companion state without admin auth', async () => {
+    const app = createServer(
+      buildDeps({
+        getCompanionState: async () => ({
+          petName: 'Mochi',
+          statusLine: 'Tracking persisted memory.',
+          loopMode: 'Backend memory companion',
+          lastCheckIn: '2026-04-11T00:00:00.000Z',
+          adapterLabel: 'Backend memory endpoint',
+          loopHint: 'Companion state is sourced from backend memory.',
+          mood: {
+            label: 'Attentive',
+            note: 'Companion sees stored spaces.',
+          },
+          memoryTitle: 'Persisted memory summary',
+          memorySummary: 'Known spaces: Alpha Operator.',
+          vitals: [
+            { label: 'Spaces', value: '1' },
+            { label: 'Grants', value: '1' },
+          ],
+          recentSignals: ['Recent spaces: Alpha Operator'],
+          recentInteractions: [
+            {
+              kind: 'pat',
+              title: 'Pat interaction',
+              detail: 'A gentle pat settled Mochi and raised the bond signal.',
+              timestamp: '2026-04-11T00:00:00.000Z',
+              source: 'Companion Action',
+            },
+          ],
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/companion/state' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      petName: 'Mochi',
+      statusLine: 'Tracking persisted memory.',
+      loopMode: 'Backend memory companion',
+      lastCheckIn: '2026-04-11T00:00:00.000Z',
+      adapterLabel: 'Backend memory endpoint',
+      loopHint: 'Companion state is sourced from backend memory.',
+      mood: {
+        label: 'Attentive',
+        note: 'Companion sees stored spaces.',
+      },
+      memoryTitle: 'Persisted memory summary',
+      memorySummary: 'Known spaces: Alpha Operator.',
+      vitals: [
+        { label: 'Spaces', value: '1' },
+        { label: 'Grants', value: '1' },
+      ],
+      recentSignals: ['Recent spaces: Alpha Operator'],
+      recentInteractions: [
+        {
+          kind: 'pat',
+          title: 'Pat interaction',
+          detail: 'A gentle pat settled Mochi and raised the bond signal.',
+          timestamp: '2026-04-11T00:00:00.000Z',
+          source: 'Companion Action',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('returns a v2 companion envelope without admin auth', async () => {
+    const app = createServer(
+      buildDeps({
+        getCompanionState: async () => ({
+          petName: 'Mochi',
+          statusLine: 'Tracking persisted memory.',
+          loopMode: 'Backend memory companion',
+          lastCheckIn: '2026-04-11T00:00:00.000Z',
+          adapterLabel: 'Backend memory endpoint',
+          loopHint: 'Companion state is sourced from backend memory.',
+          mood: {
+            label: 'Attentive',
+            note: 'Companion sees stored spaces.',
+          },
+          memoryTitle: 'Persisted memory summary',
+          memorySummary: 'Known spaces: Alpha Operator.',
+          vitals: [
+            { label: 'Spaces', value: '1' },
+            { label: 'Grants', value: '1' },
+          ],
+          recentSignals: ['Recent spaces: Alpha Operator'],
+          recentInteractions: [
+            {
+              kind: 'pat',
+              title: 'Pat interaction',
+              detail: 'A gentle pat settled Mochi and raised the bond signal.',
+              timestamp: '2026-04-11T00:00:00.000Z',
+              source: 'Companion Action',
+            },
+          ],
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/companion/state-v2' });
+    const data = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(data.version).toBe('v2');
+    expect(data.snapshot.profile.petName).toBe('Mochi');
+    expect(data.companion.petName).toBe('Mochi');
+
+    await app.close();
+  });
+
+  it('accepts public companion actions', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        recordCompanionAction: async (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            action: input.action,
+            item_key: `action:${input.action}-latest`,
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      payload: {
+        action: 'pat',
+        note: 'soft tap',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        action: 'pat',
+        note: 'soft tap',
+      },
+    ]);
+    expect(response.json()).toEqual({
+      ok: true,
+      action: 'pat',
+      item_key: 'action:pat-latest',
+    });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      payload: {
+        action: 'dance',
+      },
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toEqual({ detail: 'action_invalid' });
+
+    await app.close();
+  });
+
+  it('records pet actions through the protected admin pet route', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+        recordCompanionAction: async (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            action: input.action,
+            item_key: `action:${input.action}-latest`,
+          };
+        },
+      }),
+    );
+
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/api/admin/pet/actions',
+      payload: {
+        action: 'feed',
+      },
+    });
+
+    expect(unauthorized.statusCode).toBe(401);
+    expect(unauthorized.json()).toEqual({ detail: 'unauthorized' });
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: '/api/admin/pet/actions',
+      headers: {
+        'x-api-key': 'admin-key',
+      },
+      payload: {
+        action: 'dance',
+      },
+    });
+
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toEqual({ detail: 'action_invalid' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/pet/actions',
+      headers: {
+        'x-api-key': 'admin-key',
+      },
+      payload: {
+        action: 'feed',
+        note: ' snack top-up ',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        action: 'feed',
+        note: 'snack top-up',
+      },
+    ]);
+    expect(response.json()).toEqual({
+      ok: true,
+      action: 'feed',
+      item_key: 'action:feed-latest',
+    });
+
+    await app.close();
+  });
+
   it('returns readiness payload shape', async () => {
     const app = createServer(buildDeps());
 
@@ -115,6 +386,9 @@ describe('health/readiness parity', () => {
     expect(data).toHaveProperty('delivery_capabilities');
     expect(data).toHaveProperty('delivery_signals');
     expect(data).toHaveProperty('bilibili_diagnostics');
+    expect(data).toHaveProperty('product_ready');
+    expect(data).toHaveProperty('product_blockers');
+    expect(data).toHaveProperty('product_readiness');
 
     expect(typeof data.database).toBe('object');
     expect(typeof data.redis).toBe('object');
@@ -122,13 +396,231 @@ describe('health/readiness parity', () => {
     expect(Array.isArray(data.delivery_blockers)).toBe(true);
     expect(Array.isArray(data.blocking_reasons)).toBe(true);
     expect(Array.isArray(data.delivery_capability_blockers)).toBe(true);
+    expect(Array.isArray(data.product_blockers)).toBe(true);
     expect(Array.isArray(data.delivery_capabilities.capabilities)).toBe(true);
     expect(typeof data.delivery_signals).toBe('object');
     expect(typeof data.bilibili_diagnostics).toBe('object');
+    expect(typeof data.product_ready).toBe('boolean');
+    expect(typeof data.product_readiness).toBe('object');
     expect(data.database).toHaveProperty('connected');
     expect(data.redis).toHaveProperty('connected');
 
     await app.close();
+  });
+
+  it('surfaces product readiness for pet-core and external platform trial gates', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          llmProvider: 'openai',
+          llmApiKeyConfigured: true,
+          searchApiKeyConfigured: true,
+          publisherMode: 'webhook',
+          publisherWebhookUrlConfigured: true,
+          platformDouyinEnabled: true,
+        }),
+        getCompanionStateV2: async () => ({
+          version: 'v2',
+          snapshot: {
+            profile: {
+              petName: 'Mochi',
+              species: 'fox spirit',
+              archetype: 'listener',
+            },
+            relationship: {
+              level: 'bonded',
+              note: 'Operators keep the loop healthy.',
+            },
+            progress: {
+              stage: 'growth',
+              progressLabel: 'Trial-ready',
+              nextMilestone: 'Multi-platform signoff',
+            },
+            needs: [{ key: 'energy', label: 'Energy', value: 'Stable', trend: 'steady' }],
+            proactiveSignals: [
+              {
+                key: 'checkin',
+                label: 'Check-in',
+                detail: 'Prompt the operator to review the douyin rollout.',
+                dueAt: '2026-04-13T00:00:00.000Z',
+              },
+            ],
+          },
+          companion: {
+            petName: 'Mochi',
+            statusLine: 'Trial controls are armed.',
+            loopMode: 'Pet-core',
+            lastCheckIn: '2026-04-13T00:00:00.000Z',
+            adapterLabel: 'Pet-core service',
+            loopHint: 'State comes from the persisted pet core.',
+            mood: {
+              label: 'Confident',
+              note: 'The companion is ready for a staged external rollout.',
+            },
+            memoryTitle: 'Pet-core summary',
+            memorySummary: 'Companion state is live.',
+            vitals: [{ label: 'Signals', value: '1' }],
+            recentSignals: ['Douyin trial connected'],
+            recentInteractions: [
+              {
+                kind: 'signal',
+                title: 'Trial ready',
+                detail: 'The douyin sidecar is connected.',
+                timestamp: '2026-04-13T00:00:00.000Z',
+                source: 'System',
+              },
+            ],
+          },
+        }),
+        listPlatformConnections: async () => ({
+          ok: true,
+          items: [
+            {
+              platform: 'bilibili',
+              enabled: true,
+              adapterKey: 'bilibili-reference',
+              status: 'connected',
+              lastCheckedAt: null,
+              lastError: null,
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+              },
+              capabilities: [
+                { key: 'ingress', status: 'available' },
+                { key: 'publish', status: 'available' },
+              ],
+            },
+            {
+              platform: 'douyin',
+              enabled: true,
+              adapterKey: 'douyin-sidecar-trial',
+              status: 'connected',
+              lastCheckedAt: null,
+              lastError: null,
+              rolloutControl: {
+                enabled: true,
+                stage: 'trial',
+                updatedAt: '2026-04-13T00:00:00.000Z',
+              },
+              capabilities: [
+                { key: 'ingress', status: 'available' },
+                { key: 'publish', status: 'available' },
+              ],
+            },
+          ],
+        }),
+        buildBilibiliDiagnostics: async () => ({
+          ready: true,
+          blocking_reasons: [],
+          effective_publish_mode: 'webhook',
+          checks: {
+            worker_or_publish: { ready: true, errors: [] },
+          },
+          release_gates: {
+            worker_or_publish_ready: true,
+          },
+          signals: {},
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/readiness' });
+    const data = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(data.product_ready).toBe(true);
+    expect(data.product_blockers).toEqual([]);
+    expect(data.product_readiness.pet_core).toMatchObject({
+      ready: true,
+      pet_name: 'Mochi',
+      proactive_signal_count: 1,
+    });
+    expect(data.product_readiness.external_platform_trial).toMatchObject({
+      ready: true,
+    });
+    expect(data.product_readiness.external_platform_trial.active_platforms).toEqual([
+      expect.objectContaining({
+        platform: 'douyin',
+        status: 'connected',
+        rollout_enabled: true,
+        rollout_stage: 'trial',
+      }),
+    ]);
+
+    await app.close();
+  });
+
+  it('marks external sidecar platforms as degraded until their webhooks are configured and keeps bilibili aligned with legacy runtime', async () => {
+    const originalQqWebhook = process.env.PLATFORM_QQ_WEBHOOK_URL;
+    const originalDouyinWebhook = process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    delete process.env.PLATFORM_QQ_WEBHOOK_URL;
+    delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          bilibiliEnabled: true,
+          platformBilibiliEnabled: false,
+          platformQqEnabled: true,
+          platformDouyinEnabled: true,
+        }),
+      }),
+    );
+
+    const response = await app.inject({ method: 'GET', url: '/api/admin/platforms' });
+    const data = response.json();
+    const bilibili = data.items.find((entry: { platform: string }) => entry.platform === 'bilibili');
+    const qq = data.items.find((entry: { platform: string }) => entry.platform === 'qq');
+    const douyin = data.items.find((entry: { platform: string }) => entry.platform === 'douyin');
+
+    expect(response.statusCode).toBe(200);
+    expect(bilibili).toMatchObject({
+      platform: 'bilibili',
+      enabled: true,
+      status: 'connected',
+    });
+    expect(qq).toMatchObject({
+      platform: 'qq',
+      enabled: true,
+      status: 'degraded',
+      lastError: 'sidecar webhook is not configured',
+    });
+    expect(qq.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'publish',
+          status: 'partial',
+        }),
+      ]),
+    );
+    expect(douyin).toMatchObject({
+      platform: 'douyin',
+      enabled: true,
+      status: 'degraded',
+      lastError: 'sidecar webhook is not configured',
+    });
+    expect(douyin.capabilities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'publish',
+          status: 'partial',
+        }),
+      ]),
+    );
+
+    await app.close();
+    if (originalQqWebhook === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_URL = originalQqWebhook;
+    }
+    if (originalDouyinWebhook === undefined) {
+      delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_DOUYIN_WEBHOOK_URL = originalDouyinWebhook;
+    }
   });
 
   it('returns canonical delivery capability names and statuses', async () => {
@@ -575,6 +1067,7 @@ describe('gateway/auth parity', () => {
       buildDeps({
         settings: buildSettings({
           platformBilibiliEnabled: false,
+          platformQqEnabled: false,
           platformDouyinEnabled: false,
           platformKuaishouEnabled: false,
         }),
@@ -582,13 +1075,16 @@ describe('gateway/auth parity', () => {
     );
 
     const bilibili = await app.inject({ method: 'POST', url: '/gateway/publish/bilibili', payload: basePayload });
+    const qq = await app.inject({ method: 'POST', url: '/gateway/publish/qq', payload: basePayload });
     const douyin = await app.inject({ method: 'POST', url: '/gateway/publish/douyin', payload: basePayload });
     const kuaishou = await app.inject({ method: 'POST', url: '/gateway/publish/kuaishou', payload: basePayload });
 
     expect(bilibili.statusCode).toBe(403);
+    expect(qq.statusCode).toBe(403);
     expect(douyin.statusCode).toBe(403);
     expect(kuaishou.statusCode).toBe(403);
     expect(bilibili.json()).toEqual({ detail: 'platform_disabled' });
+    expect(qq.json()).toEqual({ detail: 'platform_disabled' });
     expect(douyin.json()).toEqual({ detail: 'platform_disabled' });
     expect(kuaishou.json()).toEqual({ detail: 'platform_disabled' });
 
@@ -699,6 +1195,359 @@ describe('gateway/auth parity', () => {
     await app.close();
   });
 
+  it('allows operators to pause and resume a platform trial', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-douyin-control' }),
+        finalizePublishLog: () => undefined,
+        publishPlatformReply: () => ({
+          published: true,
+          reason: 'trial_publish_ok',
+          publishedAt: new Date('2026-03-07T02:30:00.000Z'),
+        }),
+      }),
+    );
+
+    const paused = await app.inject({
+      method: 'POST',
+      url: '/api/admin/platforms/douyin/control',
+      payload: { enabled: false },
+    });
+    expect(paused.statusCode).toBe(200);
+    expect(paused.json().item.rolloutControl.enabled).toBe(false);
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-douyin-2',
+        reply_text: 'reply text',
+        trace_id: 'trace-douyin-2',
+      },
+    });
+    expect(blocked.statusCode).toBe(403);
+
+    const resumed = await app.inject({
+      method: 'POST',
+      url: '/api/admin/platforms/douyin/control',
+      payload: { enabled: true },
+    });
+    expect(resumed.statusCode).toBe(200);
+    expect(resumed.json().item.rolloutControl.enabled).toBe(true);
+
+    const allowed = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-douyin-2',
+        reply_text: 'reply text',
+        trace_id: 'trace-douyin-2',
+      },
+    });
+    expect(allowed.statusCode).toBe(200);
+    expect(allowed.json().published).toBe(true);
+
+    await app.close();
+  });
+
+  it('keeps platform rollout controls durable across server restarts', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'platform-control-main-'));
+    process.env.PLATFORM_CONTROL_STATE_FILE = join(tempDir, 'control-state.json');
+
+    const { createServer: createFirstServer } = await import('../src/main.js');
+    const firstApp = createFirstServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+      }),
+    );
+
+    const paused = await firstApp.inject({
+      method: 'POST',
+      url: '/api/admin/platforms/douyin/control',
+      payload: { enabled: false },
+    });
+    expect(paused.statusCode).toBe(200);
+    await firstApp.close();
+
+    vi.resetModules();
+    const { createServer: createSecondServer } = await import('../src/main.js');
+    const secondApp = createSecondServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+      }),
+    );
+
+    const platformResponse = await secondApp.inject({ method: 'GET', url: '/api/admin/platforms' });
+    const douyin = platformResponse
+      .json()
+      .items.find((entry: { platform: string }) => entry.platform === 'douyin');
+    expect(douyin).toMatchObject({
+      platform: 'douyin',
+      enabled: false,
+      rolloutControl: {
+        enabled: false,
+        stage: 'paused',
+      },
+    });
+
+    const blocked = await secondApp.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-durable-douyin',
+        reply_text: 'reply text',
+      },
+    });
+    expect(blocked.statusCode).toBe(403);
+
+    await secondApp.close();
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('uses the default sidecar webhook publisher for douyin when configured', async () => {
+    const originalUrl = process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    const originalToken = process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN;
+    process.env.PLATFORM_DOUYIN_WEBHOOK_URL = 'https://sidecar.example.test/publish';
+    process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN = 'secret-token';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        published: true,
+        reason: 'sidecar_publish_ok',
+        published_at: '2026-03-07T03:00:00.000Z',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const finalized: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformDouyinEnabled: true,
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-dy-sidecar' }),
+        finalizePublishLog: (input) => {
+          finalized.push(input as unknown as Record<string, unknown>);
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/douyin',
+      payload: {
+        comment_id: 'comment-douyin-sidecar',
+        reply_text: 'reply text',
+        trace_id: 'trace-douyin-sidecar',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      published: true,
+      reason: 'sidecar_publish_ok',
+      comment_id: 'comment-douyin-sidecar',
+      published_at: '2026-03-07T03:00:00.000Z',
+      trace_id: 'trace-douyin-sidecar',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://sidecar.example.test/publish',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer secret-token',
+        }),
+      }),
+    );
+    expect(finalized[0]).toMatchObject({
+      source: 'douyin-bot',
+      status: 'published',
+    });
+
+    await app.close();
+    vi.unstubAllGlobals();
+    if (originalUrl === undefined) {
+      delete process.env.PLATFORM_DOUYIN_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_DOUYIN_WEBHOOK_URL = originalUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN;
+    } else {
+      process.env.PLATFORM_DOUYIN_WEBHOOK_TOKEN = originalToken;
+    }
+  });
+
+  it('uses the default sidecar webhook publisher for qq when configured', async () => {
+    const originalUrl = process.env.PLATFORM_QQ_WEBHOOK_URL;
+    const originalToken = process.env.PLATFORM_QQ_WEBHOOK_TOKEN;
+    process.env.PLATFORM_QQ_WEBHOOK_URL = 'https://qq-sidecar.example.test/publish';
+    process.env.PLATFORM_QQ_WEBHOOK_TOKEN = 'qq-secret-token';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        published: true,
+        reason: 'qq_sidecar_publish_ok',
+        published_at: '2026-04-14T12:30:00.000Z',
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const finalized: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformQqEnabled: true,
+          platformQqPublishSource: 'qq-sidecar',
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-qq-sidecar' }),
+        finalizePublishLog: (input) => {
+          finalized.push(input as unknown as Record<string, unknown>);
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/qq',
+      payload: {
+        comment_id: 'comment-qq-sidecar',
+        canonical_id: 'qq:comment-qq-sidecar',
+        container_id: 'group-42',
+        user_id: 'user-42',
+        parent_external_id: 'message-0',
+        routing_metadata: {
+          chat_type: 'group',
+          adapter: 'napcat',
+        },
+        reply_text: 'reply text',
+        trace_id: 'trace-qq-sidecar',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      published: true,
+      reason: 'qq_sidecar_publish_ok',
+      comment_id: 'comment-qq-sidecar',
+      published_at: '2026-04-14T12:30:00.000Z',
+      trace_id: 'trace-qq-sidecar',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://qq-sidecar.example.test/publish',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer qq-secret-token',
+        }),
+        body: JSON.stringify({
+          platform: 'qq',
+          target_kind: 'comment-reply',
+          comment_id: 'comment-qq-sidecar',
+          canonical_id: 'qq:comment-qq-sidecar',
+          container_id: 'group-42',
+          parent_external_id: 'message-0',
+          routing_metadata: {
+            chat_type: 'group',
+            adapter: 'napcat',
+            user_id: 'user-42',
+          },
+          reply_text: 'reply text',
+          force_publish: false,
+          trace_id: 'trace-qq-sidecar',
+        }),
+      }),
+    );
+    expect(finalized[0]).toMatchObject({
+      source: 'qq-sidecar',
+      status: 'published',
+    });
+
+    await app.close();
+    vi.unstubAllGlobals();
+    if (originalUrl === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_URL;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_URL = originalUrl;
+    }
+    if (originalToken === undefined) {
+      delete process.env.PLATFORM_QQ_WEBHOOK_TOKEN;
+    } else {
+      process.env.PLATFORM_QQ_WEBHOOK_TOKEN = originalToken;
+    }
+  });
+
+  it('passes QQ route context through platform publish input when a platform route is mocked', async () => {
+    let capturedInput: Record<string, unknown> | null = null;
+
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({
+          platformQqEnabled: true,
+        }),
+        reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-qq-context' }),
+        finalizePublishLog: () => undefined,
+        publishPlatformReply: (input) => {
+          capturedInput = input as unknown as Record<string, unknown>;
+          return {
+            published: true,
+            reason: 'platform_publish_ok',
+            publishedAt: new Date('2026-04-14T13:00:00.000Z'),
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/gateway/publish/qq',
+      payload: {
+        comment_id: 'message-qq-1',
+        canonical_id: 'qq:message-qq-1',
+        container_id: 'group-99',
+        user_id: 'user-99',
+        parent_external_id: 'message-root',
+        routing_metadata: {
+          chat_type: 'group',
+          adapter: 'napcat',
+        },
+        reply_text: 'reply text',
+        force_publish: true,
+        trace_id: 'trace-qq-1',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(capturedInput).toEqual({
+      platform: 'qq',
+      commentId: 'message-qq-1',
+      canonicalId: 'qq:message-qq-1',
+      containerId: 'group-99',
+      userId: 'user-99',
+      parentExternalId: 'message-root',
+      routingMetadata: {
+        chat_type: 'group',
+        adapter: 'napcat',
+      },
+      replyText: 'reply text',
+      forcePublish: true,
+      traceId: 'trace-qq-1',
+    });
+
+    await app.close();
+  });
+
   it('standardizes gateway publish failure reasons', async () => {
     const cases = [
       { input: 'upstream_status_502', expected: '5xx' },
@@ -710,6 +1559,7 @@ describe('gateway/auth parity', () => {
       const app = createServer(
         buildDeps({
           reservePublishLog: () => ({ duplicate: false, reservationKey: `reservation-${testCase.expected}` }),
+          finalizePublishLog: () => undefined,
           publishGatewayReply: () => ({ published: false, reason: testCase.input }),
         }),
       );
@@ -1084,6 +1934,434 @@ describe('admin api parity', () => {
         updated_at: '2026-03-08T02:00:00.000Z',
       },
     });
+
+    await app.close();
+  });
+
+  it('requires auth for memory spaces list', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/spaces',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ detail: 'unauthorized' });
+
+    await app.close();
+  });
+
+  it('lists memory spaces with filtering and query clamping', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemorySpaces: (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 7,
+                space_key: 'operator:alpha',
+                space_type: 'operator',
+                title: 'Alpha Operator',
+                summary: 'Primary operator memory',
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:05:00.000Z',
+              },
+            ],
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/spaces?limit=9999&offset=-5&space_type=operator',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        spaceType: 'operator',
+        subjectType: undefined,
+        subjectId: undefined,
+      },
+    ]);
+    expect(response.json()).toEqual({
+      ok: true,
+      items: [
+        {
+          id: 7,
+          space_key: 'operator:alpha',
+          space_type: 'operator',
+          title: 'Alpha Operator',
+          summary: 'Primary operator memory',
+          created_at: '2026-04-11T00:00:00.000Z',
+          updated_at: '2026-04-11T00:05:00.000Z',
+        },
+      ],
+    });
+
+    await app.close();
+  });
+
+  it('creates a memory space with validation', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        createMemorySpace: (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 7,
+              space_key: input.space_key,
+              space_type: input.space_type ?? 'operator',
+              title: input.title,
+              summary: input.summary ?? '',
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:05:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/spaces',
+      payload: {
+        space_key: '  operator:alpha  ',
+        space_type: '  operator  ',
+        title: '  Alpha Operator  ',
+        summary: '  Primary operator memory  ',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        space_key: 'operator:alpha',
+        space_type: 'operator',
+        title: 'Alpha Operator',
+        summary: 'Primary operator memory',
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/spaces',
+      payload: {
+        title: 'Missing key',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'space_key_required' });
+
+    await app.close();
+  });
+
+  it('lists and upserts memory items', async () => {
+    const listCaptured: Array<Record<string, unknown>> = [];
+    const writeCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemoryItems: (input) => {
+          listCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 21,
+                space_id: 7,
+                item_key: 'status:latest',
+                content: 'Operator alpha is attentive.',
+                content_type: 'summary',
+                source: 'companion',
+                item_metadata: { score: 0.8 },
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:10:00.000Z',
+              },
+            ],
+          };
+        },
+        upsertMemoryItem: (input) => {
+          writeCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 21,
+              space_id: input.space_id,
+              item_key: input.item_key,
+              content: input.content,
+              content_type: input.content_type ?? 'note',
+              source: input.source ?? 'operator',
+              item_metadata: input.item_metadata ?? {},
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:10:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/items?space_id=7&content_type=summary&limit=9999&offset=-5',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listCaptured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        spaceId: 7,
+        itemKey: undefined,
+        contentType: 'summary',
+        source: undefined,
+      },
+    ]);
+
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/items',
+      payload: {
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: { score: 0.8 },
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(writeCaptured).toEqual([
+      {
+        space_id: 7,
+        item_key: 'status:latest',
+        content: 'Operator alpha is attentive.',
+        content_type: 'summary',
+        source: 'companion',
+        item_metadata: { score: 0.8 },
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/items',
+      payload: {
+        space_id: 7,
+        item_key: '',
+        content: '',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'item_key_required' });
+
+    await app.close();
+  });
+
+  it('lists and upserts memory grants', async () => {
+    const listCaptured: Array<Record<string, unknown>> = [];
+    const writeCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemoryGrants: (input) => {
+          listCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 3,
+                space_id: 7,
+                subject_type: 'operator',
+                subject_id: 'alice',
+                access_level: 'write',
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:05:00.000Z',
+              },
+            ],
+          };
+        },
+        grantMemorySpaceAccess: (input) => {
+          writeCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 3,
+              space_id: input.space_id,
+              subject_type: input.subject_type,
+              subject_id: input.subject_id,
+              access_level: input.access_level ?? 'read',
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:05:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/grants?space_id=7&limit=9999&offset=-5&subject_type=operator&subject_id=alice',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listCaptured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        spaceId: 7,
+        subjectType: 'operator',
+        subjectId: 'alice',
+      },
+    ]);
+
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/grants',
+      payload: {
+        space_id: 7,
+        subject_type: 'operator',
+        subject_id: 'alice',
+        access_level: 'write',
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(writeCaptured).toEqual([
+      {
+        space_id: 7,
+        subject_type: 'operator',
+        subject_id: 'alice',
+        access_level: 'write',
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/grants',
+      payload: {
+        subject_type: 'operator',
+        subject_id: 'alice',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'space_id_required' });
+
+    await app.close();
+  });
+
+  it('lists and upserts memory identity links', async () => {
+    const listCaptured: Array<Record<string, unknown>> = [];
+    const writeCaptured: Array<Record<string, unknown>> = [];
+
+    const app = createServer(
+      buildDeps({
+        listMemoryIdentityLinks: (input) => {
+          listCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            items: [
+              {
+                id: 9,
+                subject_type: 'operator',
+                subject_id: 'alice',
+                platform: 'bilibili',
+                external_id: 'uid-42',
+                display_name: 'Alice',
+                created_at: '2026-04-11T00:00:00.000Z',
+                updated_at: '2026-04-11T00:05:00.000Z',
+              },
+            ],
+          };
+        },
+        linkMemoryIdentity: (input) => {
+          writeCaptured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            item: {
+              id: 9,
+              subject_type: input.subject_type,
+              subject_id: input.subject_id,
+              platform: input.platform ?? 'bilibili',
+              external_id: input.external_id,
+              display_name: input.display_name ?? null,
+              created_at: '2026-04-11T00:00:00.000Z',
+              updated_at: '2026-04-11T00:05:00.000Z',
+            },
+          };
+        },
+      }),
+    );
+
+    const listResponse = await app.inject({
+      method: 'GET',
+      url: '/api/admin/memory/identity-links?limit=9999&offset=-5&subject_type=operator&subject_id=alice&platform=bilibili&external_id=uid-42',
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listCaptured).toEqual([
+      {
+        limit: 1000,
+        offset: 0,
+        subjectType: 'operator',
+        subjectId: 'alice',
+        platform: 'bilibili',
+        externalId: 'uid-42',
+      },
+    ]);
+
+    const postResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/identity-links',
+      payload: {
+        subject_type: 'operator',
+        subject_id: 'alice',
+        platform: 'bilibili',
+        external_id: 'uid-42',
+        display_name: 'Alice',
+      },
+    });
+
+    expect(postResponse.statusCode).toBe(200);
+    expect(writeCaptured).toEqual([
+      {
+        subject_type: 'operator',
+        subject_id: 'alice',
+        platform: 'bilibili',
+        external_id: 'uid-42',
+        display_name: 'Alice',
+      },
+    ]);
+
+    const invalidResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/identity-links',
+      payload: {
+        subject_type: 'operator',
+        subject_id: 'alice',
+      },
+    });
+
+    expect(invalidResponse.statusCode).toBe(400);
+    expect(invalidResponse.json()).toEqual({ detail: 'external_id_required' });
 
     await app.close();
   });

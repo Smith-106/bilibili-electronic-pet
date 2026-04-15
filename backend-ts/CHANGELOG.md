@@ -4,27 +4,48 @@ All notable changes to the TypeScript backend migration project.
 
 Entries below describe the migration snapshot that was current on each release date. They are historical release notes, not a statement of the repository's current runtime completeness.
 
-## [Unreleased] - 2026-04-07
+## [Unreleased]
+
+## [1.2.0] - 2026-04-15
 
 ### Added
 
-- `staging-check` gained explicit preflight diagnostics (`--preflight-only`) with canonical capability reporting for:
-  - `llm_generation`
-  - `search_enrichment`
-  - `webhook_publish`
-  - `native_bilibili_publish`
-- `/readiness` now surfaces `delivery_capability_blockers` and `delivery_capabilities` so runtime probes and staging checks share one capability contract.
-- Backend integration coverage was expanded for configured vs fallback branches across generator/search/publisher/bilibili-runtime flows.
+- QQ sidecar 发布链路已纳入正式发布基线，新增 `qq-sidecar` 服务、OneBot smoke 脚本、QQ 端到端 smoke 校验与对应的 Docker/Compose 接入。
+- 后端新增 interaction event 兼容层、interaction-aware reply decision 入口与 QQ 路由上下文控制，为多平台发布演进提供兼容迁移面。
 
 ### Changed
 
-- Release rehearsal entrypoints are now aligned across wrappers and CI (`preflight | strict | real-chain`).
-- Admin UI diagnostics flow consumes `/readiness` capability output (via frontend integration) to expose foundation/delivery status and canonical capability blockers.
-- Backend test suite count increased from `161` to `172` after delivery-contract and branch-coverage additions.
+- `cloud-validate`、`e2e-user-simulation` 与 `manual-ghcr-release` workflow 已补齐 strict smoke 与 QQ trial 所需环境，并修复 strict smoke 启动等待与分支触发范围。
+- QQ smoke 报告路径在 Git Bash / Windows / CI 场景下统一规范化，发布日志兼容旧 `publish_log` schema 漂移。
+- README 与发布说明更新为 v1.2.0 基线，明确当前平台范围为 Bilibili 正式支持、QQ 试点支持、Douyin 试点能力、微信暂不支持。
 
 ### Notes
 
-- This branch is close to pre-release hardening completion, but production-grade external delivery still depends on runtime secrets, active credentials, and target environment health.
+- 本次版本是在 v1.1.0 基础上增加 QQ 试点发布能力与发布流程加固的次版本发布。
+- QQ 当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，但仍按试点支持管理，不作为与 Bilibili 等同等级的正式主平台。
+- Douyin 仍为试点能力，远端 rollout 仍依赖 verified sidecar endpoint 与最终运行时配置。
+
+## [1.1.0] - 2026-04-14
+
+### Added
+
+- Pet-core companion surface is now bundled and served from the backend, with `/companion` and `/companion/state-v2` supporting the operator-facing electronic pet experience.
+- Companion interaction flows gained timeline, action note, keyboard shortcut, focus-management, and live-status improvements across the shipped web surface.
+- Admin control plane now includes memory management, pet/platform routes, and richer readiness diagnostics for delivery and product gates.
+- External platform trial groundwork was added for Douyin via the governed `douyin-sidecar` service, sidecar deployment profile, retry tooling, and operator runbook.
+- Expanded-scope delivery preflight and strict-check flows were added so release rehearsals can validate canonical capability blockers before rollout.
+
+### Changed
+
+- `/readiness` now reports foundation, delivery, and product-level gates together, including external-platform trial blockers and canonical delivery capability details.
+- Frontend/admin assets and companion bundle are refreshed to align with the backend-delivered runtime.
+- Local release verification now covers backend, frontend, companion, and Douyin sidecar test/build flows as one candidate checkpoint.
+
+### Notes
+
+- This release is suitable as the formal Bilibili-first baseline for the current repository state.
+- Douyin remains a trial capability: code and local validation are present, but remote rollout still depends on a verified external sidecar endpoint and final `PLATFORM_DOUYIN_*` runtime configuration.
+- QQ and 微信 are not part of the supported platform scope for this release.
 
 ## [1.0.0] - 2026-03-28
 

@@ -3,7 +3,13 @@
  * Migrated from Python: app/services/decider.py
  */
 
-import type { ShouldReplyService, DecideSafetyActionService } from './interfaces.js';
+import type {
+  DecideSafetyActionService,
+  InteractionDecisionInput,
+  LegacyShouldReplyInput,
+  ShouldReplyForInteractionService,
+  ShouldReplyService,
+} from './interfaces.js';
 import { prisma as getPrisma } from './db-queries.js';
 
 /**
@@ -234,29 +240,68 @@ function calculateReplyProbability(
  * Returns: [should_reply, style_mode, length_mode]
  */
 export const shouldReply: ShouldReplyService = async (event) => {
+  return shouldReplyForInteraction({
+    interaction: legacyShouldReplyInputToInteraction(event),
+    forceLong: event.force_long,
+    styleProfile: event.style_profile,
+    roleProfile: event.role_profile,
+    roleCardKey: event.role_card_key,
+  });
+};
+
+function legacyShouldReplyInputToInteraction(event: LegacyShouldReplyInput): InteractionDecisionInput['interaction'] {
+  const platform = (event.platform ?? '').trim().toLowerCase() || 'unknown';
+
+  return {
+    platform,
+    ingressSource: 'legacy-should-reply',
+    traceId: event.trace_id,
+    actor: event.user_id ? { platformUserId: event.user_id } : undefined,
+    reference: {
+      subjectKind: 'comment',
+      externalId: event.comment_id,
+      canonicalId: `${platform}:${event.comment_id}`,
+      containerId: event.video_id,
+      parentExternalId: event.parent_id,
+    },
+    content: {
+      text: event.content,
+    },
+    legacyComment: {
+      commentId: event.comment_id,
+      videoId: event.video_id,
+      parentId: event.parent_id,
+    },
+  };
+}
+
+export const shouldReplyForInteraction: ShouldReplyForInteractionService = async (input) => {
   const rules = loadReplyRules();
+  const event = input.interaction;
+  const styleProfile = input.styleProfile || 'doro';
+  const actorUserId = event.actor?.platformUserId;
+  const content = event.content.text || '';
 
   // 1. Check force flags first (highest priority)
-  if (event.force_long) {
-    return [true, event.style_profile || 'doro', 'long'];
+  if (input.forceLong) {
+    return [true, styleProfile, 'long'];
   }
 
   // 2. Check global cooldown toggle
   if (!rules.globalCooldownEnabled) {
-    return [true, event.style_profile || 'doro', 'medium'];
+    return [true, styleProfile, 'medium'];
   }
 
   // 3. Check user cooldown (if user_id provided)
-  if (event.user_id) {
-    const cooldown = await checkUserCooldown(event.user_id, rules);
+  if (actorUserId) {
+    const cooldown = await checkUserCooldown(actorUserId, rules);
     if (cooldown.inCooldown) {
-      console.log(`[shouldReply] User ${event.user_id} in cooldown for ${cooldown.remainingMinutes} more minutes`);
-      return [false, event.style_profile || 'doro', 'medium'];
+      console.log(`[shouldReply] User ${actorUserId} in cooldown for ${cooldown.remainingMinutes} more minutes`);
+      return [false, styleProfile, 'medium'];
     }
   }
 
   // 4. Analyze content
-  const content = event.content || '';
   const contentAnalysis = analyzeContent(content, rules);
 
   // Reject if content length invalid
@@ -264,7 +309,7 @@ export const shouldReply: ShouldReplyService = async (event) => {
     console.log(
       `[shouldReply] Content length ${contentAnalysis.length} outside bounds [${rules.minContentLength}, ${rules.maxContentLength}]`,
     );
-    return [false, event.style_profile || 'doro', 'medium'];
+    return [false, styleProfile, 'medium'];
   }
 
   // 5. Check time window
@@ -277,7 +322,7 @@ export const shouldReply: ShouldReplyService = async (event) => {
   const shouldReplyFlag = Math.random() < probability;
 
   // 8. Determine style and length
-  const styleMode = event.style_profile || 'doro';
+  const styleMode = styleProfile;
   const lengthMode = content.length > 100 ? 'long' : 'medium';
 
   console.log(

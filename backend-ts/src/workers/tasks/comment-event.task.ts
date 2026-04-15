@@ -5,10 +5,13 @@
  */
 
 import { Job } from 'bullmq';
+import { upsertCompanionFeedItem } from '../../app/memory/companion-feed.js';
 import { BaseTaskPayload, createTaskQueue, createTaskWorker } from '../task-queue.js';
 import { NonRetryableWorkerError } from '../errors.js';
 import type { WorkerServices } from '../../services/interfaces.js';
 import type { KnowledgeEntry, RoleCardValue } from '../../models/entities.js';
+import type { InteractionEvent } from '../../domain/interaction/types.js';
+import type { PublishIntent } from '../../domain/publish/types.js';
 
 /**
  * Comment event payload structure
@@ -25,7 +28,72 @@ export type CommentEventPayload = BaseTaskPayload & {
   style_profile?: string;
   role_profile?: string;
   role_card_key?: string;
+  interaction?: InteractionEvent;
 };
+
+function buildInteractionEventFromPayload(payload: CommentEventPayload): InteractionEvent {
+  if (payload.interaction) {
+    return payload.interaction;
+  }
+
+  const platform = (payload.platform || 'bilibili').trim().toLowerCase() || 'bilibili';
+
+  return {
+    platform,
+    ingressSource: payload.source,
+    traceId: payload.trace_id,
+    actor: payload.user_id ? { platformUserId: payload.user_id } : undefined,
+    reference: {
+      subjectKind: 'comment',
+      externalId: payload.comment_id,
+      canonicalId: `${platform}:${payload.comment_id}`,
+      containerId: payload.video_id,
+      parentExternalId: payload.parent_id,
+    },
+    content: {
+      text: payload.content,
+    },
+    legacyComment: {
+      commentId: payload.comment_id,
+      videoId: payload.video_id,
+      parentId: payload.parent_id,
+    },
+  };
+}
+
+function buildPublishIntent(input: {
+  interaction: InteractionEvent;
+  replyText: string;
+  traceId: string;
+  source?: string;
+}): PublishIntent {
+  const routeMetadata =
+    input.interaction.platform === 'qq'
+      ? {
+          chat_type: input.interaction.reference.containerId ? 'group' : 'private',
+          ...(input.interaction.actor?.platformUserId ? { user_id: input.interaction.actor.platformUserId } : {}),
+        }
+      : undefined;
+
+  return {
+    traceId: input.traceId,
+    source: input.source ?? 'comment-event-worker',
+    target: {
+      platform: input.interaction.platform,
+      targetKind: 'comment-reply',
+      externalId: input.interaction.reference.externalId,
+      canonicalId: input.interaction.reference.canonicalId,
+      route: {
+        containerId: input.interaction.reference.containerId,
+        parentExternalId: input.interaction.reference.parentExternalId,
+        metadata: routeMetadata,
+      },
+    },
+    payload: {
+      text: input.replyText,
+    },
+  };
+}
 
 /**
  * Create comment event queue
@@ -60,6 +128,35 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         });
       };
 
+      const recordCompanionSignal = async (
+        itemKey: string,
+        content: string,
+        metadata?: Record<string, unknown>,
+      ): Promise<void> => {
+        try {
+          await upsertCompanionFeedItem({
+            itemKey,
+            content,
+            source: 'worker',
+            metadata: {
+              trace_id: traceId,
+              comment_id: job.data.comment_id,
+              ...(metadata ?? {}),
+            },
+          });
+        } catch (error) {
+          console.warn(
+            JSON.stringify({
+              level: 'warn',
+              message: 'worker_companion_signal_failed',
+              trace_id: traceId,
+              comment_id: job.data.comment_id,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+          );
+        }
+      };
+
       // Kill-switch check
       if (services.killSwitch) {
         console.warn(
@@ -80,8 +177,9 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         throw new NonRetryableWorkerError('comment_id_missing');
       }
 
-      const platform = (job.data.platform || 'bilibili').toLowerCase() || 'bilibili';
-      const canonicalCommentId = `${platform}:${job.data.comment_id}`;
+      const interaction = buildInteractionEventFromPayload(job.data);
+      const platform = interaction.platform;
+      const canonicalCommentId = interaction.reference.canonicalId;
 
       // Query comment
       const comment = await services.getCommentByCanonicalId(canonicalCommentId);
@@ -118,18 +216,26 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
       });
 
       // Should reply decision
-      const [should, styleMode, lengthMode] = await services.shouldReply({
-        comment_id: comment.comment_id,
-        video_id: comment.video_id,
-        user_id: comment.user_id,
-        content: comment.content || undefined,
-        parent_id: comment.parent_id || undefined,
-        platform,
-        trace_id: traceId,
-        force_long: job.data.force_long,
-        style_profile: job.data.style_profile,
-        role_profile: job.data.role_profile,
-        role_card_key: job.data.role_card_key,
+      const [should, styleMode, lengthMode] = await services.shouldReplyForInteraction({
+        interaction: {
+          ...interaction,
+          actor:
+            comment.user_id && !interaction.actor?.platformUserId
+              ? { platformUserId: comment.user_id }
+              : interaction.actor,
+          content: {
+            text: comment.content || interaction.content.text,
+          },
+          legacyComment: {
+            commentId: comment.comment_id,
+            videoId: comment.video_id || undefined,
+            parentId: comment.parent_id || undefined,
+          },
+        },
+        forceLong: job.data.force_long,
+        styleProfile: job.data.style_profile,
+        roleProfile: job.data.role_profile,
+        roleCardKey: job.data.role_card_key,
       });
 
       if (!should) {
@@ -162,6 +268,16 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           jobId,
           metadata: { style_mode: styleMode, length_mode: lengthMode },
         });
+
+        await recordCompanionSignal(
+          'signal:job-skipped',
+          `Skipped reply generation for comment ${comment.comment_id} because shouldReply returned false.`,
+          {
+            job_id: jobId,
+            status: 'skipped',
+            platform,
+          },
+        );
 
         return { ok: true, status: 'skipped', trace_id: traceId };
       }
@@ -314,6 +430,16 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           },
         });
 
+        await recordCompanionSignal(
+          'signal:dedupe-latest',
+          `Deduped reply for comment ${comment.comment_id}; recent phrase matched an existing user reply.`,
+          {
+            job_id: jobId,
+            status: 'dedupe_skipped',
+            platform,
+          },
+        );
+
         return { ok: true, status: 'dedupe_skipped', trace_id: traceId };
       }
 
@@ -356,6 +482,17 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           },
         });
 
+        await recordCompanionSignal(
+          `signal:${safetyAction}-latest`,
+          `Moved comment ${comment.comment_id} into ${safetyAction} after safety review.`,
+          {
+            job_id: jobId,
+            status: safetyAction,
+            platform,
+            decision: (riskFlags as Record<string, unknown>).decision,
+          },
+        );
+
         return {
           ok: true,
           status: safetyAction,
@@ -365,10 +502,12 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
       }
 
       // Publish reply
-      const [published, publishReason, publishedAt, publishResult] = await services.publishReplyWithResult(
-        comment.comment_id,
-        replyText,
-        traceId,
+      const [published, publishReason, publishedAt, publishResult] = await services.publishIntentWithResult(
+        buildPublishIntent({
+          interaction,
+          replyText,
+          traceId,
+        }),
       );
 
       const publishMetadata: Record<string, unknown> = { reason: publishReason };
@@ -432,6 +571,19 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         jobId,
         metadata: { style_mode: styleMode, length_mode: lengthMode, publish_reason: publishReason },
       });
+
+      await recordCompanionSignal(
+        published ? 'signal:publish-latest' : 'signal:manual-queue-latest',
+        published
+          ? `Published reply for comment ${comment.comment_id} with reason ${publishReason}.`
+          : `Publish attempt for comment ${comment.comment_id} fell back to manual_queue with reason ${publishReason}.`,
+        {
+          job_id: jobId,
+          status,
+          platform,
+          publish_reason: publishReason,
+        },
+      );
 
       // Remember phrase if published
       if (published && comment.user_id) {

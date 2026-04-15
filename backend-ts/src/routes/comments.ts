@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { getPrisma } from '../lib/prisma.js';
 import type { ReplyJob, RuntimeSettings } from '../server/contracts.js';
+import { buildCommentRouteContext } from '../server/comment-job-queries.js';
 
 export type CommentRoutesDependencies = {
   settings: RuntimeSettings;
@@ -27,7 +28,19 @@ export function registerCommentRoutes(app: FastifyInstance, deps: CommentRoutesD
       prisma.comment.count(),
       prisma.comment.findMany({ orderBy: { created_at: 'desc' }, skip: offset, take: limit }),
     ]);
-    return reply.send({ ok: true, total, items });
+    return reply.send({
+      ok: true,
+      total,
+      items: items.map((item) => ({
+        ...item,
+        route_context: buildCommentRouteContext({
+          platform: item.platform,
+          videoId: item.video_id,
+          userId: item.user_id,
+          parentId: item.parent_id,
+        }),
+      })),
+    });
   });
 
   const handleGetCommentRoute = async (request: FastifyRequest, reply: FastifyReply) => {

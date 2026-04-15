@@ -1,9 +1,41 @@
+import type {
+  CompanionActionEnvelope,
+  CompanionInteraction,
+  CompanionInteractionKind,
+  CompanionState,
+  CompanionStateV2,
+  PetActionName,
+  PetCoreStateSnapshot,
+  PetNeedSnapshot,
+  PetProfile,
+  PetProgressState,
+  PetProactiveSignal,
+  PetRelationshipState,
+} from './pet-contracts.js';
+import type {
+  PlatformAdapterContract,
+  PlatformCapabilityDescriptor,
+  PlatformCapabilityStatus,
+  PlatformConnectionSnapshot,
+  PlatformIdentityBinding,
+  PlatformIngressEnvelope,
+  PlatformName,
+  PlatformPublishEnvelope,
+  PlatformPublishOutcome,
+} from './platform-contracts.js';
+import type {
+  InteractionActor,
+  InteractionContent,
+  InteractionEvent,
+  InteractionReference,
+  InteractionSubjectKind,
+  LegacyCommentReference,
+} from '../domain/interaction/types.js';
+
 export type ConnectionStatus = {
   connected: boolean;
   error?: string;
 };
-
-export type PlatformName = 'bilibili' | 'douyin' | 'kuaishou';
 
 export type RuntimeSettings = {
   databaseUrl: string;
@@ -27,9 +59,11 @@ export type RuntimeSettings = {
   gatewayToken: string;
   gatewayHmacSecret: string;
   platformBilibiliEnabled: boolean;
+  platformQqEnabled: boolean;
   platformDouyinEnabled: boolean;
   platformKuaishouEnabled: boolean;
   platformBilibiliPublishSource: string;
+  platformQqPublishSource: string;
   platformDouyinPublishSource: string;
   platformKuaishouPublishSource: string;
 };
@@ -49,12 +83,18 @@ export type GatewayPublishPayload = {
   force_publish: boolean;
   source: string;
   trace_id?: string;
+  canonical_id?: string;
+  container_id?: string;
+  user_id?: string;
+  parent_external_id?: string;
+  routing_metadata?: Record<string, string>;
 };
 
 export type PublishExecutionResult = {
   published: boolean;
   reason: string;
   publishedAt?: Date;
+  status?: 'published' | 'failed' | 'pending' | 'pending_review';
 };
 
 export type PublishReservationInput = {
@@ -67,7 +107,7 @@ export type PublishReservationInput = {
 
 export type PublishFinalizeInput = {
   reservationKey: string;
-  status: 'published' | 'failed';
+  status: 'published' | 'failed' | 'pending' | 'pending_review';
   source: string;
   failureReason?: string;
   publishedAt?: Date;
@@ -92,6 +132,11 @@ export type PublishPlatformInput = {
   replyText: string;
   forcePublish: boolean;
   traceId: string;
+  canonicalId?: string;
+  containerId?: string;
+  userId?: string;
+  parentExternalId?: string;
+  routingMetadata?: Record<string, string>;
 };
 
 export type AdminJobsResponse = {
@@ -124,6 +169,49 @@ export type KnowledgeEntry = {
   content: string;
   enabled: boolean;
   created_at?: string | null;
+  updated_at: string | null;
+};
+
+export type MemorySpace = {
+  id: number;
+  space_key: string;
+  space_type: string;
+  title: string;
+  summary: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type MemoryGrant = {
+  id: number;
+  space_id: number;
+  subject_type: string;
+  subject_id: string;
+  access_level: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type MemoryItem = {
+  id: number;
+  space_id: number;
+  item_key: string;
+  content: string;
+  content_type: string;
+  source: string;
+  item_metadata: Record<string, unknown>;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type IdentityLink = {
+  id: number;
+  subject_type: string;
+  subject_id: string;
+  platform: string;
+  external_id: string;
+  display_name: string | null;
+  created_at: string | null;
   updated_at: string | null;
 };
 
@@ -165,6 +253,13 @@ export type ReplyJob = {
   role_card_key: string | null;
   force_long: boolean | null;
   platform: string | null;
+  route_context?: {
+    platform?: string;
+    container_id?: string;
+    user_id?: string;
+    parent_external_id?: string;
+    chat_type?: 'group' | 'private';
+  } | null;
   created_at: string | null;
   updated_at: string | null;
   comment_content: string | null;
@@ -184,4 +279,34 @@ export type BilibiliVideo = {
   last_rpid?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+};
+
+export type {
+  CompanionActionEnvelope,
+  CompanionInteraction,
+  CompanionInteractionKind,
+  InteractionActor,
+  InteractionContent,
+  InteractionEvent,
+  InteractionReference,
+  InteractionSubjectKind,
+  LegacyCommentReference,
+  CompanionState,
+  CompanionStateV2,
+  PetActionName,
+  PetCoreStateSnapshot,
+  PetNeedSnapshot,
+  PetProfile,
+  PetProgressState,
+  PetProactiveSignal,
+  PetRelationshipState,
+  PlatformAdapterContract,
+  PlatformCapabilityDescriptor,
+  PlatformCapabilityStatus,
+  PlatformConnectionSnapshot,
+  PlatformIdentityBinding,
+  PlatformIngressEnvelope,
+  PlatformName,
+  PlatformPublishEnvelope,
+  PlatformPublishOutcome,
 };

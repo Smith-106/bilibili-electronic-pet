@@ -18,6 +18,26 @@ export function createAdminApi() {
     getMetricsOverview() {
       return requestJson('/api/admin/metrics/overview');
     },
+    getPetOverview() {
+      return requestJson('/api/admin/pet/overview');
+    },
+    recordPetAction(action, note) {
+      return requestJson('/api/admin/pet/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, note }),
+      });
+    },
+    getPlatformConnections() {
+      return requestJson('/api/admin/platforms');
+    },
+    setPlatformConnectionControl(platform, enabled) {
+      return requestJson(`/api/admin/platforms/${encodeURIComponent(platform)}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+    },
     getObservabilitySummary({ windowMinutes, window_minutes } = {}) {
       return requestJson(`/api/admin/observability/summary${qs({ window_minutes: windowMinutes ?? window_minutes })}`);
     },
@@ -79,6 +99,13 @@ export function createAdminApi() {
         body: JSON.stringify(body),
       });
     },
+    publishPlatformReply(platform, body) {
+      return requestJson(`/gateway/publish/${encodeURIComponent(platform)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    },
 
     // Audit
     getAuditSummary({ days, action, ok } = {}) {
@@ -109,6 +136,50 @@ export function createAdminApi() {
     },
     disableKnowledgeEntry(entryId) {
       return requestJson(`/api/admin/knowledge/${encodeURIComponent(entryId)}/disable`, { method: 'POST' });
+    },
+
+    // Memory
+    getMemorySpaces({ limit, offset, space_type, subject_type, subject_id } = {}) {
+      return requestJson(`/api/admin/memory/spaces${qs({ limit, offset, space_type, subject_type, subject_id })}`);
+    },
+    createMemorySpace(entry) {
+      return requestJson('/api/admin/memory/spaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
+    getMemoryItems({ limit, offset, space_id, item_key, content_type, source } = {}) {
+      return requestJson(`/api/admin/memory/items${qs({ limit, offset, space_id, item_key, content_type, source })}`);
+    },
+    upsertMemoryItem(entry) {
+      return requestJson('/api/admin/memory/items', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
+    getMemoryGrants({ limit, offset, space_id, subject_type, subject_id } = {}) {
+      return requestJson(`/api/admin/memory/grants${qs({ limit, offset, space_id, subject_type, subject_id })}`);
+    },
+    grantMemorySpaceAccess(entry) {
+      return requestJson('/api/admin/memory/grants', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
+    },
+    getMemoryIdentityLinks({ limit, offset, subject_type, subject_id, platform, external_id } = {}) {
+      return requestJson(
+        `/api/admin/memory/identity-links${qs({ limit, offset, subject_type, subject_id, platform, external_id })}`,
+      );
+    },
+    linkMemoryIdentity(entry) {
+      return requestJson('/api/admin/memory/identity-links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry),
+      });
     },
 
     // Role Cards

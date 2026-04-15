@@ -89,6 +89,8 @@ jobs:
           SEARCH_API_KEY: e2e-strict-placeholder
           PUBLISHER_MODE: webhook
           PUBLISHER_WEBHOOK_URL: https://example.invalid/e2e-strict
+          PLATFORM_QQ_ENABLED: "true"
+          PLATFORM_QQ_WEBHOOK_URL: https://example.invalid/qq-sidecar
           BASE_URL: http://localhost:18000
         run: |
           node dist/index.js &

@@ -1,7 +1,7 @@
 {
   "name": "bili-pet-backend-ts",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Bilibili Electronic Pet Backend - TypeScript Migration",
   "main": "dist/index.js",
@@ -24,6 +24,7 @@
     "staging:check": "node scripts/staging-check.mjs",
     "staging:check:strict": "node scripts/staging-check.mjs --strict",
     "staging:check:real-chain": "node scripts/staging-check.mjs --strict --pre-release-real-chain",
+    "smoke:qq-sidecar": "tsx scripts/qq-sidecar-e2e-smoke.ts",
     "clean": "rm -rf dist node_modules coverage prisma/dev.db prisma/test.db",
     "reinstall": "npm run clean && npm install",
     "docker:build": "docker build -t bilibili-pet-backend:latest .",

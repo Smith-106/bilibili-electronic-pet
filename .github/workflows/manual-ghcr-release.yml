@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - deploy/frontend-backend-alignment-20260408
       - master
 
 permissions:
@@ -120,6 +119,14 @@ jobs:
           else
             bash smoke.sh real-chain --base-url "$BASE_URL" --api-key "$API_KEY"
           fi
+
+      - name: Upload pre-release smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-release-smoke-reports-${{ github.run_id }}
+          if-no-files-found: warn
+          path: .artifacts/staging/*.json
 
   build-release:
     needs: [pre-release-smoke]

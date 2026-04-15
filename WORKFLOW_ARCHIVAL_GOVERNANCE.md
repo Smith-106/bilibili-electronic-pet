@@ -25,6 +25,12 @@ Their canonical copies now live under `.workflow/archives/`, while the old `.wor
 
 - `WFS-progress-report-followups`
 
+## Active Promotion Candidate
+
+- `WFS-complete-electronic-pet-multi-platform`
+  - Local verification is complete for the upgraded pet-core and governed external-platform scope.
+  - Promotion remains blocked on release-document reconciliation, including the dirty `README.md` worktree conflict.
+
 ## Applying Or Verifying Local State
 
 Use:
