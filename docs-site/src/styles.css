@@ -62,8 +62,13 @@ a {
 nav,
 .hero-panel,
 .card,
+.path-card,
+.metric,
+.principle-card,
 .command-stack,
 .diagram,
+.table-wrap,
+.callout,
 .status-table,
 .ops ul {
   border: 1px solid rgba(148, 163, 184, 0.2);
@@ -103,6 +108,7 @@ nav a {
   padding: 0.55rem 0.85rem;
   color: #cbd5e1;
   font-size: 0.92rem;
+  white-space: nowrap;
 }
 
 nav a:hover {
@@ -243,16 +249,92 @@ code {
 }
 
 .card-grid,
-.stack-grid {
+.stack-grid,
+.path-grid,
+.metrics-grid,
+.principles-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
 }
 
-.card {
+.path-grid,
+.metrics-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.card,
+.path-card,
+.metric,
+.principle-card {
   min-height: 12rem;
   border-radius: 1.5rem;
   padding: 1.25rem;
+}
+
+.path-card,
+.metric,
+.principle-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.path-card h3,
+.metric strong,
+.principle-card h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.path-card p,
+.metric p,
+.principle-card p,
+.principle-card small,
+.callout p {
+  margin: 0;
+  color: #cbd5e1;
+  line-height: 1.7;
+}
+
+.path-card .question {
+  color: #e0f2fe;
+  font-weight: 800;
+}
+
+.path-card div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.path-card a {
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  background: rgba(14, 165, 233, 0.16);
+  color: #bae6fd;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.metric span {
+  color: #94a3b8;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: #67e8f9;
+}
+
+.principle-card small {
+  display: block;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding-top: 0.75rem;
+  color: #fbcfe8;
 }
 
 .diagram {
@@ -302,6 +384,44 @@ code {
   list-style-position: inside;
 }
 
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(180px, 1fr));
+  gap: 0.8rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+}
+
+.timeline article {
+  min-height: 14rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1.35rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.timeline span {
+  color: #fb7299;
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+
+.timeline h3 {
+  margin: 0.75rem 0;
+}
+
+.timeline p,
+.timeline small {
+  color: #cbd5e1;
+  line-height: 1.65;
+}
+
+.timeline small {
+  display: block;
+  margin-top: 0.75rem;
+  color: #bae6fd;
+}
+
 .steps {
   display: grid;
   gap: 1rem;
@@ -337,6 +457,68 @@ code {
   grid-template-columns: 0.9fr 1.1fr;
   gap: 2rem;
   align-items: center;
+}
+
+.callout {
+  margin: 1rem 0;
+  border-radius: 1.25rem;
+  padding: 1rem;
+}
+
+.callout strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.callout.note {
+  border-color: rgba(103, 232, 249, 0.32);
+  background: rgba(8, 145, 178, 0.14);
+}
+
+.callout.warning {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: rgba(180, 83, 9, 0.16);
+}
+
+.callout a {
+  color: #bae6fd;
+  font-weight: 800;
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border-radius: 1.5rem;
+  margin-top: 1rem;
+}
+
+table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  padding: 1rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  color: #e0f2fe;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+td {
+  color: #cbd5e1;
+  line-height: 1.7;
+}
+
+tr:last-child td {
+  border-bottom: 0;
 }
 
 .status-table {
@@ -396,6 +578,9 @@ footer {
 
   .card-grid,
   .stack-grid,
+  .path-grid,
+  .metrics-grid,
+  .principles-grid,
   .diagram {
     grid-template-columns: 1fr;
   }
