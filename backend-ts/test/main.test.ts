@@ -33,6 +33,7 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     killSwitch: false,
     gatewayToken: '',
     gatewayHmacSecret: '',
+    commentIngressToken: '',
     publicCompanionActionsEnabled: false,
     platformBilibiliEnabled: false,
     platformQqEnabled: false,
@@ -511,6 +512,10 @@ describe('health/readiness parity', () => {
       expect(data.product_ready).toBe(false);
       expect(data.product_blockers).toContain('admin_auth:unconfigured');
       expect(data.product_blockers).toContain('gateway_auth:unconfigured');
+      expect(data.product_blockers).toContain('comment_ingress_auth:unconfigured');
+      expect(data.product_readiness.admin_control_plane).toMatchObject({
+        comment_ingress_auth_configured: false,
+      });
       expect(data.product_readiness.bilibili_delivery_contract).toMatchObject({
         gateway_auth_configured: false,
       });
@@ -524,8 +529,10 @@ describe('health/readiness parity', () => {
       buildDeps({
         settings: buildSettings({
           apiKey: 'admin-key',
+          commentIngressToken: 'comment-token',
           llmProvider: 'openai',
           llmApiKeyConfigured: true,
+          llmFallbackToMock: false,
           searchApiKeyConfigured: true,
           publisherMode: 'webhook',
           publisherWebhookUrlConfigured: true,
@@ -633,6 +640,7 @@ describe('health/readiness parity', () => {
     expect(data.product_readiness.admin_control_plane).toMatchObject({
       ready: true,
       auth_configured: true,
+      comment_ingress_auth_configured: true,
       public_companion_actions_enabled: false,
       platform_status_available: true,
     });
@@ -732,6 +740,7 @@ describe('health/readiness parity', () => {
         settings: buildSettings({
           llmProvider: 'openai',
           llmApiKeyConfigured: true,
+          llmFallbackToMock: false,
           searchProvider: 'google',
           searchApiKeyConfigured: false,
           searchCxConfigured: false,
@@ -895,6 +904,7 @@ describe('health/readiness parity', () => {
           publisherWebhookUrlConfigured: true,
           llmProvider: 'openai',
           llmApiKeyConfigured: true,
+          llmFallbackToMock: false,
           searchProvider: 'serpapi',
           searchApiKeyConfigured: true,
         }),
@@ -3060,6 +3070,82 @@ describe('comments domain parity', () => {
       ok: true,
       comment_id: 'comment-1',
       trace_id: 'trace-webhook-1',
+    });
+
+    await app.close();
+  });
+
+  it('rejects production comment ingress when auth is unconfigured', async () => {
+    await withNodeEnv('production', async () => {
+      const app = createServer(buildDeps());
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/events/comment',
+        payload: {
+          comment_id: 'comment-prod-no-auth',
+          content: 'Test comment',
+        },
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ detail: 'comment_ingress_auth_unconfigured' });
+
+      await app.close();
+    });
+  });
+
+  it('requires comment ingress token when configured', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ commentIngressToken: 'comment-token' }),
+        ingestCommentEvent: (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            comment_id: input.event.comment_id,
+            trace_id: 'trace-comment-token',
+          };
+        },
+      }),
+    );
+
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/events/comment',
+      payload: {
+        comment_id: 'comment-token-required',
+        content: 'Test comment',
+      },
+    });
+
+    const authorized = await app.inject({
+      method: 'POST',
+      url: '/events/comment',
+      headers: {
+        'x-comment-ingress-token': 'comment-token',
+      },
+      payload: {
+        comment_id: 'comment-token-required',
+        content: 'Test comment',
+      },
+    });
+
+    expect(unauthorized.statusCode).toBe(401);
+    expect(unauthorized.json()).toEqual({ detail: 'unauthorized' });
+    expect(authorized.statusCode).toBe(200);
+    expect(authorized.json()).toEqual({
+      ok: true,
+      comment_id: 'comment-token-required',
+      trace_id: 'trace-comment-token',
+    });
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).toMatchObject({
+      source: 'webhook',
+      event: {
+        comment_id: 'comment-token-required',
+      },
     });
 
     await app.close();

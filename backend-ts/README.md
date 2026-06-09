@@ -111,7 +111,7 @@ ROLE_PROFILE_DEFAULT=doro
 
 - `GET /health` - Basic health check
 - `GET /readiness` - Readiness check (includes dependencies)
-- `/readiness` also exposes `delivery_capability_blockers` and `delivery_capabilities` for canonical external-delivery diagnostics
+- `/readiness` also exposes `delivery_capability_blockers`, `delivery_capabilities`, and product readiness blockers for canonical external-delivery diagnostics
 
 ### Gateway
 
@@ -145,6 +145,7 @@ ROLE_PROFILE_DEFAULT=doro
 - `POST /events/comment/bilibili` - Bilibili-tagged comment ingress
 - `POST /events/comment/douyin` - Douyin-tagged comment ingress
 - `POST /events/comment/kuaishou` - Kuaishou-tagged comment ingress
+- Production comment ingress requires `COMMENT_INGRESS_TOKEN`; callers must send `x-comment-ingress-token` or `Authorization: Bearer <token>`.
 
 ### Bilibili
 

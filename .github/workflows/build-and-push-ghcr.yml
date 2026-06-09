@@ -60,6 +60,7 @@ jobs:
         env:
           PRE_RELEASE_SMOKE_BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
           PRE_RELEASE_SMOKE_API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+          COMMENT_INGRESS_TOKEN: ${{ secrets.COMMENT_INGRESS_TOKEN }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           SEARCH_PROVIDER: ${{ vars.SEARCH_PROVIDER }}
           PUBLISHER_MODE: ${{ vars.PUBLISHER_MODE }}
@@ -85,6 +86,10 @@ jobs:
           fi
           if [[ -z "${PRE_RELEASE_SMOKE_API_KEY}" ]]; then
             echo "::error::Missing PRE_RELEASE_SMOKE_API_KEY secret for release/promotion."
+            exit 1
+          fi
+          if [[ -z "${COMMENT_INGRESS_TOKEN}" ]]; then
+            echo "::error::Missing COMMENT_INGRESS_TOKEN secret for release/promotion."
             exit 1
           fi
           if [[ -z "${LLM_PROVIDER}" ]]; then
@@ -118,6 +123,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
           API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+          COMMENT_INGRESS_TOKEN: ${{ secrets.COMMENT_INGRESS_TOKEN }}
           SMOKE_DIRECT_IP: ${{ vars.PRE_RELEASE_SMOKE_ORIGIN_IP }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           SEARCH_PROVIDER: ${{ vars.SEARCH_PROVIDER }}
@@ -138,6 +144,7 @@ jobs:
           CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}
         run: |
           export LLM_PROVIDER="${LLM_PROVIDER:-openai}"
+          export LLM_FALLBACK_TO_MOCK="false"
           export SEARCH_PROVIDER="${SEARCH_PROVIDER:-serpapi}"
           export PUBLISHER_MODE="${PUBLISHER_MODE:-webhook}"
           export BILIBILI_ENABLED="${BILIBILI_ENABLED:-false}"

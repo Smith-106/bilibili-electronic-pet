@@ -163,6 +163,7 @@ async function runStrictWithStubRuntime(envText) {
             admin_control_plane: {
               ready: true,
               auth_configured: true,
+              comment_ingress_auth_configured: true,
               public_companion_actions_enabled: false,
               platform_status_available: true,
               platform_count: 2,
@@ -437,12 +438,14 @@ BILIBILI_PUBLISH_ENABLED=true
       'search_enrichment',
       'webhook_publish',
       'native_bilibili_publish',
+      'comment_ingress_auth',
     ]);
     expect(report.delivery_preflight.capabilities.map((entry) => entry.capability)).toEqual([
       'llm_generation',
       'search_enrichment',
       'webhook_publish',
       'native_bilibili_publish',
+      'comment_ingress_auth',
       'external_platform_trial',
     ]);
   });
@@ -451,6 +454,7 @@ BILIBILI_PUBLISH_ENABLED=true
     const { result, report } = runPreflight(`
 LLM_PROVIDER=openai
 LLM_API_KEY=sk-test
+LLM_FALLBACK_TO_MOCK=false
 SEARCH_PROVIDER=google
 SEARCH_API_KEY=search-key
 SEARCH_CX=test-cx
@@ -462,6 +466,7 @@ BILIBILI_SESSDATA=test-sess
 BILIBILI_BILI_JCT=test-jct
 BILIBILI_BUVID3=test-buvid3
 CREDENTIAL_ENCRYPTION_KEY=test-secret
+COMMENT_INGRESS_TOKEN=comment-token
 `);
 
     expect(result.status).toBe(0);
@@ -476,6 +481,7 @@ CREDENTIAL_ENCRYPTION_KEY=test-secret
       expect.objectContaining({ capability: 'search_enrichment', status: 'configured' }),
       expect.objectContaining({ capability: 'webhook_publish', status: 'configured' }),
       expect.objectContaining({ capability: 'native_bilibili_publish', status: 'configured' }),
+      expect.objectContaining({ capability: 'comment_ingress_auth', status: 'configured' }),
       expect.objectContaining({ capability: 'external_platform_trial', status: 'inactive' }),
     ]);
   });

@@ -46,13 +46,16 @@ Checks:
   - LLM generation
   - search enrichment
   - webhook publish
-  - native Bilibili publish
+- native Bilibili publish
+- comment ingress auth
 - optional JSON report output without contacting the running API
 Environment focus (no runtime needed):
 - LLM real chain: `LLM_PROVIDER` ≠ `mock` → require `LLM_API_KEY`
+- LLM fallback: strict / real-chain candidates require `LLM_FALLBACK_TO_MOCK=false`
 - Search: `SEARCH_API_KEY` (and `SEARCH_CX` when `SEARCH_PROVIDER=google`)
 - Webhook: `PUBLISHER_MODE=webhook` → require `PUBLISHER_WEBHOOK_URL` (+ optional `PUBLISHER_WEBHOOK_TOKEN`)
 - Native Bilibili: `BILIBILI_ENABLED=true` AND `BILIBILI_PUBLISH_ENABLED=true` → require DB credential or env trio `BILIBILI_SESSDATA` / `BILIBILI_BILI_JCT` / `BILIBILI_BUVID3` (+ optional `BILIBILI_BUVID4`) and `CREDENTIAL_ENCRYPTION_KEY`
+- Comment ingress: strict / real-chain candidates require `COMMENT_INGRESS_TOKEN`
 - Admin key is not required; runtime does not have to be up
 
 
@@ -181,17 +184,19 @@ npm run staging:check -- \
 | Search enrichment | `SEARCH_PROVIDER=serpapi` | `SEARCH_API_KEY` (+ `SEARCH_CX` if Google) | runtime running | runtime running |
 | Webhook publish | `PUBLISHER_MODE=manual_queue` | `PUBLISHER_MODE=webhook` + `PUBLISHER_WEBHOOK_URL` (+ `PUBLISHER_WEBHOOK_TOKEN`) | runtime running | runtime running |
 | Native Bilibili publish | switches off | `BILIBILI_ENABLED=true`, `BILIBILI_PUBLISH_ENABLED=true`, native credential (DB or env trio) + `CREDENTIAL_ENCRYPTION_KEY` | runtime running | `delivery_ready=true`, release gates true, and runtime auth probe must succeed |
+| Comment ingress auth | optional in local dev | `COMMENT_INGRESS_TOKEN` | `/readiness.product_ready=true` requires runtime token configured | same as strict |
 
 ### Runtime and admin requirements
 
 - Admin API auth: `API_KEY` (strict / real-chain)
+- Comment ingress auth: `COMMENT_INGRESS_TOKEN` (strict / real-chain)
 - Foundation: `DATABASE_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB` (strict expects readiness to be true)
 - Readiness compatibility: `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` (reported for parity, still accepted)
 - Gateway publish: `GATEWAY_TOKEN`, `GATEWAY_HMAC_SECRET` (only for `/gateway/publish`)
 - Poller tuning: `BILIBILI_POLL_ENABLED`, `BILIBILI_POLL_INTERVAL_SECONDS`, `BILIBILI_RATE_LIMIT_PER_MINUTE` (optional)
 - Credential storage: `CREDENTIAL_ENCRYPTION_KEY` (alias `BILIBILI_COOKIE_ENCRYPTION_KEY`)
 - Multi-platform gateway: `PLATFORM_*_ENABLED`, `PLATFORM_*_PUBLISH_SOURCE` (independent of native Bilibili publish)
-- Release smoke flags (wrappers): `BASE_URL`, `API_KEY`, `ENV_FILE`, `REPORT_PATH`, `STRICT_SMOKE`, `PRE_RELEASE_REAL_CHAIN`
+- Release smoke flags (wrappers): `BASE_URL`, `API_KEY`, `COMMENT_INGRESS_TOKEN`, `ENV_FILE`, `REPORT_PATH`, `STRICT_SMOKE`, `PRE_RELEASE_REAL_CHAIN`
 ## Notes
 
 - The validator loads `backend-ts/.env` and repository-root `.env` automatically when present.

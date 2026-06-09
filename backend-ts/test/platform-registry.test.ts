@@ -34,6 +34,7 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     killSwitch: false,
     gatewayToken: '',
     gatewayHmacSecret: '',
+    commentIngressToken: '',
     publicCompanionActionsEnabled: false,
     platformBilibiliEnabled: true,
     platformQqEnabled: false,

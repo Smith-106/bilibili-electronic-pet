@@ -142,7 +142,7 @@ Options:
   --help                         Show this help
 
 Environment fallbacks:
-  BASE_URL, API_KEY, ENV_FILE, STRICT_SMOKE, PRE_RELEASE_REAL_CHAIN, REPORT_PATH
+  BASE_URL, API_KEY, COMMENT_INGRESS_TOKEN, ENV_FILE, STRICT_SMOKE, PRE_RELEASE_REAL_CHAIN, REPORT_PATH
 `;
 }
 
@@ -288,8 +288,14 @@ function buildEnvMatrix(env, options) {
     { name: 'CELERY_RESULT_BACKEND', required: false, present: hasText(env.CELERY_RESULT_BACKEND) },
     { name: 'GATEWAY_TOKEN', required: false, present: hasText(env.GATEWAY_TOKEN) },
     { name: 'GATEWAY_HMAC_SECRET', required: false, present: hasText(env.GATEWAY_HMAC_SECRET) },
+    { name: 'COMMENT_INGRESS_TOKEN', required: strict || nativeRealChain, present: hasText(env.COMMENT_INGRESS_TOKEN) },
     { name: 'LLM_PROVIDER', required: false, present: hasText(env.LLM_PROVIDER) },
     { name: 'LLM_API_KEY', required: String(env.LLM_PROVIDER ?? '').trim().toLowerCase() !== 'mock', present: hasText(env.LLM_API_KEY) },
+    {
+      name: 'LLM_FALLBACK_TO_MOCK=false',
+      required: strict || nativeRealChain,
+      present: String(env.LLM_FALLBACK_TO_MOCK ?? '').trim().toLowerCase() === 'false',
+    },
     { name: 'PUBLISHER_MODE', required: strict, present: hasText(env.PUBLISHER_MODE) },
     { name: 'PUBLISHER_WEBHOOK_URL', required: strict && webhookMode, present: hasText(env.PUBLISHER_WEBHOOK_URL) },
     { name: 'PLATFORM_DOUYIN_ENABLED', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_ENABLED) },
@@ -480,6 +486,11 @@ function buildDeliveryPreflight(env, options = {}) {
   } else {
     llmNotes.push('Ollama does not require LLM_API_KEY but still depends on a reachable Ollama endpoint.');
   }
+  if (llmStatus === 'configured' && parseBoolean(env.LLM_FALLBACK_TO_MOCK, true)) {
+    llmStatus = 'fallback_enabled';
+    llmMissing.push('LLM_FALLBACK_TO_MOCK=false');
+    llmNotes.push('Production candidates must fail closed when real LLM generation fails.');
+  }
 
   const searchProvider = String(env.SEARCH_PROVIDER ?? 'serpapi').trim().toLowerCase() || 'serpapi';
   const searchMissing = [];
@@ -562,6 +573,12 @@ function buildDeliveryPreflight(env, options = {}) {
     douyinTrialNotes.push('This preflight only validates checker-side inputs. It does not prove the live host can reach the endpoint through WAF/Cloudflare.');
   }
 
+  const commentIngressMissing = [];
+  const commentIngressStatus = hasText(env.COMMENT_INGRESS_TOKEN) ? 'configured' : 'missing_inputs';
+  if (!hasText(env.COMMENT_INGRESS_TOKEN)) {
+    commentIngressMissing.push('COMMENT_INGRESS_TOKEN');
+  }
+
   const capabilities = [
     createPreflightCapability({
       capability: 'llm_generation',
@@ -605,6 +622,16 @@ function buildDeliveryPreflight(env, options = {}) {
       optionalInputs: ['CREDENTIAL_ENCRYPTION_KEY', 'BILIBILI_BUVID4', 'BILIBILI_DEDEUSERID'],
       missingInputs: nativeMissing,
       notes: nativeNotes,
+    }),
+    createPreflightCapability({
+      capability: 'comment_ingress_auth',
+      active: true,
+      status: commentIngressStatus,
+      mode: 'token',
+      requiredInputs: ['COMMENT_INGRESS_TOKEN'],
+      optionalInputs: [],
+      missingInputs: commentIngressMissing,
+      notes: ['Required for production comment event ingress and strict product smoke.'],
     }),
     createPreflightCapability({
       capability: 'external_platform_trial',
@@ -1088,6 +1115,9 @@ async function main() {
       if (adminControlPlane.ready !== true) {
         fail('strict_product', 'admin control plane is not ready for the signed-off MVP scope');
       }
+      if (adminControlPlane.comment_ingress_auth_configured !== true) {
+        fail('strict_product', 'comment ingress auth is not configured for the signed-off MVP scope');
+      }
       if (bilibiliDeliveryContract.ready !== true) {
         fail('strict_product', 'bilibili delivery contract is not ready for the signed-off MVP scope');
       }
@@ -1095,6 +1125,7 @@ async function main() {
       record('strict_product', 'passed', {
         scope: productScope.key ?? null,
         admin_control_plane_ready: adminControlPlane.ready === true,
+        comment_ingress_auth_configured: adminControlPlane.comment_ingress_auth_configured === true,
         bilibili_delivery_contract_ready: bilibiliDeliveryContract.ready === true,
       });
       logPass('strict product contract');

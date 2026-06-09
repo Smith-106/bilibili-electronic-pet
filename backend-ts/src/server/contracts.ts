@@ -60,6 +60,7 @@ export type RuntimeSettings = {
   killSwitch: boolean;
   gatewayToken: string;
   gatewayHmacSecret: string;
+  commentIngressToken: string;
   publicCompanionActionsEnabled?: boolean;
   platformBilibiliEnabled: boolean;
   platformQqEnabled: boolean;

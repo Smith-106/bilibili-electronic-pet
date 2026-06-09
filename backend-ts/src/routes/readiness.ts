@@ -173,6 +173,10 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (deps.settings.publicCompanionActionsEnabled === true) {
       deps.addBlocker(productBlockers, 'companion_actions:public_write_enabled');
     }
+    const commentIngressAuthConfigured = Boolean(deps.settings.commentIngressToken?.trim());
+    if (isProductionRuntime() && !commentIngressAuthConfigured) {
+      deps.addBlocker(productBlockers, 'comment_ingress_auth:unconfigured');
+    }
 
     let companionState: CompanionStateV2 | null = null;
     try {
@@ -220,6 +224,7 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       admin_control_plane: {
         ready: foundationReady && adminAccessConfigured && platformStatusAvailable,
         auth_configured: adminAccessConfigured,
+        comment_ingress_auth_configured: commentIngressAuthConfigured,
         public_companion_actions_enabled: deps.settings.publicCompanionActionsEnabled === true,
         platform_status_available: platformStatusAvailable,
         platform_count: platformConnections.length,

@@ -23,7 +23,7 @@
 - `/readiness` foundation / delivery / product 多层门禁升级
 - backend / frontend / pet-companion-web 本地测试与构建验证
 - backend / frontend / pet-companion-web / docs-site / douyin-sidecar / qq-sidecar 依赖审计清零
-- 生产环境管理面与发布网关默认 fail-closed：缺少 `API_KEY` 或网关凭证时不再默认放行
+- 生产环境管理面、评论入口与发布网关默认 fail-closed：缺少 `API_KEY`、`COMMENT_INGRESS_TOKEN` 或网关凭证时不再默认放行
 - 宿主机与容器内 `prisma:migrate:prod` 部署路径验证
 
 平台支持范围：
@@ -120,7 +120,7 @@ Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.
 
 ### 前端
 
-- Vite 5
+- Vite 6
 - 原生 ES Module
 - 原生 CSS
 - 无 React / Vue 依赖
@@ -304,8 +304,8 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 ### 7.0 交付模式与环境变量
 
 - 本地默认（mock/manual_queue）：`LLM_PROVIDER=mock`、`PUBLISHER_MODE=manual_queue`，不需要外部密钥，`/readiness.delivery_ready` 预期为 false。
-- Preflight（仅检查配置，不请求运行时）：准备一份 env 文件，包含真实链路所需的密钥；运行 `npm run staging:check -- --preflight-only --env-file <file>` 可看到缺失项。关键字段：`LLM_PROVIDER`(非 mock 时需要 `LLM_API_KEY`)、`SEARCH_API_KEY`/`SEARCH_CX`、`PUBLISHER_MODE=webhook` 时的 `PUBLISHER_WEBHOOK_URL`/`PUBLISHER_WEBHOOK_TOKEN`，或开启原生发布时的 `BILIBILI_*` 凭证与开关。
-- Strict（运行时就绪 + 管理面）：需要 API 进程可访问，`API_KEY` 可用；检查 `/health`、`/admin`、`/readiness`、`/api/admin/*`，并验证交付能力矩阵。非生产环境仍可在无真实密钥时运行并暴露缺失项；`NODE_ENV=production` 时管理 API 会在 auth 未配置时返回 `503 { detail: 'admin_auth_unconfigured' }`。
+- Preflight（仅检查配置，不请求运行时）：准备一份 env 文件，包含真实链路所需的密钥；运行 `npm run staging:check -- --preflight-only --env-file <file>` 可看到缺失项。关键字段：`COMMENT_INGRESS_TOKEN`、`LLM_PROVIDER`(非 mock 时需要 `LLM_API_KEY`)、`LLM_FALLBACK_TO_MOCK=false`、`SEARCH_API_KEY`/`SEARCH_CX`、`PUBLISHER_MODE=webhook` 时的 `PUBLISHER_WEBHOOK_URL`/`PUBLISHER_WEBHOOK_TOKEN`，或开启原生发布时的 `BILIBILI_*` 凭证与开关。
+- Strict（运行时就绪 + 管理面）：需要 API 进程可访问，`API_KEY` 与 `COMMENT_INGRESS_TOKEN` 可用；检查 `/health`、`/admin`、`/readiness`、`/api/admin/*`，并验证交付能力矩阵。非生产环境仍可在无真实密钥时运行并暴露缺失项；`NODE_ENV=production` 时管理 API 会在 auth 未配置时返回 `503 { detail: 'admin_auth_unconfigured' }`，评论入口未配置时返回 `503 { detail: 'comment_ingress_auth_unconfigured' }`。
 - Webhook 交付（strict 基础上）：`PUBLISHER_MODE=webhook`，且 `PUBLISHER_WEBHOOK_URL`、`PUBLISHER_WEBHOOK_TOKEN` 已配置；`delivery_capabilities` 中 webhook 应为 configured。
 - 原生 B 站交付 / real-chain：`BILIBILI_ENABLED=true`、`BILIBILI_PUBLISH_ENABLED=true`，并提供凭证（DB 记录或环境三件套 `BILIBILI_SESSDATA`/`BILIBILI_BILI_JCT`/`BILIBILI_BUVID3`，可选 `BILIBILI_BUVID4`）和加密钥 `CREDENTIAL_ENCRYPTION_KEY`；`staging:check -- --strict --pre-release-real-chain` 会要求 `delivery_ready=true` 与各 release_gates 为 true。这里的 `real_auth_ready` 现在依赖运行时 auth probe，不再把“字段齐全”直接视为通过。
 
@@ -1004,11 +1004,13 @@ curl -X POST http://127.0.0.1:18000/api/admin/bilibili/credentials \
 - `comment_id` 是必填字段，缺失时返回 `400 { detail: 'comment_id_required' }`
 - 成功后会进入 `ingestCommentEvent()`，后续再进入队列与回复流水线
 - 即使后续入队失败，只要评论已经成功落库，接口仍可能返回成功，后续由后台补处理
+- 生产或 strict 候选必须设置 `COMMENT_INGRESS_TOKEN`。配置后请求需携带 `x-comment-ingress-token: <token>` 或 `Authorization: Bearer <token>`；错误 token 返回 `401 { detail: 'unauthorized' }`
 
 B 站评论事件示例：
 
 ```bash
 curl -X POST http://127.0.0.1:18000/events/comment/bilibili \
+  -H "x-comment-ingress-token: $COMMENT_INGRESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "comment_id": "1953012345678900000",
@@ -1024,6 +1026,7 @@ curl -X POST http://127.0.0.1:18000/events/comment/bilibili \
 
 ```bash
 curl -X POST http://127.0.0.1:18000/events/comment/poller \
+  -H "x-comment-ingress-token: $COMMENT_INGRESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "rpid": "1953012345678900000",
@@ -1117,6 +1120,7 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
 - `API_KEY`
 - `GATEWAY_TOKEN`
 - `GATEWAY_HMAC_SECRET`
+- `COMMENT_INGRESS_TOKEN`
 
 ### 8.4 Publisher 相关
 
@@ -1190,8 +1194,8 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
 #### 生产环境配置
 
 - `NODE_ENV=production`
-- `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 使用强随机值
-- 关闭 `LLM_FALLBACK_TO_MOCK`
+- `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET`、`COMMENT_INGRESS_TOKEN` 使用强随机值
+- 设置 `LLM_FALLBACK_TO_MOCK=false`
 - 明确配置 `CREDENTIAL_ENCRYPTION_KEY`
 - 如果启用真实发布，明确手动审核与自动发布策略
 
@@ -1325,6 +1329,7 @@ docker compose up --build
    - `API_KEY`
    - `GATEWAY_TOKEN`
    - `GATEWAY_HMAC_SECRET`
+   - `COMMENT_INGRESS_TOKEN`
    - `DATABASE_URL`
    - `CREDENTIAL_ENCRYPTION_KEY`（如果启用 B 站凭证存储；旧变量 `BILIBILI_COOKIE_ENCRYPTION_KEY` 仍兼容）
 3. 执行 `docker compose up -d --build`
@@ -1377,11 +1382,12 @@ cd backend-ts
 npm run staging:check -- --preflight-only --env-file .env.staging --report ../staging-preflight.json
 ```
 
-这条命令会直接汇总 4 类外部交付前提：
+这条命令会直接汇总 5 类外部交付前提：
 - `LLM` 实际生成
 - `search` 搜索增强
 - `webhook` 发布
 - `native Bilibili` 原生发布
+- `comment ingress` 生产入口鉴权
 
 它能帮你尽早发现缺失项，但它**不能**证明：
 - Redis / 数据库在目标运行时里真的可达
@@ -1390,9 +1396,9 @@ npm run staging:check -- --preflight-only --env-file .env.staging --report ../st
 
 这些仍然要通过 `--strict` 或 `--pre-release-real-chain` 的运行时校验来确认。
 
-当前仓库的 `cloud-validate` CI 会先做 preflight，并把 `preflight_ready` 当作阻断门禁；只有 preflight 通过后，才会继续执行 strict 校验，并在启动应用前准备一个已迁移的临时 SQLite 数据库与 `API_KEY`。
+当前仓库的 `cloud-validate` CI 会先做 preflight，并把 `preflight_ready` 当作阻断门禁；只有 preflight 通过后，才会继续执行 strict 校验，并在启动应用前准备一个已迁移的临时 SQLite 数据库、`API_KEY` 与 `COMMENT_INGRESS_TOKEN`。
 
-这里的 CI preflight 主要用于防止 wrapper / workflow / env 契约漂移。它会注入一组 CI placeholder 输入来确保能力矩阵本身保持完整；这并不等价于真实外部交付已经可用。
+这里的 CI preflight 主要用于防止 wrapper / workflow / env 契约漂移。它会注入一组 CI placeholder 输入来确保能力矩阵本身保持完整；这并不等价于真实外部交付已经可用。`docker compose config` 同样只能证明编排结构可解析，不能替代 `/readiness.product_ready=true`、strict smoke 或 real-chain smoke。
 
 同一个 `cloud-validate` workflow 现在还会直接执行 `qq-sidecar` 的 `test` 与 `build`，再通过根目录 wrapper 依次运行 `qq-onebot` 与 `qq-e2e` 两条 smoke，避免 QQ 链路只通过后端间接冒烟而缺少 sidecar 自身回归保护，同时确保 CI 自动落盘 JSON 证据。
 
@@ -1965,6 +1971,6 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 2. `2026-06-08` 的本地候选版本是当前最强 repo-local 证据：backend、frontend、`pet-companion-web`、`douyin-sidecar`、`qq-sidecar` 的测试/构建与各 package `npm audit` 均已通过，fresh DB 与容器内 `prisma:migrate:prod` 均已验证
 3. 当前可诚实宣称的范围应限定为 `Bilibili-first admin/backend MVP`；QQ / Douyin 仍属于试点或外部配置未完成范围
 4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 preview / partial
-5. 生产环境必须配置 `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 与 `NODE_ENV=production`；缺少这些门禁时不能声明为可上线环境
+5. 生产环境必须配置 `API_KEY`、`COMMENT_INGRESS_TOKEN`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET`、`LLM_FALLBACK_TO_MOCK=false` 与 `NODE_ENV=production`；缺少这些门禁时不能声明为可上线环境
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。

@@ -69,9 +69,11 @@ jobs:
       - name: Preflight staging smoke contract
         env:
           API_KEY: ci-admin-key
+          COMMENT_INGRESS_TOKEN: ci-comment-ingress-token
           REPORT_PATH: backend-ts/ci-preflight-report.json
           LLM_PROVIDER: openai
           LLM_API_KEY: ci-preflight-placeholder
+          LLM_FALLBACK_TO_MOCK: "false"
           SEARCH_PROVIDER: serpapi
           SEARCH_API_KEY: ci-preflight-placeholder
           PUBLISHER_MODE: webhook
@@ -91,9 +93,11 @@ jobs:
           PORT: 18000
           BASE_URL: http://127.0.0.1:18000
           API_KEY: ci-admin-key
+          COMMENT_INGRESS_TOKEN: ci-comment-ingress-token
           DATABASE_URL: file:./ci-smoke.db
           LLM_PROVIDER: openai
           LLM_API_KEY: ci-strict-placeholder
+          LLM_FALLBACK_TO_MOCK: "false"
           SEARCH_PROVIDER: serpapi
           SEARCH_API_KEY: ci-strict-placeholder
           PUBLISHER_MODE: webhook

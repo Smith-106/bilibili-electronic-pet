@@ -80,11 +80,13 @@ jobs:
           REDIS_PORT: 6379
           REDIS_DB: 0
           API_KEY: test-api-key-e2e
+          COMMENT_INGRESS_TOKEN: test-comment-ingress-token-e2e
           GATEWAY_TOKEN: test-gateway-token
           GATEWAY_HMAC_SECRET: test-hmac-secret-32-bytes!!
           KILL_SWITCH: "false"
           LLM_PROVIDER: openai
           LLM_API_KEY: e2e-strict-placeholder
+          LLM_FALLBACK_TO_MOCK: "false"
           SEARCH_PROVIDER: serpapi
           SEARCH_API_KEY: e2e-strict-placeholder
           PUBLISHER_MODE: webhook
@@ -131,6 +133,7 @@ jobs:
         env:
           PRE_RELEASE_SMOKE_BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
           PRE_RELEASE_SMOKE_API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+          COMMENT_INGRESS_TOKEN: ${{ secrets.COMMENT_INGRESS_TOKEN }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           SEARCH_PROVIDER: ${{ vars.SEARCH_PROVIDER }}
           PUBLISHER_MODE: ${{ vars.PUBLISHER_MODE }}
@@ -156,6 +159,10 @@ jobs:
           fi
           if [[ -z "${PRE_RELEASE_SMOKE_API_KEY}" ]]; then
             echo "::error::Missing PRE_RELEASE_SMOKE_API_KEY secret for release pre-check."
+            exit 1
+          fi
+          if [[ -z "${COMMENT_INGRESS_TOKEN}" ]]; then
+            echo "::error::Missing COMMENT_INGRESS_TOKEN secret for release pre-check."
             exit 1
           fi
           if [[ -z "${LLM_PROVIDER}" ]]; then
@@ -189,6 +196,7 @@ jobs:
         env:
           BASE_URL: ${{ secrets.PRE_RELEASE_SMOKE_BASE_URL }}
           API_KEY: ${{ secrets.PRE_RELEASE_SMOKE_API_KEY }}
+          COMMENT_INGRESS_TOKEN: ${{ secrets.COMMENT_INGRESS_TOKEN }}
           SMOKE_DIRECT_IP: ${{ vars.PRE_RELEASE_SMOKE_ORIGIN_IP }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           SEARCH_PROVIDER: ${{ vars.SEARCH_PROVIDER }}
@@ -209,6 +217,7 @@ jobs:
           CREDENTIAL_ENCRYPTION_KEY: ${{ secrets.CREDENTIAL_ENCRYPTION_KEY }}
         run: |
           export LLM_PROVIDER="${LLM_PROVIDER:-openai}"
+          export LLM_FALLBACK_TO_MOCK="false"
           export SEARCH_PROVIDER="${SEARCH_PROVIDER:-serpapi}"
           export PUBLISHER_MODE="${PUBLISHER_MODE:-webhook}"
           export BILIBILI_ENABLED="${BILIBILI_ENABLED:-false}"

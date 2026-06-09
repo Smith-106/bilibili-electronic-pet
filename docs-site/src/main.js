@@ -92,7 +92,7 @@ const responsibilities = [
 
 const stack = [
   ['Backend', 'Node.js 20, TypeScript 5, Fastify 5, Prisma 7, Vitest'],
-  ['Frontend', 'Vite 5, native ES modules, native CSS, no React or Vue'],
+  ['Frontend', 'Vite 6, native ES modules, native CSS, no React or Vue'],
   ['Infra', 'Docker, Docker Compose, Redis 7, SQLite or libSQL'],
   ['Worker model', 'BullMQ, ioredis, comment-event queue, polling scheduler'],
 ];
