@@ -160,9 +160,7 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
 
     const deliveryReady = deliveryBlockers.length === 0 && deliveryCapabilities.blockers.length === 0;
     const productBlockers: string[] = [];
-    const adminAccessConfigured = Boolean(
-      deps.settings.apiKey?.trim() || deps.settings.adminSessionSecret?.trim(),
-    );
+    const adminAccessConfigured = Boolean(deps.settings.apiKey?.trim() || deps.settings.adminSessionSecret?.trim());
     if (!adminAccessConfigured) {
       deps.addBlocker(productBlockers, 'admin_auth:unconfigured');
     }
@@ -206,12 +204,10 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     const externalPlatformTrials = platformConnections.filter((entry) => entry.platform !== 'bilibili');
     const activeExternalPlatformTrials = externalPlatformTrials.filter((entry) => entry.enabled);
     const connectedExternalPlatformTrials = activeExternalPlatformTrials.filter(
-      (entry) =>
-        entry.status === 'connected' && (entry.rolloutControl?.enabled ?? true) && isPublishingReady(entry),
+      (entry) => entry.status === 'connected' && (entry.rolloutControl?.enabled ?? true) && isPublishingReady(entry),
     );
 
-    const bilibiliReferencePlatform =
-      platformConnections.find((entry) => entry.platform === 'bilibili') ?? null;
+    const bilibiliReferencePlatform = platformConnections.find((entry) => entry.platform === 'bilibili') ?? null;
     const gatewayAuthConfigured = Boolean(
       deps.settings.apiKey?.trim() && deps.settings.gatewayToken?.trim() && deps.settings.gatewayHmacSecret?.trim(),
     );
@@ -249,12 +245,7 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       scope: {
         key: 'bilibili_first_admin_companion_mvp',
         summary: 'Bilibili-first admin/backend/companion MVP',
-        signed_off_surfaces: [
-          'admin_control_plane',
-          'bilibili_delivery_contract',
-          'pet_core',
-          'companion_surface',
-        ],
+        signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract', 'pet_core', 'companion_surface'],
         gated_surfaces: ['external_platform_trial'],
         excluded_surfaces: [],
       },

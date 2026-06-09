@@ -121,7 +121,9 @@ describe('runtime-platform boundaries', () => {
     vi.resetModules();
     const runtimePlatform = await import('../src/server/runtime-platform.js');
 
-    expect(runtimePlatform.defaultIsPlatformEnabled('douyin', buildSettings({ platformDouyinEnabled: true }))).toBe(false);
+    expect(runtimePlatform.defaultIsPlatformEnabled('douyin', buildSettings({ platformDouyinEnabled: true }))).toBe(
+      false,
+    );
   });
 });
 

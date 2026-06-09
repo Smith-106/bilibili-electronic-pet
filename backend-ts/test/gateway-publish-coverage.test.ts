@@ -126,7 +126,8 @@ function buildDeps(overrides: Partial<GatewayPublishRouteDependencies> = {}): Ga
         },
       ],
     })),
-    normalizeIsoTimestamp: (value) => (value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString()),
+    normalizeIsoTimestamp: (value) =>
+      value instanceof Date ? value.toISOString() : new Date(String(value)).toISOString(),
     ...overrides,
   };
 }
@@ -159,7 +160,11 @@ describe('gateway publish route coverage', () => {
     });
 
     try {
-      const invalid = await app.inject({ method: 'POST', url: '/gateway/publish', payload: { comment_id: 'comment-1' } });
+      const invalid = await app.inject({
+        method: 'POST',
+        url: '/gateway/publish',
+        payload: { comment_id: 'comment-1' },
+      });
       const partialAuth = await app.inject({
         method: 'POST',
         url: '/gateway/publish',

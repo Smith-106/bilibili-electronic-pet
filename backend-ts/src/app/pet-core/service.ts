@@ -45,7 +45,10 @@ function describeRelationship(score: number): { level: string; note: string } {
   return { level: 'Settling', note: 'The companion still needs more regular interaction to feel stable.' };
 }
 
-function describeProgress(actionCount: number, bondScore: number): { stage: string; label: string; nextMilestone: string | null } {
+function describeProgress(
+  actionCount: number,
+  bondScore: number,
+): { stage: string; label: string; nextMilestone: string | null } {
   if (actionCount >= 12 || bondScore >= 80) {
     return { stage: 'bonded', label: 'Bonded loop', nextMilestone: 'Cross-platform social scenes' };
   }
@@ -221,7 +224,11 @@ function toCompanionStateV2(state: PetStateRecord, actions: PetActionRecord[]): 
   };
 }
 
-function applyAction(state: PetStateRecord, action: PetActionName, note?: string | null): { nextState: UpsertPetStateInput; detail: string } {
+function applyAction(
+  state: PetStateRecord,
+  action: PetActionName,
+  note?: string | null,
+): { nextState: UpsertPetStateInput; detail: string } {
   const needs = cloneNeeds(state.needs.length ? state.needs : DEFAULT_NEEDS);
 
   const energy = findNeed(needs, 'energy');
@@ -303,7 +310,8 @@ export function createPetCoreService(repository: PetCoreRepository = createPetCo
     },
 
     async recordAction(input) {
-      const current = (await repository.getState(DEFAULT_PROFILE_KEY)) ?? (await repository.upsertState(defaultStateInput()));
+      const current =
+        (await repository.getState(DEFAULT_PROFILE_KEY)) ?? (await repository.upsertState(defaultStateInput()));
       const { nextState, detail } = applyAction(current, input.action, input.note ?? null);
       const persisted = await repository.upsertState(nextState);
       const action = await repository.createAction({

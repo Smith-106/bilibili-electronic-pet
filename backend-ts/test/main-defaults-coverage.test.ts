@@ -518,7 +518,9 @@ describe('main default dependency coverage', () => {
       },
     });
 
-    prismaMock.publishLog.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 44, reservation_key: null });
+    prismaMock.publishLog.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 44, reservation_key: null });
     prismaMock.publishLog.create.mockRejectedValueOnce(new Error('unique constraint failed'));
     await expect(logStore.reserve({ ...input, replyHash: 'hash-3' })).resolves.toEqual({
       duplicate: true,
@@ -529,14 +531,18 @@ describe('main default dependency coverage', () => {
     await expect(logStore.reserve({ ...input, replyHash: 'hash-4' })).rejects.toThrow('database offline');
 
     prismaMock.publishLog.findUnique.mockResolvedValueOnce(null);
-    prismaMock.publishLog.create.mockRejectedValueOnce(missingReservationKey).mockRejectedValueOnce(missingReservationKey);
+    prismaMock.publishLog.create
+      .mockRejectedValueOnce(missingReservationKey)
+      .mockRejectedValueOnce(missingReservationKey);
     prismaMock.publishLog.findFirst.mockResolvedValueOnce(null);
     await expect(logStore.reserve({ ...input, replyHash: 'hash-5' })).rejects.toThrow(
       'SQLITE_ERROR: no such column: reservation_key',
     );
 
     prismaMock.publishLog.findUnique.mockResolvedValueOnce(null);
-    prismaMock.publishLog.create.mockRejectedValueOnce(missingReservationKey).mockRejectedValueOnce(missingReservationKey);
+    prismaMock.publishLog.create
+      .mockRejectedValueOnce(missingReservationKey)
+      .mockRejectedValueOnce(missingReservationKey);
     prismaMock.publishLog.findFirst.mockResolvedValueOnce({ id: 45 });
     await expect(logStore.reserve({ ...input, replyHash: 'hash-6' })).resolves.toEqual({
       duplicate: true,
@@ -684,7 +690,11 @@ describe('main default dependency coverage', () => {
 
     postReplyMock.mockResolvedValueOnce({ success: false }).mockResolvedValueOnce({ success: true, rpid: 'rpid-1' });
     const nativeDisabledApp = createServer({
-      settings: buildSettings({ publisherMode: 'native_bilibili', bilibiliEnabled: false, bilibiliPublishEnabled: false }),
+      settings: buildSettings({
+        publisherMode: 'native_bilibili',
+        bilibiliEnabled: false,
+        bilibiliPublishEnabled: false,
+      }),
       reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-native-disabled' }),
       finalizePublishLog: vi.fn(),
     });
@@ -702,7 +712,11 @@ describe('main default dependency coverage', () => {
     await nativeFailApp.close();
 
     const nativeOkApp = createServer({
-      settings: buildSettings({ publisherMode: 'native_bilibili', bilibiliEnabled: true, bilibiliPublishEnabled: true }),
+      settings: buildSettings({
+        publisherMode: 'native_bilibili',
+        bilibiliEnabled: true,
+        bilibiliPublishEnabled: true,
+      }),
       reservePublishLog: () => ({ duplicate: false, reservationKey: 'reservation-native-ok' }),
       finalizePublishLog: vi.fn(),
     });
@@ -895,9 +909,9 @@ describe('main default dependency coverage', () => {
     await expect(
       defaults.grantMemorySpaceAccess({ space_id: 1, subject_type: 'user', subject_id: 'bob' }),
     ).resolves.toMatchObject({ item: { access_level: 'read' } });
-    await expect(defaults.listMemoryIdentityLinks({ limit: 1, offset: 0, platform: 'bilibili' })).resolves.toMatchObject(
-      { items: [{ external_id: 'uid-1' }] },
-    );
+    await expect(
+      defaults.listMemoryIdentityLinks({ limit: 1, offset: 0, platform: 'bilibili' }),
+    ).resolves.toMatchObject({ items: [{ external_id: 'uid-1' }] });
     await expect(
       defaults.linkMemoryIdentity({ subject_type: 'user', subject_id: 'bob', external_id: 'uid-2' }),
     ).resolves.toMatchObject({ item: { platform: 'bilibili', display_name: null } });
@@ -1263,7 +1277,10 @@ describe('main default dependency coverage', () => {
     const petCoreService = {
       getCompanionState: vi.fn(),
       getCompanionStateV2: vi.fn(),
-      recordAction: vi.fn().mockRejectedValueOnce('pet-core-offline').mockRejectedValueOnce(new Error('pet-core-error')),
+      recordAction: vi
+        .fn()
+        .mockRejectedValueOnce('pet-core-offline')
+        .mockRejectedValueOnce(new Error('pet-core-error')),
     };
     createMemoryServiceMock.mockReturnValue(memoryService);
     createPetCoreServiceMock.mockReturnValue(petCoreService);
@@ -1499,7 +1516,9 @@ describe('main default dependency coverage', () => {
       items: [{ id: 23, reply_text: null }],
     });
 
-    prismaMock.publishLog.findMany.mockResolvedValueOnce([{ id: 24, comment_id: 'plain-gateway', canonical_comment_id: null }]);
+    prismaMock.publishLog.findMany.mockResolvedValueOnce([
+      { id: 24, comment_id: 'plain-gateway', canonical_comment_id: null },
+    ]);
     prismaMock.replyJob.findMany.mockResolvedValueOnce([
       { canonical_comment_id: null, comment_id: 'plain-gateway', reply_text: null },
       { canonical_comment_id: null, comment_id: 'plain-gateway', reply_text: 'duplicate ignored' },
@@ -1875,7 +1894,9 @@ describe('main default dependency coverage', () => {
     );
 
     prismaMock.bilibiliVideo.count.mockResolvedValueOnce(1);
-    prismaMock.bilibiliVideo.findMany.mockResolvedValueOnce([{ id: 65, bvid: 'BV-with-null-comment', poll_enabled: true }]);
+    prismaMock.bilibiliVideo.findMany.mockResolvedValueOnce([
+      { id: 65, bvid: 'BV-with-null-comment', poll_enabled: true },
+    ]);
     prismaMock.comment.findMany.mockResolvedValueOnce([{ video_id: null }, { video_id: 'BV-with-null-comment' }]);
     await expect(defaults.listBilibiliVideos({ limit: 1, offset: 0 })).resolves.toMatchObject({
       items: [{ id: 65, bvid: 'BV-with-null-comment', comment_count: 1 }],
@@ -2305,7 +2326,9 @@ describe('main default dependency coverage', () => {
       pending_review: 0,
       total_failed: 0,
     });
-    expect(t.normalizeAdminAuditSummaryPayload({ totals: { audit_logs: 'bad' }, by_result: { success: '3' } })).toMatchObject({
+    expect(
+      t.normalizeAdminAuditSummaryPayload({ totals: { audit_logs: 'bad' }, by_result: { success: '3' } }),
+    ).toMatchObject({
       total: 0,
       ok_count: 3,
       failed_count: 0,
@@ -2331,11 +2354,16 @@ describe('main default dependency coverage', () => {
       ok_count: 0,
       failed_count: 0,
     });
-    expect(t.normalizeStyleProfilePayload({ style: '  WARM ' })).toMatchObject({ style_profile: 'warm', style: 'warm' });
+    expect(t.normalizeStyleProfilePayload({ style: '  WARM ' })).toMatchObject({
+      style_profile: 'warm',
+      style: 'warm',
+    });
     expect(t.normalizeStyleProfilePayload({})).toMatchObject({ style_profile: '', style: '' });
     expect(t.normalizeRoleProfilePayload({ role: '  HERO ' })).toMatchObject({ role_profile: 'hero', role: 'hero' });
     expect(t.normalizeRoleProfilePayload({})).toMatchObject({ role_profile: '', role: '' });
-    expect(t.normalizeBilibiliStatusPayload({ config: { enabled: true, poll_enabled: true }, videos: { total: 'bad' } })).toMatchObject({
+    expect(
+      t.normalizeBilibiliStatusPayload({ config: { enabled: true, poll_enabled: true }, videos: { total: 'bad' } }),
+    ).toMatchObject({
       enabled: true,
       polling_enabled: true,
       poll_enabled: true,
@@ -2358,7 +2386,9 @@ describe('main default dependency coverage', () => {
     expect(t.normalizeBilibiliStatusPayload({})).toMatchObject({
       video_count: 0,
     });
-    expect(t.normalizeBilibiliVideoRecord({ id: '5', aid: null, title: null, owner_mid: null, last_poll_status: null })).toMatchObject({
+    expect(
+      t.normalizeBilibiliVideoRecord({ id: '5', aid: null, title: null, owner_mid: null, last_poll_status: null }),
+    ).toMatchObject({
       id: 5,
       aid: null,
       title: null,
@@ -2507,17 +2537,25 @@ describe('main default dependency coverage', () => {
         return this;
       }),
     };
-    expect(t.checkApiKey({ headers: { 'x-api-key': 'admin-key' } } as any, reply as any, buildSettings({ apiKey: 'admin-key' }))).toBe(
-      true,
-    );
-    expect(t.checkApiKey({ headers: { 'x-api-key': 'wrong' } } as any, reply as any, buildSettings({ apiKey: 'admin-key' }))).toBe(
-      false,
-    );
+    expect(
+      t.checkApiKey(
+        { headers: { 'x-api-key': 'admin-key' } } as any,
+        reply as any,
+        buildSettings({ apiKey: 'admin-key' }),
+      ),
+    ).toBe(true);
+    expect(
+      t.checkApiKey({ headers: { 'x-api-key': 'wrong' } } as any, reply as any, buildSettings({ apiKey: 'admin-key' })),
+    ).toBe(false);
     process.env.NODE_ENV = 'production';
     expect(t.checkApiKey({ headers: {} } as any, reply as any, buildSettings({ apiKey: '' }))).toBe(false);
-    expect(t.checkCommentIngressAuth({ headers: {} } as any, reply as any, buildSettings({ commentIngressToken: '' }))).toBe(false);
+    expect(
+      t.checkCommentIngressAuth({ headers: {} } as any, reply as any, buildSettings({ commentIngressToken: '' })),
+    ).toBe(false);
     delete process.env.NODE_ENV;
-    expect(t.checkCommentIngressAuth({ headers: {} } as any, reply as any, buildSettings({ commentIngressToken: '' }))).toBe(true);
+    expect(
+      t.checkCommentIngressAuth({ headers: {} } as any, reply as any, buildSettings({ commentIngressToken: '' })),
+    ).toBe(true);
     expect(
       t.checkCommentIngressAuth(
         { headers: { authorization: 'Bearer comment-token' } } as any,
@@ -2595,7 +2633,9 @@ describe('main default dependency coverage', () => {
       public_companion_actions_enabled: true,
     });
     expect(
-      t.buildDefaultReadinessSummary(buildSettings({ adminSessionTtlSeconds: undefined, publicCompanionActionsEnabled: undefined })),
+      t.buildDefaultReadinessSummary(
+        buildSettings({ adminSessionTtlSeconds: undefined, publicCompanionActionsEnabled: undefined }),
+      ),
     ).toMatchObject({
       config: { admin_session_ttl_seconds: 60 * 60 * 12 },
       public_companion_actions_enabled: false,
@@ -2618,7 +2658,12 @@ describe('main default dependency coverage', () => {
         '',
       ),
     ).toMatchObject({
-      blockers: expect.arrayContaining(['llm_generation', 'search_enrichment', 'native_bilibili_publish', 'comment_ingress_auth']),
+      blockers: expect.arrayContaining([
+        'llm_generation',
+        'search_enrichment',
+        'native_bilibili_publish',
+        'comment_ingress_auth',
+      ]),
       summary: expect.arrayContaining([
         expect.objectContaining({ capability: 'llm_generation', status: 'unsupported' }),
         expect.objectContaining({ capability: 'search_enrichment', status: 'unsupported' }),
@@ -2659,7 +2704,9 @@ describe('main default dependency coverage', () => {
       ),
     ).toMatchObject({
       blockers: ['llm_generation'],
-      summary: expect.arrayContaining([expect.objectContaining({ capability: 'llm_generation', status: 'fallback_enabled' })]),
+      summary: expect.arrayContaining([
+        expect.objectContaining({ capability: 'llm_generation', status: 'fallback_enabled' }),
+      ]),
     });
     expect(
       t.buildDeliveryCapabilityMatrix(
@@ -2749,17 +2796,23 @@ describe('main default dependency coverage', () => {
       source: 'direct-test',
       traceId: 'trace-direct',
     };
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'manual_queue' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'manual_queue' }), payload),
+    ).resolves.toMatchObject({
       published: true,
       reason: 'manual_queued',
       status: 'pending_review',
     });
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'simulated' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'simulated' }), payload),
+    ).resolves.toMatchObject({
       published: true,
       reason: 'simulated',
       status: 'published',
     });
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'unknown' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'unknown' }), payload),
+    ).resolves.toMatchObject({
       published: false,
       reason: 'not_configured',
     });
@@ -2787,24 +2840,32 @@ describe('main default dependency coverage', () => {
       .mockRejectedValueOnce('plain webhook failure')
       .mockRejectedValueOnce(new Error('webhook boom'));
     vi.stubGlobal('fetch', fetchMock);
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload),
+    ).resolves.toMatchObject({
       published: true,
       reason: 'webhook_published',
       status: 'published',
     });
     expect(fetchMock.mock.calls[0][1].headers).toEqual({ 'Content-Type': 'application/json' });
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload),
+    ).resolves.toMatchObject({
       published: false,
       reason: 'remote_rejected',
       status: 'failed',
       publishedAt: new Date('2026-06-09T11:00:00.000Z'),
     });
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload),
+    ).resolves.toMatchObject({
       published: false,
       reason: 'webhook_failed',
       status: 'failed',
     });
-    await expect(t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload)).resolves.toMatchObject({
+    await expect(
+      t.defaultPublishGatewayReply(buildSettings({ publisherMode: 'webhook' }), payload),
+    ).resolves.toMatchObject({
       published: false,
       reason: 'webhook boom',
       status: 'failed',

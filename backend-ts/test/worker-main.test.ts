@@ -2,17 +2,13 @@ import { resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const {
-  buildWorkerServicesMock,
-  createCommentEventWorkerMock,
-  pollAllVideosMock,
-  resolvePlatformPollingRuntimeMock,
-} = vi.hoisted(() => ({
-  buildWorkerServicesMock: vi.fn(),
-  createCommentEventWorkerMock: vi.fn(),
-  pollAllVideosMock: vi.fn(),
-  resolvePlatformPollingRuntimeMock: vi.fn(),
-}));
+const { buildWorkerServicesMock, createCommentEventWorkerMock, pollAllVideosMock, resolvePlatformPollingRuntimeMock } =
+  vi.hoisted(() => ({
+    buildWorkerServicesMock: vi.fn(),
+    createCommentEventWorkerMock: vi.fn(),
+    pollAllVideosMock: vi.fn(),
+    resolvePlatformPollingRuntimeMock: vi.fn(),
+  }));
 
 vi.mock('../src/platforms/registry.js', () => ({
   resolvePlatformPollingRuntime: resolvePlatformPollingRuntimeMock,
@@ -109,9 +105,7 @@ describe('worker main runtime', () => {
     });
     expect(createCommentEventWorkerMock).toHaveBeenCalledWith('comment-event', { services: true });
     expect(resolvePlatformPollingRuntimeMock).toHaveBeenCalledWith('bilibili', process.env);
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      '[worker] Bilibili polling disabled (BILIBILI_POLL_ENABLED not set)',
-    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('[worker] Bilibili polling disabled (BILIBILI_POLL_ENABLED not set)');
     expect(processOnSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
     expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
 
@@ -127,10 +121,7 @@ describe('worker main runtime', () => {
 
     await expect(callbacks.SIGINT?.()).rejects.toThrow('process.exit:0');
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[worker] Error closing worker:',
-      expect.any(Error),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Error closing worker:', expect.any(Error));
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
@@ -152,9 +143,7 @@ describe('worker main runtime', () => {
       killSwitch: false,
       roleProfileDefault: 'doro',
     });
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      '[worker] Bilibili polling scheduled every 5s (initial delay: 10s)',
-    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('[worker] Bilibili polling scheduled every 5s (initial delay: 10s)');
 
     await vi.advanceTimersByTimeAsync(10_000);
     expect(pollAllVideosMock).toHaveBeenCalledOnce();
@@ -166,9 +155,7 @@ describe('worker main runtime', () => {
     resolvePoll({ videos: 4, events_injected: 7 });
     await vi.runOnlyPendingTimersAsync();
     await Promise.resolve();
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      '[worker] Bilibili poll completed: 4 videos, 7 events injected',
-    );
+    expect(consoleLogSpy).toHaveBeenCalledWith('[worker] Bilibili poll completed: 4 videos, 7 events injected');
 
     await expect(callbacks.SIGINT?.()).rejects.toThrow('process.exit:0');
     expect(workerCloseMock).toHaveBeenCalledOnce();
@@ -185,15 +172,9 @@ describe('worker main runtime', () => {
     await vi.advanceTimersByTimeAsync(10_000);
     await Promise.resolve();
 
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[worker] Bilibili poll failed:',
-      expect.any(Error),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Bilibili poll failed:', expect.any(Error));
     await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[worker] Error closing worker:',
-      expect.any(Error),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Error closing worker:', expect.any(Error));
   });
 
   it('shuts down polling mode before the interval has been created', async () => {

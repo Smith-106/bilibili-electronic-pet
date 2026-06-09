@@ -102,9 +102,7 @@ export async function publishViaSidecarWebhook(input: {
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     const published = payload.published !== false;
     const publishedAt =
-      typeof payload.published_at === 'string' && payload.published_at
-        ? new Date(payload.published_at)
-        : new Date();
+      typeof payload.published_at === 'string' && payload.published_at ? new Date(payload.published_at) : new Date();
 
     return {
       published,

@@ -58,9 +58,7 @@ export function buildPlatformPublishIntent(input: PublishPlatformInput): Publish
   });
 }
 
-export function resolveCommentReplyIntentParts(
-  intent: PublishIntent,
-): {
+export function resolveCommentReplyIntentParts(intent: PublishIntent): {
   commentId: string;
   replyText: string;
   platform: string;

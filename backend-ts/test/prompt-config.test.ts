@@ -132,9 +132,11 @@ action_pool:
   });
 
   it('normalizes direct list helper nullish, duplicate, and all-empty entries', () => {
-    expect(__promptConfigTesting.readStrList({ values: [null, undefined, ' alpha ', 'alpha', '', ' beta '] }, 'values', [
-      'fallback',
-    ])).toEqual(['alpha', 'beta']);
+    expect(
+      __promptConfigTesting.readStrList({ values: [null, undefined, ' alpha ', 'alpha', '', ' beta '] }, 'values', [
+        'fallback',
+      ]),
+    ).toEqual(['alpha', 'beta']);
     expect(__promptConfigTesting.readStrList({ values: [null, undefined, ''] }, 'values', ['fallback'])).toEqual([
       'fallback',
     ]);

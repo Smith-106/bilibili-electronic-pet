@@ -62,10 +62,7 @@ type CommentJobActionDeps = {
   enqueueCommentEventJob: (payload: Record<string, unknown>) => Promise<QueueResult>;
 };
 
-async function retryJob(
-  deps: CommentJobActionDeps,
-  input: RetryJobInput,
-): Promise<RetryJobResult> {
+async function retryJob(deps: CommentJobActionDeps, input: RetryJobInput): Promise<RetryJobResult> {
   const traceId = deps.createTraceId();
   const prisma = deps.getPrisma();
   const job = await prisma.replyJob.findUnique({ where: { id: input.jobId } });
@@ -112,10 +109,7 @@ async function retryJob(
   };
 }
 
-async function approveJob(
-  deps: CommentJobActionDeps,
-  input: ApproveJobInput,
-): Promise<ApproveJobResult> {
+async function approveJob(deps: CommentJobActionDeps, input: ApproveJobInput): Promise<ApproveJobResult> {
   const traceId = deps.createTraceId();
   const prisma = deps.getPrisma();
 
@@ -267,10 +261,7 @@ async function approveJob(
   };
 }
 
-async function approveJobsBatch(
-  deps: CommentJobActionDeps,
-  input: { jobIds: number[] },
-): Promise<ApproveBatchResult> {
+async function approveJobsBatch(deps: CommentJobActionDeps, input: { jobIds: number[] }): Promise<ApproveBatchResult> {
   const traceId = deps.createTraceId();
   const results: Array<{ job_id: number; ok: boolean; status?: string; error?: string }> = [];
   let success = 0;
@@ -324,7 +315,8 @@ async function retryJobsBatch(
       }
     } catch (error) {
       failed++;
-      const detail = typeof error === 'object' && error !== null && 'detail' in error ? String(error.detail) : 'retry_failed';
+      const detail =
+        typeof error === 'object' && error !== null && 'detail' in error ? String(error.detail) : 'retry_failed';
       results.push({ job_id: jobId, ok: false, error: detail });
     }
   }

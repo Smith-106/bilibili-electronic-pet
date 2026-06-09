@@ -68,7 +68,10 @@ describe('memory service wrapper coverage branches', () => {
       createSpace: vi.fn(async (input) => ({ id: 2, ...input })),
       listItems: vi.fn(async (filters) => [{ id: 3, filters }]),
       upsertItem: vi.fn(async (input) => ({ id: 4, ...input })),
-      listGrants: vi.fn(async (filters) => [{ id: 5, space_id: 9, filters }, { id: 6, space_id: 9, filters }]),
+      listGrants: vi.fn(async (filters) => [
+        { id: 5, space_id: 9, filters },
+        { id: 6, space_id: 9, filters },
+      ]),
       upsertGrant: vi.fn(async (input) => ({ id: 7, ...input })),
       listIdentityLinks: vi.fn(async (filters) => [{ id: 8, filters }]),
       upsertIdentityLink: vi.fn(async (input) => ({ id: 9, ...input })),
@@ -90,19 +93,23 @@ describe('memory service wrapper coverage branches', () => {
       item_key: 'i',
     });
     await expect(service.listGrants({ subjectType: 'operator' })).resolves.toHaveLength(2);
-    await expect(service.listSpaceGrants(3)).resolves.toEqual(expect.arrayContaining([
-      expect.objectContaining({ filters: { spaceId: 3 } }),
-    ]));
-    await expect(service.listSubjectGrants('operator', 'bob')).resolves.toEqual(expect.arrayContaining([
-      expect.objectContaining({ filters: { subjectType: 'operator', subjectId: 'bob' } }),
-    ]));
-    await expect(service.grantSpaceAccess({ space_id: 1, subject_type: 'operator', subject_id: 'bob' })).resolves.toMatchObject({
+    await expect(service.listSpaceGrants(3)).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ filters: { spaceId: 3 } })]),
+    );
+    await expect(service.listSubjectGrants('operator', 'bob')).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ filters: { subjectType: 'operator', subjectId: 'bob' } })]),
+    );
+    await expect(
+      service.grantSpaceAccess({ space_id: 1, subject_type: 'operator', subject_id: 'bob' }),
+    ).resolves.toMatchObject({
       subject_id: 'bob',
     });
     await expect(service.listIdentityLinks({ platform: 'bilibili' })).resolves.toEqual([
       { id: 8, filters: { platform: 'bilibili' } },
     ]);
-    await expect(service.linkIdentity({ subject_type: 'operator', subject_id: 'bob', external_id: 'uid' })).resolves.toMatchObject({
+    await expect(
+      service.linkIdentity({ subject_type: 'operator', subject_id: 'bob', external_id: 'uid' }),
+    ).resolves.toMatchObject({
       external_id: 'uid',
     });
 

@@ -3,7 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __searchTesting, buildSearchContext, searchWeb } from '../src/services/search.js';
 
 const fetchMock = vi.fn();
-const trackedEnvKeys = ['SEARCH_PROVIDER', 'SEARCH_API_KEY', 'SEARCH_CX', 'SEARCH_MAX_RESULTS', 'SEARCH_TIMEOUT'] as const;
+const trackedEnvKeys = [
+  'SEARCH_PROVIDER',
+  'SEARCH_API_KEY',
+  'SEARCH_CX',
+  'SEARCH_MAX_RESULTS',
+  'SEARCH_TIMEOUT',
+] as const;
 const originalEnv = Object.fromEntries(trackedEnvKeys.map((key) => [key, process.env[key]])) as Record<
   (typeof trackedEnvKeys)[number],
   string | undefined
@@ -313,10 +319,7 @@ describe('search service', () => {
       'alpha beta',
       'gamma delta',
     ]);
-    expect(__searchTesting.expandQueries('same same same same')).toEqual([
-      'same same same same',
-      'same same',
-    ]);
+    expect(__searchTesting.expandQueries('same same same same')).toEqual(['same same same same', 'same same']);
     expect(
       __searchTesting.dedupeItems([
         { source: 'https://a.example', title: 'A', snippet: 'one' },
@@ -333,7 +336,7 @@ describe('search service', () => {
           { source: 'https://a.example', title: 'alpha beta', snippet: '' },
         ],
         '',
-       )[0].source,
+      )[0].source,
     ).toBe('https://b.example');
     expect(__searchTesting.rerankItems([{ source: 'https://missing-fields.example' }], 'alpha')).toEqual([
       { source: 'https://missing-fields.example' },
@@ -417,11 +420,9 @@ describe('search service', () => {
     fetchMock.mockImplementation(
       async (_url: string, init?: RequestInit) =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            'abort',
-            () => reject(new DOMException('aborted', 'AbortError')),
-            { once: true },
-          );
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+            once: true,
+          });
         }),
     );
 

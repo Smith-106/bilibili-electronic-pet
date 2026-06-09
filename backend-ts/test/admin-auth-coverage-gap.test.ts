@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { RuntimeSettings } from '../src/server/contracts.js';
-import {
-  issueAdminSession,
-  resolveAdminSessionSecret,
-  verifyAdminSessionToken,
-} from '../src/server/admin-auth.js';
+import { issueAdminSession, resolveAdminSessionSecret, verifyAdminSessionToken } from '../src/server/admin-auth.js';
 
 function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
@@ -103,8 +99,12 @@ describe('admin auth coverage gaps', () => {
     expect(verifyAdminSessionToken(`${wrongVersionPayload}.${signature}`, settings, 2_000)).toBe(false);
     expect(verifyAdminSessionToken(`${wrongScopePayload}.${signature}`, settings, 2_000)).toBe(false);
     expect(verifyAdminSessionToken(String(session?.token), settings, 3_601_000)).toBe(false);
-    expect(verifyAdminSessionToken(String(session?.token), buildSettings({ adminSessionSecret: 'other' }), 2_000)).toBe(false);
-    expect(verifyAdminSessionToken(String(session?.token), buildSettings({ apiKey: '', adminSessionSecret: '' }), 2_000)).toBe(false);
+    expect(verifyAdminSessionToken(String(session?.token), buildSettings({ adminSessionSecret: 'other' }), 2_000)).toBe(
+      false,
+    );
+    expect(
+      verifyAdminSessionToken(String(session?.token), buildSettings({ apiKey: '', adminSessionSecret: '' }), 2_000),
+    ).toBe(false);
     expect(issueAdminSession(buildSettings({ apiKey: '', adminSessionSecret: '' }), 1_000)).toBeNull();
   });
 });

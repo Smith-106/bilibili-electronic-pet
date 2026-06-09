@@ -25,13 +25,8 @@ vi.mock('@prisma/adapter-libsql', () => ({
   PrismaLibSql: mockPrismaLibSql,
 }));
 
-const {
-  DEFAULT_DATABASE_URL,
-  createPrismaClient,
-  disconnectPrisma,
-  getPrisma,
-  resolveDatabaseUrl,
-} = await import('../src/lib/prisma.js');
+const { DEFAULT_DATABASE_URL, createPrismaClient, disconnectPrisma, getPrisma, resolveDatabaseUrl } =
+  await import('../src/lib/prisma.js');
 
 afterEach(async () => {
   await disconnectPrisma();

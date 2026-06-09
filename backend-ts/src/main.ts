@@ -66,10 +66,7 @@ import {
   defaultIsPlatformEnabled,
   normalizePublishMode,
 } from './server/runtime-platform.js';
-import {
-  collectCommentEvent,
-  type CollectorSource,
-} from './services/collector.js';
+import { collectCommentEvent, type CollectorSource } from './services/collector.js';
 import {
   postReply,
   probeBilibiliAuth as probeBilibiliRuntimeAuth,
@@ -169,7 +166,11 @@ function parseInteger(value: string | undefined, defaultValue: number): number {
 }
 
 function isProductionRuntime(): boolean {
-  return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+  return (
+    String(process.env.NODE_ENV ?? '')
+      .trim()
+      .toLowerCase() === 'production'
+  );
 }
 
 function parseAdminLimit(value: unknown, defaultValue: number, min: number, max: number): number {
@@ -253,7 +254,9 @@ function startCase(value: string): string {
 }
 
 function normalizeCompanionInteractionKind(value: unknown): CompanionInteractionKind {
-  const normalized = String(value ?? '').trim().toLowerCase();
+  const normalized = String(value ?? '')
+    .trim()
+    .toLowerCase();
   if (normalized === 'pat' || normalized === 'feed' || normalized === 'wake') {
     return normalized;
   }
@@ -721,7 +724,10 @@ function buildDeliveryCapabilityMatrix(
   bilibiliDiagnostics: BilibiliDiagnostics,
   effectivePublishMode: string,
 ): DeliveryCapabilityMatrix {
-  const llmProvider = String(settings.llmProvider ?? 'mock').trim().toLowerCase() || 'mock';
+  const llmProvider =
+    String(settings.llmProvider ?? 'mock')
+      .trim()
+      .toLowerCase() || 'mock';
   let llmStatus: DeliveryCapabilityStatus = 'configured';
   const llmMissing: string[] = [];
   if (llmProvider === 'mock') {
@@ -738,7 +744,10 @@ function buildDeliveryCapabilityMatrix(
     llmMissing.push('LLM_FALLBACK_TO_MOCK=false');
   }
 
-  const searchProvider = String(settings.searchProvider ?? 'serpapi').trim().toLowerCase() || 'serpapi';
+  const searchProvider =
+    String(settings.searchProvider ?? 'serpapi')
+      .trim()
+      .toLowerCase() || 'serpapi';
   let searchStatus: DeliveryCapabilityStatus = 'configured';
   const searchMissing: string[] = [];
   if (!['serpapi', 'bing', 'google'].includes(searchProvider)) {
@@ -790,7 +799,13 @@ function buildDeliveryCapabilityMatrix(
     createDeliveryCapability('llm_generation', true, llmStatus, llmProvider, llmMissing),
     createDeliveryCapability('search_enrichment', true, searchStatus, searchProvider, searchMissing),
     createDeliveryCapability('webhook_publish', webhookActive, webhookStatus, normalizedMode, webhookMissing),
-    createDeliveryCapability('native_bilibili_publish', nativePublishActive, nativeStatus, normalizedMode, nativeMissing),
+    createDeliveryCapability(
+      'native_bilibili_publish',
+      nativePublishActive,
+      nativeStatus,
+      normalizedMode,
+      nativeMissing,
+    ),
     createDeliveryCapability(
       'comment_ingress_auth',
       true,
@@ -1674,9 +1689,7 @@ async function defaultListMemorySpaces(input: {
 
   return {
     ok: true,
-    items: items
-      .slice(input.offset, input.offset + input.limit)
-      .map((item) => normalizeMemorySpaceRecord(item)),
+    items: items.slice(input.offset, input.offset + input.limit).map((item) => normalizeMemorySpaceRecord(item)),
   };
 }
 
@@ -1748,9 +1761,7 @@ async function defaultListMemoryGrants(input: {
 
   return {
     ok: true,
-    items: items
-      .slice(input.offset, input.offset + input.limit)
-      .map((item) => normalizeMemoryGrantRecord(item)),
+    items: items.slice(input.offset, input.offset + input.limit).map((item) => normalizeMemoryGrantRecord(item)),
   };
 }
 
@@ -1786,9 +1797,7 @@ async function defaultListMemoryIdentityLinks(input: {
 
   return {
     ok: true,
-    items: items
-      .slice(input.offset, input.offset + input.limit)
-      .map((item) => normalizeIdentityLinkRecord(item)),
+    items: items.slice(input.offset, input.offset + input.limit).map((item) => normalizeIdentityLinkRecord(item)),
   };
 }
 
@@ -1993,7 +2002,6 @@ function defaultGetObservabilitySummary(_input: { windowMinutes: number }): {
   };
 }
 
-
 async function defaultGetBilibiliStatus(input: {
   settings: RuntimeSettings;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
@@ -2116,7 +2124,9 @@ export function buildDegradedCompanionState(reason?: string): CompanionState {
     loopHint: 'The backend companion endpoint is serving a degraded runtime view until persisted signals recover.',
     mood: {
       label: 'Curious',
-      note: reason ? `Companion endpoint degraded gracefully: ${reason}.` : 'Waiting for the next backend companion update.',
+      note: reason
+        ? `Companion endpoint degraded gracefully: ${reason}.`
+        : 'Waiting for the next backend companion update.',
     },
     memoryTitle: 'Short-term memory',
     memorySummary: 'Persisted companion memory is temporarily unavailable.',
@@ -2170,7 +2180,10 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
     const companionSpace = spaces.find((space) => space.space_key === COMPANION_SYSTEM_SPACE_KEY);
     const companionItems = companionSpace ? items.filter((item) => item.space_id === companionSpace.id) : [];
     const timelineSourceItems = companionItems.filter((item) => item.item_metadata?.entry_mode !== 'latest');
-    const recentSpaceTitles = spaces.slice(0, 3).map((space) => space.title).filter(Boolean);
+    const recentSpaceTitles = spaces
+      .slice(0, 3)
+      .map((space) => space.title)
+      .filter(Boolean);
     const recentSubjects = links
       .slice(0, 3)
       .map((link) => `${link.platform}:${link.external_id}`)
@@ -2189,9 +2202,7 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         : [
             {
               kind: 'signal',
-              title: hasMemory
-                ? 'Companion feed pending'
-                : 'No companion interactions yet',
+              title: hasMemory ? 'Companion feed pending' : 'No companion interactions yet',
               detail: hasMemory
                 ? 'Persisted memory exists, but no companion-specific feed items have been written yet.'
                 : 'Trigger a companion action or write a feed signal to populate this timeline.',
@@ -2222,10 +2233,10 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         recentCompanionSummaries.length > 0
           ? recentCompanionSummaries.join(' | ')
           : items.length > 0
-          ? recentItemSummaries.join(' | ')
-          : hasMemory
-            ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
-            : 'Persisted memory has not been populated yet.',
+            ? recentItemSummaries.join(' | ')
+            : hasMemory
+              ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
+              : 'Persisted memory has not been populated yet.',
       vitals: [
         { label: 'Spaces', value: String(spaces.length) },
         { label: 'Items', value: String(items.length) },
@@ -2235,7 +2246,9 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         { label: 'Focus', value: items.length > 0 ? 'Active memory' : hasMemory ? 'Persisted' : 'Bootstrap' },
       ],
       recentSignals: [
-        hasMemory ? 'Latest signal timestamps are sourced from persisted memory updates.' : 'No memory signals available yet.',
+        hasMemory
+          ? 'Latest signal timestamps are sourced from persisted memory updates.'
+          : 'No memory signals available yet.',
         recentCompanionSummaries.length > 0
           ? `Recent companion feed: ${recentCompanionSummaries.join(' | ')}`
           : 'No companion feed items yet.',
@@ -2310,9 +2323,7 @@ async function defaultRecordCompanionAction(input: {
   const actionAt = new Date();
   const latestItemKey = `action:${input.action}-latest`;
   const historyItemKey = `action:${input.action}:${actionAt.toISOString()}`;
-  const content = input.note
-    ? `${actionMessages[input.action]} Note: ${input.note}`
-    : actionMessages[input.action];
+  const content = input.note ? `${actionMessages[input.action]} Note: ${input.note}` : actionMessages[input.action];
   const metadata = {
     action: input.action,
     note: input.note ?? null,
@@ -2427,7 +2438,10 @@ function defaultDependencies(): ServerDependencies {
   });
 }
 
-function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolean; items: PlatformConnectionSnapshot[] } {
+function defaultListPlatformConnections(settings: RuntimeSettings): {
+  ok: boolean;
+  items: PlatformConnectionSnapshot[];
+} {
   return {
     ok: true,
     items: listPlatformAdapters().map((adapter) => {
@@ -2501,7 +2515,9 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
           {
             key: 'polling',
             status: supportsPolling ? (pollingRuntime.enabled ? 'available' : 'partial') : 'planned',
-            note: supportsPolling ? `${pollingRuntime.intervalSeconds}s interval` : 'No worker polling configured for this platform yet',
+            note: supportsPolling
+              ? `${pollingRuntime.intervalSeconds}s interval`
+              : 'No worker polling configured for this platform yet',
           },
         ],
       };
@@ -2520,7 +2536,9 @@ function defaultUpdatePlatformConnectionControl(
   }
 
   setPlatformControlState(input.platform, { enabled: input.enabled });
-  const item = defaultListPlatformConnections(settings).items.find((entry) => entry.platform === input.platform) as PlatformConnectionSnapshot;
+  const item = defaultListPlatformConnections(settings).items.find(
+    (entry) => entry.platform === input.platform,
+  ) as PlatformConnectionSnapshot;
   return { ok: true, item };
 }
 
@@ -2779,11 +2797,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   const addBilibiliVideo = overrides.addBilibiliVideo ?? defaults.addBilibiliVideo;
   const getCompanionState = overrides.getCompanionState ?? defaults.getCompanionState;
   const recordCompanionAction = overrides.recordCompanionAction ?? defaults.recordCompanionAction;
-  const listPlatformConnections =
-    overrides.listPlatformConnections ?? (() => defaultListPlatformConnections(settings));
+  const listPlatformConnections = overrides.listPlatformConnections ?? (() => defaultListPlatformConnections(settings));
   const updatePlatformConnectionControl =
-    overrides.updatePlatformConnectionControl ??
-    ((input) => defaultUpdatePlatformConnectionControl(settings, input));
+    overrides.updatePlatformConnectionControl ?? ((input) => defaultUpdatePlatformConnectionControl(settings, input));
   const getCompanionStateV2Compat = async () => {
     try {
       const petCoreService = createPetCoreService();

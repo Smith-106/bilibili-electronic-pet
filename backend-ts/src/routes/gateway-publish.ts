@@ -53,13 +53,14 @@ function normalizeGatewayLogItems(
 }
 
 function isProductionRuntime(): boolean {
-  return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+  return (
+    String(process.env.NODE_ENV ?? '')
+      .trim()
+      .toLowerCase() === 'production'
+  );
 }
 
-export function registerGatewayPublishRoutes(
-  app: FastifyInstance,
-  deps: GatewayPublishRouteDependencies,
-): void {
+export function registerGatewayPublishRoutes(app: FastifyInstance, deps: GatewayPublishRouteDependencies): void {
   const publishCore = async (
     requestBody: unknown,
     headers: Record<string, string | string[] | undefined>,
@@ -194,10 +195,7 @@ export function registerGatewayPublishRoutes(
   };
 
   app.post('/gateway/publish', async (request, reply) => {
-    const result = await publishCore(
-      request.body,
-      request.headers as Record<string, string | string[] | undefined>,
-    );
+    const result = await publishCore(request.body, request.headers as Record<string, string | string[] | undefined>);
     return reply.code(result.statusCode).send(result.body);
   });
 

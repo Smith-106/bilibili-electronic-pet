@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { AdminJobsResponse, CompanionStateV2, PlatformConnectionSnapshot, RuntimeSettings } from '../server/contracts.js';
+import type {
+  AdminJobsResponse,
+  CompanionStateV2,
+  PlatformConnectionSnapshot,
+  RuntimeSettings,
+} from '../server/contracts.js';
 import { isPetActionName, type PetActionName } from '../server/pet-contracts.js';
 import { isPlatformName } from '../server/platform-contracts.js';
 
@@ -17,15 +22,17 @@ export type AdminCoreRouteDependencies = {
   updatePlatformConnectionControl: (input: {
     platform: PlatformConnectionSnapshot['platform'];
     enabled: boolean;
-  }) =>
-    | Promise<{ ok: boolean; item: PlatformConnectionSnapshot }>
-    | { ok: boolean; item: PlatformConnectionSnapshot };
+  }) => Promise<{ ok: boolean; item: PlatformConnectionSnapshot }> | { ok: boolean; item: PlatformConnectionSnapshot };
   recordCompanionAction: (input: {
     action: PetActionName;
     note?: string;
   }) => Promise<{ ok: boolean; action: string; item_key: string }> | { ok: boolean; action: string; item_key: string };
   normalizeAdminOverviewPayload: (overview: Record<string, unknown>) => Record<string, unknown>;
-  listAdminJobs: (input: { status?: string; limit: number; offset: number }) => Promise<AdminJobsResponse> | AdminJobsResponse;
+  listAdminJobs: (input: {
+    status?: string;
+    limit: number;
+    offset: number;
+  }) => Promise<AdminJobsResponse> | AdminJobsResponse;
   parseAdminString: (value: unknown) => string | undefined;
   parseAdminLimit: (value: unknown, defaultValue: number, min: number, max: number) => number;
   parseAdminOffset: (value: unknown, defaultValue: number, min: number, max: number) => number;
@@ -79,7 +86,9 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const body = request.body as Record<string, unknown>;
-    const action = String(body.action ?? '').trim().toLowerCase();
+    const action = String(body.action ?? '')
+      .trim()
+      .toLowerCase();
     const note = typeof body.note === 'string' ? body.note.trim().slice(0, 256) : undefined;
 
     if (!isPetActionName(action)) {
@@ -101,7 +110,9 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
 
   app.post('/api/admin/platforms/:platform/control', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
-    const platform = String((request.params as Record<string, unknown>).platform).trim().toLowerCase();
+    const platform = String((request.params as Record<string, unknown>).platform)
+      .trim()
+      .toLowerCase();
     if (!isPlatformName(platform)) {
       return reply.code(400).send({ detail: 'platform_invalid' });
     }

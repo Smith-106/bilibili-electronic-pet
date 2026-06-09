@@ -35,9 +35,7 @@ export type InteractionDecisionInput = {
   roleCardKey?: string;
 };
 
-export type ShouldReplyForInteractionService = (
-  input: InteractionDecisionInput,
-) => Promise<[boolean, string, string]>;
+export type ShouldReplyForInteractionService = (input: InteractionDecisionInput) => Promise<[boolean, string, string]>;
 
 /**
  * Safety service: safety_check

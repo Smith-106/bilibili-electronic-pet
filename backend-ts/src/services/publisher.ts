@@ -64,7 +64,10 @@ function isPublishLogStorageError(error: unknown): boolean {
     return false;
   }
   const message = error.message.toLowerCase();
-  return message.includes('no such table: main.publish_logs') || message.includes('no such column') && message.includes('reservation_key');
+  return (
+    message.includes('no such table: main.publish_logs') ||
+    (message.includes('no such column') && message.includes('reservation_key'))
+  );
 }
 
 async function safeCreatePublishLog(data: {

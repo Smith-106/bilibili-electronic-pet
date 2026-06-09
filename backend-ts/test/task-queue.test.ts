@@ -73,10 +73,7 @@ vi.mock('../src/workers/worker-config.js', () => ({
   buildDefaultWorkerConfig: buildDefaultWorkerConfigMock,
 }));
 
-import {
-  NonRetryableWorkerError,
-  RetryableWorkerError,
-} from '../src/workers/errors.js';
+import { NonRetryableWorkerError, RetryableWorkerError } from '../src/workers/errors.js';
 import {
   createTaskQueue,
   createTaskWorker,
@@ -129,10 +126,7 @@ describe('task queue infrastructure', () => {
     createTaskQueue('custom-queue', connection);
 
     expect(buildRedisConnectionConfigMock).not.toHaveBeenCalled();
-    expect(queueConstructorMock).toHaveBeenCalledWith(
-      'custom-queue',
-      expect.objectContaining({ connection }),
-    );
+    expect(queueConstructorMock).toHaveBeenCalledWith('custom-queue', expect.objectContaining({ connection }));
   });
 
   it('runs processors through createTaskWorker and registers event handlers', async () => {
@@ -222,18 +216,9 @@ describe('task queue infrastructure', () => {
     handlers.error(new Error('worker down'));
 
     expect(consoleLogSpy).toHaveBeenCalledWith('[Worker] Job job-1 completed:', { ok: true });
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[Worker] Job job-2 failed (non-retryable):',
-      'bad input',
-    );
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      '[Worker] Job job-3 failed (will retry):',
-      'retry me',
-    );
-    expect(consoleErrorSpy).toHaveBeenCalledWith(
-      '[Worker] Job undefined failed (unexpected):',
-      expect.any(Error),
-    );
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[Worker] Job job-2 failed (non-retryable):', 'bad input');
+    expect(consoleWarnSpy).toHaveBeenCalledWith('[Worker] Job job-3 failed (will retry):', 'retry me');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[Worker] Job undefined failed (unexpected):', expect.any(Error));
     expect(consoleErrorSpy).toHaveBeenCalledWith('[Worker] Worker error:', expect.any(Error));
   });
 
@@ -255,10 +240,7 @@ describe('task queue infrastructure', () => {
     expect(normalizeQueueError(new Error('   '))).toBe('queue_unavailable');
     expect(normalizeQueueError('plain failure')).toBe('queue_unavailable');
 
-    const add = vi
-      .fn()
-      .mockResolvedValueOnce({ id: 'job-1' })
-      .mockRejectedValueOnce(new Error(' redis offline '));
+    const add = vi.fn().mockResolvedValueOnce({ id: 'job-1' }).mockRejectedValueOnce(new Error(' redis offline '));
     const queue = { add };
 
     await expect(
@@ -270,10 +252,15 @@ describe('task queue infrastructure', () => {
       queued: false,
       error: 'redis offline',
     });
-    expect(add).toHaveBeenNthCalledWith(1, 'process', { trace_id: 'trace-1' }, {
-      attempts: 5,
-      jobId: 'job-id-1',
-    });
+    expect(add).toHaveBeenNthCalledWith(
+      1,
+      'process',
+      { trace_id: 'trace-1' },
+      {
+        attempts: 5,
+        jobId: 'job-id-1',
+      },
+    );
     expect(add).toHaveBeenNthCalledWith(2, 'process', { trace_id: 'trace-2' }, {});
   });
 
@@ -291,9 +278,7 @@ describe('task queue infrastructure', () => {
     const workerConfig = await vi.importActual<typeof import('../src/workers/worker-config.js')>(
       '../src/workers/worker-config.js',
     );
-    const redisConfig = await vi.importActual<typeof import('../src/workers/config.js')>(
-      '../src/workers/config.js',
-    );
+    const redisConfig = await vi.importActual<typeof import('../src/workers/config.js')>('../src/workers/config.js');
 
     try {
       delete process.env.WORKER_MAX_RETRIES;

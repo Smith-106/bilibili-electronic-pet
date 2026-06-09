@@ -1,7 +1,10 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { CollectorSource } from '../services/collector.js';
-import { normalizeCommentEventToInteractionEvent, normalizeInteractionEventToCommentEvent } from '../services/collector.js';
+import {
+  normalizeCommentEventToInteractionEvent,
+  normalizeInteractionEventToCommentEvent,
+} from '../services/collector.js';
 import {
   buildCommentEventQueuePayload,
   getPendingCommentQueueBacklog,
@@ -39,9 +42,7 @@ type CommentIngestDeps = {
   writeAuditLog: (prisma: PrismaClient, input: AuditLogInput) => Promise<void>;
 };
 
-async function enqueueCommentEventJob(
-  payload: Record<string, unknown>,
-): Promise<CommentQueueJobResult> {
+async function enqueueCommentEventJob(payload: Record<string, unknown>): Promise<CommentQueueJobResult> {
   try {
     const { createCommentEventQueue } = await import('../workers/tasks/comment-event.task.js');
     const { tryEnqueueTask } = await import('../workers/task-queue.js');
@@ -232,8 +233,7 @@ async function ingestInteractionEvent(
 export function createCommentIngestHelpers(deps: CommentIngestDeps) {
   return {
     enqueueCommentEventJob,
-    ingestInteractionEvent: (input: { event: InteractionEvent; source: string }) =>
-      ingestInteractionEvent(deps, input),
+    ingestInteractionEvent: (input: { event: InteractionEvent; source: string }) => ingestInteractionEvent(deps, input),
     ingestCommentEvent: (input: { event: CommentEvent; source: string }) =>
       ingestInteractionEvent(deps, {
         event: normalizeCommentEventToInteractionEvent({

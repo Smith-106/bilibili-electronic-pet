@@ -23,9 +23,8 @@ vi.mock('../src/services/db-queries.js', () => ({
   prisma: () => mockPrisma,
 }));
 
-const { shouldReply, shouldReplyForInteraction, decideSafetyAction, __deciderTesting } = await import(
-  '../src/services/decider.js'
-);
+const { shouldReply, shouldReplyForInteraction, decideSafetyAction, __deciderTesting } =
+  await import('../src/services/decider.js');
 const { buildLogContext, ensureTraceId, recordObservabilityEvent } = await import('../src/services/observability.js');
 
 const trackedEnvKeys = [
@@ -917,11 +916,9 @@ describe('generateWithLLM coverage branches', () => {
     const fetchMock = vi.fn(
       async (_url: string, init?: RequestInit) =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            'abort',
-            () => reject(new DOMException('aborted', 'AbortError')),
-            { once: true },
-          );
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+            once: true,
+          });
         }),
     );
     vi.stubGlobal('fetch', fetchMock);

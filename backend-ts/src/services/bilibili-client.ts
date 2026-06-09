@@ -36,7 +36,10 @@ function buildHeaders(config: BilibiliConfig): Record<string, string> {
   };
 }
 
-function buildAbortController(timeoutMs: number): { controller: AbortController; timeoutId: ReturnType<typeof setTimeout> } {
+function buildAbortController(timeoutMs: number): {
+  controller: AbortController;
+  timeoutId: ReturnType<typeof setTimeout>;
+} {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   return { controller, timeoutId };

@@ -44,7 +44,9 @@ afterEach(() => {
 
 describe('knowledge service coverage', () => {
   it('returns database search results and falls back to empty results on errors', async () => {
-    dbSearchKnowledgeMock.mockResolvedValueOnce([{ answer: 'Known answer' }]).mockRejectedValueOnce(new Error('db_down'));
+    dbSearchKnowledgeMock
+      .mockResolvedValueOnce([{ answer: 'Known answer' }])
+      .mockRejectedValueOnce(new Error('db_down'));
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     await expect(searchKnowledge('known')).resolves.toEqual([{ answer: 'Known answer' }]);

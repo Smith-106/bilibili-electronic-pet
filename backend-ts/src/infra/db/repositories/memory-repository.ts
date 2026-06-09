@@ -86,7 +86,9 @@ function mapIdentityLink(record: IdentityLink): IdentityLinkRecord {
   };
 }
 
-export function createMemoryRepository(prisma: MemoryPrismaClient = getPrisma() as MemoryPrismaClient): MemoryRepository {
+export function createMemoryRepository(
+  prisma: MemoryPrismaClient = getPrisma() as MemoryPrismaClient,
+): MemoryRepository {
   return {
     async listSpaces(filters = {}) {
       const where: {

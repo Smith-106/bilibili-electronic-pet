@@ -304,9 +304,7 @@ describe('pollVideoById', () => {
       last_rpid: 10,
     });
     mockPrisma.bilibiliVideo.update.mockResolvedValue(undefined);
-    mockPrisma.comment.create
-      .mockResolvedValueOnce(undefined)
-      .mockRejectedValueOnce(new Error('duplicate comment'));
+    mockPrisma.comment.create.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('duplicate comment'));
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -954,11 +952,9 @@ describe('pollVideoById', () => {
     fetchMock.mockImplementation(
       async (_url: string, init?: RequestInit) =>
         new Promise((_resolve, reject) => {
-          init?.signal?.addEventListener(
-            'abort',
-            () => reject(new DOMException('aborted', 'AbortError')),
-            { once: true },
-          );
+          init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
+            once: true,
+          });
         }),
     );
 

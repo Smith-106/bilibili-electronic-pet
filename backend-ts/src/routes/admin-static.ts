@@ -1,10 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 
-async function serveStaticAsset(
-  reply: FastifyReply,
-  surface: 'admin' | 'companion',
-  relativePath: string,
-) {
+async function serveStaticAsset(reply: FastifyReply, surface: 'admin' | 'companion', relativePath: string) {
   const fs = await import('fs/promises');
   const path = await import('path');
   const assetPath = path.join(process.cwd(), 'public', surface, ...relativePath.split('/').filter(Boolean));

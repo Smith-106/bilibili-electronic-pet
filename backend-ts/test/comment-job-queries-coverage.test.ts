@@ -327,7 +327,9 @@ describe('comment job query helpers coverage', () => {
 
   it('queries listed job comments when only one identifier family is present', async () => {
     const { helpers, prisma } = buildHelpers();
-    prisma.replyJob.findMany.mockResolvedValueOnce([buildJob({ comment_id: 'plain-only', canonical_comment_id: null })]);
+    prisma.replyJob.findMany.mockResolvedValueOnce([
+      buildJob({ comment_id: 'plain-only', canonical_comment_id: null }),
+    ]);
     prisma.comment.findMany.mockResolvedValueOnce([
       buildComment({ comment_id: 'plain-only', canonical_comment_id: 'qq:plain-only' }),
     ]);
@@ -339,7 +341,9 @@ describe('comment job query helpers coverage', () => {
       },
     });
 
-    prisma.replyJob.findMany.mockResolvedValueOnce([buildJob({ comment_id: '', canonical_comment_id: 'qq:canon-only' })]);
+    prisma.replyJob.findMany.mockResolvedValueOnce([
+      buildJob({ comment_id: '', canonical_comment_id: 'qq:canon-only' }),
+    ]);
     prisma.comment.findMany.mockResolvedValueOnce([
       buildComment({ comment_id: 'canon-only', canonical_comment_id: 'qq:canon-only' }),
     ]);

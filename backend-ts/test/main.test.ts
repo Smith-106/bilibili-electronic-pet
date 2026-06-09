@@ -1457,9 +1457,7 @@ describe('gateway/auth parity', () => {
     );
 
     const platformResponse = await secondApp.inject({ method: 'GET', url: '/api/admin/platforms' });
-    const douyin = platformResponse
-      .json()
-      .items.find((entry: { platform: string }) => entry.platform === 'douyin');
+    const douyin = platformResponse.json().items.find((entry: { platform: string }) => entry.platform === 'douyin');
     expect(douyin).toMatchObject({
       platform: 'douyin',
       enabled: false,

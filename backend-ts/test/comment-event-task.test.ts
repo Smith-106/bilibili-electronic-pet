@@ -124,11 +124,11 @@ describe('comment event task worker', () => {
     vi.clearAllMocks();
     createTaskQueueMock.mockImplementation((queueName: string) => ({ queueName }));
     createTaskWorkerMock.mockImplementation(
-      (
-        queueName: string,
-        processor: CommentEventProcessor,
-        workerConfig: Record<string, unknown>,
-      ) => ({ queueName, processor, workerConfig }),
+      (queueName: string, processor: CommentEventProcessor, workerConfig: Record<string, unknown>) => ({
+        queueName,
+        processor,
+        workerConfig,
+      }),
     );
     upsertCompanionFeedItemMock.mockResolvedValue(undefined);
     consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
@@ -170,9 +170,7 @@ describe('comment event task worker', () => {
   it('rejects payloads without a comment id as non-retryable', async () => {
     const processor = buildProcessor();
 
-    await expect(processor(buildJob({ comment_id: '' }))).rejects.toBeInstanceOf(
-      NonRetryableWorkerError,
-    );
+    await expect(processor(buildJob({ comment_id: '' }))).rejects.toBeInstanceOf(NonRetryableWorkerError);
   });
 
   it('returns comment_not_found when canonical lookup misses', async () => {
@@ -248,9 +246,7 @@ describe('comment event task worker', () => {
         attempts: 0,
       }),
     );
-    expect(consoleWarnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('worker_companion_signal_failed'),
-    );
+    expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('worker_companion_signal_failed'));
   });
 
   it('records dedupe_skipped with generation diagnostics and role cards', async () => {
@@ -387,12 +383,7 @@ describe('comment event task worker', () => {
   it('publishes replies through platform intent and remembers successful phrases', async () => {
     const publishedAt = new Date('2026-03-07T01:00:00.000Z');
     const services = buildServices({
-      publishIntentWithResult: vi.fn(async () => [
-        true,
-        'webhook_published',
-        publishedAt,
-        { new_rpid: 'remote-1' },
-      ]),
+      publishIntentWithResult: vi.fn(async () => [true, 'webhook_published', publishedAt, { new_rpid: 'remote-1' }]),
     });
     const processor = buildProcessor(services);
 

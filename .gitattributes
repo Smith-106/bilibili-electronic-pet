@@ -1,0 +1,12 @@
+backend-ts/*.json text eol=lf
+backend-ts/*.mjs text eol=lf
+backend-ts/*.ts text eol=lf
+backend-ts/src/**/*.ts text eol=lf
+backend-ts/src/**/*.js text eol=lf
+backend-ts/src/**/*.json text eol=lf
+backend-ts/test/**/*.ts text eol=lf
+backend-ts/test/**/*.js text eol=lf
+backend-ts/test/**/*.json text eol=lf
+backend-ts/prisma/**/*.ts text eol=lf
+backend-ts/prisma/**/*.js text eol=lf
+backend-ts/prisma/**/*.json text eol=lf

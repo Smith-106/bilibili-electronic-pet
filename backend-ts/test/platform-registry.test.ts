@@ -99,10 +99,12 @@ describe('platform adapter registry', () => {
   });
 
   it('resolves polling runtime through the bilibili adapter', () => {
-    expect(resolvePlatformPollingRuntime('bilibili', {
-      BILIBILI_POLL_ENABLED: 'true',
-      BILIBILI_POLL_INTERVAL_SECONDS: '180',
-    })).toEqual({
+    expect(
+      resolvePlatformPollingRuntime('bilibili', {
+        BILIBILI_POLL_ENABLED: 'true',
+        BILIBILI_POLL_INTERVAL_SECONDS: '180',
+      }),
+    ).toEqual({
       enabled: true,
       intervalSeconds: 180,
     });

@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  issueAdminSession,
-  resolveAdminSessionSecret,
-  verifyAdminSessionToken,
-} from '../src/server/admin-auth.js';
+import { issueAdminSession, resolveAdminSessionSecret, verifyAdminSessionToken } from '../src/server/admin-auth.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 
 function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
@@ -51,12 +47,10 @@ function encodePayload(payload: unknown): string {
 
 describe('admin auth session helpers', () => {
   it('uses explicit admin session secrets before API keys and returns null without either', () => {
-    expect(resolveAdminSessionSecret(buildSettings({ adminSessionSecret: ' session-secret ', apiKey: 'api-key' }))).toBe(
-      'session-secret',
-    );
-    expect(resolveAdminSessionSecret(buildSettings({ adminSessionSecret: ' ', apiKey: ' api-key ' }))).toBe(
-      'api-key',
-    );
+    expect(
+      resolveAdminSessionSecret(buildSettings({ adminSessionSecret: ' session-secret ', apiKey: 'api-key' })),
+    ).toBe('session-secret');
+    expect(resolveAdminSessionSecret(buildSettings({ adminSessionSecret: ' ', apiKey: ' api-key ' }))).toBe('api-key');
     expect(resolveAdminSessionSecret(buildSettings())).toBeNull();
     expect(issueAdminSession(buildSettings())).toBeNull();
     expect(verifyAdminSessionToken('token', buildSettings())).toBe(false);
@@ -89,9 +83,9 @@ describe('admin auth session helpers', () => {
     expect(verifyAdminSessionToken(` ${issued?.token} `, settings, now + 1000)).toBe(true);
     expect(verifyAdminSessionToken('', settings, now)).toBe(false);
     expect(verifyAdminSessionToken('payloadonly', settings, now)).toBe(false);
-    expect(verifyAdminSessionToken(`${encodePayload({ v: 'wrong', scope: 'admin', exp: now + 1 })}.sig`, settings, now)).toBe(
-      false,
-    );
+    expect(
+      verifyAdminSessionToken(`${encodePayload({ v: 'wrong', scope: 'admin', exp: now + 1 })}.sig`, settings, now),
+    ).toBe(false);
     expect(
       verifyAdminSessionToken(
         `${encodePayload({ v: 'admin-session-v1', scope: 'user', exp: now + 1 })}.sig`,
@@ -106,9 +100,13 @@ describe('admin auth session helpers', () => {
         now,
       ),
     ).toBe(false);
-    expect(verifyAdminSessionToken(`${encodePayload({ v: 'admin-session-v1', scope: 'admin', exp: now + 1 })}.sig`, settings, now)).toBe(
-      false,
-    );
+    expect(
+      verifyAdminSessionToken(
+        `${encodePayload({ v: 'admin-session-v1', scope: 'admin', exp: now + 1 })}.sig`,
+        settings,
+        now,
+      ),
+    ).toBe(false);
     expect(verifyAdminSessionToken(`${issued?.token}extra`, settings, now)).toBe(false);
   });
 

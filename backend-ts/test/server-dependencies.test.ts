@@ -116,7 +116,14 @@ describe('buildDefaultServerDependencies', () => {
       listMemoryIdentityLinks: vi.fn(() => ({ ok: true, items: [] })),
       linkMemoryIdentity: vi.fn((value) => ({
         ok: true,
-        item: { id: 1, platform: value.platform ?? 'bilibili', display_name: null, created_at: null, updated_at: null, ...value },
+        item: {
+          id: 1,
+          platform: value.platform ?? 'bilibili',
+          display_name: null,
+          created_at: null,
+          updated_at: null,
+          ...value,
+        },
       })),
       getStyleProfile: vi.fn(() => ({ ok: true, style_profile: 'auto', preset_profiles: ['auto'] })),
       setStyleProfile: vi.fn((value) => ({ ok: true, style_profile: value.styleProfile })),
@@ -232,7 +239,9 @@ describe('buildDefaultServerDependencies', () => {
     expect(await deps.createKnowledgeEntry({ category: 'c', title: 't', content: 'body' })).toMatchObject({ ok: true });
     expect(await deps.disableKnowledgeEntry({ entryId: 3 })).toMatchObject({ item: { id: 3, enabled: false } });
     expect(await deps.listMemorySpaces({ limit: 10, offset: 0 })).toEqual({ ok: true, items: [] });
-    expect(await deps.createMemorySpace({ space_key: 's', title: 'Space' })).toMatchObject({ item: { space_key: 's' } });
+    expect(await deps.createMemorySpace({ space_key: 's', title: 'Space' })).toMatchObject({
+      item: { space_key: 's' },
+    });
     expect(await deps.listMemoryItems({ limit: 10, offset: 0 })).toEqual({ ok: true, items: [] });
     expect(await deps.upsertMemoryItem({ space_id: 1, item_key: 'i', content: 'body' })).toMatchObject({
       item: { item_key: 'i' },
@@ -250,15 +259,17 @@ describe('buildDefaultServerDependencies', () => {
     expect(await deps.getRoleProfile()).toMatchObject({ role_profile: 'auto' });
     expect(await deps.setRoleProfile({ roleProfile: 'comfort' })).toEqual({ ok: true, role_profile: 'comfort' });
     expect(await deps.listRoleCards({ limit: 10, offset: 0 })).toMatchObject({ active_role_card_key: null });
-    expect(await deps.createRoleCard({
-      key: 'card',
-      name: 'Card',
-      description: '',
-      system_prompt: '',
-      tone: '',
-      constraints: '',
-      enabled: true,
-    })).toMatchObject({ item: { key: 'card' } });
+    expect(
+      await deps.createRoleCard({
+        key: 'card',
+        name: 'Card',
+        description: '',
+        system_prompt: '',
+        tone: '',
+        constraints: '',
+        enabled: true,
+      }),
+    ).toMatchObject({ item: { key: 'card' } });
     expect(await deps.updateRoleCard({ cardKey: 'card', name: 'Updated' })).toMatchObject({ item: { key: 'card' } });
     expect(await deps.disableRoleCard({ cardKey: 'card' })).toMatchObject({ item: { enabled: false } });
     expect(await deps.activateRoleCard({ cardKey: 'card' })).toEqual({ ok: true, active_role_card_key: 'card' });
@@ -266,9 +277,11 @@ describe('buildDefaultServerDependencies', () => {
       ok: true,
       summary: { window_minutes: 15 },
     });
-    expect(await deps.ingestCommentEvent({ event: { comment_id: 'c', source: 'test' }, source: 'test' })).toMatchObject({
-      comment_id: 'c',
-    });
+    expect(await deps.ingestCommentEvent({ event: { comment_id: 'c', source: 'test' }, source: 'test' })).toMatchObject(
+      {
+        comment_id: 'c',
+      },
+    );
     expect(await deps.retryJob({ jobId: 1 })).toMatchObject({ requeued: true });
     expect(await deps.approveJob({ jobId: 1 })).toMatchObject({ status: 'published' });
     expect(await deps.approveJobsBatch({ jobIds: [1, 2] })).toMatchObject({ summary: { total: 2 } });

@@ -171,7 +171,10 @@ async function getJob(deps: CommentJobQueryDeps, input: { jobId: number }): Prom
 
   const comment = await prisma.comment.findFirst({
     where: {
-      OR: [{ comment_id: job.comment_id }, ...(job.canonical_comment_id ? [{ canonical_comment_id: job.canonical_comment_id }] : [])],
+      OR: [
+        { comment_id: job.comment_id },
+        ...(job.canonical_comment_id ? [{ canonical_comment_id: job.canonical_comment_id }] : []),
+      ],
     },
     orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
   });
@@ -204,7 +207,9 @@ async function listJobs(
     take: input.limit,
   });
 
-  const commentIds = [...new Set(items.map((item) => item.comment_id).filter((value): value is string => Boolean(value)))];
+  const commentIds = [
+    ...new Set(items.map((item) => item.comment_id).filter((value): value is string => Boolean(value))),
+  ];
   const canonicalCommentIds = [
     ...new Set(items.map((item) => item.canonical_comment_id).filter((value): value is string => Boolean(value))),
   ];
@@ -255,9 +260,12 @@ async function exportJobsCsv(deps: CommentJobQueryDeps, input: { status?: string
 
   const header = 'job_id,comment_id,status,created_at';
   const rows = items.map((item) =>
-    [item.id, deps.csvEscape(item.comment_id), deps.csvEscape(item.status), deps.csvEscape(item.created_at?.toISOString() ?? '')].join(
-      ',',
-    ),
+    [
+      item.id,
+      deps.csvEscape(item.comment_id),
+      deps.csvEscape(item.status),
+      deps.csvEscape(item.created_at?.toISOString() ?? ''),
+    ].join(','),
   );
 
   return `${[header, ...rows].join('\n')}\n`;

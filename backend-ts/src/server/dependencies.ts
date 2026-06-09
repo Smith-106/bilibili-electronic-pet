@@ -34,9 +34,7 @@ export type ServerDependencies = {
   settings: RuntimeSettings;
   checkDatabaseConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
   checkRedisConnection: () => Promise<ConnectionStatus> | ConnectionStatus;
-  probeBilibiliAuth: (
-    config: BilibiliRuntimeConfig,
-  ) => Promise<BilibiliAuthProbeResult> | BilibiliAuthProbeResult;
+  probeBilibiliAuth: (config: BilibiliRuntimeConfig) => Promise<BilibiliAuthProbeResult> | BilibiliAuthProbeResult;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
   verifyPayloadSignature: (payload: Record<string, unknown>, secret: string, signature: string) => boolean;
   reservePublishLog: (input: PublishReservationInput) => Promise<ReservePublishLogResult> | ReservePublishLogResult;
@@ -180,10 +178,7 @@ export type ServerDependencies = {
   getObservabilitySummary: (input: {
     windowMinutes: number;
   }) => Promise<{ ok: boolean; summary: Record<string, unknown> }> | { ok: boolean; summary: Record<string, unknown> };
-  ingestCommentEvent: (input: {
-    event: CommentEvent;
-    source: string;
-  }) =>
+  ingestCommentEvent: (input: { event: CommentEvent; source: string }) =>
     | Promise<{
         ok: boolean;
         comment_id: string;
@@ -303,9 +298,7 @@ export type ServerDependencies = {
   updatePlatformConnectionControl: (input: {
     platform: PlatformName;
     enabled: boolean;
-  }) =>
-    | Promise<{ ok: boolean; item: PlatformConnectionSnapshot }>
-    | { ok: boolean; item: PlatformConnectionSnapshot };
+  }) => Promise<{ ok: boolean; item: PlatformConnectionSnapshot }> | { ok: boolean; item: PlatformConnectionSnapshot };
 };
 
 type PublishLogStore = {

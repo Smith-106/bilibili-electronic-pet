@@ -84,10 +84,7 @@ describe('dedupe service', () => {
 
   it('trims phrase history to the latest 100 entries', async () => {
     const recent_phrases = Object.fromEntries(
-      Array.from({ length: 101 }, (_, index) => [
-        `phrase_${index}`,
-        { text: `old-${index}`, timestamp: index },
-      ]),
+      Array.from({ length: 101 }, (_, index) => [`phrase_${index}`, { text: `old-${index}`, timestamp: index }]),
     );
     getUserStateMock.mockResolvedValueOnce({ recent_phrases });
 

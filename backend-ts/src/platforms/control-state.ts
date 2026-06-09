@@ -68,9 +68,7 @@ function persistOverrides(): void {
   }
 
   mkdirSync(dirname(filePath), { recursive: true });
-  const payload = Object.fromEntries(
-    [...overrides.entries()].sort(([left], [right]) => left.localeCompare(right)),
-  );
+  const payload = Object.fromEntries([...overrides.entries()].sort(([left], [right]) => left.localeCompare(right)));
   writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 

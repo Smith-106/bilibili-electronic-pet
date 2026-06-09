@@ -87,7 +87,9 @@ async function runStrictWithStubRuntime(
     }
     if (url === '/admin') {
       response.writeHead(200, { 'Content-Type': 'text/html' });
-      response.end('<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"></head><body><script src="/assets/app.js"></script></body></html>');
+      response.end(
+        '<!doctype html><html><head><link rel="stylesheet" href="/assets/app.css"></head><body><script src="/assets/app.js"></script></body></html>',
+      );
       return;
     }
     if (url === '/assets/app.js') {
@@ -159,7 +161,12 @@ async function runStrictWithStubRuntime(
             scope: {
               key: 'bilibili_first_admin_companion_mvp',
               summary: 'Bilibili-first admin/backend/companion MVP',
-              signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract', 'pet_core', 'companion_surface'],
+              signed_off_surfaces: [
+                'admin_control_plane',
+                'bilibili_delivery_contract',
+                'pet_core',
+                'companion_surface',
+              ],
               gated_surfaces: ['external_platform_trial'],
               excluded_surfaces: [],
             },
@@ -404,7 +411,18 @@ async function runStrictWithStubRuntime(
     const result = await new Promise((resolve, reject) => {
       const child = spawn(
         process.execPath,
-        [scriptPath, '--strict', '--base-url', baseUrl, '--api-key', 'runtime-key', '--env-file', envFile, '--report', reportPath],
+        [
+          scriptPath,
+          '--strict',
+          '--base-url',
+          baseUrl,
+          '--api-key',
+          'runtime-key',
+          '--env-file',
+          envFile,
+          '--report',
+          reportPath,
+        ],
         {
           cwd: backendRoot,
           env: buildSpawnEnv(),
@@ -588,7 +606,9 @@ PUBLISHER_MODE=manual_queue
 `);
 
     if (result.status !== 0) {
-      throw new Error(`strict stub failed: status=${String(result.status)}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+      throw new Error(
+        `strict stub failed: status=${String(result.status)}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
     }
     expect(result.stdout).toContain('== STAGING CHECK PASS ==');
     expect(result.stderr).toContain('Checker env suggests missing or fallback delivery inputs');
@@ -652,7 +672,9 @@ PUBLISHER_MODE=manual_queue
     );
 
     if (result.status !== 0) {
-      throw new Error(`strict stub with curl fallback failed: status=${String(result.status)}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+      throw new Error(
+        `strict stub with curl fallback failed: status=${String(result.status)}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
     }
     expect(result.stdout).toContain('== STAGING CHECK PASS ==');
     expect(result.stderr).toContain('/api/admin/session/login');

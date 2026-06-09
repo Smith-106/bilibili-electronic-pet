@@ -13,8 +13,7 @@ const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
 function getEncryptionKey(): Buffer | null {
-  const keyHex =
-    process.env.CREDENTIAL_ENCRYPTION_KEY?.trim() || process.env.BILIBILI_COOKIE_ENCRYPTION_KEY?.trim();
+  const keyHex = process.env.CREDENTIAL_ENCRYPTION_KEY?.trim() || process.env.BILIBILI_COOKIE_ENCRYPTION_KEY?.trim();
   if (!keyHex) return null;
   try {
     const buf = Buffer.from(keyHex, 'hex');

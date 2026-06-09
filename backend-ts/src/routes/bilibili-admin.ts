@@ -35,7 +35,10 @@ export type BilibiliAdminRouteDependencies = {
     limit: number;
     offset: number;
   }) => Promise<BilibiliVideoResponse> | BilibiliVideoResponse;
-  addBilibiliVideo: (input: { bvid: string; pollEnabled?: boolean }) => Promise<BilibiliVideoCreateResponse> | BilibiliVideoCreateResponse;
+  addBilibiliVideo: (input: {
+    bvid: string;
+    pollEnabled?: boolean;
+  }) => Promise<BilibiliVideoCreateResponse> | BilibiliVideoCreateResponse;
   normalizeBilibiliStatusPayload: (payload: Record<string, unknown>) => Record<string, unknown>;
   normalizeBilibiliVideoRecord: (
     row: Record<string, unknown>,
@@ -103,7 +106,8 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     if (!video) return reply.code(404).send({ detail: 'video_not_found' });
 
     const body = request.body as Record<string, unknown> | undefined;
-    const requestedPollEnabled = body?.poll_enabled !== undefined ? deps.parseAdminBoolean(body.poll_enabled) : undefined;
+    const requestedPollEnabled =
+      body?.poll_enabled !== undefined ? deps.parseAdminBoolean(body.poll_enabled) : undefined;
     if (body?.poll_enabled !== undefined && requestedPollEnabled === undefined) {
       return reply.code(400).send({ detail: 'invalid_poll_enabled' });
     }

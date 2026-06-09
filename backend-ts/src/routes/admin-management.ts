@@ -1,6 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { IdentityLink, MemoryGrant, MemoryItem, MemorySpace, RoleCardValue, RuntimeSettings } from '../server/contracts.js';
+import type {
+  IdentityLink,
+  MemoryGrant,
+  MemoryItem,
+  MemorySpace,
+  RoleCardValue,
+  RuntimeSettings,
+} from '../server/contracts.js';
 
 export type AdminManagementRouteDependencies = {
   settings: RuntimeSettings;
@@ -144,10 +151,7 @@ function parseOptionalInteger(value: unknown): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function registerAdminManagementRoutes(
-  app: FastifyInstance,
-  deps: AdminManagementRouteDependencies,
-): void {
+export function registerAdminManagementRoutes(app: FastifyInstance, deps: AdminManagementRouteDependencies): void {
   app.get('/api/admin/knowledge', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
@@ -225,10 +229,16 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const body = request.body as Record<string, unknown>;
-    const spaceKey = String(body.space_key ?? '').trim().slice(0, 128);
+    const spaceKey = String(body.space_key ?? '')
+      .trim()
+      .slice(0, 128);
     const spaceType = parseOptionalString(body.space_type, 64);
-    const title = String(body.title ?? '').trim().slice(0, 128);
-    const summary = String(body.summary ?? '').trim().slice(0, 4096);
+    const title = String(body.title ?? '')
+      .trim()
+      .slice(0, 128);
+    const summary = String(body.summary ?? '')
+      .trim()
+      .slice(0, 4096);
 
     if (!spaceKey) {
       return reply.code(400).send({ detail: 'space_key_required' });
@@ -271,8 +281,12 @@ export function registerAdminManagementRoutes(
 
     const body = request.body as Record<string, unknown>;
     const spaceId = Number.parseInt(String(body.space_id ?? ''), 10);
-    const itemKey = String(body.item_key ?? '').trim().slice(0, 128);
-    const content = String(body.content ?? '').trim().slice(0, 65535);
+    const itemKey = String(body.item_key ?? '')
+      .trim()
+      .slice(0, 128);
+    const content = String(body.content ?? '')
+      .trim()
+      .slice(0, 65535);
     const contentType = parseOptionalString(body.content_type, 64);
     const source = parseOptionalString(body.source, 64);
     const itemMetadata =
@@ -325,8 +339,12 @@ export function registerAdminManagementRoutes(
 
     const body = request.body as Record<string, unknown>;
     const spaceId = Number.parseInt(String(body.space_id ?? ''), 10);
-    const subjectType = String(body.subject_type ?? '').trim().slice(0, 64);
-    const subjectId = String(body.subject_id ?? '').trim().slice(0, 128);
+    const subjectType = String(body.subject_type ?? '')
+      .trim()
+      .slice(0, 64);
+    const subjectId = String(body.subject_id ?? '')
+      .trim()
+      .slice(0, 128);
     const accessLevel = parseOptionalString(body.access_level, 32);
 
     if (!Number.isFinite(spaceId) || spaceId <= 0) {
@@ -367,10 +385,16 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const body = request.body as Record<string, unknown>;
-    const subjectType = String(body.subject_type ?? '').trim().slice(0, 64);
-    const subjectId = String(body.subject_id ?? '').trim().slice(0, 128);
+    const subjectType = String(body.subject_type ?? '')
+      .trim()
+      .slice(0, 64);
+    const subjectId = String(body.subject_id ?? '')
+      .trim()
+      .slice(0, 128);
     const platform = parseOptionalString(body.platform, 64);
-    const externalId = String(body.external_id ?? '').trim().slice(0, 128);
+    const externalId = String(body.external_id ?? '')
+      .trim()
+      .slice(0, 128);
     const displayName = parseOptionalString(body.display_name, 128) ?? null;
 
     if (!subjectType) {
@@ -494,10 +518,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key)
-      .trim()
-      .toLowerCase()
-      .slice(0, 64);
+    const cardKey = String(params.card_key).trim().toLowerCase().slice(0, 64);
     const body = request.body as Record<string, unknown>;
 
     const updateData: {
@@ -546,9 +567,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key)
-      .trim()
-      .toLowerCase();
+    const cardKey = String(params.card_key).trim().toLowerCase();
 
     const response = await deps.disableRoleCard({ cardKey });
     return reply.send(response);
@@ -558,9 +577,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key)
-      .trim()
-      .toLowerCase();
+    const cardKey = String(params.card_key).trim().toLowerCase();
 
     const response = await deps.activateRoleCard({ cardKey });
     return reply.send(response);

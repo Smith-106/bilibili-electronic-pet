@@ -312,7 +312,12 @@ describe('route coverage gaps', () => {
 
     const invalidRetry = await app.inject({ method: 'POST', url: '/jobs/abc/retry', headers, payload: {} });
     const invalidApprove = await app.inject({ method: 'POST', url: '/jobs/0/approve', headers, payload: {} });
-    const emptyRetryBatch = await app.inject({ method: 'POST', url: '/jobs/retry-batch', headers, payload: { job_ids: ['x', -1] } });
+    const emptyRetryBatch = await app.inject({
+      method: 'POST',
+      url: '/jobs/retry-batch',
+      headers,
+      payload: { job_ids: ['x', -1] },
+    });
     const nonArrayRetryBatch = await app.inject({ method: 'POST', url: '/api/jobs/retry-batch', headers, payload: {} });
     const expandedGet = await app.inject({ method: 'GET', url: '/jobs/9', headers });
     const rawGet = await app.inject({ method: 'GET', url: '/api/jobs/10', headers });
@@ -449,8 +454,8 @@ describe('route coverage gaps', () => {
     registerCompanionRoutes(app, {
       settings: buildSettings({ publicCompanionActionsEnabled: true }),
       checkApiKey: () => true,
-      getCompanionState: vi.fn(() => ({ ok: true } as never)),
-      getCompanionStateV2: vi.fn(() => ({ version: 'v2' } as never)),
+      getCompanionState: vi.fn(() => ({ ok: true }) as never),
+      getCompanionStateV2: vi.fn(() => ({ version: 'v2' }) as never),
       recordCompanionAction: vi.fn(),
     });
 

@@ -1176,11 +1176,15 @@ describe('memory repository and service', () => {
 
     const repository = createMemoryRepository();
 
-    await expect(repository.createSpace({ space_key: 'operator:defaulted', title: 'Defaulted' })).resolves.toMatchObject({
+    await expect(
+      repository.createSpace({ space_key: 'operator:defaulted', title: 'Defaulted' }),
+    ).resolves.toMatchObject({
       space_type: 'operator',
       summary: '',
     });
-    await expect(repository.upsertItem({ space_id: 41, item_key: 'default:item', content: 'Default item' })).resolves.toMatchObject({
+    await expect(
+      repository.upsertItem({ space_id: 41, item_key: 'default:item', content: 'Default item' }),
+    ).resolves.toMatchObject({
       content_type: 'note',
       source: 'operator',
       item_metadata: {},
@@ -1292,9 +1296,7 @@ describe('memory repository and service', () => {
 
     const repository = createMemoryRepository();
 
-    await expect(
-      repository.listGrants({ spaceId: 41, subjectType: 'operator', subjectId: 'alice' }),
-    ).resolves.toEqual([
+    await expect(repository.listGrants({ spaceId: 41, subjectType: 'operator', subjectId: 'alice' })).resolves.toEqual([
       {
         id: 45,
         space_id: 41,
@@ -1412,19 +1414,17 @@ describe('memory repository and service', () => {
   });
 
   it('reuses the companion system space after a concurrent unique-key race', async () => {
-    mockPrisma.memorySpace.findMany
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([
-        {
-          id: 99,
-          space_key: COMPANION_SYSTEM_SPACE_KEY,
-          space_type: 'system',
-          title: 'Companion System',
-          summary: 'Auto-generated companion feed signals sourced from backend activity.',
-          created_at: new Date('2026-04-11T00:00:00.000Z'),
-          updated_at: new Date('2026-04-11T00:00:00.000Z'),
-        },
-      ]);
+    mockPrisma.memorySpace.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 99,
+        space_key: COMPANION_SYSTEM_SPACE_KEY,
+        space_type: 'system',
+        title: 'Companion System',
+        summary: 'Auto-generated companion feed signals sourced from backend activity.',
+        created_at: new Date('2026-04-11T00:00:00.000Z'),
+        updated_at: new Date('2026-04-11T00:00:00.000Z'),
+      },
+    ]);
     mockPrisma.memorySpace.create.mockRejectedValueOnce(new Error('P2002 unique constraint failed'));
     mockPrisma.memoryItem.upsert.mockResolvedValueOnce({
       id: 32,

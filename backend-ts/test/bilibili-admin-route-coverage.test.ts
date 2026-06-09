@@ -108,7 +108,10 @@ function buildDeps(overrides: Partial<BilibiliAdminRouteDependencies> = {}): Bil
       diagnostics: {},
     })),
     listBilibiliVideos: vi.fn(() => ({ ok: true, total: 0, items: [] })),
-    addBilibiliVideo: vi.fn(({ bvid, pollEnabled }) => ({ ok: true, item: { id: 1, bvid, poll_enabled: pollEnabled } })),
+    addBilibiliVideo: vi.fn(({ bvid, pollEnabled }) => ({
+      ok: true,
+      item: { id: 1, bvid, poll_enabled: pollEnabled },
+    })),
     normalizeBilibiliStatusPayload: (payload) => ({ ...payload, normalized: true }),
     normalizeBilibiliVideoRecord: (row, options) => ({
       id: row.id,
@@ -152,7 +155,11 @@ describe('bilibili admin route coverage', () => {
     const unauthorizedStatus = await app.inject({ method: 'GET', url: '/api/admin/bilibili/status' });
     const unauthorizedVideos = await app.inject({ method: 'GET', url: '/api/admin/bilibili/videos' });
     const unauthorizedCreate = await app.inject({ method: 'POST', url: '/api/admin/bilibili/videos', payload: {} });
-    const unauthorizedToggle = await app.inject({ method: 'POST', url: '/api/admin/bilibili/videos/1/toggle-poll', payload: {} });
+    const unauthorizedToggle = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/videos/1/toggle-poll',
+      payload: {},
+    });
     const unauthorizedDeleteVideo = await app.inject({ method: 'DELETE', url: '/api/admin/bilibili/videos/1' });
     const unauthorizedSync = await app.inject({ method: 'POST', url: '/api/admin/bilibili/videos/1/sync' });
     const unauthorizedPoll = await app.inject({ method: 'POST', url: '/api/admin/bilibili/poll' });
@@ -162,8 +169,14 @@ describe('bilibili admin route coverage', () => {
       url: '/api/admin/bilibili/credentials',
       payload: {},
     });
-    const unauthorizedActivate = await app.inject({ method: 'POST', url: '/api/admin/bilibili/credentials/1/activate' });
-    const unauthorizedDeleteCredential = await app.inject({ method: 'DELETE', url: '/api/admin/bilibili/credentials/1' });
+    const unauthorizedActivate = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/credentials/1/activate',
+    });
+    const unauthorizedDeleteCredential = await app.inject({
+      method: 'DELETE',
+      url: '/api/admin/bilibili/credentials/1',
+    });
     const status = await app.inject({
       method: 'GET',
       url: '/api/admin/bilibili/status',

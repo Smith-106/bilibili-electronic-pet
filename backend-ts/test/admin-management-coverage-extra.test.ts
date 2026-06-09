@@ -145,7 +145,10 @@ function buildDeps(overrides: Partial<AdminManagementRouteDependencies> = {}): A
       item: { id: entryId, enabled: false, updated_at: null },
     })),
     listMemorySpaces: vi.fn(() => ({ ok: true, items: [buildMemorySpace()] })),
-    createMemorySpace: vi.fn((input) => ({ ok: true, item: buildMemorySpace({ ...input, space_type: input.space_type ?? 'default' }) })),
+    createMemorySpace: vi.fn((input) => ({
+      ok: true,
+      item: buildMemorySpace({ ...input, space_type: input.space_type ?? 'default' }),
+    })),
     listMemoryItems: vi.fn(() => ({ ok: true, items: [buildMemoryItem()] })),
     upsertMemoryItem: vi.fn((input) => ({ ok: true, item: buildMemoryItem(input) })),
     listMemoryGrants: vi.fn(() => ({ ok: true, items: [buildMemoryGrant()] })),
@@ -587,7 +590,10 @@ describe('admin management route coverage extra', () => {
     expect(missingGrantSpaceId.json()).toEqual({ detail: 'space_id_required' });
     expect(missingSubjectType.json()).toEqual({ detail: 'subject_type_required' });
     expect(missingSubjectId.json()).toEqual({ detail: 'subject_id_required' });
-    expect(granted.json()).toMatchObject({ ok: true, item: { space_id: 7, subject_type: 'operator', subject_id: 'alice' } });
+    expect(granted.json()).toMatchObject({
+      ok: true,
+      item: { space_id: 7, subject_type: 'operator', subject_id: 'alice' },
+    });
     expect(grantMemorySpaceAccess).toHaveBeenCalledWith({
       space_id: 7,
       subject_type: 'operator',

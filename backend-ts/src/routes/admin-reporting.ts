@@ -24,10 +24,7 @@ export type AdminReportingRouteDependencies = {
   }) => Promise<{ ok: boolean; summary: Record<string, unknown> }> | { ok: boolean; summary: Record<string, unknown> };
 };
 
-export function registerAdminReportingRoutes(
-  app: FastifyInstance,
-  deps: AdminReportingRouteDependencies,
-): void {
+export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminReportingRouteDependencies): void {
   app.get('/api/admin/audit/summary', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 

@@ -68,8 +68,7 @@ describe('credential crypto service', () => {
   });
 
   it('uses the legacy fallback environment key when the primary key is absent', () => {
-    process.env.BILIBILI_COOKIE_ENCRYPTION_KEY =
-      'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+    process.env.BILIBILI_COOKIE_ENCRYPTION_KEY = 'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
 
     const ciphertext = encrypt('legacy-cookie');
 

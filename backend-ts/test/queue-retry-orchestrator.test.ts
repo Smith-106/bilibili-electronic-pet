@@ -208,10 +208,12 @@ describe('queue retry orchestrator', () => {
     expect(summary.progress_state).toBe('progressed');
     expect(summary.completed_count_delta).toBe(2);
     expect(summary.evidence_records).toHaveLength(1);
-    expect(orchestrateRetryRound([{ item_id: 'a', status: 'failed', failure_reason: 'logic' }], {
-      previousCompletedCount: 0,
-      currentCompletedCount: 0,
-    })).toHaveProperty('progress_state');
+    expect(
+      orchestrateRetryRound([{ item_id: 'a', status: 'failed', failure_reason: 'logic' }], {
+        previousCompletedCount: 0,
+        currentCompletedCount: 0,
+      }),
+    ).toHaveProperty('progress_state');
   });
 
   it('covers blocked and stalled retry summaries plus default queue consistency fields', () => {
@@ -295,7 +297,9 @@ describe('queue retry orchestrator', () => {
       conflicts: ['b'],
     });
 
-    expect(planExecutionMode({ solutionId: ' sol-1 ', conflictReport: { blocking: true, conflicts: ['a'] } })).toMatchObject({
+    expect(
+      planExecutionMode({ solutionId: ' sol-1 ', conflictReport: { blocking: true, conflicts: ['a'] } }),
+    ).toMatchObject({
       solution_id: 'sol-1',
       mode: 'isolated',
       lock_key: 'solution:sol-1',
@@ -312,27 +316,33 @@ describe('queue retry orchestrator', () => {
       channel: '',
       error_type: 'channel_unavailable',
     });
-    expect(planExecutionMode({ solutionId: ' sol-2 ', conflictReport: { blocking: false, conflicts: 'none' } })).toMatchObject({
+    expect(
+      planExecutionMode({ solutionId: ' sol-2 ', conflictReport: { blocking: false, conflicts: 'none' } }),
+    ).toMatchObject({
       solution_id: 'sol-2',
       mode: 'normal',
       lock_key: null,
       conflicts: [],
     });
-    expect(selectExecutorWithFallback({
-      primaryExecutor: 'primary',
-      fallbackExecutor: 'fallback',
-      consecutive5xx: 3,
-      threshold: 2,
-    })).toMatchObject({
+    expect(
+      selectExecutorWithFallback({
+        primaryExecutor: 'primary',
+        fallbackExecutor: 'fallback',
+        consecutive5xx: 3,
+        threshold: 2,
+      }),
+    ).toMatchObject({
       selected_executor: 'fallback',
       fallback_triggered: true,
     });
-    expect(selectExecutorWithFallback({
-      primaryExecutor: ' primary ',
-      fallbackExecutor: ' fallback ',
-      consecutive5xx: 1.8,
-      threshold: 2.2,
-    })).toMatchObject({
+    expect(
+      selectExecutorWithFallback({
+        primaryExecutor: ' primary ',
+        fallbackExecutor: ' fallback ',
+        consecutive5xx: 1.8,
+        threshold: 2.2,
+      }),
+    ).toMatchObject({
       selected_executor: 'primary',
       fallback_triggered: false,
       consecutive_5xx: 1,

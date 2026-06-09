@@ -44,7 +44,10 @@ export function resolveAdminSessionSecret(settings: RuntimeSettings): string | n
   return apiKey || null;
 }
 
-export function issueAdminSession(settings: RuntimeSettings, now = Date.now()): { token: string; expiresAt: string } | null {
+export function issueAdminSession(
+  settings: RuntimeSettings,
+  now = Date.now(),
+): { token: string; expiresAt: string } | null {
   const secret = resolveAdminSessionSecret(settings);
   if (!secret) {
     return null;
@@ -99,11 +102,11 @@ export function verifyAdminSessionToken(token: string, settings: RuntimeSettings
   }
 
   if (
-    payload.v !== ADMIN_SESSION_VERSION
-    || payload.scope !== 'admin'
-    || typeof payload.exp !== 'number'
-    || !Number.isFinite(payload.exp)
-    || payload.exp <= now
+    payload.v !== ADMIN_SESSION_VERSION ||
+    payload.scope !== 'admin' ||
+    typeof payload.exp !== 'number' ||
+    !Number.isFinite(payload.exp) ||
+    payload.exp <= now
   ) {
     return false;
   }

@@ -23,9 +23,7 @@ function authorizeCompanionAction(
     return true;
   }
 
-  const hasAdminAccessConfigured = Boolean(
-    deps.settings.apiKey?.trim() || deps.settings.adminSessionSecret?.trim(),
-  );
+  const hasAdminAccessConfigured = Boolean(deps.settings.apiKey?.trim() || deps.settings.adminSessionSecret?.trim());
   if (!hasAdminAccessConfigured) {
     void reply.code(503).send({ detail: 'companion_action_auth_unconfigured' });
     return false;
@@ -42,7 +40,9 @@ export function registerCompanionRoutes(app: FastifyInstance, deps: CompanionRou
     if (!authorizeCompanionAction(request, reply, deps)) return;
 
     const body = request.body as Record<string, unknown>;
-    const action = String(body.action ?? '').trim().toLowerCase();
+    const action = String(body.action ?? '')
+      .trim()
+      .toLowerCase();
     const note = typeof body.note === 'string' ? body.note.trim().slice(0, 256) : undefined;
 
     if (!isPetActionName(action)) {

@@ -107,9 +107,7 @@ describe('comment job action helpers', () => {
 
   it('requeues a reply job with platform and profile overrides', async () => {
     const { deps, prisma } = buildDeps();
-    prisma.replyJob.findUnique.mockResolvedValue(
-      buildReplyJob({ canonical_comment_id: 'douyin:comment-1' }),
-    );
+    prisma.replyJob.findUnique.mockResolvedValue(buildReplyJob({ canonical_comment_id: 'douyin:comment-1' }));
     const helpers = createCommentJobActionHelpers(deps);
 
     const result = await helpers.retryJob({
@@ -181,9 +179,7 @@ describe('comment job action helpers', () => {
 
   it('requeues with platform and audit fallbacks when optional retry fields are omitted', async () => {
     const { deps, prisma } = buildDeps();
-    prisma.replyJob.findUnique.mockResolvedValue(
-      buildReplyJob({ canonical_comment_id: ':comment-1' }),
-    );
+    prisma.replyJob.findUnique.mockResolvedValue(buildReplyJob({ canonical_comment_id: ':comment-1' }));
     const helpers = createCommentJobActionHelpers(deps);
 
     const result = await helpers.retryJob({ jobId: 1 });
@@ -259,12 +255,7 @@ describe('comment job action helpers', () => {
       id: 1,
       published_at: input.data.published_at,
     }));
-    publishIntentWithResultMock.mockResolvedValue([
-      true,
-      'webhook_published',
-      publishedAt,
-      { new_rpid: 'remote-1' },
-    ]);
+    publishIntentWithResultMock.mockResolvedValue([true, 'webhook_published', publishedAt, { new_rpid: 'remote-1' }]);
     const helpers = createCommentJobActionHelpers(deps);
 
     const result = await helpers.approveJob({

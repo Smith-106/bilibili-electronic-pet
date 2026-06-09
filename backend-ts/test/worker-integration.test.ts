@@ -222,9 +222,12 @@ describe('worker integration tests', () => {
     });
 
     it('generates reply with deterministic fallback when LLM provider is unreachable', async () => {
-      vi.stubGlobal('fetch', vi.fn(async () => {
-        throw new Error('llm_unreachable');
-      }));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new Error('llm_unreachable');
+        }),
+      );
 
       const result = await mockServices.generateReplyWithMeta({
         content: 'test comment',
