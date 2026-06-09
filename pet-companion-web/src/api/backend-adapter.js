@@ -49,6 +49,38 @@ function buildDegradedState(fallbackState, { reason, endpoint, legacyEndpoint })
   };
 }
 
+function readStoredCredential(key) {
+  try {
+    return globalThis.sessionStorage?.getItem(key)?.trim() || '';
+  } catch {
+    return '';
+  }
+}
+
+function resolveAdminSessionToken() {
+  return String(globalThis.__ADMIN_SESSION_TOKEN__ || readStoredCredential('admin_session_token')).trim();
+}
+
+function resolveAdminApiKey() {
+  return String(globalThis.__ADMIN_API_KEY__ || readStoredCredential('admin_api_key')).trim();
+}
+
+function buildActionHeaders() {
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+  const sessionToken = resolveAdminSessionToken();
+  const apiKey = resolveAdminApiKey();
+  if (sessionToken) {
+    headers['x-admin-session'] = sessionToken;
+  }
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+  return headers;
+}
+
 export function createBackendPetAdapter({
   endpoint = '/companion/state-v2',
   legacyEndpoint = '/companion/state',
@@ -111,10 +143,7 @@ export function createBackendPetAdapter({
 
       const response = await fetchImpl(actionEndpoint, {
         method: 'POST',
-        headers: {
-          Accept: 'application/json',
-          'Content-Type': 'application/json',
-        },
+        headers: buildActionHeaders(),
         body: JSON.stringify({ action, note }),
       });
 

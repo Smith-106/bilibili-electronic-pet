@@ -10,9 +10,9 @@
 
 当前 release tag：**v1.2.0**
 
-按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend MVP 候选**，不包含 QQ / Douyin 等试点链路，也不把 companion 预览面算作已签收产品能力。
+按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend/companion MVP 候选**。QQ / Douyin 等外部平台仍作为 gated trial，不纳入已签收产品面，也不能用 placeholder endpoint 代替真实验收。
 
-`2026-06-08` 修复版的 “100%” 口径限定为 **Bilibili-first admin/backend MVP 受限生产上线标准**：仓库内可修复项已经收口，真实 B 站凭证、Douyin / QQ 外部 endpoint、远端客户环境 smoke 仍必须由实际部署配置和外部服务完成后另行验收。
+`2026-06-08` 修复版的 “100%” 口径限定为 **Bilibili-first admin/backend/companion MVP 受限生产上线标准**：仓库内可控 UI/UX、前端、后端、前后端闭环、测试与部署门禁已经收口；真实 B 站凭证、Douyin / QQ 外部 endpoint、远端客户环境 smoke 仍必须由实际部署配置和外部服务完成后另行验收。
 
 当前候选基线已完成：
 
@@ -33,7 +33,7 @@
 | Bilibili | 当前唯一已纳入候选交付口径的主平台 |
 | Douyin / 抖音 | 试点能力，代码与本地验证已具备，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_DOUYIN_*` 配置 |
 | Kuaishou / 快手 | 预留脚手架，不作为当前交付能力 |
-| QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，但不计入当前候选交付口径 |
+| QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_QQ_*` 配置 |
 | 微信 | 暂不支持 |
 
 Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.0
@@ -48,7 +48,7 @@ Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.
 - 队列：BullMQ + Redis
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
-- Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 与受保护 `/companion/actions` 已接通；但该面仍属于 preview / partial 范围，不纳入当前 signed-off MVP
+- Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 与受保护 `/companion/actions` 已接通，并纳入当前 repo-controlled signed-off MVP；外部平台 trial 仍保持 gated
 - 最新 repo-local 验证快照：`2026-06-08` 已验证 backend、frontend、`pet-companion-web`、`douyin-sidecar`、`qq-sidecar` 的测试/构建与各 package `npm audit` 全部通过
 - `2026-06-08` fresh DB 验证已通过：宿主机 3 组全新 SQLite 数据库均可通过 `npm --prefix backend-ts run prisma:migrate:prod`
 - `2026-06-08` 容器验证已通过：`docker run --rm -e DATABASE_URL=file:/tmp/container-smoke.db bilibili-electronic-pet:goal npm run prisma:migrate:prod` 成功
@@ -1479,8 +1479,8 @@ bash ./rehearse-local.sh real-chain
 注意：
 
 - `.env.strict.local.example` 里的值是为了**本地 strict 合同演练**准备的 placeholder，不代表真实外部交付已经可用。
-- `.env.expanded-scope.preflight.example` 用来检查 expanded scope 的 `PLATFORM_DOUYIN_*` 前置条件是否齐全；它不证明远端 endpoint/WAF 已经打通。
-- 2026-04-13 已完成一次本地 strict 合同演练：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key` 全通过；这只能证明本地 strict-capable 运行态成立，不能替代远端 Douyin trial 证据。
+- `.env.expanded-scope.preflight.example` 用来检查 expanded scope 的 `PLATFORM_DOUYIN_*` 与 `PLATFORM_QQ_*` 前置条件是否齐全；它不证明远端 endpoint/WAF 已经打通。
+- 2026-04-13 已完成一次本地 strict 合同演练：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key` 全通过；这只能证明本地 strict-capable 运行态成立，不能替代远端 Douyin / QQ trial 证据。
 - expanded scope 最终 strict 验收的说明模板和 JSON 骨架在：
   - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
   - `backend-ts/staging-report.expanded-scope.template.json`
@@ -1969,8 +1969,8 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 
 1. 主运行链路已完成迁移，并继续以 `WFS-bilibili-delivery-readiness-20260408` 作为最后一条已签收 rollout baseline
 2. `2026-06-08` 的本地候选版本是当前最强 repo-local 证据：backend、frontend、`pet-companion-web`、`douyin-sidecar`、`qq-sidecar` 的测试/构建与各 package `npm audit` 均已通过，fresh DB 与容器内 `prisma:migrate:prod` 均已验证
-3. 当前可诚实宣称的范围应限定为 `Bilibili-first admin/backend MVP`；QQ / Douyin 仍属于试点或外部配置未完成范围
-4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 preview / partial
+3. 当前可诚实宣称的仓库内可控范围应限定为 `Bilibili-first admin/backend/companion MVP`；QQ / Douyin 仍属于 gated trial 或外部配置未完成范围
+4. 管理后台、Bilibili automation 面与 companion 运行时闭环已经纳入 repo-controlled signed-off MVP；完整多平台产品能力仍需真实外部 endpoint 与远端 smoke 后才能签收
 5. 生产环境必须配置 `API_KEY`、`COMMENT_INGRESS_TOKEN`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET`、`LLM_FALLBACK_TO_MOCK=false` 与 `NODE_ENV=production`；缺少这些门禁时不能声明为可上线环境
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。

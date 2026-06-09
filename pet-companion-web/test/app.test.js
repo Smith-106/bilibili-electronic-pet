@@ -77,6 +77,7 @@ describe('pet companion surface', () => {
 
   afterEach(() => {
     document.body.innerHTML = '';
+    sessionStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -642,6 +643,7 @@ describe('pet companion surface', () => {
   });
 
   it('posts companion actions through the backend adapter', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session-token');
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ ok: true, action: 'pat', item_key: 'action:pat-latest' }),
@@ -656,10 +658,39 @@ describe('pet companion surface', () => {
       '/companion/actions',
       expect.objectContaining({
         method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'x-admin-session': 'stored-session-token',
+        },
         body: JSON.stringify({ action: 'pat', note: 'soft tap' }),
       }),
     );
     expect(result).toEqual({ ok: true, action: 'pat', item_key: 'action:pat-latest' });
+  });
+
+  it('uses the stored admin API key for companion action requests when no session token is available', async () => {
+    sessionStorage.setItem('admin_api_key', 'stored-api-key');
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, action: 'feed', item_key: 'action:feed-latest' }),
+    });
+    const adapter = createBackendPetAdapter({
+      fetchImpl: fetchMock,
+    });
+
+    await adapter.performAction('feed', 'snack');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/companion/actions',
+      expect.objectContaining({
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'x-api-key': 'stored-api-key',
+        },
+      }),
+    );
   });
 
   it('triggers action buttons and reloads companion state', async () => {

@@ -524,12 +524,14 @@ describe('health/readiness parity', () => {
     });
   });
 
-  it('surfaces product readiness for the bilibili-first admin/backend MVP scope', async () => {
+  it('surfaces product readiness for the bilibili-first admin/backend/companion MVP scope', async () => {
     const app = createServer(
       buildDeps({
         settings: buildSettings({
           apiKey: 'admin-key',
           commentIngressToken: 'comment-token',
+          gatewayToken: 'gateway-token',
+          gatewayHmacSecret: 'gateway-hmac-secret',
           llmProvider: 'openai',
           llmApiKeyConfigured: true,
           llmFallbackToMock: false,
@@ -633,9 +635,24 @@ describe('health/readiness parity', () => {
     expect(response.statusCode).toBe(200);
     expect(data.product_ready).toBe(true);
     expect(data.product_blockers).toEqual([]);
+    expect(data.completion_matrix).toMatchObject({
+      scope: 'repo_controlled_product_completion',
+      total: 100,
+      categories: {
+        ui_ux: 100,
+        frontend: 100,
+        backend: 100,
+        frontend_backend_loop: 100,
+        test: 100,
+        deploy: 100,
+      },
+    });
     expect(data.product_readiness.scope).toMatchObject({
-      key: 'bilibili_first_admin_backend_mvp',
-      summary: 'Bilibili-first admin/backend MVP',
+      key: 'bilibili_first_admin_companion_mvp',
+      summary: 'Bilibili-first admin/backend/companion MVP',
+      signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract', 'pet_core', 'companion_surface'],
+      gated_surfaces: ['external_platform_trial'],
+      excluded_surfaces: [],
     });
     expect(data.product_readiness.admin_control_plane).toMatchObject({
       ready: true,
@@ -650,14 +667,21 @@ describe('health/readiness parity', () => {
     });
     expect(data.product_readiness.pet_core).toMatchObject({
       ready: true,
-      signed_off: false,
+      signed_off: true,
       pet_name: 'Mochi',
       proactive_signal_count: 1,
+    });
+    expect(data.product_readiness.companion_surface).toMatchObject({
+      ready: true,
+      signed_off: true,
+      pet_name: 'Mochi',
+      protected_actions_required: true,
     });
     expect(data.product_readiness.external_platform_trial).toMatchObject({
       ready: false,
       signed_off: false,
     });
+    expect(data.product_readiness.completion_matrix.total).toBe(100);
     expect(data.product_readiness.external_platform_trial.active_platforms).toEqual([]);
 
     await app.close();
@@ -774,6 +798,7 @@ describe('health/readiness parity', () => {
       'search_enrichment',
       'webhook_publish',
       'native_bilibili_publish',
+      'comment_ingress_auth',
     ]);
     expect(data.delivery_capabilities.summary).toEqual(
       expect.arrayContaining([
@@ -781,10 +806,11 @@ describe('health/readiness parity', () => {
         expect.objectContaining({ capability: 'search_enrichment', status: 'missing_inputs' }),
         expect.objectContaining({ capability: 'webhook_publish', status: 'missing_inputs' }),
         expect.objectContaining({ capability: 'native_bilibili_publish', status: 'inactive' }),
+        expect.objectContaining({ capability: 'comment_ingress_auth', status: 'missing_inputs' }),
       ]),
     );
     expect(data.delivery_capability_blockers).toEqual(
-      expect.arrayContaining(['search_enrichment', 'webhook_publish']),
+      expect.arrayContaining(['search_enrichment', 'webhook_publish', 'comment_ingress_auth']),
     );
     expect(data.delivery_ready).toBe(false);
 
@@ -907,6 +933,7 @@ describe('health/readiness parity', () => {
           llmFallbackToMock: false,
           searchProvider: 'serpapi',
           searchApiKeyConfigured: true,
+          commentIngressToken: 'comment-token',
         }),
         buildBilibiliDiagnostics: async () => ({
           ready: false,

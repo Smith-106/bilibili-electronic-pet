@@ -82,7 +82,8 @@ type DeliveryCapabilityName =
   | 'llm_generation'
   | 'search_enrichment'
   | 'webhook_publish'
-  | 'native_bilibili_publish';
+  | 'native_bilibili_publish'
+  | 'comment_ingress_auth';
 
 type DeliveryCapabilityStatus =
   | 'configured'
@@ -794,6 +795,13 @@ function buildDeliveryCapabilityMatrix(
     createDeliveryCapability('search_enrichment', true, searchStatus, searchProvider, searchMissing),
     createDeliveryCapability('webhook_publish', webhookActive, webhookStatus, normalizedMode, webhookMissing),
     createDeliveryCapability('native_bilibili_publish', nativePublishActive, nativeStatus, normalizedMode, nativeMissing),
+    createDeliveryCapability(
+      'comment_ingress_auth',
+      true,
+      hasText(settings.commentIngressToken) ? 'configured' : 'missing_inputs',
+      'token',
+      hasText(settings.commentIngressToken) ? [] : ['COMMENT_INGRESS_TOKEN'],
+    ),
   ];
 
   const blockers = capabilities

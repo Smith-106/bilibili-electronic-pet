@@ -161,6 +161,7 @@ describe('health/readiness parity', () => {
           llmFallbackToMock: false,
           searchProvider: 'serpapi',
           searchApiKeyConfigured: true,
+          commentIngressToken: 'comment-token',
         }),
         buildBilibiliDiagnostics: async () => ({
           ready: false,

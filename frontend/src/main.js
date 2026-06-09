@@ -160,7 +160,13 @@ function navigateTo(page) {
   currentPage = page;
 
   document.querySelectorAll('#nav-list .nav-item').forEach((el) => {
-    el.classList.toggle('active', el.dataset.page === page);
+    const active = el.dataset.page === page;
+    el.classList.toggle('active', active);
+    if (active) {
+      el.setAttribute('aria-current', 'page');
+    } else {
+      el.removeAttribute('aria-current');
+    }
   });
 
   document.getElementById('page-title').textContent = PAGES[page].title;

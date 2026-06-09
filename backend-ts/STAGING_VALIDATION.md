@@ -82,11 +82,14 @@ Checks:
   - `PLATFORM_DOUYIN_ENABLED=true`
   - `PLATFORM_DOUYIN_WEBHOOK_URL`
   - `PLATFORM_DOUYIN_PUBLISH_SOURCE`
-- optional `PLATFORM_DOUYIN_WEBHOOK_TOKEN`
+  - `PLATFORM_QQ_ENABLED=true`
+  - `PLATFORM_QQ_WEBHOOK_URL`
+  - `PLATFORM_QQ_PUBLISH_SOURCE`
+- optional `PLATFORM_DOUYIN_WEBHOOK_TOKEN` and `PLATFORM_QQ_WEBHOOK_TOKEN`
 
 Use when:
 - you want to validate the checker-side prerequisites for the expanded-scope staging run
-- you need to separate missing `PLATFORM_DOUYIN_*` inputs from later remote/WAF/runtime failures
+- you need to separate missing `PLATFORM_DOUYIN_*` / `PLATFORM_QQ_*` inputs from later remote/WAF/runtime failures
 
 Examples:
 
@@ -95,7 +98,7 @@ bash smoke.sh expanded-preflight --env-file ../.env.expanded-scope.preflight.exa
 pwsh ./smoke.ps1 expanded-preflight --env-file ..\.env.expanded-scope.preflight.example
 ```
 
-This mode validates checker-side inputs only. It does not prove the live host can reach the configured endpoint.
+This mode validates checker-side inputs only. It does not prove the live host can reach the configured endpoints.
 
 For the final expanded-scope evidence package, use these repo-managed templates:
 

@@ -15,7 +15,7 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
 ✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
 ✅ **Branch-Specific Delivery Scope Closed** - the current signoff certifies the native Bilibili rollout path on the public smoke domain
-⚠️ **Delivery Scope Boundary** - the current repo-local candidate should be described as `Bilibili-first admin/backend MVP`; companion preview and external-platform trials are explicitly out of the signed-off contract
+✅ **Delivery Scope Boundary** - the current repo-local candidate is `Bilibili-first admin/backend/companion MVP`; external-platform trials remain gated until verified endpoints and remote smoke evidence are present
 ⚠️ **Memory Domain Feed Enabled** - `src/app/memory` is exposed through admin-management endpoints and now receives automatic companion-feed writes from worker/admin approval outcomes, but it is still not part of the core publish contract
 
 ## Tech Stack
@@ -182,7 +182,7 @@ Treat this as candidate scope with an explicit management contract, not as a cor
 
 ### Companion Surface
 
-The repository also includes a separately hosted companion preview surface:
+The repository also includes a backend-served companion surface:
 
 - source package: `../pet-companion-web`
 - backend-served path: `/companion`
@@ -193,7 +193,8 @@ Current status:
 
 - backend can serve the built companion surface
 - the surface is backend-served and can write through protected `/companion/actions`
-- it still contains preview / fallback behavior and is not part of the signed-off Bilibili admin/operator runtime contract
+- `/readiness` treats pet core and protected companion actions as part of the repo-controlled `Bilibili-first admin/backend/companion MVP` signoff
+- local fallback behavior is limited to browser degradation and does not replace backend runtime signoff
 
 ## Database Models
 

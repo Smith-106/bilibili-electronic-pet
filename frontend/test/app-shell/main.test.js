@@ -170,6 +170,7 @@ describe('admin app shell regression tests', () => {
     expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
     expect(document.getElementById('page-title').textContent).toBe('仪表盘');
     expect(document.querySelector('.nav-item[data-page="dashboard"]').classList.contains('active')).toBe(true);
+    expect(document.querySelector('.nav-item[data-page="dashboard"]').getAttribute('aria-current')).toBe('page');
   });
 
   it('bootstraps from legacy api key when no session token is stored', async () => {
@@ -195,6 +196,8 @@ describe('admin app shell regression tests', () => {
     expect(renderSpies.jobs).toHaveBeenCalledTimes(1);
     expect(document.getElementById('page-title').textContent).toBe('任务管理');
     expect(document.querySelector('.nav-item[data-page="jobs"]').classList.contains('active')).toBe(true);
+    expect(document.querySelector('.nav-item[data-page="jobs"]').getAttribute('aria-current')).toBe('page');
+    expect(document.querySelector('.nav-item[data-page="dashboard"]').hasAttribute('aria-current')).toBe(false);
   });
 
   it('clears both session token and api key on logout', async () => {

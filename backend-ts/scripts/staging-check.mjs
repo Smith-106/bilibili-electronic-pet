@@ -307,6 +307,15 @@ function buildEnvMatrix(env, options) {
       note: 'Optional unless the external Douyin sidecar contract requires bearer authentication.',
     },
     { name: 'PLATFORM_DOUYIN_PUBLISH_SOURCE', required: expandedScopeTrial, present: hasText(env.PLATFORM_DOUYIN_PUBLISH_SOURCE) },
+    { name: 'PLATFORM_QQ_ENABLED', required: expandedScopeTrial, present: hasText(env.PLATFORM_QQ_ENABLED) },
+    { name: 'PLATFORM_QQ_WEBHOOK_URL', required: expandedScopeTrial, present: hasText(env.PLATFORM_QQ_WEBHOOK_URL) },
+    {
+      name: 'PLATFORM_QQ_WEBHOOK_TOKEN',
+      required: false,
+      present: hasText(env.PLATFORM_QQ_WEBHOOK_TOKEN),
+      note: 'Optional unless the external QQ sidecar contract requires bearer authentication.',
+    },
+    { name: 'PLATFORM_QQ_PUBLISH_SOURCE', required: expandedScopeTrial, present: hasText(env.PLATFORM_QQ_PUBLISH_SOURCE) },
     { name: 'BILIBILI_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_ENABLED) },
     { name: 'BILIBILI_PUBLISH_ENABLED', required: nativeRealChain, present: hasText(env.BILIBILI_PUBLISH_ENABLED) },
     { name: 'BILIBILI_POLL_ENABLED', required: false, present: hasText(env.BILIBILI_POLL_ENABLED) },
@@ -437,6 +446,7 @@ const DELIVERY_CAPABILITY_NAMES = [
   'search_enrichment',
   'webhook_publish',
   'native_bilibili_publish',
+  'comment_ingress_auth',
 ];
 
 function createPreflightCapability({
@@ -552,25 +562,37 @@ function buildDeliveryPreflight(env, options = {}) {
     nativeNotes.push('real_publish mode uses native Bilibili runtime credentials and delivery checks.');
   }
 
-  const douyinTrialMissing = [];
-  const douyinTrialNotes = [];
-  let douyinTrialStatus = expandedScopeTrial ? 'configured' : 'inactive';
+  const externalTrialMissing = [];
+  const externalTrialNotes = [];
+  let externalTrialStatus = expandedScopeTrial ? 'configured' : 'inactive';
 
   if (expandedScopeTrial && !parseBoolean(env.PLATFORM_DOUYIN_ENABLED, false)) {
-    douyinTrialStatus = 'missing_inputs';
-    douyinTrialMissing.push('PLATFORM_DOUYIN_ENABLED=true');
+    externalTrialStatus = 'missing_inputs';
+    externalTrialMissing.push('PLATFORM_DOUYIN_ENABLED=true');
   }
   if (expandedScopeTrial && !hasText(env.PLATFORM_DOUYIN_WEBHOOK_URL)) {
-    douyinTrialStatus = 'missing_inputs';
-    douyinTrialMissing.push('PLATFORM_DOUYIN_WEBHOOK_URL');
+    externalTrialStatus = 'missing_inputs';
+    externalTrialMissing.push('PLATFORM_DOUYIN_WEBHOOK_URL');
   }
   if (expandedScopeTrial && !hasText(env.PLATFORM_DOUYIN_PUBLISH_SOURCE)) {
-    douyinTrialStatus = 'missing_inputs';
-    douyinTrialMissing.push('PLATFORM_DOUYIN_PUBLISH_SOURCE');
+    externalTrialStatus = 'missing_inputs';
+    externalTrialMissing.push('PLATFORM_DOUYIN_PUBLISH_SOURCE');
+  }
+  if (expandedScopeTrial && !parseBoolean(env.PLATFORM_QQ_ENABLED, false)) {
+    externalTrialStatus = 'missing_inputs';
+    externalTrialMissing.push('PLATFORM_QQ_ENABLED=true');
+  }
+  if (expandedScopeTrial && !hasText(env.PLATFORM_QQ_WEBHOOK_URL)) {
+    externalTrialStatus = 'missing_inputs';
+    externalTrialMissing.push('PLATFORM_QQ_WEBHOOK_URL');
+  }
+  if (expandedScopeTrial && !hasText(env.PLATFORM_QQ_PUBLISH_SOURCE)) {
+    externalTrialStatus = 'missing_inputs';
+    externalTrialMissing.push('PLATFORM_QQ_PUBLISH_SOURCE');
   }
   if (expandedScopeTrial) {
-    douyinTrialNotes.push('PLATFORM_DOUYIN_WEBHOOK_TOKEN is optional unless the external Douyin sidecar contract requires bearer auth.');
-    douyinTrialNotes.push('This preflight only validates checker-side inputs. It does not prove the live host can reach the endpoint through WAF/Cloudflare.');
+    externalTrialNotes.push('PLATFORM_DOUYIN_WEBHOOK_TOKEN and PLATFORM_QQ_WEBHOOK_TOKEN are optional unless the external sidecar contracts require bearer auth.');
+    externalTrialNotes.push('This preflight only validates checker-side inputs. It does not prove the live host can reach endpoints through WAF/Cloudflare or that sidecars can reach upstream services.');
   }
 
   const commentIngressMissing = [];
@@ -636,16 +658,19 @@ function buildDeliveryPreflight(env, options = {}) {
     createPreflightCapability({
       capability: 'external_platform_trial',
       active: expandedScopeTrial,
-      status: douyinTrialStatus,
+      status: externalTrialStatus,
       mode: expandedScopeTrial ? 'expanded_scope_trial' : 'inactive',
       requiredInputs: [
         'PLATFORM_DOUYIN_ENABLED=true',
         'PLATFORM_DOUYIN_WEBHOOK_URL',
         'PLATFORM_DOUYIN_PUBLISH_SOURCE',
+        'PLATFORM_QQ_ENABLED=true',
+        'PLATFORM_QQ_WEBHOOK_URL',
+        'PLATFORM_QQ_PUBLISH_SOURCE',
       ],
-      optionalInputs: ['PLATFORM_DOUYIN_WEBHOOK_TOKEN'],
-      missingInputs: douyinTrialMissing,
-      notes: douyinTrialNotes,
+      optionalInputs: ['PLATFORM_DOUYIN_WEBHOOK_TOKEN', 'PLATFORM_QQ_WEBHOOK_TOKEN'],
+      missingInputs: externalTrialMissing,
+      notes: externalTrialNotes,
     }),
   ];
 
@@ -1100,13 +1125,27 @@ async function main() {
         productReadiness.bilibili_delivery_contract && typeof productReadiness.bilibili_delivery_contract === 'object'
           ? productReadiness.bilibili_delivery_contract
           : {};
+      const petCore =
+        productReadiness.pet_core && typeof productReadiness.pet_core === 'object'
+          ? productReadiness.pet_core
+          : {};
+      const companionSurface =
+        productReadiness.companion_surface && typeof productReadiness.companion_surface === 'object'
+          ? productReadiness.companion_surface
+          : {};
+      const completionMatrix =
+        readinessPayload?.completion_matrix && typeof readinessPayload.completion_matrix === 'object'
+          ? readinessPayload.completion_matrix
+          : productReadiness.completion_matrix && typeof productReadiness.completion_matrix === 'object'
+            ? productReadiness.completion_matrix
+            : {};
       if (readinessPayload?.product_ready !== true) {
         fail(
           'strict_product',
           `product readiness is not ready (${productBlockers.join(',') || 'unknown'})`,
         );
       }
-      if (productScope.key !== 'bilibili_first_admin_backend_mvp') {
+      if (productScope.key !== 'bilibili_first_admin_companion_mvp') {
         fail(
           'strict_product',
           `unexpected product scope ${String(productScope.key ?? 'unknown')}`,
@@ -1121,12 +1160,27 @@ async function main() {
       if (bilibiliDeliveryContract.ready !== true) {
         fail('strict_product', 'bilibili delivery contract is not ready for the signed-off MVP scope');
       }
+      if (petCore.signed_off !== true) {
+        fail('strict_product', 'pet core is not signed off for the signed-off MVP scope');
+      }
+      if (companionSurface.signed_off !== true) {
+        fail('strict_product', 'companion surface is not signed off for the signed-off MVP scope');
+      }
+      if (completionMatrix.total !== 100) {
+        fail(
+          'strict_product',
+          `repo-controlled completion is ${String(completionMatrix.total ?? 'unknown')}; expected 100`,
+        );
+      }
 
       record('strict_product', 'passed', {
         scope: productScope.key ?? null,
         admin_control_plane_ready: adminControlPlane.ready === true,
         comment_ingress_auth_configured: adminControlPlane.comment_ingress_auth_configured === true,
         bilibili_delivery_contract_ready: bilibiliDeliveryContract.ready === true,
+        pet_core_signed_off: petCore.signed_off === true,
+        companion_surface_signed_off: companionSurface.signed_off === true,
+        completion_total: completionMatrix.total ?? null,
       });
       logPass('strict product contract');
 

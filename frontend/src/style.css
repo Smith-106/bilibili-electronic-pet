@@ -164,17 +164,27 @@ body {
 .sidebar-section { padding: 4px 0; }
 
 .nav-item {
+  appearance: none;
+  width: calc(100% - 24px);
   padding: 8px 16px;
   margin: 2px 12px;
+  border: 0;
   border-radius: 8px;
+  background: transparent;
   cursor: pointer;
   color: var(--grey-1);
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
+  font: inherit;
+  text-align: left;
 }
 .nav-item:hover { background: var(--grey-4); color: var(--grey-0); }
+.nav-item:focus-visible {
+  outline: 2px solid var(--primary-cta);
+  outline-offset: 2px;
+}
 .nav-item.active {
   background: var(--primary-cta-transparent);
   color: var(--primary-cta);

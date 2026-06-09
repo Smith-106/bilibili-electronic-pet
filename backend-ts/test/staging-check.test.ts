@@ -113,12 +113,14 @@ async function runStrictWithStubRuntime(envText) {
               { capability: 'search_enrichment', status: 'configured', mode: 'serpapi', missing_inputs: [] },
               { capability: 'webhook_publish', status: 'configured', mode: 'webhook', missing_inputs: [] },
               { capability: 'native_bilibili_publish', status: 'inactive', mode: 'webhook', missing_inputs: [] },
+              { capability: 'comment_ingress_auth', status: 'configured', mode: 'token', missing_inputs: [] },
             ],
             summary: [
               { capability: 'llm_generation', status: 'configured', mode: 'openai', missing_inputs: [] },
               { capability: 'search_enrichment', status: 'configured', mode: 'serpapi', missing_inputs: [] },
               { capability: 'webhook_publish', status: 'configured', mode: 'webhook', missing_inputs: [] },
               { capability: 'native_bilibili_publish', status: 'inactive', mode: 'webhook', missing_inputs: [] },
+              { capability: 'comment_ingress_auth', status: 'configured', mode: 'token', missing_inputs: [] },
             ],
           },
           config: {
@@ -135,12 +137,25 @@ async function runStrictWithStubRuntime(envText) {
             bilibili_publish_enabled: false,
             bilibili_env_credential_configured: false,
           },
+          completion_matrix: {
+            scope: 'repo_controlled_product_completion',
+            total: 100,
+            categories: {
+              ui_ux: 100,
+              frontend: 100,
+              backend: 100,
+              frontend_backend_loop: 100,
+              test: 100,
+              deploy: 100,
+            },
+          },
           product_readiness: {
             scope: {
-              key: 'bilibili_first_admin_backend_mvp',
-              summary: 'Bilibili-first admin/backend MVP',
-              signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract'],
-              excluded_surfaces: ['companion_surface', 'external_platform_trial'],
+              key: 'bilibili_first_admin_companion_mvp',
+              summary: 'Bilibili-first admin/backend/companion MVP',
+              signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract', 'pet_core', 'companion_surface'],
+              gated_surfaces: ['external_platform_trial'],
+              excluded_surfaces: [],
             },
             bilibili_delivery_contract: {
               ready: true,
@@ -150,15 +165,18 @@ async function runStrictWithStubRuntime(envText) {
             },
             pet_core: {
               ready: true,
+              signed_off: true,
               pet_name: 'Mochi',
               relationship_level: 'bonded',
               proactive_signal_count: 1,
             },
             companion_surface: {
               ready: true,
+              signed_off: true,
               pet_name: 'Mochi',
               status_line: 'Trial ready',
               interaction_count: 1,
+              protected_actions_required: true,
             },
             admin_control_plane: {
               ready: true,
@@ -185,6 +203,10 @@ async function runStrictWithStubRuntime(envText) {
                   rollout_stage: 'trial',
                 },
               ],
+            },
+            completion_matrix: {
+              scope: 'repo_controlled_product_completion',
+              total: 100,
             },
           },
           kill_switch: false,
@@ -539,6 +561,9 @@ PUBLISHER_MODE=manual_queue
       'PLATFORM_DOUYIN_ENABLED=true',
       'PLATFORM_DOUYIN_WEBHOOK_URL',
       'PLATFORM_DOUYIN_PUBLISH_SOURCE',
+      'PLATFORM_QQ_ENABLED=true',
+      'PLATFORM_QQ_WEBHOOK_URL',
+      'PLATFORM_QQ_PUBLISH_SOURCE',
     ]);
   });
 
@@ -579,6 +604,18 @@ PUBLISHER_MODE=manual_queue
         effective_publish_mode: 'webhook',
       },
     });
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'strict_product',
+          status: 'passed',
+          scope: 'bilibili_first_admin_companion_mvp',
+          pet_core_signed_off: true,
+          companion_surface_signed_off: true,
+          completion_total: 100,
+        }),
+      ]),
+    );
     expect(report.input_scopes).toMatchObject({
       checker_env: expect.stringContaining('staging-check itself'),
       target_runtime: expect.stringContaining('/readiness'),
