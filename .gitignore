@@ -2,6 +2,7 @@
 .claude/
 .workflow/
 **/.workflow/
+.codegraph/
 .artifacts/
 **/__pycache__/
 *.py[cod]

@@ -100,6 +100,12 @@ pwsh ./smoke.ps1 expanded-preflight --env-file ..\.env.expanded-scope.preflight.
 
 This mode validates checker-side inputs only. It does not prove the live host can reach the configured endpoints.
 
+For production signoff of QQ or Douyin delivery, keep the expanded-scope preflight report and add a remote smoke report against the verified sidecar endpoint:
+
+- Douyin: `DOUYIN_DRIVER_MODE=webhook_proxy` with a reachable `DOUYIN_UPSTREAM_URL`.
+- QQ: `QQ_DRIVER_MODE=webhook_proxy` with a reachable `QQ_UPSTREAM_URL`, or `QQ_DRIVER_MODE=onebot_http` with a reachable `QQ_ONEBOT_URL`.
+- `mock` sidecar modes are local-only and cannot be counted as remote production acceptance.
+
 For the final expanded-scope evidence package, use these repo-managed templates:
 
 - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`
