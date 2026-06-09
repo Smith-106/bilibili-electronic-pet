@@ -3,137 +3,166 @@ import './styles.css';
 const releaseUrl = 'https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.1';
 const pagesUrl = 'https://smith-106.github.io/bilibili-electronic-pet/';
 
-const sections = [
+const heroPanels = [
   {
     eyebrow: 'Product',
-    title: 'Bilibili-first electronic pet operations',
-    body: '把评论采集、风险判断、回复生成、人工审核、发布网关和审计追踪串成一条可运营的链路。',
+    title: 'Bilibili-first comment operations with a visible control plane',
+    body:
+      'This project turns comment intake, safety checks, draft generation, approval, publishing, and audit tracing into one operator-readable workflow.',
     links: [
-      ['能力地图', '#features'],
-      ['平台状态', '#platforms'],
-      ['版本基线', '#baseline']
-    ]
+      ['Feature map', '#features'],
+      ['Delivery baseline', '#baseline'],
+      ['Platform support', '#platforms'],
+    ],
   },
   {
-    eyebrow: 'Architecture',
-    title: 'Runtime topology and delivery gates',
-    body: '用 API、Worker、Redis、Prisma、SQLite / libSQL、Readiness 和审计日志解释系统如何工作。',
+    eyebrow: 'Runtime',
+    title: 'API, worker, readiness, and companion surfaces share one delivery baseline',
+    body:
+      'The backend, queue, database, admin UI, and companion UI are designed as one runtime topology instead of separate disconnected tools.',
     links: [
-      ['架构深读', '#architecture'],
-      ['主链路', '#flow'],
-      ['设计原理', '#principles']
-    ]
-  }
+      ['Architecture', '#architecture'],
+      ['Runtime flow', '#flow'],
+      ['Release checklist', '#deploy'],
+    ],
+  },
 ];
 
 const readerPaths = [
-  ['5 分钟了解', '我想知道项目解决什么问题。', '先读能力地图、版本基线和平台状态。', ['#features', '#baseline', '#platforms']],
-  ['架构深读', '我想理解系统为什么这样设计。', '阅读组件职责、评论生命周期和设计原理。', ['#architecture', '#flow', '#principles']],
-  ['部署上线', '我想把服务和文档站跑起来。', '按 runbook 准备配置、启动服务并验证 readiness。', ['#quick-start', '#deploy', '#ops']],
-  ['运维排障', '我想定位运行中哪里出了问题。', '从 symptom 表开始，映射到 Redis、Worker、凭证、发布网关和试点平台。', ['#ops', '#troubleshooting', '#platforms']]
+  [
+    'Product overview',
+    'I need the shortest path to understand what this repository ships today.',
+    'Start with the feature map, release baseline, and platform support table before reading the deeper runtime details.',
+    ['#features', '#baseline', '#platforms'],
+  ],
+  [
+    'Runtime model',
+    'I need to understand how the backend, worker, admin UI, and companion surface fit together.',
+    'Read the architecture diagram, responsibility table, and comment lifecycle timeline as one connected runtime story.',
+    ['#architecture', '#flow', '#principles'],
+  ],
+  [
+    'Release and deploy',
+    'I need to bring the services up and validate the current delivery baseline.',
+    'Follow the deploy runbook, then check readiness gates and package builds instead of assuming the runtime is healthy.',
+    ['#deploy', '#ops', '#troubleshooting'],
+  ],
+  [
+    'Troubleshooting',
+    'I need to map symptoms back to the correct subsystem quickly.',
+    'Start from the troubleshooting table so you debug the correct boundary instead of guessing from a UI symptom alone.',
+    ['#troubleshooting', '#ops', '#platforms'],
+  ],
 ];
 
 const baseline = [
-  ['业务基线', 'v1.2.0', 'Bilibili-first 正式版，包含 QQ 试点发布链路。'],
-  ['文档发布', 'v1.2.1', '新增 GitHub Pages 文档站和自动部署 workflow。'],
-  ['发布方式', 'GitHub Pages', '项目站点路径固定为 /bilibili-electronic-pet/。'],
-  ['范围原则', 'Docs only', '本轮只深化文档站，不修改业务运行逻辑。']
+  ['Shipped baseline', 'v1.2.0', 'Current Bilibili-first release baseline with the TypeScript backend and operator control plane.'],
+  ['Docs release', 'v1.2.1', 'GitHub Pages documentation layer and docs deployment workflow.'],
+  ['Pages path', '/bilibili-electronic-pet/', 'Project site base path used by the Vite docs build.'],
+  ['Scope', 'Docs only', 'This documentation surface explains the runtime and release shape without changing business logic.'],
+];
+
+const launchStatus = [
+  ['Admin UI', 'Mature', 'Operator control plane with runtime diagnostics, jobs, memory, platform, audit, and Bilibili flows.'],
+  ['Companion UI', 'Runtime integrated', 'Backend-served companion surface exists, but the full electronic-pet product loop remains partial.'],
+  ['Docs UI', 'This page', 'Project-facing documentation surface for release, runtime, and troubleshooting orientation.'],
+  ['Trial platforms', 'Controlled rollout', 'QQ and Douyin stay governed trial paths while Bilibili remains the primary shipped platform.'],
 ];
 
 const features = [
-  ['评论处理链路', '接收评论事件、去重冷却、安全检查、生成回复，并进入审核或发布流程。'],
-  ['B 站集成', '管理账号凭证、监控视频、定时轮询评论，并支持真实 B 站发布开关。'],
-  ['管理后台', '覆盖仪表盘、任务、知识库、Memory、角色卡、网关日志、审计日志和诊断视图。'],
-  ['Companion', '通过 backend 托管 `/companion` 静态页面，并提供 `/companion/state-v2` 状态接口。'],
-  ['多平台试点', 'Douyin 和 QQ 保留试点链路，Bilibili 是当前正式支持平台。'],
-  ['交付门禁', 'readiness、strict smoke、expanded-scope preflight 和三端构建共同支撑发布质量。']
+  ['Comment intake pipeline', 'Receive comment events, deduplicate, enforce cooldown, run safety checks, and prepare publish decisions.'],
+  ['Bilibili operations', 'Manage credentials, monitored videos, polling behavior, diagnostics, and publishing controls.'],
+  ['Admin control plane', 'Operate jobs, knowledge, memory, role cards, style profiles, gateway logs, audit summaries, and query tools.'],
+  ['Companion surface', 'Expose the pet-facing UI through backend-served `/companion` assets and companion state endpoints.'],
+  ['Delivery gates', 'Use readiness, strict smoke, and package build checks as release truth sources instead of visual inspection alone.'],
+  ['Trial adapters', 'Keep QQ and Douyin in governed rollout lanes without overstating them as primary delivery surfaces.'],
 ];
 
 const responsibilities = [
-  ['Admin UI', '运营入口', '任务、知识库、Memory、平台凭证、审计与诊断视图。'],
-  ['Companion Web', '电子宠物体验', '展示 pet 状态，通过 backend 静态托管和 state-v2 API 接入。'],
-  ['Fastify API', '同步边界', '承载管理后台 API、健康检查、readiness、发布网关和静态资源托管。'],
-  ['Bilibili Poller', '采集入口', '定时轮询监控视频评论，把外部评论转成内部事件。'],
-  ['BullMQ Worker', '异步执行', '消费 comment-event 队列，推进安全检查、生成、审核和发布任务。'],
-  ['Redis Queue', '缓冲隔离', '隔离外部采集和内部处理，承载重试、延迟和积压观测。'],
-  ['Prisma', '数据访问', '统一访问任务、日志、Memory、凭证和配置等持久化模型。'],
-  ['SQLite / libSQL', '默认存储', '当前默认数据层，Docker Compose 通过共享 volume 挂载数据文件。'],
-  ['Publish Gateway', '发布安全边界', '集中控制真实发布、结果记录、失败追踪和审计写入。'],
-  ['Readiness', '交付门禁', '用 foundation / delivery / product 维度暴露上线阻塞项。']
+  ['Admin UI', 'Operator surface', 'Jobs, memory, knowledge, pet-core, gateway, diagnostics, and platform controls.'],
+  ['Companion Web', 'Pet-facing surface', 'Shows companion state, rituals, timeline, and degraded fallback when backend state is unavailable.'],
+  ['Fastify API', 'Boundary layer', 'Serves admin APIs, readiness, companion routes, gateway operations, and static runtime assets.'],
+  ['Bilibili Poller', 'Comment intake', 'Polls monitored videos and injects comments into the internal workflow.'],
+  ['BullMQ Worker', 'Async executor', 'Consumes queued events and advances moderation, publishing, and retry workflows.'],
+  ['Redis Queue', 'Isolation layer', 'Decouples intake from processing and carries retries, scheduling, and queue health signals.'],
+  ['Prisma', 'Data access', 'Persists jobs, logs, memory entities, credentials, and related runtime state.'],
+  ['SQLite / libSQL', 'Default storage', 'Current default persistence layer for local and containerized runtime paths.'],
+  ['Readiness', 'Release gate', 'Reports foundation, delivery, and product blockers as explicit deployment signals.'],
 ];
 
 const stack = [
-  ['Backend', 'Node.js 20 · TypeScript 5 · Fastify 5 · Prisma 7 · Vitest'],
-  ['Frontend', 'Vite 5 · 原生 ES Module · 原生 CSS · 无框架依赖'],
-  ['Infra', 'Docker · Docker Compose · Redis 7 · SQLite / libSQL'],
-  ['Workers', 'BullMQ · ioredis · comment-event queue · polling jobs']
+  ['Backend', 'Node.js 20, TypeScript 5, Fastify 5, Prisma 7, Vitest'],
+  ['Frontend', 'Vite 5, native ES modules, native CSS, no React or Vue'],
+  ['Infra', 'Docker, Docker Compose, Redis 7, SQLite or libSQL'],
+  ['Worker model', 'BullMQ, ioredis, comment-event queue, polling scheduler'],
 ];
 
 const lifecycle = [
-  ['Observed comment', 'Bilibili Poller 发现新评论', '保留外部来源和视频上下文。'],
-  ['Deduplicated', '去重与冷却检查通过', '避免重复回复和过度触达。'],
-  ['Safety checked', '安全策略允许继续处理', '阻断敏感内容或不应回复的场景。'],
-  ['Draft generated', '结合 Memory / 知识 / 角色卡生成回复草稿', '回复仍未必会真实发布。'],
-  ['Review or auto publish', '根据策略进入人工审核或自动发布', '人工路径是运营安全阀。'],
-  ['Published / rejected / failed', '发布网关返回结果或人工拒绝', '所有结果都进入日志与审计。'],
-  ['Audited', '审计事件可追踪', '用于回溯操作、排障和运营复盘。']
+  ['Observed comment', 'The poller or webhook path receives a comment event and preserves source context.'],
+  ['Deduplicated', 'Cooldown and dedupe logic prevent repeated or noisy replies.'],
+  ['Safety checked', 'Policy and safety filters decide whether the event can continue.'],
+  ['Draft generated', 'The system prepares a reply or publish intent using runtime context and operator data.'],
+  ['Reviewed or auto-published', 'Policy decides whether human approval is required before publish.'],
+  ['Published or rejected', 'Gateway and platform handling record the final outcome.'],
+  ['Audited', 'Every key outcome becomes traceable through logs and audit surfaces.'],
 ];
 
 const principles = [
-  ['Bilibili-first', '正式价值聚焦 B 站评论区运营闭环。', '试点平台只能作为扩展路径展示，不能混同正式支持。'],
-  ['Queue isolation', '采集和处理通过 Redis / BullMQ 解耦。', '提高抗抖动能力，但需要观察队列积压和 worker 状态。'],
-  ['Human-in-the-loop', '人工审核保留在回复发布前的关键路径。', '牺牲部分自动化速度，换取发布安全和可控性。'],
-  ['Auditability', '发布、审批、重试和导出都应留下审计线索。', '排障时优先看日志和审计，而不是猜测 UI 状态。'],
-  ['Readiness gates', 'foundation / delivery / product 分层暴露交付状态。', '上线判断以门禁为准，而不是只看进程是否存活。'],
-  ['Static docs delivery', '文档站由 GitHub Pages 发布，业务服务由 Docker Compose 运行。', '两条部署链路独立验证，避免文档发布影响业务运行。']
+  ['Bilibili-first delivery', 'The primary product promise stays centered on the Bilibili automation path.', 'Trial platforms must not be mistaken for the main shipped contract.'],
+  ['Queue isolation', 'Comment intake and async processing stay decoupled through Redis and BullMQ.', 'This improves resilience but requires queue and worker observability.'],
+  ['Human-in-the-loop', 'Approval remains part of the publish path whenever safety or operator review matters.', 'The system trades some automation speed for safer publish behavior.'],
+  ['Readiness over guesswork', 'Release truth comes from foundation, delivery, and product gates.', 'A running process is not enough to call the system ready.'],
+  ['Static runtime surfaces', 'Admin and companion bundles are delivered as backend-served static assets.', 'Frontend changes must preserve the backend-served asset contract.'],
+  ['Docs as release support', 'This docs site explains the runtime and release shape without becoming the runtime itself.', 'Documentation should clarify delivery truth, not create a parallel source of truth.'],
 ];
 
 const deploySteps = [
-  ['准备配置', '复制 `.env.example`，按目标环境配置 B 站凭证、Redis、数据库路径、API key 和发布网关开关。'],
-  ['启动业务服务', '使用根目录 Docker Compose 启动 migrate、API、Worker 与 Redis，并确认共享 SQLite volume 正常挂载。'],
-  ['验证服务门禁', '检查 `/health`、`/readiness` 和管理后台诊断视图，确认 foundation / delivery / product 没有阻塞项。'],
-  ['验证三端构建', '运行 backend、frontend、pet-companion-web 的测试或构建命令，确认业务基线仍可交付。'],
-  ['部署文档站', '推送 `docs-site/**` 或手动触发 `docs-pages` workflow，GitHub Pages 会部署 `docs-site/dist`。']
+  ['Prepare environment', 'Copy `.env.example` and configure credentials, Redis, database path, API key, and publish controls for the target environment.'],
+  ['Bring up runtime services', 'Use the repository Docker Compose entrypoint for migrate, API, worker, and Redis so the main delivery topology stays aligned.'],
+  ['Check readiness', 'Verify `/health`, `/readiness`, and the admin diagnostics surfaces before trusting the runtime.'],
+  ['Verify package builds', 'Run backend, admin, companion, and docs build commands to keep the visual and runtime surfaces aligned.'],
+  ['Deploy docs separately', 'Publish the docs site through the GitHub Pages workflow rather than coupling it to the business runtime deployment.'],
 ];
 
 const ops = [
-  '确认 Bilibili credential 状态和监控视频列表。',
-  '检查 comment-event 队列积压、worker 日志和 Redis 连接。',
-  '通过审计日志追踪发布、审批、重试和导出操作。',
-  '使用 readiness 诊断定位 foundation_ready / delivery_ready blocker。',
-  '发布前运行 backend、frontend、pet-companion-web 的测试与构建。'
+  'Confirm active Bilibili credentials and monitored video configuration before debugging downstream publish behavior.',
+  'Check queue depth, worker logs, and Redis connectivity before treating a missing job as a frontend issue.',
+  'Use audit and gateway logs to understand publish outcomes instead of inferring state from UI symptoms alone.',
+  'Treat readiness blockers as the primary release signal for foundation, delivery, and product status.',
+  'Re-run backend, admin, companion, and docs build paths before calling a release candidate stable.',
 ];
 
 const troubleshooting = [
-  ['评论没有进入任务', 'Bilibili Poller / 凭证 / 监控视频', '检查账号凭证、监控视频列表、poller 日志和平台接口响应。'],
-  ['任务积压不处理', 'Redis Queue / BullMQ Worker', '检查 Redis 连接、worker 进程、队列深度和失败重试数。'],
-  ['readiness 阻塞', '配置 / 数据库 / 依赖服务', '按 foundation、delivery、product blocker 分类定位缺失配置或服务不可用。'],
-  ['回复未发布', 'Publish Gateway / 审核策略', '检查发布开关、人工审核状态、gateway 日志和 publish log。'],
-  ['Companion 状态异常', '静态托管 / state-v2 API', '检查 `/companion` 静态资源、`/companion/state-v2` 响应和 backend 路由。'],
-  ['试点平台不可用', 'Sidecar / endpoint / 环境变量', '确认 QQ / Douyin sidecar、endpoint 和 `PLATFORM_*` 配置；不要按正式能力处理。']
+  ['Comments never become jobs', 'Poller, credentials, or monitored video config', 'Inspect credentials, monitored videos, poller logs, and platform route behavior.'],
+  ['Jobs pile up and do not progress', 'Redis or worker runtime', 'Check Redis connectivity, worker process health, retry counts, and queue depth.'],
+  ['Readiness says blocked', 'Configuration or dependency boundary', 'Follow the reported foundation, delivery, or product blockers instead of guessing the failed layer.'],
+  ['Publish outcome missing', 'Gateway or approval flow', 'Check publish mode, approval status, gateway logs, and audit entries.'],
+  ['Companion looks degraded', 'Companion state endpoint or backend runtime', 'Verify `/companion`, `/companion/state-v2`, and backend route health before changing the UI.'],
+  ['Trial platform not available', 'Sidecar or rollout configuration', 'Inspect sidecar endpoint availability and `PLATFORM_*` environment settings.'],
 ];
 
 const platforms = [
-  ['Bilibili', '正式支持', '评论轮询、凭证管理、视频监控、发布网关和审计链路。', '当前正式交付范围。'],
-  ['QQ', '试点支持', '`qq-sidecar` + OneBot HTTP / NapCat 链路已用于本地与 CI 验证。', '仍按试点能力管理。'],
-  ['Douyin / 抖音', '试点能力', '代码与本地验证已具备。', '远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_DOUYIN_*` 配置。'],
-  ['Kuaishou / 快手', '预留脚手架', '保留扩展结构。', '不作为正式交付能力。'],
-  ['WeChat / 微信', '暂不支持', '不在当前路线范围。', '不要承诺接入能力。']
+  ['Bilibili', 'Primary support', 'Polling, credentials, monitored videos, publish gateway, readiness diagnostics, and audit path.', 'Current shipped delivery surface.'],
+  ['QQ', 'Trial support', '`qq-sidecar` path verified locally and in CI.', 'Still governed as a trial capability.'],
+  ['Douyin', 'Trial support', 'Code and local validation exist for the sidecar path.', 'Remote rollout still depends on verified sidecar endpoint and environment config.'],
+  ['Kuaishou', 'Reserved scaffold', 'Structural placeholder only.', 'Not a shipped delivery capability.'],
+  ['WeChat', 'Not supported', 'Outside the current roadmap boundary.', 'Do not present it as available.'],
 ];
 
-function cardList(items) {
+function renderCardGrid(items) {
   return items
     .map(
       ([title, body]) => `
         <article class="card">
           <h3>${title}</h3>
           <p>${body}</p>
-        </article>`
+        </article>
+      `,
     )
     .join('');
 }
 
-function readerPathList(items) {
+function renderReaderPaths(items) {
   return items
     .map(
       ([title, question, body, links]) => `
@@ -142,12 +171,13 @@ function readerPathList(items) {
           <p class="question">${question}</p>
           <p>${body}</p>
           <div>${links.map((href) => `<a href="${href}">${href.replace('#', '')}</a>`).join('')}</div>
-        </article>`
+        </article>
+      `,
     )
     .join('');
 }
 
-function baselineList(items) {
+function renderBaseline(items) {
   return items
     .map(
       ([label, value, body]) => `
@@ -155,24 +185,28 @@ function baselineList(items) {
           <span>${label}</span>
           <strong>${value}</strong>
           <p>${body}</p>
-        </div>`
+        </div>
+      `,
     )
     .join('');
 }
 
-function table(headers, rows) {
+function renderTable(headers, rows) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr>${headers.map((header) => `<th>${header}</th>`).join('')}</tr></thead>
+        <thead>
+          <tr>${headers.map((header) => `<th>${header}</th>`).join('')}</tr>
+        </thead>
         <tbody>
           ${rows.map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}
         </tbody>
       </table>
-    </div>`;
+    </div>
+  `;
 }
 
-function stepList(items) {
+function renderSteps(items) {
   return items
     .map(
       ([title, body], index) => `
@@ -182,12 +216,13 @@ function stepList(items) {
             <h3>${title}</h3>
             <p>${body}</p>
           </div>
-        </li>`
+        </li>
+      `,
     )
     .join('');
 }
 
-function heroPanels(items) {
+function renderHeroPanels(items) {
   return items
     .map(
       (item) => `
@@ -198,12 +233,13 @@ function heroPanels(items) {
           <div class="panel-links">
             ${item.links.map(([label, href]) => `<a href="${href}">${label}</a>`).join('')}
           </div>
-        </article>`
+        </article>
+      `,
     )
     .join('');
 }
 
-function principleList(items) {
+function renderPrinciples(items) {
   return items
     .map(
       ([title, why, tradeoff]) => `
@@ -211,33 +247,53 @@ function principleList(items) {
           <h3>${title}</h3>
           <p>${why}</p>
           <small>${tradeoff}</small>
-        </article>`
+        </article>
+      `,
     )
     .join('');
 }
 
-function callout(type, title, body) {
+function renderStatusTable(items) {
+  return `
+    <div class="status-table">
+      ${items
+        .map(
+          ([label, status, note]) => `
+            <div>
+              <span>${label}</span>
+              <strong>${status}</strong>
+              <span>${note}</span>
+            </div>
+          `,
+        )
+        .join('')}
+    </div>
+  `;
+}
+
+function renderCallout(type, title, body) {
   return `
     <aside class="callout ${type}">
       <strong>${title}</strong>
       <p>${body}</p>
-    </aside>`;
+    </aside>
+  `;
 }
 
-function app() {
+function createAppMarkup() {
   return `
     <header class="site-header">
-      <a class="brand" href="#top" aria-label="Bilibili 电子宠物文档首页">
+      <a class="brand" href="#top" aria-label="Bilibili Electronic Pet documentation home">
         <span class="brand-mark">B</span>
-        <span>Bilibili 电子宠物</span>
+        <span>Bilibili Electronic Pet</span>
       </a>
-      <nav aria-label="主导航">
-        <a href="#overview">概览</a>
-        <a href="#architecture">架构</a>
-        <a href="#principles">原理</a>
-        <a href="#deploy">部署</a>
-        <a href="#ops">运维</a>
-        <a href="#platforms">平台</a>
+      <nav aria-label="Primary">
+        <a href="#overview">Overview</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#principles">Principles</a>
+        <a href="#deploy">Deploy</a>
+        <a href="#ops">Ops</a>
+        <a href="#platforms">Platforms</a>
       </nav>
     </header>
 
@@ -245,98 +301,114 @@ function app() {
       <section class="hero" id="overview">
         <div class="hero-copy">
           <p class="eyebrow">Documentation · v1.2.1 docs release</p>
-          <h1>面向 B 站评论区自动回复系统的产品、架构、部署与运维指南。</h1>
+          <h1>One docs surface for product shape, runtime boundaries, and release truth.</h1>
           <p class="hero-text">
-            这个文档站汇总当前正式基线：Bilibili 主平台链路、TypeScript 后端、Vite 管理后台、companion 页面和交付门禁。
+            This site explains what the repository actually ships today: the Bilibili-first automation flow,
+            the TypeScript runtime, the operator-facing admin UI, the companion surface, and the readiness gates
+            that define release confidence.
           </p>
           <div class="hero-actions">
-            <a class="primary" href="#reader-paths">选择阅读路径</a>
-            <a class="secondary" href="${releaseUrl}">查看 Release</a>
+            <a class="primary" href="#reader-paths">Choose a reading path</a>
+            <a class="secondary" href="${releaseUrl}">View release</a>
           </div>
         </div>
-        <div class="hero-grid">${heroPanels(sections)}</div>
+        <div class="hero-grid">${renderHeroPanels(heroPanels)}</div>
       </section>
 
       <section id="reader-paths" class="section">
         <div class="section-heading">
           <p class="eyebrow">Reader paths</p>
-          <h2>按你的目标阅读</h2>
-          <p>文档站按读者意图组织：先建立整体理解，再进入架构、部署和运维细节。</p>
+          <h2>Start from the question you are trying to answer.</h2>
+          <p>
+            This documentation is organized for operators, developers, and release owners who need a fast route
+            to the right subsystem instead of a long linear read.
+          </p>
         </div>
-        <div class="path-grid">${readerPathList(readerPaths)}</div>
+        <div class="path-grid">${renderReaderPaths(readerPaths)}</div>
       </section>
 
       <section id="baseline" class="section">
         <div class="section-heading">
           <p class="eyebrow">Baseline</p>
-          <h2>版本与发布基线</h2>
-          <p>业务能力基线和文档站发布分开理解，避免把文档发布误认为业务能力新增。</p>
+          <h2>Separate the shipped runtime from the docs release.</h2>
+          <p>
+            The business runtime baseline and the docs site release are related, but they are not the same thing.
+            Treat each release lane as its own deliverable.
+          </p>
         </div>
-        <div class="metrics-grid">${baselineList(baseline)}</div>
-        ${callout('note', 'GitHub Pages 项目站点', `当前访问地址是 <a href="${pagesUrl}">${pagesUrl}</a>，对应仓库项目站点，而不是用户/组织根站点。`)}
+        <div class="metrics-grid">${renderBaseline(baseline)}</div>
+        ${renderCallout(
+          'note',
+          'GitHub Pages project site',
+          `The published docs URL is <a href="${pagesUrl}">${pagesUrl}</a>. This is a repository project site, not a root user or organization site.`,
+        )}
       </section>
 
-      <section id="quick-start" class="section split">
+      <section class="section split">
         <div>
-          <p class="eyebrow">Quick start</p>
-          <h2>从本地运行到发布验证</h2>
-          <p>业务服务、前端构建和文档站构建是三条不同验证线，发布前应分别确认。</p>
+          <p class="eyebrow">Launch status</p>
+          <h2>What is visually complete today.</h2>
+          <p>
+            The admin surface is the mature operator-facing experience. The companion surface is runtime integrated
+            but still product-partial. This docs site is the third visible layer.
+          </p>
         </div>
-        <div class="command-stack" aria-label="常用命令">
-          <code>docker compose up --build</code>
-          <code>npm --prefix backend-ts test</code>
-          <code>npm --prefix frontend run build</code>
-          <code>npm --prefix pet-companion-web run build</code>
-          <code>npm --prefix docs-site run build</code>
-        </div>
+        ${renderStatusTable(launchStatus)}
       </section>
 
       <section id="features" class="section">
         <div class="section-heading">
           <p class="eyebrow">Features</p>
-          <h2>系统能力地图</h2>
-          <p>围绕评论运营闭环组织功能，而不是围绕单个页面或服务拆散信息。</p>
+          <h2>Feature map for the current repository baseline.</h2>
+          <p>
+            Read the system as one Bilibili-first operating workflow rather than as disconnected folders or
+            standalone pages.
+          </p>
         </div>
-        <div class="card-grid">${cardList(features)}</div>
+        <div class="card-grid">${renderCardGrid(features)}</div>
       </section>
 
       <section id="architecture" class="section architecture">
         <div class="section-heading">
           <p class="eyebrow">Architecture</p>
-          <h2>运行时组件与职责边界</h2>
-          <p>后端 API、worker、队列、数据库、前端页面和 readiness 门禁共同构成当前交付基线。</p>
+          <h2>Runtime surfaces and backend boundaries.</h2>
+          <p>
+            The backend, worker, queue, database, admin UI, and companion UI all belong to one delivery contract.
+          </p>
         </div>
-        <div class="diagram" role="img" aria-label="系统架构图">
+        <div class="diagram" role="img" aria-label="Runtime architecture diagram">
           <div>Admin UI</div>
-          <div>Companion Web</div>
+          <div>Companion UI</div>
           <div class="wide">Fastify API · Readiness · Gateway · Audit</div>
           <div>Bilibili Poller</div>
           <div>BullMQ Worker</div>
           <div>Redis Queue</div>
           <div>Prisma</div>
           <div>SQLite / libSQL</div>
-          <div>Publish Gateway</div>
+          <div>Static asset serving</div>
         </div>
-        <div class="stack-grid">${cardList(stack)}</div>
-        ${table(['组件', '职责', '读者应理解的边界'], responsibilities)}
+        <div class="stack-grid">${renderCardGrid(stack)}</div>
+        ${renderTable(['Surface', 'Primary role', 'Why it matters'], responsibilities)}
       </section>
 
       <section id="flow" class="section flow-deep">
         <div class="section-heading">
           <p class="eyebrow">Flow</p>
-          <h2>评论处理生命周期</h2>
-          <p>从外部评论到审计记录，核心路径通过队列、策略、审核和发布网关分层推进。</p>
+          <h2>Comment lifecycle from intake to audit.</h2>
+          <p>
+            This timeline is the main behavior path that the rest of the operator and readiness surfaces explain.
+          </p>
         </div>
         <div class="timeline">
           ${lifecycle
             .map(
-              ([state, trigger, note], index) => `
+              ([state, trigger], index) => `
                 <article>
                   <span>${String(index + 1).padStart(2, '0')}</span>
                   <h3>${state}</h3>
                   <p>${trigger}</p>
-                  <small>${note}</small>
-                </article>`
+                </article>
+              `,
             )
             .join('')}
         </div>
@@ -345,26 +417,36 @@ function app() {
       <section id="principles" class="section">
         <div class="section-heading">
           <p class="eyebrow">Principles</p>
-          <h2>关键设计原理</h2>
-          <p>架构不仅说明有哪些组件，也说明为什么这些边界值得保留。</p>
+          <h2>Why the repository keeps these boundaries.</h2>
+          <p>
+            The architecture is only useful if the tradeoffs behind it stay explicit. These principles define the
+            current delivery posture.
+          </p>
         </div>
-        <div class="principles-grid">${principleList(principles)}</div>
+        <div class="principles-grid">${renderPrinciples(principles)}</div>
       </section>
 
       <section id="deploy" class="section">
         <div class="section-heading">
           <p class="eyebrow">Deploy</p>
-          <h2>部署 runbook</h2>
-          <p>应用部署和文档站部署分离：业务服务走 Docker Compose，文档站走 GitHub Pages workflow。</p>
+          <h2>Release and deployment runbook.</h2>
+          <p>
+            Business services and docs publishing are intentionally separate. The runtime deploy path is not the same
+            as the GitHub Pages docs path.
+          </p>
         </div>
-        ${callout('warning', '部署前提', '真实发布能力依赖平台凭证、发布开关和 readiness 门禁；不要只根据进程存活判断可上线。')}
-        <ol class="steps">${stepList(deploySteps)}</ol>
+        ${renderCallout(
+          'warning',
+          'Before calling a release ready',
+          'Use readiness, queue health, and package builds as release truth. A running process or a rendered page is not enough on its own.',
+        )}
+        <ol class="steps">${renderSteps(deploySteps)}</ol>
       </section>
 
       <section id="ops" class="section ops">
         <div class="section-heading">
           <p class="eyebrow">Operations</p>
-          <h2>上线与值守检查清单</h2>
+          <h2>Operator checklist for live systems.</h2>
         </div>
         <ul>${ops.map((item) => `<li>${item}</li>`).join('')}</ul>
       </section>
@@ -372,27 +454,41 @@ function app() {
       <section id="troubleshooting" class="section">
         <div class="section-heading">
           <p class="eyebrow">Troubleshooting</p>
-          <h2>症状到边界的排障路径</h2>
-          <p>先定位边界，再看对应日志、队列、配置或审计记录，避免直接修改无关模块。</p>
+          <h2>Map symptoms to the correct subsystem first.</h2>
+          <p>
+            Start from the failing boundary, then inspect the right logs, queue state, routes, or config instead of
+            treating every problem as a frontend issue.
+          </p>
         </div>
-        ${table(['症状', '可能边界', '首要检查'], troubleshooting)}
+        ${renderTable(['Symptom', 'Likely boundary', 'Check first'], troubleshooting)}
       </section>
 
       <section id="platforms" class="section roadmap">
         <div>
           <p class="eyebrow">Platforms</p>
-          <h2>平台支持状态</h2>
-          <p>Bilibili 是正式支持平台；QQ 和 Douyin 仍按试点链路推进；Kuaishou 保留脚手架；微信暂不支持。</p>
-          ${callout('note', '范围说明', '平台状态是交付承诺边界。试点能力可以用于验证，但不等同于正式生产 rollout。')}
+          <h2>Platform support status.</h2>
+          <p>
+            Bilibili is the primary shipped surface. QQ and Douyin remain governed trial lanes. Kuaishou is scaffolded
+            only, and WeChat is outside the current scope.
+          </p>
+          ${renderCallout(
+            'note',
+            'Support boundary',
+            'Trial capability is still useful for validation, but it must not be presented as equivalent to the primary shipped platform.',
+          )}
         </div>
-        ${table(['平台', '状态', '能力', '备注'], platforms)}
+        ${renderTable(['Platform', 'Status', 'Capability', 'Notes'], platforms)}
       </section>
     </main>
 
     <footer>
-      <p>Bilibili 电子宠物文档站 · Generated from repository baseline v1.2.0 and docs release v1.2.1</p>
+      <p>Bilibili Electronic Pet documentation site · Repository baseline v1.2.0 · Docs release v1.2.1</p>
     </footer>
   `;
 }
 
-document.querySelector('#app').innerHTML = app();
+const appRoot = document.querySelector('#app');
+
+if (appRoot) {
+  appRoot.innerHTML = createAppMarkup();
+}
