@@ -1,11 +1,11 @@
 # Pet Companion Web
 
-Standalone Vite prototype for a browser-side companion surface.
+Standalone Vite preview surface for the browser-side companion experience.
 
 ## Current Status
 
 - preserved in the current repository checkpoint
-- explicitly isolated from the signed-off Bilibili rollout baseline
+- explicitly isolated from the signed-off `Bilibili-first admin/backend MVP` baseline
 - prefers the backend `/companion/state` endpoint and falls back to a local stub adapter
 - built into `backend-ts/public/companion`
 - served by backend at `/companion`
@@ -16,11 +16,11 @@ Standalone Vite prototype for a browser-side companion surface.
 
 This package exists to explore a pet-first companion UI without changing the currently validated admin runtime.
 
-It should be treated as a prototype until a later task explicitly chooses one of these paths:
+It should be treated as a preview until a later task explicitly chooses one of these paths:
 
 1. integrate into the main runtime,
 2. ship as a separately hosted surface,
-3. archive as a prototype-only exploration.
+3. archive as a preview-only exploration.
 
 ## Local Commands
 

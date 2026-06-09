@@ -1,7 +1,6 @@
 import './style.css';
 import { requestJson } from './api/client.js';
 
-// Page imports (lazy-loaded modules)
 import { render as renderDashboard } from './pages/dashboard.js';
 import { render as renderJobs } from './pages/jobs.js';
 import { render as renderDailyMetrics } from './pages/daily-metrics.js';
@@ -32,14 +31,60 @@ const PAGES = {
   query: { render: renderQuery, title: '查询' },
 };
 
+const ADMIN_SESSION_STORAGE_KEY = 'admin_session_token';
+const ADMIN_API_KEY_STORAGE_KEY = 'admin_api_key';
+
 let currentPage = null;
 
-function ensureApiKey() {
-  const stored = sessionStorage.getItem('admin_api_key');
-  if (stored) {
-    window.__ADMIN_API_KEY__ = stored;
+function showLoginError(message) {
+  const errorEl = document.getElementById('login-error');
+  errorEl.textContent = message;
+  errorEl.style.display = 'block';
+}
+
+function clearLoginError() {
+  const errorEl = document.getElementById('login-error');
+  errorEl.textContent = '';
+  errorEl.style.display = 'none';
+}
+
+function clearAdminCredentials() {
+  sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+  sessionStorage.removeItem(ADMIN_API_KEY_STORAGE_KEY);
+  window.__ADMIN_SESSION_TOKEN__ = '';
+  window.__ADMIN_API_KEY__ = '';
+}
+
+function applyAdminCredentials({ sessionToken = '', apiKey = '' } = {}) {
+  window.__ADMIN_SESSION_TOKEN__ = sessionToken.trim();
+  window.__ADMIN_API_KEY__ = apiKey.trim();
+
+  if (window.__ADMIN_SESSION_TOKEN__) {
+    sessionStorage.setItem(ADMIN_SESSION_STORAGE_KEY, window.__ADMIN_SESSION_TOKEN__);
+  } else {
+    sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY);
+  }
+
+  if (window.__ADMIN_API_KEY__) {
+    sessionStorage.setItem(ADMIN_API_KEY_STORAGE_KEY, window.__ADMIN_API_KEY__);
+  } else {
+    sessionStorage.removeItem(ADMIN_API_KEY_STORAGE_KEY);
+  }
+}
+
+function ensureStoredAdminAuth() {
+  const sessionToken = sessionStorage.getItem(ADMIN_SESSION_STORAGE_KEY)?.trim() || '';
+  if (sessionToken) {
+    applyAdminCredentials({ sessionToken });
     return true;
   }
+
+  const apiKey = sessionStorage.getItem(ADMIN_API_KEY_STORAGE_KEY)?.trim() || '';
+  if (apiKey) {
+    applyAdminCredentials({ apiKey });
+    return true;
+  }
+
   return false;
 }
 
@@ -53,29 +98,59 @@ function hideLogin() {
   document.getElementById('logout-btn').style.display = '';
 }
 
-async function handleLogin(e) {
-  e.preventDefault();
-  const input = document.getElementById('login-api-key');
-  const errorEl = document.getElementById('login-error');
-  const key = input.value.trim();
-  if (!key) return;
+async function loginWithSession(apiKey) {
+  const payload = await requestJson('/api/admin/session/login', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ api_key: apiKey }),
+  });
 
-  window.__ADMIN_API_KEY__ = key;
-  try {
-    await requestJson('/api/admin/overview');
-    sessionStorage.setItem('admin_api_key', key);
-    hideLogin();
-    navigateTo('dashboard');
-  } catch {
-    errorEl.textContent = 'API Key 无效或服务不可用';
-    errorEl.style.display = 'block';
-    window.__ADMIN_API_KEY__ = '';
+  const sessionToken = String(payload?.session_token || '').trim();
+  if (!sessionToken) {
+    throw new Error('session_token_missing');
   }
+
+  applyAdminCredentials({ sessionToken });
+}
+
+async function loginWithLegacyApiKey(apiKey) {
+  applyAdminCredentials({ apiKey });
+  await requestJson('/api/admin/overview');
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  clearLoginError();
+
+  const input = document.getElementById('login-api-key');
+  const apiKey = input.value.trim();
+  if (!apiKey) {
+    return;
+  }
+
+  clearAdminCredentials();
+
+  try {
+    await loginWithSession(apiKey);
+  } catch {
+    try {
+      await loginWithLegacyApiKey(apiKey);
+    } catch {
+      clearAdminCredentials();
+      showLoginError('API Key 无效或服务不可用');
+      return;
+    }
+  }
+
+  hideLogin();
+  navigateTo('dashboard');
 }
 
 function handleLogout() {
-  sessionStorage.removeItem('admin_api_key');
-  window.__ADMIN_API_KEY__ = '';
+  clearAdminCredentials();
+  clearLoginError();
   document.getElementById('page-container').innerHTML = '';
   showLogin();
 }
@@ -84,24 +159,21 @@ function navigateTo(page) {
   if (!PAGES[page]) return;
   currentPage = page;
 
-  // Update nav active state
-  document.querySelectorAll('#nav-list .nav-item').forEach(el => {
+  document.querySelectorAll('#nav-list .nav-item').forEach((el) => {
     el.classList.toggle('active', el.dataset.page === page);
   });
 
-  // Update page title
   document.getElementById('page-title').textContent = PAGES[page].title;
 
-  // Render page
   const container = document.getElementById('page-container');
   container.innerHTML = '<div class="page-loading">加载中...</div>';
-  PAGES[page].render(container).catch(err => {
+  PAGES[page].render(container).catch((err) => {
     container.innerHTML = `<div class="page-error">加载失败: ${err.message}</div>`;
   });
 }
 
 function setupSidebarNav() {
-  document.querySelectorAll('#nav-list .nav-item').forEach(item => {
+  document.querySelectorAll('#nav-list .nav-item').forEach((item) => {
     item.addEventListener('click', () => {
       const page = item.dataset.page;
       if (page && page !== currentPage) {
@@ -151,7 +223,7 @@ function bootstrap() {
   document.getElementById('login-form').addEventListener('submit', handleLogin);
   document.getElementById('logout-btn').addEventListener('click', handleLogout);
 
-  if (ensureApiKey()) {
+  if (ensureStoredAdminAuth()) {
     hideLogin();
     navigateTo('dashboard');
   } else {

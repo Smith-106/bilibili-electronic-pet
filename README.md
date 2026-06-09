@@ -8,27 +8,28 @@
 
 ## 最新版本状态
 
-当前正式版本：**v1.2.0**
+当前 release tag：**v1.2.0**
 
-v1.2.0 是当前仓库状态下的正式发布基线，定位为 **Bilibili-first 正式版（含 QQ 试点发布链路）**。
+按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend MVP 候选**，不包含 QQ / Douyin 等试点链路，也不把 companion 预览面算作已签收产品能力。
 
-本版本已完成：
+当前候选基线已完成：
 
 - TypeScript 后端正式基线固化
 - Bilibili 主平台链路运行能力
-- companion 电子宠物页面接入与体验增强
+- admin session 登录、受保护 companion 写接口、fresh DB 部署迁移与 CI 门禁收口
 - 管理后台 pet / platform / memory 等运营能力增强
 - `/readiness` foundation / delivery / product 多层门禁升级
-- backend / frontend / pet-companion-web / douyin-sidecar 本地测试与构建验证
+- backend / frontend / pet-companion-web 本地测试与构建验证
+- 宿主机与容器内 `prisma:migrate:prod` 部署路径验证
 
 平台支持范围：
 
 | 平台 | 状态 |
 |---|---|
-| Bilibili | 正式支持 |
+| Bilibili | 当前唯一已纳入候选交付口径的主平台 |
 | Douyin / 抖音 | 试点能力，代码与本地验证已具备，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_DOUYIN_*` 配置 |
-| Kuaishou / 快手 | 预留脚手架，不作为正式交付能力 |
-| QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证 |
+| Kuaishou / 快手 | 预留脚手架，不作为当前交付能力 |
+| QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，但不计入当前候选交付口径 |
 | 微信 | 暂不支持 |
 
 Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.0
@@ -43,12 +44,14 @@ Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.
 - 队列：BullMQ + Redis
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
-- Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 也已上线；但完整电子宠物闭环仍属于 partial 范围
-- 最新 repo-local 验证快照：`2026-04-13` 本地候选版本已验证，backend `221`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
-- 本地 strict 门禁已通过：`staging:check:strict --base-url http://127.0.0.1:18002 --env-file ../.env.strict.local.example --api-key strict-local-key`
+- Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 与受保护 `/companion/actions` 已接通；但该面仍属于 preview / partial 范围，不纳入当前 signed-off MVP
+- 最新 repo-local 验证快照：`2026-06-08` 已验证 backend `245`、frontend `44`、`pet-companion-web` `20` tests 与三端 builds 全部通过
+- `2026-06-08` fresh DB 验证已通过：宿主机 3 组全新 SQLite 数据库均可通过 `npm --prefix backend-ts run prisma:migrate:prod`
+- `2026-06-08` 容器验证已通过：`docker run --rm -e DATABASE_URL=file:/tmp/container-smoke.db bilibili-electronic-pet:goal npm run prisma:migrate:prod` 成功
+- `2026-06-08` 本地运行态验收已通过：`staging-check --base-url http://127.0.0.1:18081 --api-key runtime-admin-key` 成功，`/api/admin/session/login` 与受保护 `/companion/actions` 闭环正常
 - expanded-scope preflight 已通过：`npm --prefix backend-ts run staging:check -- --preflight-only --expanded-scope-trial --env-file ../.env.expanded-scope.preflight.example`
 - 权威客户交付基线：`WFS-bilibili-delivery-readiness-20260408` 记录的 `2026-04-08` public-domain native Bilibili `GO` 仍是最后一条已签收 baseline
-- 当前远端运行状态：pet-core companion 与 admin pet/platform 路由已上线，但 Douyin 外部平台试点仍未完成远端接入配置
+- 当前远端运行状态：admin pet/platform 路由与 companion runtime 接口已存在，但 Douyin 外部平台试点仍未完成远端接入配置
 
 > 注意：仓库内仍残留部分 Python/FastAPI/Celery 风格命名；阅读与运行时优先以当前 `backend-ts/`、`frontend/`、`pet-companion-web/` 与最新 workflow truth sources 为准。
 
@@ -1303,7 +1306,7 @@ docker compose up --build
 
 默认服务：
 
-- `migrate`：执行 Prisma migrate deploy
+- `migrate`：执行 `npm run prisma:migrate:prod`
 - `api`：启动 Fastify API
 - `worker`：启动 BullMQ Worker + B 站轮询调度
 - `redis`：Redis
@@ -1346,7 +1349,7 @@ docker compose up --build
 
 默认 compose 编排中：
 
-- `migrate` 使用共享 SQLite volume 执行 `npx prisma migrate deploy`
+- `migrate` 使用共享 SQLite volume 执行 `npm run prisma:migrate:prod`
 - `api` 与 `worker` 依赖 `migrate` 成功完成
 - `api` 还会暴露宿主机端口，`worker` 只在内部消费队列与执行轮询
 
@@ -1508,7 +1511,7 @@ docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
 - `migrate` / `api` / `worker` 都直接使用 `ghcr.io/smith-106/bilibili-electronic-pet:latest`
 - 配置了 `pull_policy: always`
 - 仍保留与默认 compose 相同的启动命令分工：
-  - `migrate` → `npx prisma migrate deploy`
+  - `migrate` → `npm run prisma:migrate:prod`
   - `api` → `node dist/index.js`
   - `worker` → `node dist/workers/worker-main.js`
 
@@ -1943,8 +1946,8 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 因此，当前最准确的状态表述是：
 
 1. 主运行链路已完成迁移，并继续以 `WFS-bilibili-delivery-readiness-20260408` 作为最后一条已签收 rollout baseline
-2. `2026-04-13` 的本地候选版本是当前最强 repo-local 证据：backend `221`、frontend `39`、`pet-companion-web` `19` tests 与三端 builds 全部通过
-3. 远端当前已经上线 pet-core companion 与 admin pet/platform 路由，但首个外部平台试点仍因 Douyin sidecar 契约未完成而保持 disabled
-4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 partial
+2. `2026-06-08` 的本地候选版本是当前最强 repo-local 证据：backend `245`、frontend `44`、`pet-companion-web` `20` tests 与三端 builds 全部通过，fresh DB 与容器内 `prisma:migrate:prod` 均已验证
+3. 当前可诚实宣称的范围应限定为 `Bilibili-first admin/backend MVP`；QQ / Douyin 仍属于试点或外部配置未完成范围
+4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 preview / partial
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。

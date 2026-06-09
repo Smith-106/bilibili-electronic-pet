@@ -726,7 +726,7 @@ async function main() {
     input_scopes: {
       checker_env: 'env_matrix and delivery_preflight describe the environment seen by staging-check itself',
       target_runtime:
-        'runtime_summary describes the target service responses returned by /readiness, /companion/state-v2, /api/admin/pet/overview, /api/admin/platforms, and /api/admin/bilibili/status',
+        'runtime_summary describes the target service responses returned by /readiness, /api/admin/session/login, /companion/state-v2, protected /companion/actions, /api/admin/pet/overview, /api/admin/platforms, and /api/admin/bilibili/status',
     },
     checks: [],
     warnings: [],
@@ -854,6 +854,26 @@ async function main() {
     });
     logPass('delivery capability contract');
 
+    const loginUrl = buildUrl(baseUrl, '/api/admin/session/login');
+    const { response: loginResponse, parsed: loginPayload } = await fetchJson(loginUrl, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    const sessionToken = String(loginPayload?.session_token ?? '').trim();
+    if (loginResponse.status !== 200 || loginPayload?.ok !== true || !hasText(sessionToken)) {
+      fail('admin_session_login', `expected ok=true and session_token, got status=${loginResponse.status}`, {
+        payload: loginPayload,
+      });
+    }
+    record('admin_session_login', 'passed', {
+      http_status: loginResponse.status,
+      expires_at: loginPayload?.expires_at ?? null,
+    });
+    logPass('admin session login');
+
     const overviewUrl = buildUrl(baseUrl, '/api/admin/overview');
     const { response: overviewResponse, parsed: overviewPayload } = await fetchJson(overviewUrl, { headers });
     if (overviewResponse.status !== 200 || overviewPayload?.ok !== true) {
@@ -874,6 +894,41 @@ async function main() {
       proactive_signal_count: companionPayload?.snapshot?.proactiveSignals?.length ?? 0,
     });
     logPass('companion state v2');
+
+    const protectedCompanionActionUrl = buildUrl(baseUrl, '/companion/actions');
+    const { response: protectedCompanionActionResponse, parsed: protectedCompanionActionPayload } = await fetchJson(
+      protectedCompanionActionUrl,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-admin-session': sessionToken,
+        },
+        body: JSON.stringify({
+          action: 'pat',
+          note: 'staging smoke',
+        }),
+      },
+    );
+    if (
+      protectedCompanionActionResponse.status !== 200
+      || protectedCompanionActionPayload?.ok !== true
+      || protectedCompanionActionPayload?.action !== 'pat'
+      || !hasText(protectedCompanionActionPayload?.item_key)
+    ) {
+      fail(
+        'protected_companion_action',
+        `expected ok=true and action=pat, got status=${protectedCompanionActionResponse.status}`,
+        {
+          payload: protectedCompanionActionPayload,
+        },
+      );
+    }
+    record('protected_companion_action', 'passed', {
+      action: protectedCompanionActionPayload.action,
+      item_key: protectedCompanionActionPayload.item_key,
+    });
+    logPass('protected companion action');
 
     const petOverviewUrl = buildUrl(baseUrl, '/api/admin/pet/overview');
     const { response: petOverviewResponse, parsed: petOverviewPayload } = await fetchJson(petOverviewUrl, { headers });
@@ -1002,28 +1057,45 @@ async function main() {
       const productBlockers = Array.isArray(readinessPayload?.product_blockers)
         ? readinessPayload.product_blockers
         : [];
+      const productReadiness =
+        readinessPayload?.product_readiness && typeof readinessPayload.product_readiness === 'object'
+          ? readinessPayload.product_readiness
+          : {};
+      const productScope =
+        productReadiness.scope && typeof productReadiness.scope === 'object'
+          ? productReadiness.scope
+          : {};
+      const adminControlPlane =
+        productReadiness.admin_control_plane && typeof productReadiness.admin_control_plane === 'object'
+          ? productReadiness.admin_control_plane
+          : {};
+      const bilibiliDeliveryContract =
+        productReadiness.bilibili_delivery_contract && typeof productReadiness.bilibili_delivery_contract === 'object'
+          ? productReadiness.bilibili_delivery_contract
+          : {};
       if (readinessPayload?.product_ready !== true) {
         fail(
           'strict_product',
           `product readiness is not ready (${productBlockers.join(',') || 'unknown'})`,
         );
       }
-      if (companionPayload?.version !== 'v2') {
-        fail('strict_product', `companion state version is ${String(companionPayload?.version ?? 'unknown')}`);
-      }
-      if (petOverviewPayload?.item?.version !== 'v2') {
+      if (productScope.key !== 'bilibili_first_admin_backend_mvp') {
         fail(
           'strict_product',
-          `admin pet overview version is ${String(petOverviewPayload?.item?.version ?? 'unknown')}`,
+          `unexpected product scope ${String(productScope.key ?? 'unknown')}`,
         );
       }
-      if (connectedExternalTrials.length === 0) {
-        fail('strict_product', 'no connected external platform trial reported by /api/admin/platforms');
+      if (adminControlPlane.ready !== true) {
+        fail('strict_product', 'admin control plane is not ready for the signed-off MVP scope');
+      }
+      if (bilibiliDeliveryContract.ready !== true) {
+        fail('strict_product', 'bilibili delivery contract is not ready for the signed-off MVP scope');
       }
 
       record('strict_product', 'passed', {
-        pet_name: companionPayload?.snapshot?.profile?.petName ?? null,
-        connected_external_trials: connectedExternalTrials.map((entry) => entry.platform),
+        scope: productScope.key ?? null,
+        admin_control_plane_ready: adminControlPlane.ready === true,
+        bilibili_delivery_contract_ready: bilibiliDeliveryContract.ready === true,
       });
       logPass('strict product contract');
 

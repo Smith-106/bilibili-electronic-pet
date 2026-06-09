@@ -17,6 +17,7 @@ type ReadinessSummary = {
   config: Record<string, unknown>;
   publish: Record<string, unknown>;
   kill_switch: boolean;
+  public_companion_actions_enabled: boolean;
 };
 
 export type ReadinessRouteDependencies = {
@@ -159,26 +160,32 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
 
     const deliveryReady = deliveryBlockers.length === 0 && deliveryCapabilities.blockers.length === 0;
     const productBlockers: string[] = [];
+    const adminAccessConfigured = Boolean(
+      deps.settings.apiKey?.trim() || deps.settings.adminSessionSecret?.trim(),
+    );
+    if (!adminAccessConfigured) {
+      deps.addBlocker(productBlockers, 'admin_auth:unconfigured');
+    }
+    if (deps.settings.publicCompanionActionsEnabled === true) {
+      deps.addBlocker(productBlockers, 'companion_actions:public_write_enabled');
+    }
 
     let companionState: CompanionStateV2 | null = null;
     try {
       companionState = await deps.getCompanionStateV2();
-    } catch {
-      deps.addBlocker(productBlockers, 'pet_core:state_v2_unavailable');
-    }
+    } catch {}
 
     let platformConnections: PlatformConnectionSnapshot[] = [];
+    let platformStatusAvailable = true;
     try {
       const platformResponse = await deps.listPlatformConnections();
       platformConnections = Array.isArray(platformResponse.items) ? platformResponse.items : [];
     } catch {
-      deps.addBlocker(productBlockers, 'platform_trial:status_unavailable');
+      platformStatusAvailable = false;
+      deps.addBlocker(productBlockers, 'admin_control_plane:platform_status_unavailable');
     }
 
     const petCoreReady = companionState?.version === 'v2';
-    if (!petCoreReady) {
-      deps.addBlocker(productBlockers, 'pet_core:state_v2_unavailable');
-    }
 
     const externalPlatformTrials = platformConnections.filter((entry) => entry.platform !== 'bilibili');
     const activeExternalPlatformTrials = externalPlatformTrials.filter((entry) => entry.enabled);
@@ -187,40 +194,51 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
         entry.status === 'connected' && (entry.rolloutControl?.enabled ?? true) && isPublishingReady(entry),
     );
 
-    if (activeExternalPlatformTrials.length === 0) {
-      deps.addBlocker(productBlockers, 'platform_trial:no_external_platform_enabled');
-    }
-    if (connectedExternalPlatformTrials.length === 0) {
-      deps.addBlocker(productBlockers, 'platform_trial:no_connected_rollout');
-    }
-
     const bilibiliReferencePlatform =
       platformConnections.find((entry) => entry.platform === 'bilibili') ?? null;
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
     const productReadiness = {
-      pet_core: {
-        ready: petCoreReady,
-        pet_name: companionState?.snapshot.profile.petName ?? null,
-        relationship_level: companionState?.snapshot.relationship.level ?? null,
-        proactive_signal_count: companionState?.snapshot.proactiveSignals.length ?? 0,
-      },
-      companion_surface: {
-        ready: petCoreReady,
-        pet_name: companionState?.companion.petName ?? null,
-        status_line: companionState?.companion.statusLine ?? null,
-        interaction_count: companionState?.companion.recentInteractions.length ?? 0,
+      scope: {
+        key: 'bilibili_first_admin_backend_mvp',
+        summary: 'Bilibili-first admin/backend MVP',
+        signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract'],
+        excluded_surfaces: ['companion_surface', 'external_platform_trial'],
       },
       admin_control_plane: {
-        ready: foundationReady,
+        ready: foundationReady && adminAccessConfigured && platformStatusAvailable,
+        auth_configured: adminAccessConfigured,
+        public_companion_actions_enabled: deps.settings.publicCompanionActionsEnabled === true,
+        platform_status_available: platformStatusAvailable,
         platform_count: platformConnections.length,
         operator_managed_platforms: platformConnections.filter((entry) => entry.rolloutControl != null).length,
+      },
+      bilibili_delivery_contract: {
+        ready: deliveryReady,
+        effective_publish_mode: effectivePublishMode,
+        delivery_capability_blocker_count: deliveryCapabilities.blockers.length,
+        delivery_blocker_count: deliveryBlockers.length,
       },
       bilibili_reference_platform: {
         ready: bilibiliReferencePlatform != null,
         status: bilibiliReferencePlatform?.status ?? 'unknown',
         adapter_key: bilibiliReferencePlatform?.adapterKey ?? null,
       },
+      pet_core: {
+        ready: petCoreReady,
+        signed_off: false,
+        pet_name: companionState?.snapshot.profile.petName ?? null,
+        relationship_level: companionState?.snapshot.relationship.level ?? null,
+        proactive_signal_count: companionState?.snapshot.proactiveSignals.length ?? 0,
+      },
+      companion_surface: {
+        ready: petCoreReady,
+        signed_off: false,
+        pet_name: companionState?.companion.petName ?? null,
+        status_line: companionState?.companion.statusLine ?? null,
+        interaction_count: companionState?.companion.recentInteractions.length ?? 0,
+      },
       external_platform_trial: {
+        signed_off: false,
         ready: connectedExternalPlatformTrials.length > 0,
         active_platforms: activeExternalPlatformTrials.map((entry) => ({
           platform: entry.platform,
@@ -239,6 +257,7 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       config: configStatus.config,
       publish: configStatus.publish,
       kill_switch: configStatus.kill_switch,
+      public_companion_actions_enabled: configStatus.public_companion_actions_enabled,
       foundation_ready: foundationReady,
       delivery_ready: deliveryReady,
       foundation_blockers: foundationBlockers,

@@ -53,11 +53,25 @@ async function runStrictWithStubRuntime(envText) {
   const envFile = join(tempDir, 'strict.env');
   const reportPath = join(tempDir, 'report.json');
   tempDirs.push(tempDir);
+  const stubSessionToken = 'stub-session-token';
 
   writeFileSync(envFile, envText, 'utf8');
 
+  async function readJsonBody(request) {
+    const chunks = [];
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    if (chunks.length === 0) {
+      return {};
+    }
+
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  }
+
   const sockets = new Set();
-  const server = createHttpServer((request, response) => {
+  const server = createHttpServer(async (request, response) => {
     const url = request.url ?? '/';
     response.setHeader('Connection', 'close');
     if (url === '/health') {
@@ -122,6 +136,18 @@ async function runStrictWithStubRuntime(envText) {
             bilibili_env_credential_configured: false,
           },
           product_readiness: {
+            scope: {
+              key: 'bilibili_first_admin_backend_mvp',
+              summary: 'Bilibili-first admin/backend MVP',
+              signed_off_surfaces: ['admin_control_plane', 'bilibili_delivery_contract'],
+              excluded_surfaces: ['companion_surface', 'external_platform_trial'],
+            },
+            bilibili_delivery_contract: {
+              ready: true,
+              effective_publish_mode: 'webhook',
+              delivery_capability_blocker_count: 0,
+              delivery_blocker_count: 0,
+            },
             pet_core: {
               ready: true,
               pet_name: 'Mochi',
@@ -136,6 +162,9 @@ async function runStrictWithStubRuntime(envText) {
             },
             admin_control_plane: {
               ready: true,
+              auth_configured: true,
+              public_companion_actions_enabled: false,
+              platform_status_available: true,
               platform_count: 2,
               operator_managed_platforms: 2,
             },
@@ -206,9 +235,44 @@ async function runStrictWithStubRuntime(envText) {
       );
       return;
     }
+    if (url === '/api/admin/session/login' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      if (body.api_key !== 'runtime-key') {
+        response.writeHead(401, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ detail: 'unauthorized' }));
+        return;
+      }
+
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          ok: true,
+          session_token: stubSessionToken,
+          expires_at: '2026-06-08T10:00:00.000Z',
+        }),
+      );
+      return;
+    }
     if (url === '/api/admin/overview') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (url === '/companion/actions' && request.method === 'POST') {
+      const body = await readJsonBody(request);
+      if (request.headers['x-admin-session'] !== stubSessionToken) {
+        response.writeHead(401, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ detail: 'unauthorized' }));
+        return;
+      }
+      if (body.action !== 'pat') {
+        response.writeHead(400, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ detail: 'action_invalid' }));
+        return;
+      }
+
+      response.writeHead(200, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify({ ok: true, action: 'pat', item_key: 'action:pat-latest' }));
       return;
     }
     if (url === '/api/admin/pet/overview') {
@@ -513,5 +577,11 @@ PUBLISHER_MODE=manual_queue
       checker_env: expect.stringContaining('staging-check itself'),
       target_runtime: expect.stringContaining('/readiness'),
     });
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'admin_session_login', status: 'passed' }),
+        expect.objectContaining({ name: 'protected_companion_action', status: 'passed' }),
+      ]),
+    );
   });
 });

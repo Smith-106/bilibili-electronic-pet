@@ -5,16 +5,17 @@ TypeScript/Fastify backend for the Bilibili Electronic Pet project. Fully migrat
 ## Status
 
 ✅ **TypeScript Runtime Established** - Fastify API, BullMQ worker, Prisma schema, and Vite admin bundle are in the active codebase
-✅ **Tests Passing** - 187 tests passing in the current backend suite
+✅ **Tests Passing (2026-06-08)** - 245 backend tests, 44 admin UI tests, and 20 companion UI tests passed in the current local checkpoint
 ✅ **Validated Baseline (2026-04-07)** - backend 177 tests passed, frontend 27 tests passed, and both backend/frontend builds passed
 ⚠️ **Candidate Checkpoint (2026-04-08)** - the current route-extraction snapshot passed targeted backend regression (`test/main.test.ts`, `test/admin-defaults.test.ts`, 98 tests) and the backend build, but it remains a candidate checkpoint and does not replace the 2026-04-07 verified baseline
 ✅ **Signed-Off Rollout Baseline (2026-04-08 / 2026-04-09 truth sync)** - the native Bilibili public-domain path reached `GO` and remains the authoritative rollout baseline
-✅ **Current Local Checkpoint** - follow-up validation is green while isolated non-runtime surfaces are preserved in-repo
+✅ **Current Local Checkpoint (2026-06-08)** - backend build, frontend build, companion build, fresh SQLite migrate path, containerized migrate path, and `staging-check` all passed
 ✅ **Native Public Real-Chain (2026-04-08)** - the deployed pre-release smoke target at `https://pet.nikoniko.tech` passed fresh preflight, strict, and native real-chain validation
 ✅ **Preflight Diagnostics Available** - `staging-check` can now report external-delivery prerequisites before runtime validation
 ✅ **Delivery Capability Contract Aligned** - `/readiness` and `staging-check` now share canonical capability names and blocker semantics
 ✅ **Native Real-Chain Gate Hardened** - `real_auth_ready` now depends on a runtime auth probe instead of credential-field presence alone
 ✅ **Branch-Specific Delivery Scope Closed** - the current signoff certifies the native Bilibili rollout path on the public smoke domain
+⚠️ **Delivery Scope Boundary** - the current repo-local candidate should be described as `Bilibili-first admin/backend MVP`; companion preview and external-platform trials are explicitly out of the signed-off contract
 ⚠️ **Memory Domain Feed Enabled** - `src/app/memory` is exposed through admin-management endpoints and now receives automatic companion-feed writes from worker/admin approval outcomes, but it is still not part of the core publish contract
 
 ## Tech Stack
@@ -61,8 +62,11 @@ npm install
 # Generate Prisma client
 npx prisma generate
 
-# Run migrations
+# Run development migrations
 npx prisma migrate dev
+
+# Run the production-safe SQLite deploy wrapper
+npm run prisma:migrate:prod
 ```
 
 ### Run Development Server
@@ -177,7 +181,7 @@ Treat this as candidate scope with an explicit management contract, not as a cor
 
 ### Companion Surface
 
-The repository also includes a separately hosted companion prototype:
+The repository also includes a separately hosted companion preview surface:
 
 - source package: `../pet-companion-web`
 - backend-served path: `/companion`
@@ -187,8 +191,8 @@ The repository also includes a separately hosted companion prototype:
 Current status:
 
 - backend can serve the built companion surface
-- the surface remains prototype-oriented and local-stub based
-- it is not part of the signed-off Bilibili admin/operator runtime contract
+- the surface is backend-served and can write through protected `/companion/actions`
+- it still contains preview / fallback behavior and is not part of the signed-off Bilibili admin/operator runtime contract
 
 ## Database Models
 
@@ -293,7 +297,7 @@ npm run build
 export DATABASE_URL="file:/app/data/dev.db"
 
 # Run migrations
-npx prisma migrate deploy
+npm run prisma:migrate:prod
 ```
 
 ### Start Production Server

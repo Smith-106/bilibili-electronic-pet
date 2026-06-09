@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: backend-ts/Dockerfile
-    command: npx prisma migrate deploy
+    command: npm run prisma:migrate:prod
     environment:
       - APP_ENV=${APP_ENV:-development}
       - DATABASE_URL=${DATABASE_URL:-file:/app/data/dev.db}

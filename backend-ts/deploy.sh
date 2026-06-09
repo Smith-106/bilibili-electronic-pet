@@ -61,7 +61,7 @@ test() {
 # Run database migrations
 migrate() {
     print_message "Running database migrations..." "$YELLOW"
-    npx prisma migrate deploy
+    npm run prisma:migrate:prod
     if [ $? -eq 0 ]; then
         print_message "Migrations completed" "$GREEN"
     else

@@ -42,6 +42,8 @@ export type RuntimeSettings = {
   celeryBrokerUrl: string;
   celeryResultBackend: string;
   apiKey: string;
+  adminSessionSecret?: string;
+  adminSessionTtlSeconds?: number;
   llmProvider: string;
   llmApiKeyConfigured: boolean;
   llmFallbackToMock: boolean;
@@ -58,6 +60,7 @@ export type RuntimeSettings = {
   killSwitch: boolean;
   gatewayToken: string;
   gatewayHmacSecret: string;
+  publicCompanionActionsEnabled?: boolean;
   platformBilibiliEnabled: boolean;
   platformQqEnabled: boolean;
   platformDouyinEnabled: boolean;

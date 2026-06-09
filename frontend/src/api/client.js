@@ -15,9 +15,17 @@ export function resolveApiKey() {
   return (window.__ADMIN_API_KEY__ || '').trim();
 }
 
+export function resolveAdminSessionToken() {
+  return (window.__ADMIN_SESSION_TOKEN__ || '').trim();
+}
+
 export async function requestJson(path, options = {}) {
+  const sessionToken = resolveAdminSessionToken();
   const apiKey = resolveApiKey();
   const headers = new Headers(options.headers || {});
+  if (sessionToken) {
+    headers.set('x-admin-session', sessionToken);
+  }
   if (apiKey) {
     headers.set('x-api-key', apiKey);
   }
@@ -32,8 +40,12 @@ export async function requestJson(path, options = {}) {
 }
 
 export async function downloadFile(path, filename) {
+  const sessionToken = resolveAdminSessionToken();
   const apiKey = resolveApiKey();
   const headers = new Headers();
+  if (sessionToken) {
+    headers.set('x-admin-session', sessionToken);
+  }
   if (apiKey) {
     headers.set('x-api-key', apiKey);
   }

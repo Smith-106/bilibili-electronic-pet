@@ -61,6 +61,7 @@ import type {
   RuntimeSettings,
 } from './server/contracts.js';
 import { buildDefaultServerDependencies, type ServerDependencies } from './server/dependencies.js';
+import { issueAdminSession, verifyAdminSessionToken } from './server/admin-auth.js';
 import type { PetActionName } from './server/pet-contracts.js';
 import {
   defaultGetPlatformPublishSource,
@@ -633,6 +634,8 @@ function buildDefaultSettings(): RuntimeSettings {
     celeryBrokerUrl: process.env.CELERY_BROKER_URL ?? 'redis://localhost:6379/0',
     celeryResultBackend: process.env.CELERY_RESULT_BACKEND ?? 'redis://localhost:6379/1',
     apiKey: process.env.API_KEY ?? '',
+    adminSessionSecret: process.env.ADMIN_SESSION_SECRET ?? '',
+    adminSessionTtlSeconds: parseInteger(process.env.ADMIN_SESSION_TTL_SECONDS, 60 * 60 * 12),
     llmProvider,
     llmApiKeyConfigured: hasText(process.env.LLM_API_KEY),
     llmFallbackToMock: parseBoolean(process.env.LLM_FALLBACK_TO_MOCK, true),
@@ -649,6 +652,7 @@ function buildDefaultSettings(): RuntimeSettings {
     killSwitch: parseBoolean(process.env.KILL_SWITCH, false),
     gatewayToken: process.env.GATEWAY_TOKEN ?? '',
     gatewayHmacSecret: process.env.GATEWAY_HMAC_SECRET ?? '',
+    publicCompanionActionsEnabled: parseBoolean(process.env.PUBLIC_COMPANION_ACTIONS_ENABLED, false),
     platformBilibiliEnabled: parseBoolean(process.env.PLATFORM_BILIBILI_ENABLED, false),
     platformQqEnabled: parseBoolean(process.env.PLATFORM_QQ_ENABLED, false),
     platformDouyinEnabled: parseBoolean(process.env.PLATFORM_DOUYIN_ENABLED, false),
@@ -664,6 +668,7 @@ function buildDefaultReadinessSummary(settings: RuntimeSettings): {
   config: Record<string, unknown>;
   publish: Record<string, unknown>;
   kill_switch: boolean;
+  public_companion_actions_enabled: boolean;
 } {
   return {
     config: {
@@ -671,6 +676,8 @@ function buildDefaultReadinessSummary(settings: RuntimeSettings): {
       celery_broker_url_set: hasText(settings.celeryBrokerUrl),
       celery_result_backend_set: hasText(settings.celeryResultBackend),
       api_key_set: hasText(settings.apiKey),
+      admin_session_secret_set: hasText(settings.adminSessionSecret),
+      admin_session_ttl_seconds: settings.adminSessionTtlSeconds ?? 60 * 60 * 12,
       llm_provider: settings.llmProvider,
       llm_api_key_configured: settings.llmApiKeyConfigured,
       llm_fallback_to_mock: settings.llmFallbackToMock,
@@ -686,6 +693,7 @@ function buildDefaultReadinessSummary(settings: RuntimeSettings): {
       bilibili_env_credential_configured: settings.bilibiliEnvCredentialConfigured,
     },
     kill_switch: settings.killSwitch,
+    public_companion_actions_enabled: settings.publicCompanionActionsEnabled ?? false,
   };
 }
 
@@ -2086,36 +2094,36 @@ async function defaultAddBilibiliVideo(input: {
   };
 }
 
-function buildFallbackCompanionState(reason?: string): CompanionState {
+export function buildDegradedCompanionState(reason?: string): CompanionState {
   return {
     petName: 'Mochi',
-    statusLine: 'Idle on the browser ledge, listening for the next check-in.',
-    loopMode: 'Backend companion fallback',
+    statusLine: 'Companion runtime is degraded and waiting for the next backend sync.',
+    loopMode: 'Backend companion degraded',
     lastCheckIn: 'Pending',
-    adapterLabel: 'Backend fallback',
-    loopHint: 'The backend companion endpoint is running in fallback mode until richer memory signals are available.',
+    adapterLabel: 'Backend degraded runtime',
+    loopHint: 'The backend companion endpoint is serving a degraded runtime view until persisted signals recover.',
     mood: {
       label: 'Curious',
       note: reason ? `Companion endpoint degraded gracefully: ${reason}.` : 'Waiting for the next backend companion update.',
     },
     memoryTitle: 'Short-term memory',
-    memorySummary: 'No persisted companion memory summary is available yet.',
+    memorySummary: 'Persisted companion memory is temporarily unavailable.',
     vitals: [
       { label: 'Spaces', value: '0' },
       { label: 'Grants', value: '0' },
       { label: 'Links', value: '0' },
-      { label: 'Mode', value: 'Fallback' },
+      { label: 'Mode', value: 'Degraded' },
     ],
-    recentSignals: ['Companion state is using the backend fallback profile.'],
+    recentSignals: ['Companion state is serving a degraded backend view.'],
     recentInteractions: [
       {
-        kind: 'fallback',
-        title: 'Fallback mode',
+        kind: 'signal',
+        title: 'Runtime degraded',
         detail: reason
           ? `Companion endpoint degraded gracefully: ${reason}.`
-          : 'Companion state is using the backend fallback profile.',
+          : 'Companion state is serving a degraded backend view.',
         timestamp: 'Pending',
-        source: 'Fallback',
+        source: 'Backend degraded',
       },
     ],
   };
@@ -2226,7 +2234,7 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       recentInteractions,
     };
   } catch (error) {
-    return buildFallbackCompanionState(error instanceof Error ? error.message : 'unknown_backend_error');
+    return buildDegradedCompanionState(error instanceof Error ? error.message : 'unknown_backend_error');
   }
 }
 
@@ -2584,6 +2592,11 @@ const {
 
 /** Check x-api-key header; returns false and sends 401 on failure */
 function checkApiKey(request: FastifyRequest, reply: FastifyReply, settings: RuntimeSettings): boolean {
+  const providedSessionToken = getHeaderValue(request.headers['x-admin-session']).trim();
+  if (providedSessionToken && verifyAdminSessionToken(providedSessionToken, settings)) {
+    return true;
+  }
+
   const expected = settings.apiKey.trim();
   if (!expected) return true;
   const provided = getHeaderValue(request.headers['x-api-key']).trim();
@@ -2792,7 +2805,9 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   registerAdminCoreRoutes(app, {
     settings,
+    checkApiKey,
     getHeaderValue,
+    issueAdminSession: () => issueAdminSession(settings),
     getAdminOverview,
     getCompanionStateV2: getCompanionStateV2Compat,
     listPlatformConnections,
@@ -2918,6 +2933,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   });
 
   registerCompanionRoutes(app, {
+    settings,
+    checkApiKey,
     getCompanionState,
     getCompanionStateV2: getCompanionStateV2Compat,
     recordCompanionAction,

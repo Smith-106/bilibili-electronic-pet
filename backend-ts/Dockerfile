@@ -38,8 +38,9 @@ RUN addgroup -g 1001 -S nodejs
 RUN adduser -S nodejs -u 1001
 COPY backend-ts/package*.json ./
 COPY backend-ts/prisma ./prisma/
-RUN npm ci --only=production && npm cache clean --force
-RUN npx prisma generate
+COPY backend-ts/prisma.config.ts ./prisma.config.ts
+COPY backend-ts/scripts ./scripts
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=frontend-builder /app/dist ./public/admin
 COPY --from=companion-builder /app/dist ./public/companion

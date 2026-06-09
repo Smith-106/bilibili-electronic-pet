@@ -9,12 +9,21 @@ async function ensureCompanionSystemSpace(service: MemoryService): Promise<Memor
     return existing[0];
   }
 
-  return service.createSpace({
-    space_key: COMPANION_SYSTEM_SPACE_KEY,
-    space_type: 'system',
-    title: 'Companion System',
-    summary: 'Auto-generated companion feed signals sourced from backend activity.',
-  });
+  try {
+    return await service.createSpace({
+      space_key: COMPANION_SYSTEM_SPACE_KEY,
+      space_type: 'system',
+      title: 'Companion System',
+      summary: 'Auto-generated companion feed signals sourced from backend activity.',
+    });
+  } catch (error) {
+    // Concurrent writers can race on the unique space_key. Re-read before surfacing the failure.
+    const concurrent = await service.listSpaces({ spaceKeys: [COMPANION_SYSTEM_SPACE_KEY] });
+    if (concurrent.length > 0) {
+      return concurrent[0];
+    }
+    throw error;
+  }
 }
 
 export async function upsertCompanionFeedItem(

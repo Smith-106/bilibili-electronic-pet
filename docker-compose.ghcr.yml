@@ -2,7 +2,7 @@ services:
   migrate:
     image: ghcr.io/smith-106/bilibili-electronic-pet:latest
     pull_policy: always
-    command: npx prisma migrate deploy
+    command: npm run prisma:migrate:prod
 
   api:
     image: ghcr.io/smith-106/bilibili-electronic-pet:latest

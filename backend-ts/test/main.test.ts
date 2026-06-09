@@ -15,6 +15,8 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     celeryBrokerUrl: 'redis://localhost:6379/0',
     celeryResultBackend: 'redis://localhost:6379/1',
     apiKey: '',
+    adminSessionSecret: '',
+    adminSessionTtlSeconds: 60 * 60 * 12,
     llmProvider: 'mock',
     llmApiKeyConfigured: false,
     llmFallbackToMock: true,
@@ -31,6 +33,7 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
     killSwitch: false,
     gatewayToken: '',
     gatewayHmacSecret: '',
+    publicCompanionActionsEnabled: false,
     platformBilibiliEnabled: false,
     platformQqEnabled: false,
     platformDouyinEnabled: false,
@@ -244,10 +247,28 @@ describe('health/readiness parity', () => {
     await app.close();
   });
 
-  it('accepts public companion actions', async () => {
+  it('rejects companion actions when auth is neither configured nor explicitly public', async () => {
+    const app = createServer(buildDeps());
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      payload: {
+        action: 'pat',
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ detail: 'companion_action_auth_unconfigured' });
+
+    await app.close();
+  });
+
+  it('accepts public companion actions when explicitly enabled', async () => {
     const captured: Array<Record<string, unknown>> = [];
     const app = createServer(
       buildDeps({
+        settings: buildSettings({ publicCompanionActionsEnabled: true }),
         recordCompanionAction: async (input) => {
           captured.push(input as unknown as Record<string, unknown>);
           return {
@@ -291,6 +312,56 @@ describe('health/readiness parity', () => {
 
     expect(invalid.statusCode).toBe(400);
     expect(invalid.json()).toEqual({ detail: 'action_invalid' });
+
+    await app.close();
+  });
+
+  it('requires admin auth for companion actions when auth is configured', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+        recordCompanionAction: async (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            action: input.action,
+            item_key: `action:${input.action}-latest`,
+          };
+        },
+      }),
+    );
+
+    const unauthorized = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      payload: {
+        action: 'pat',
+      },
+    });
+
+    expect(unauthorized.statusCode).toBe(401);
+    expect(unauthorized.json()).toEqual({ detail: 'unauthorized' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      headers: {
+        'x-api-key': 'admin-key',
+      },
+      payload: {
+        action: 'pat',
+        note: 'guarded tap',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        action: 'pat',
+        note: 'guarded tap',
+      },
+    ]);
 
     await app.close();
   });
@@ -377,6 +448,7 @@ describe('health/readiness parity', () => {
     expect(data).toHaveProperty('config');
     expect(data).toHaveProperty('publish');
     expect(data).toHaveProperty('kill_switch');
+    expect(data).toHaveProperty('public_companion_actions_enabled');
     expect(data).toHaveProperty('foundation_ready');
     expect(data).toHaveProperty('delivery_ready');
     expect(data).toHaveProperty('foundation_blockers');
@@ -402,22 +474,28 @@ describe('health/readiness parity', () => {
     expect(typeof data.bilibili_diagnostics).toBe('object');
     expect(typeof data.product_ready).toBe('boolean');
     expect(typeof data.product_readiness).toBe('object');
+    expect(typeof data.public_companion_actions_enabled).toBe('boolean');
     expect(data.database).toHaveProperty('connected');
     expect(data.redis).toHaveProperty('connected');
+    expect(data.config).toMatchObject({
+      admin_session_secret_set: false,
+      admin_session_ttl_seconds: 60 * 60 * 12,
+    });
+    expect(data.public_companion_actions_enabled).toBe(false);
 
     await app.close();
   });
 
-  it('surfaces product readiness for pet-core and external platform trial gates', async () => {
+  it('surfaces product readiness for the bilibili-first admin/backend MVP scope', async () => {
     const app = createServer(
       buildDeps({
         settings: buildSettings({
+          apiKey: 'admin-key',
           llmProvider: 'openai',
           llmApiKeyConfigured: true,
           searchApiKeyConfigured: true,
           publisherMode: 'webhook',
           publisherWebhookUrlConfigured: true,
-          platformDouyinEnabled: true,
         }),
         getCompanionStateV2: async () => ({
           version: 'v2',
@@ -492,23 +570,6 @@ describe('health/readiness parity', () => {
                 { key: 'publish', status: 'available' },
               ],
             },
-            {
-              platform: 'douyin',
-              enabled: true,
-              adapterKey: 'douyin-sidecar-trial',
-              status: 'connected',
-              lastCheckedAt: null,
-              lastError: null,
-              rolloutControl: {
-                enabled: true,
-                stage: 'trial',
-                updatedAt: '2026-04-13T00:00:00.000Z',
-              },
-              capabilities: [
-                { key: 'ingress', status: 'available' },
-                { key: 'publish', status: 'available' },
-              ],
-            },
           ],
         }),
         buildBilibiliDiagnostics: async () => ({
@@ -532,22 +593,31 @@ describe('health/readiness parity', () => {
     expect(response.statusCode).toBe(200);
     expect(data.product_ready).toBe(true);
     expect(data.product_blockers).toEqual([]);
+    expect(data.product_readiness.scope).toMatchObject({
+      key: 'bilibili_first_admin_backend_mvp',
+      summary: 'Bilibili-first admin/backend MVP',
+    });
+    expect(data.product_readiness.admin_control_plane).toMatchObject({
+      ready: true,
+      auth_configured: true,
+      public_companion_actions_enabled: false,
+      platform_status_available: true,
+    });
+    expect(data.product_readiness.bilibili_delivery_contract).toMatchObject({
+      ready: true,
+      effective_publish_mode: 'webhook',
+    });
     expect(data.product_readiness.pet_core).toMatchObject({
       ready: true,
+      signed_off: false,
       pet_name: 'Mochi',
       proactive_signal_count: 1,
     });
     expect(data.product_readiness.external_platform_trial).toMatchObject({
-      ready: true,
+      ready: false,
+      signed_off: false,
     });
-    expect(data.product_readiness.external_platform_trial.active_platforms).toEqual([
-      expect.objectContaining({
-        platform: 'douyin',
-        status: 'connected',
-        rollout_enabled: true,
-        rollout_stage: 'trial',
-      }),
-    ]);
+    expect(data.product_readiness.external_platform_trial.active_platforms).toEqual([]);
 
     await app.close();
   });
@@ -1596,6 +1666,154 @@ describe('admin api parity', () => {
 
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({ detail: 'unauthorized' });
+
+    await app.close();
+  });
+
+  it('issues admin session tokens via login endpoint', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/session/login',
+      payload: {
+        api_key: 'admin-key',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      ok: true,
+      session_token: expect.any(String),
+      expires_at: expect.any(String),
+    });
+
+    await app.close();
+  });
+
+  it('rejects admin session login when auth is unconfigured', async () => {
+    const app = createServer(buildDeps());
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/session/login',
+      payload: {
+        api_key: 'anything',
+      },
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ detail: 'admin_auth_unconfigured' });
+
+    await app.close();
+  });
+
+  it('rejects admin session login for wrong api key', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+      }),
+    );
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/session/login',
+      payload: {
+        api_key: 'wrong-key',
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ detail: 'unauthorized' });
+
+    await app.close();
+  });
+
+  it('accepts x-admin-session for protected admin routes', async () => {
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+        getAdminOverview: () => ({
+          totals: { jobs: 3 },
+          generated_at: '2026-03-08T00:00:00.000Z',
+        }),
+      }),
+    );
+
+    const loginResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/session/login',
+      payload: {
+        api_key: 'admin-key',
+      },
+    });
+    const sessionToken = loginResponse.json().session_token;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/admin/overview',
+      headers: {
+        'x-admin-session': sessionToken,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      ok: true,
+      totals: { jobs: 3 },
+    });
+
+    await app.close();
+  });
+
+  it('accepts x-admin-session for companion actions', async () => {
+    const captured: Array<Record<string, unknown>> = [];
+    const app = createServer(
+      buildDeps({
+        settings: buildSettings({ apiKey: 'admin-key' }),
+        recordCompanionAction: async (input) => {
+          captured.push(input as unknown as Record<string, unknown>);
+          return {
+            ok: true,
+            action: input.action,
+            item_key: `action:${input.action}-latest`,
+          };
+        },
+      }),
+    );
+
+    const loginResponse = await app.inject({
+      method: 'POST',
+      url: '/api/admin/session/login',
+      payload: {
+        api_key: 'admin-key',
+      },
+    });
+    const sessionToken = loginResponse.json().session_token;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/companion/actions',
+      headers: {
+        'x-admin-session': sessionToken,
+      },
+      payload: {
+        action: 'feed',
+        note: 'session snack',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(captured).toEqual([
+      {
+        action: 'feed',
+        note: 'session snack',
+      },
+    ]);
 
     await app.close();
   });

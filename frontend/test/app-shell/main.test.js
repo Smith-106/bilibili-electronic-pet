@@ -87,11 +87,15 @@ describe('admin app shell regression tests', () => {
       spy.mockClear();
     }
     delete window.__ADMIN_API_KEY__;
+    delete window.__ADMIN_SESSION_TOKEN__;
+    sessionStorage.clear();
     mountShell();
   });
 
-  it('shows login error when api key validation fails', async () => {
-    mockRequestJson.mockRejectedValueOnce(new Error('unauthorized'));
+  it('shows login error when admin auth validation fails', async () => {
+    mockRequestJson
+      .mockRejectedValueOnce(new Error('unauthorized'))
+      .mockRejectedValueOnce(new Error('unauthorized'));
 
     await loadMain();
 
@@ -101,19 +105,66 @@ describe('admin app shell regression tests', () => {
     document.getElementById('login-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await flushPromises();
 
-    expect(mockRequestJson).toHaveBeenCalledWith('/api/admin/overview');
+    expect(mockRequestJson).toHaveBeenNthCalledWith(1, '/api/admin/session/login', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ api_key: 'bad-key' }),
+    });
+    expect(mockRequestJson).toHaveBeenNthCalledWith(2, '/api/admin/overview');
     expect(document.getElementById('login-error').textContent).toContain('API Key 无效或服务不可用');
     expect(document.getElementById('login-error').style.display).toBe('block');
     expect(window.__ADMIN_API_KEY__).toBe('');
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('');
   });
 
-  it('bootstraps from session storage and renders dashboard immediately', async () => {
+  it('stores admin session token after successful login', async () => {
+    mockRequestJson.mockResolvedValueOnce({
+      ok: true,
+      session_token: 'session-token-1',
+      expires_at: '2026-06-08T10:00:00.000Z',
+    });
+
+    await loadMain();
+
+    document.getElementById('login-api-key').value = 'good-key';
+    document.getElementById('login-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushPromises();
+
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('session-token-1');
+    expect(window.__ADMIN_API_KEY__).toBe('');
+    expect(sessionStorage.getItem('admin_session_token')).toBe('session-token-1');
+    expect(sessionStorage.getItem('admin_api_key')).toBeNull();
+    expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to legacy api key login when session endpoint fails', async () => {
+    mockRequestJson
+      .mockRejectedValueOnce(new Error('not_found'))
+      .mockResolvedValueOnce({ ok: true });
+
+    await loadMain();
+
+    document.getElementById('login-api-key').value = 'legacy-key';
+    document.getElementById('login-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushPromises();
+
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('');
+    expect(window.__ADMIN_API_KEY__).toBe('legacy-key');
+    expect(sessionStorage.getItem('admin_api_key')).toBe('legacy-key');
+    expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('bootstraps from stored admin session token before legacy api key', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session');
     sessionStorage.setItem('admin_api_key', 'stored-key');
 
     await loadMain();
     await flushPromises();
 
-    expect(window.__ADMIN_API_KEY__).toBe('stored-key');
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('stored-session');
+    expect(window.__ADMIN_API_KEY__).toBe('');
     expect(document.getElementById('login-overlay').style.display).toBe('none');
     expect(document.getElementById('logout-btn').style.display).toBe('');
     expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
@@ -121,8 +172,19 @@ describe('admin app shell regression tests', () => {
     expect(document.querySelector('.nav-item[data-page="dashboard"]').classList.contains('active')).toBe(true);
   });
 
-  it('switches pages when a nav item is clicked', async () => {
+  it('bootstraps from legacy api key when no session token is stored', async () => {
     sessionStorage.setItem('admin_api_key', 'stored-key');
+
+    await loadMain();
+    await flushPromises();
+
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('');
+    expect(window.__ADMIN_API_KEY__).toBe('stored-key');
+    expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches pages when a nav item is clicked', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session');
 
     await loadMain();
     await flushPromises();
@@ -135,7 +197,8 @@ describe('admin app shell regression tests', () => {
     expect(document.querySelector('.nav-item[data-page="jobs"]').classList.contains('active')).toBe(true);
   });
 
-  it('clears session and returns to login overlay on logout', async () => {
+  it('clears both session token and api key on logout', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session');
     sessionStorage.setItem('admin_api_key', 'stored-key');
 
     await loadMain();
@@ -143,7 +206,10 @@ describe('admin app shell regression tests', () => {
 
     document.getElementById('logout-btn').click();
 
+    expect(sessionStorage.getItem('admin_session_token')).toBeNull();
     expect(sessionStorage.getItem('admin_api_key')).toBeNull();
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('');
+    expect(window.__ADMIN_API_KEY__).toBe('');
     expect(document.getElementById('login-overlay').style.display).toBe('flex');
     expect(document.getElementById('page-container').innerHTML).toBe('');
   });

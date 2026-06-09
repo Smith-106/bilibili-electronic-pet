@@ -6,7 +6,9 @@ import { isPlatformName } from '../server/platform-contracts.js';
 
 export type AdminCoreRouteDependencies = {
   settings: RuntimeSettings;
+  checkApiKey: (request: FastifyRequest, reply: FastifyReply, settings: RuntimeSettings) => boolean;
   getHeaderValue: (value: string | string[] | undefined) => string;
+  issueAdminSession: () => { token: string; expiresAt: string } | null;
   getAdminOverview: () => Promise<Record<string, unknown>> | Record<string, unknown>;
   getCompanionStateV2: () => Promise<CompanionStateV2> | CompanionStateV2;
   listPlatformConnections: () =>
@@ -30,40 +32,51 @@ export type AdminCoreRouteDependencies = {
   normalizeAdminJobListItem: (item: Record<string, unknown>) => Record<string, unknown>;
 };
 
-function authorize(request: FastifyRequest, reply: FastifyReply, deps: AdminCoreRouteDependencies): boolean {
-  const expectedApiKey = deps.settings.apiKey.trim();
-  if (!expectedApiKey) {
-    return true;
-  }
-  const providedApiKey = deps.getHeaderValue(request.headers['x-api-key']).trim();
-  if (providedApiKey !== expectedApiKey) {
-    void reply.code(401).send({ detail: 'unauthorized' });
-    return false;
-  }
-  return true;
-}
-
 export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRouteDependencies): void {
+  app.post('/api/admin/session/login', async (request, reply) => {
+    const expectedApiKey = deps.settings.apiKey.trim();
+    if (!expectedApiKey) {
+      return reply.code(503).send({ detail: 'admin_auth_unconfigured' });
+    }
+
+    const body = request.body as Record<string, unknown>;
+    const providedApiKey = String(body.api_key ?? body.apiKey ?? '').trim();
+    if (providedApiKey !== expectedApiKey) {
+      return reply.code(401).send({ detail: 'unauthorized' });
+    }
+
+    const session = deps.issueAdminSession();
+    if (!session) {
+      return reply.code(503).send({ detail: 'admin_session_unavailable' });
+    }
+
+    return reply.send({
+      ok: true,
+      session_token: session.token,
+      expires_at: session.expiresAt,
+    });
+  });
+
   app.get('/api/admin/overview', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const overview = await deps.getAdminOverview();
     return reply.send({ ok: true, ...deps.normalizeAdminOverviewPayload(overview) });
   });
 
   app.get('/api/admin/metrics/overview', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const overview = await deps.getAdminOverview();
     return reply.send(overview);
   });
 
   app.get('/api/admin/pet/overview', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const item = await deps.getCompanionStateV2();
     return reply.send({ ok: true, item });
   });
 
   app.post('/api/admin/pet/actions', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const body = request.body as Record<string, unknown>;
     const action = String(body.action ?? '').trim().toLowerCase();
@@ -81,13 +94,13 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
   });
 
   app.get('/api/admin/platforms', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const response = await deps.listPlatformConnections();
     return reply.send(response);
   });
 
   app.post('/api/admin/platforms/:platform/control', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const platform = String((request.params as Record<string, unknown>).platform ?? '').trim().toLowerCase();
     if (!isPlatformName(platform)) {
       return reply.code(400).send({ detail: 'platform_invalid' });
@@ -101,7 +114,7 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
   });
 
   app.get('/api/admin/jobs', async (request, reply) => {
-    if (!authorize(request, reply, deps)) return;
+    if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const query = request.query as Record<string, unknown>;
     const response = await deps.listAdminJobs({

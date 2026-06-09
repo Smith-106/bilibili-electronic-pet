@@ -458,4 +458,77 @@ describe('memory repository and service', () => {
     expect(mockPrisma.memorySpace.create).toHaveBeenCalled();
     expect(mockPrisma.memoryItem.upsert).toHaveBeenCalled();
   });
+
+  it('reuses the companion system space after a concurrent unique-key race', async () => {
+    mockPrisma.memorySpace.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 99,
+          space_key: COMPANION_SYSTEM_SPACE_KEY,
+          space_type: 'system',
+          title: 'Companion System',
+          summary: 'Auto-generated companion feed signals sourced from backend activity.',
+          created_at: new Date('2026-04-11T00:00:00.000Z'),
+          updated_at: new Date('2026-04-11T00:00:00.000Z'),
+        },
+      ]);
+    mockPrisma.memorySpace.create.mockRejectedValueOnce(new Error('P2002 unique constraint failed'));
+    mockPrisma.memoryItem.upsert.mockResolvedValueOnce({
+      id: 32,
+      space_id: 99,
+      item_key: 'signal:race-latest',
+      content: 'Concurrent writer already created the companion space.',
+      content_type: 'companion_signal',
+      source: 'worker',
+      item_metadata: JSON.stringify({ trace_id: 'trace-race-1' }),
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:01:00.000Z'),
+    });
+
+    await expect(
+      upsertCompanionFeedItem({
+        itemKey: 'signal:race-latest',
+        content: 'Concurrent writer already created the companion space.',
+        source: 'worker',
+        metadata: { trace_id: 'trace-race-1' },
+      }),
+    ).resolves.toEqual({
+      id: 32,
+      space_id: 99,
+      item_key: 'signal:race-latest',
+      content: 'Concurrent writer already created the companion space.',
+      content_type: 'companion_signal',
+      source: 'worker',
+      item_metadata: { trace_id: 'trace-race-1' },
+      created_at: new Date('2026-04-11T00:00:00.000Z'),
+      updated_at: new Date('2026-04-11T00:01:00.000Z'),
+    });
+
+    expect(mockPrisma.memorySpace.findMany).toHaveBeenCalledTimes(2);
+    expect(mockPrisma.memorySpace.create).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.memoryItem.upsert).toHaveBeenCalledWith({
+      where: {
+        uq_memory_items_space_key: {
+          space_id: 99,
+          item_key: 'signal:race-latest',
+        },
+      },
+      update: {
+        content: 'Concurrent writer already created the companion space.',
+        content_type: 'companion_signal',
+        source: 'worker',
+        item_metadata: JSON.stringify({ trace_id: 'trace-race-1' }),
+        updated_at: expect.any(Date),
+      },
+      create: {
+        space_id: 99,
+        item_key: 'signal:race-latest',
+        content: 'Concurrent writer already created the companion space.',
+        content_type: 'companion_signal',
+        source: 'worker',
+        item_metadata: JSON.stringify({ trace_id: 'trace-race-1' }),
+      },
+    });
+  });
 });
