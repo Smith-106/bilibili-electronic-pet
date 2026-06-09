@@ -14,10 +14,10 @@ function buildDegradedState(fallbackState, { reason, endpoint, legacyEndpoint })
 
   return {
     ...fallbackState,
-    loopMode: 'Degraded local fallback',
-    adapterLabel: 'Local fallback (backend unavailable)',
+    loopMode: 'Degraded backend snapshot',
+    adapterLabel: 'Degraded backend snapshot',
     loopHint:
-      'Backend companion state is unavailable. This labeled fallback keeps the surface explorable, but it is not live backend data.',
+      'Backend companion state is unavailable. This labeled degraded snapshot keeps the surface explorable, but it is not live backend data.',
     recentSignals: [
       `Backend sync failed: ${normalizedReason}.`,
       'Retry after the companion backend recovers to restore live state.',
@@ -26,14 +26,14 @@ function buildDegradedState(fallbackState, { reason, endpoint, legacyEndpoint })
     recentInteractions: [
       {
         kind: 'fallback',
-        title: 'Fallback mode active',
-        detail: `The backend companion state could not be loaded from ${attemptedEndpoints.join(' -> ') || endpoint}. Showing local fallback data instead.`,
+        title: 'Degraded backend snapshot',
+        detail: `The backend companion state could not be loaded from ${attemptedEndpoints.join(' -> ') || endpoint}. Showing a degraded backend snapshot instead.`,
         timestamp: new Date().toISOString(),
         source: 'Backend degraded',
       },
       ...(Array.isArray(fallbackState?.recentInteractions) ? fallbackState.recentInteractions : []).map((entry) => ({
         ...entry,
-        source: `${entry?.source || 'Local Stub'} · local fallback`,
+        source: `${entry?.source || 'Seed state adapter'} · degraded snapshot`,
       })),
     ],
     degraded: true,

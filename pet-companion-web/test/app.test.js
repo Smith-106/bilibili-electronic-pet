@@ -8,10 +8,10 @@ function createState(overrides = {}) {
   return {
     petName: 'Mochi',
     statusLine: 'Idle on the browser ledge, listening for the next check-in.',
-    loopMode: 'Local placeholder loop',
+    loopMode: 'Companion seed state',
     lastCheckIn: '2026-04-10 03:30',
-    adapterLabel: 'Loop stub',
-    loopHint: 'Local adapter only.',
+    adapterLabel: 'Seed state adapter',
+    loopHint: 'Seed state only.',
     mood: {
       label: 'Curious',
       note: 'Waiting for the next nudge.',
@@ -30,7 +30,7 @@ function createState(overrides = {}) {
         title: 'Pat interaction',
         detail: 'A calm pat kept Mochi focused on the browser ledge.',
         timestamp: '2026-04-10T03:28:00.000Z',
-        source: 'Local Stub',
+        source: 'Seed state adapter',
       },
     ],
     ...overrides,
@@ -89,11 +89,13 @@ describe('pet companion surface', () => {
     await renderPetCompanion(container, { adapter });
 
     expect(container.querySelector('[data-surface="pet-companion"]')).not.toBeNull();
-    expect(container.textContent).toContain('Browser buddy without the admin shell');
+    expect(container.textContent).toContain('A calm browser companion with a readable ritual loop');
     expect(container.textContent).toContain('Curious');
     expect(container.textContent).toContain('Energy');
     expect(container.textContent).toContain('Memory summary');
     expect(container.textContent).toContain('Companion timeline');
+    expect(container.textContent).toContain('Companion rhythm at a glance');
+    expect(container.textContent).toContain('Live link');
     expect(container.textContent).toContain('Pat interaction');
     expect(container.querySelector('.interaction-time')?.textContent).toBe('2 mins ago');
     expect(container.querySelector('.interaction-time')?.getAttribute('title')).toBe('2026-04-10 03:28 UTC');
@@ -271,7 +273,7 @@ describe('pet companion surface', () => {
         .mockResolvedValueOnce(createState())
         .mockResolvedValueOnce(
           createState({
-            adapterLabel: 'Loop stub',
+            adapterLabel: 'Seed state adapter',
             mood: {
               label: 'Playful',
               note: 'Ready to bounce into a short interaction.',
@@ -316,7 +318,7 @@ describe('pet companion surface', () => {
                 title: 'Pat interaction',
                 detail: 'A calm pat kept Mochi focused on the browser ledge.',
                 timestamp: '2026-04-10T03:28:00.000Z',
-                source: 'Local Stub',
+                source: 'Seed state adapter',
               },
               {
                 kind: 'feed',
@@ -549,7 +551,7 @@ describe('pet companion surface', () => {
     expect(noteInput.value).toBe('Existing draft');
   });
 
-  it('announces when action sending is unavailable in the local preview', async () => {
+  it('announces when action sending is unavailable in the current adapter', async () => {
     const container = createPageContainer();
 
     await renderPetCompanion(container);
@@ -560,7 +562,7 @@ describe('pet companion surface', () => {
     );
 
     expect(container.querySelector('[data-role="live-region"]')?.textContent).toBe(
-      'Pat action is unavailable in this preview.',
+      'Pat action is unavailable in the current adapter.',
     );
     expect(container.querySelector('[data-role="adapter-status"]')?.textContent).toBe('Adapter: action unavailable');
   });
@@ -588,7 +590,7 @@ describe('pet companion surface', () => {
     expect(state.degraded).toBe(true);
     expect(state.dataSource).toBe('local-fallback');
     expect(state.petName).toBe('Mochi');
-    expect(state.adapterLabel).toContain('Local fallback');
+    expect(state.adapterLabel).toContain('Degraded backend snapshot');
     expect(state.backendStatus).toMatchObject({
       degraded: true,
       reason: 'network_down',
@@ -596,7 +598,7 @@ describe('pet companion surface', () => {
     });
     expect(state.recentInteractions[0]).toMatchObject({
       kind: 'fallback',
-      title: 'Fallback mode active',
+      title: 'Degraded backend snapshot',
       source: 'Backend degraded',
     });
   });
@@ -611,11 +613,11 @@ describe('pet companion surface', () => {
 
     expect(container.textContent).toContain('Degraded mode');
     expect(container.textContent).toContain('Backend companion state unavailable');
-    expect(container.textContent).toContain('Local fallback');
+    expect(container.textContent).toContain('Degraded backend snapshot');
     expect(container.textContent).toContain('network_down');
-    expect(container.textContent).toContain('Fallback mode active');
+    expect(container.textContent).toContain('Degraded backend snapshot');
     expect(container.querySelector('[data-role="adapter-status"]')?.textContent).toBe(
-      'Adapter: Local fallback (backend unavailable)',
+      'Adapter: Degraded backend snapshot',
     );
   });
 

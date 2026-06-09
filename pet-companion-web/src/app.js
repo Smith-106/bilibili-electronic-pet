@@ -13,7 +13,7 @@ const FALLBACK_INTERACTIONS = [
     title: 'Companion signal pending',
     detail: 'No structured interaction timeline is available yet.',
     timestamp: 'Pending',
-    source: 'Local stub',
+    source: 'Seed state adapter',
   },
 ];
 const INTERACTION_FILTER_ORDER = ['all', 'pat', 'feed', 'wake', 'signal', 'fallback'];
@@ -42,7 +42,7 @@ function inferInteractionKind(entry) {
   const source = String(entry?.source ?? '').trim().toLowerCase();
   const title = String(entry?.title ?? '').trim().toLowerCase();
 
-  if (source.includes('fallback') || title.includes('fallback')) {
+  if (source.includes('fallback') || title.includes('fallback') || source.includes('degraded') || title.includes('degraded')) {
     return 'fallback';
   }
   if (title.includes('pat')) {
@@ -71,7 +71,7 @@ function getInteractionKindLabel(kind) {
     return 'Wake';
   }
   if (kind === 'fallback') {
-    return 'Fallback';
+    return 'Degraded';
   }
   return 'Signal';
 }
@@ -130,7 +130,7 @@ function getComposerGuide(filter) {
 
   if (normalizedFilter === 'fallback') {
     return {
-      message: 'Fallback entries describe degraded state only. Switch to Pat, Feed, or Wake before drafting the next note.',
+      message: 'Degraded-state entries describe backend recovery only. Switch to Pat, Feed, or Wake before drafting the next note.',
       shortcuts: ACTION_INTERACTION_KINDS,
     };
   }
@@ -147,7 +147,7 @@ function getComposerSubmitBlockedMessage(filter) {
     return 'Signal entries are read-only. Pick Pat, Feed, or Wake before sending.';
   }
   if (normalizedFilter === 'fallback') {
-    return 'Fallback entries are read-only. Pick Pat, Feed, or Wake before sending.';
+    return 'Degraded-state entries are read-only. Pick Pat, Feed, or Wake before sending.';
   }
   return 'Pick Pat, Feed, or Wake before sending a note.';
 }
@@ -430,26 +430,58 @@ function normalizeState(state) {
         }
       : {
           title: 'Stable ritual',
-          detail: 'The companion loop is carrying forward pet-core state instead of relying on prototype-only placeholders.',
+          detail: 'The companion loop is carrying forward pet-core state instead of relying on temporary seed placeholders.',
         };
+  const interactionCount = recentInteractions.length;
+  const dominantInteraction =
+    recentInteractions.find((entry) => ACTION_INTERACTION_KINDS.includes(entry.kind))?.kind ||
+    recentInteractions[0]?.kind ||
+    'signal';
+  const dominantInteractionLabel = getInteractionKindLabel(dominantInteraction);
+  const highlightCards = [
+    {
+      label: 'Connection',
+      value: backendStatus.degraded ? 'Degraded' : 'Live link',
+      detail: backendStatus.degraded
+        ? 'Running with a labeled degraded backend snapshot.'
+        : `Reading ${rootState.version === 'v2' ? 'v2 companion' : 'runtime'} state from the active surface.`,
+      tone: backendStatus.degraded ? 'warning' : 'cool',
+    },
+    {
+      label: 'Bond arc',
+      value: safeRelationship.level || mood.label || 'Settling',
+      detail: safeRelationship.note || mood.note || 'Relationship state has not been published yet.',
+      tone: 'warm',
+    },
+    {
+      label: 'Next ritual',
+      value: safeProgress.nextMilestone || onboarding.title,
+      detail: onboarding.detail,
+      tone: 'neutral',
+    },
+    {
+      label: 'Timeline',
+      value: `${interactionCount} ${interactionCount === 1 ? 'entry' : 'entries'}`,
+      detail: `${dominantInteractionLabel} is the most visible recent interaction lane.`,
+      tone: 'cool',
+    },
+  ];
 
   return {
     version: rootState.version || 'legacy',
     petName: safeState.petName || 'Companion',
     statusLine: safeState.statusLine || 'Waiting for the first local update.',
-    loopMode: safeState.loopMode || 'Local placeholder loop',
+    loopMode: safeState.loopMode || 'Companion seed state',
     lastCheckIn: safeState.lastCheckIn || 'Pending',
-    adapterLabel: safeState.adapterLabel || 'Local stub',
-    loopHint:
-      safeState.loopHint || 'Wire a real endpoint later without changing the browser shell.',
+    adapterLabel: safeState.adapterLabel || 'Seed state adapter',
+    loopHint: safeState.loopHint || 'The browser companion can stay expressive while the runtime surface evolves.',
     mood: {
       label: mood.label || 'Settling',
       note: mood.note || 'No mood note has been published yet.',
     },
     memoryTitle: safeState.memoryTitle || 'Memory summary',
     memorySummary:
-      safeState.memorySummary ||
-      'No memory summary is available yet. The prototype stays useful even before backend contracts exist.',
+      safeState.memorySummary || 'No memory summary is available yet. The surface still keeps a readable ritual rhythm.',
     relationship: {
       level: safeRelationship.level || 'Unknown',
       note: safeRelationship.note || 'Relationship state has not been published yet.',
@@ -465,7 +497,7 @@ function normalizeState(state) {
     },
     degraded: backendStatus.degraded,
     dataSource,
-    dataSourceLabel: dataSource === 'local-fallback' ? 'Local fallback' : dataSource,
+    dataSourceLabel: dataSource === 'local-fallback' ? 'Degraded backend snapshot' : dataSource,
     backendStatus,
     retryGuidance: 'Use Refresh mood after the backend companion endpoint recovers.',
     proactiveSignals,
@@ -473,6 +505,7 @@ function normalizeState(state) {
     vitals,
     recentSignals,
     recentInteractions,
+    highlightCards,
   };
 }
 
@@ -603,7 +636,7 @@ function renderDegradedPanel(state) {
       <p class="section-label">Degraded mode</p>
       <h2>Backend companion state unavailable</h2>
       <p class="panel-copy">
-        Showing labeled local fallback data so the surface remains explorable without pretending the backend is healthy.
+        Showing a labeled degraded backend snapshot so the surface remains explorable without pretending the backend is healthy.
       </p>
       <ul class="signal-list">
         <li class="signal-item"><strong>Surface source:</strong> ${escapeHtml(state.dataSourceLabel)}</li>
@@ -615,6 +648,20 @@ function renderDegradedPanel(state) {
   `;
 }
 
+function renderHighlightCards(cards) {
+  return cards
+    .map(
+      (card) => `
+        <article class="hero-highlight hero-highlight-${escapeHtml(card.tone)}">
+          <span class="hero-highlight-label">${escapeHtml(card.label)}</span>
+          <strong class="hero-highlight-value">${escapeHtml(card.value)}</strong>
+          <p class="hero-highlight-detail">${escapeHtml(card.detail)}</p>
+        </article>
+      `,
+    )
+    .join('');
+}
+
 function createStateMarkup(rawState, selectedFilter = 'all') {
   const state = normalizeState(rawState);
   const normalizedFilter = normalizeInteractionFilter(selectedFilter);
@@ -622,6 +669,19 @@ function createStateMarkup(rawState, selectedFilter = 'all') {
   return `
     ${renderDegradedPanel(state)}
     <div class="panel-grid">
+      <section class="panel panel-highlights" aria-labelledby="surface-status-heading">
+        <div class="panel-copy-stack">
+          <p class="section-label">Surface status</p>
+          <h2 id="surface-status-heading">Companion rhythm at a glance</h2>
+          <p class="panel-copy">
+            A quick read on connection health, bond direction, next ritual, and the recent timeline cadence.
+          </p>
+        </div>
+        <div class="hero-highlight-grid">
+          ${renderHighlightCards(state.highlightCards)}
+        </div>
+      </section>
+
       <section class="panel panel-pet" aria-labelledby="companion-name">
         <div class="pet-avatar" aria-hidden="true">
           <span class="pet-core"></span>
@@ -644,6 +704,10 @@ function createStateMarkup(rawState, selectedFilter = 'all') {
               <dd>${escapeHtml(
                 [state.profile.species, state.profile.archetype].filter(Boolean).join(' · ') || 'Companion profile',
               )}</dd>
+            </div>
+            <div>
+              <dt>Connection</dt>
+              <dd>${escapeHtml(state.dataSourceLabel)}</dd>
             </div>
           </dl>
         </div>
@@ -729,15 +793,16 @@ function createShellMarkup() {
     <main class="companion-shell" data-surface="pet-companion">
       <section class="hero-card">
         <div class="hero-copy">
-          <p class="eyebrow">Pet companion prototype</p>
-          <h1>Browser buddy without the admin shell</h1>
+          <p class="eyebrow">Pet companion surface</p>
+          <h1>A calm browser companion with a readable ritual loop</h1>
           <p class="hero-note">
-            A lightweight Vite surface that proves the pet loop visually with local mood, state, and memory placeholders.
+            This surface turns companion mood, memory, rituals, and interaction history into one pet-facing view that
+            can stay understandable even when the backend drops into degraded snapshot mode.
           </p>
         </div>
         <div class="hero-actions">
           <div class="hero-utility-row">
-            <span class="status-pill" data-role="adapter-status">Adapter: local stub</span>
+            <span class="status-pill" data-role="adapter-status">Adapter: seed state adapter</span>
             <button
               class="shortcut-help-toggle"
               type="button"
@@ -1251,7 +1316,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
     if (typeof adapter.performAction !== 'function') {
       setAdapterStatus('Adapter: action unavailable');
-      announce(`${getInteractionKindLabel(action)} action is unavailable in this preview.`);
+      announce(`${getInteractionKindLabel(action)} action is unavailable in the current adapter.`);
       return;
     }
 

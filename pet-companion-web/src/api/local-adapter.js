@@ -1,17 +1,17 @@
 const DEFAULT_STATE = Object.freeze({
   petName: 'Mochi',
-  statusLine: 'Idle on the browser ledge, listening for the next check-in.',
-  loopMode: 'Local placeholder loop',
+  statusLine: 'Resting near the browser edge, ready for the next ritual check-in.',
+  loopMode: 'Companion seed state',
   lastCheckIn: '2026-04-10 03:30',
-  adapterLabel: 'Local stub',
-  loopHint: 'Swap this adapter with a real pet core endpoint when the contract is ready.',
+  adapterLabel: 'Seed state adapter',
+  loopHint: 'A shipped seed state is active until the live companion endpoint publishes richer state.',
   mood: {
     label: 'Curious',
-    note: 'Ready to nudge the next companion interaction with a light status ping.',
+    note: 'Ready to nudge the next companion interaction with a calm status pulse.',
   },
   memoryTitle: 'Short-term memory',
   memorySummary:
-    'Remembers that the current milestone is a pet-first prototype, so it prefers short updates and visible state changes.',
+    'Keeps the latest ritual cues nearby so the companion can feel consistent while running on a shipped seed state.',
   vitals: [
     { label: 'Energy', value: '76%' },
     { label: 'Hunger', value: 'Snack soon' },
@@ -21,7 +21,7 @@ const DEFAULT_STATE = Object.freeze({
   recentSignals: [
     'Last pat received 2 minutes ago.',
     'Quiet window open for another 18 minutes.',
-    'Next nudge stays local until the real API is wired in.',
+    'Next nudge stays on the seed state until the live endpoint is available.',
   ],
   recentInteractions: [
     {
@@ -29,14 +29,14 @@ const DEFAULT_STATE = Object.freeze({
       title: 'Pat interaction',
       detail: 'A calm pat kept Mochi settled on the browser ledge.',
       timestamp: '2026-04-10T03:28:00.000Z',
-      source: 'Local Stub',
+      source: 'Seed state adapter',
     },
     {
       kind: 'signal',
       title: 'Status pulse',
       detail: 'The local adapter emitted a lightweight keep-alive signal.',
       timestamp: '2026-04-10T03:30:00.000Z',
-      source: 'Local Stub',
+      source: 'Seed state adapter',
     },
   ],
 });
