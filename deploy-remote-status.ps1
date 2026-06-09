@@ -38,6 +38,41 @@ function Invoke-CurlText {
   return $output
 }
 
+function Invoke-RemoteScript {
+  param(
+    [Parameter(Mandatory = $true)][string]$Script
+  )
+
+  $normalizedScript = $Script -replace "`r`n", "`n"
+  $localScript = Join-Path $env:TEMP ("bili-pet-remote-" + [guid]::NewGuid().ToString("N") + ".sh")
+  $remoteScriptPath = "/tmp/bili-pet-remote-$([guid]::NewGuid().ToString("N")).sh"
+  $sshArgs = @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=30', '-i', $tmpKey)
+  try {
+    [System.IO.File]::WriteAllText($localScript, $normalizedScript, [Text.UTF8Encoding]::new($false))
+
+    $uploaded = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+      & scp @sshArgs $localScript "${remote}:$remoteScriptPath"
+      if ($LASTEXITCODE -eq 0) {
+        $uploaded = $true
+        break
+      }
+      if ($attempt -lt 3) {
+        Start-Sleep -Seconds (5 * $attempt)
+      }
+    }
+    if (-not $uploaded) {
+      throw "remote script upload failed"
+    }
+
+    & ssh @sshArgs $remote "bash $remoteScriptPath; code=`$?; rm -f $remoteScriptPath; exit `$code"
+  } finally {
+    if (Test-Path $localScript) {
+      Remove-Item -LiteralPath $localScript -Force
+    }
+  }
+}
+
 Assert-RequiredValue -Name 'KeyPath' -Value $KeyPath -Hint 'Pass -KeyPath or set BILI_PET_DEPLOY_KEY_PATH.'
 Assert-RequiredValue -Name 'User' -Value $User -Hint 'Pass -User or set BILI_PET_DEPLOY_USER.'
 Assert-RequiredValue -Name 'RemoteHost' -Value $RemoteHost -Hint 'Pass -RemoteHost or set BILI_PET_DEPLOY_HOST.'
@@ -63,11 +98,11 @@ sudo -n docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}' | grep '^bilibili
 echo "== health =="
 sudo -n docker inspect --format '{{.Name}}|{{.Config.Image}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' bilibili-electronic-pet_api_1 bilibili-electronic-pet_worker_1 2>/dev/null || true
 echo "== redacted env =="
-for key in PUBLISHER_WEBHOOK_URL PUBLISHER_WEBHOOK_TOKEN PLATFORM_DOUYIN_ENABLED PLATFORM_DOUYIN_WEBHOOK_URL PLATFORM_DOUYIN_WEBHOOK_TOKEN PLATFORM_DOUYIN_PUBLISH_SOURCE; do
-  if sudo -n grep -q "^${key}=" /etc/bilibili-pet/pre-release.env 2>/dev/null; then
-    echo "${key}=present"
+for key in API_KEY COMMENT_INGRESS_TOKEN GATEWAY_TOKEN GATEWAY_HMAC_SECRET LLM_FALLBACK_TO_MOCK NODE_ENV PUBLISHER_WEBHOOK_URL PUBLISHER_WEBHOOK_TOKEN PLATFORM_DOUYIN_ENABLED PLATFORM_DOUYIN_WEBHOOK_URL PLATFORM_DOUYIN_WEBHOOK_TOKEN PLATFORM_DOUYIN_PUBLISH_SOURCE; do
+  if sudo -n grep -q "^`${key}=" /etc/bilibili-pet/pre-release.env 2>/dev/null; then
+    echo "`${key}=present"
   else
-    echo "${key}=absent"
+    echo "`${key}=absent"
   fi
 done
 echo "== deploy files =="
@@ -77,7 +112,7 @@ cat /proc/swaps 2>/dev/null || true
 "@
 
   Write-Output "[deploy-status] remote runtime"
-  $remoteOutput = & ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $tmpKey $remote $remoteScript
+  $remoteOutput = Invoke-RemoteScript -Script $remoteScript
   if ($LASTEXITCODE -ne 0) {
     throw "remote status check failed"
   }

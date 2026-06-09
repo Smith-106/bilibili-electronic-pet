@@ -29,6 +29,55 @@ function Assert-RequiredValue {
   }
 }
 
+function Invoke-CurlText {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Arguments
+  )
+
+  $fullArgs = @('--retry', '3', '--retry-all-errors', '--connect-timeout', '10') + $Arguments
+  $output = & curl.exe @fullArgs
+  if ($LASTEXITCODE -ne 0) {
+    throw "curl failed: $([string]::Join(' ', $Arguments))"
+  }
+  return $output
+}
+
+function Invoke-RemoteScript {
+  param(
+    [Parameter(Mandatory = $true)][string]$Script
+  )
+
+  $normalizedScript = $Script -replace "`r`n", "`n"
+  $localScript = Join-Path $env:TEMP ("bili-pet-remote-" + [guid]::NewGuid().ToString("N") + ".sh")
+  $remoteScriptPath = "/tmp/bili-pet-remote-$([guid]::NewGuid().ToString("N")).sh"
+  $sshArgs = @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ConnectTimeout=30', '-i', $tmpKey)
+  try {
+    [System.IO.File]::WriteAllText($localScript, $normalizedScript, [Text.UTF8Encoding]::new($false))
+
+    $uploaded = $false
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+      & scp @sshArgs $localScript "${remote}:$remoteScriptPath"
+      if ($LASTEXITCODE -eq 0) {
+        $uploaded = $true
+        break
+      }
+      if ($attempt -lt 3) {
+        Start-Sleep -Seconds (5 * $attempt)
+      }
+    }
+    if (-not $uploaded) {
+      throw "remote script upload failed"
+    }
+
+    & ssh @sshArgs $remote "bash $remoteScriptPath; code=`$?; rm -f $remoteScriptPath; exit `$code"
+  } finally {
+    if (Test-Path $localScript) {
+      Remove-Item -LiteralPath $localScript -Force
+    }
+  }
+}
+
 Assert-RequiredValue -Name 'KeyPath' -Value $KeyPath -Hint 'Pass -KeyPath or set BILI_PET_DEPLOY_KEY_PATH.'
 Assert-RequiredValue -Name 'User' -Value $User -Hint 'Pass -User or set BILI_PET_DEPLOY_USER.'
 Assert-RequiredValue -Name 'RemoteHost' -Value $RemoteHost -Hint 'Pass -RemoteHost or set BILI_PET_DEPLOY_HOST.'
@@ -106,8 +155,9 @@ rm -f /tmp/bili-pet-source.tar
 
 cd $RemoteAppDir
 sudo -n docker build -f backend-ts/Dockerfile -t bilibili-electronic-pet_api:latest -t bilibili-electronic-pet_worker:latest -t bilibili-electronic-pet_migrate:latest .
-sudo -n docker-compose -f $ComposeFile run --rm migrate
-sudo -n docker-compose -f $ComposeFile up -d --force-recreate api worker
+sudo -n docker-compose -f $ComposeFile run --rm migrate < /dev/null
+sudo -n docker-compose -f $ComposeFile rm -f -s api worker
+sudo -n docker-compose -f $ComposeFile up -d --force-recreate --no-deps api worker
 
 for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   status=`$(sudo -n docker inspect --format '{{.State.Health.Status}}' bilibili-electronic-pet_api_1 2>/dev/null || echo missing)
@@ -118,18 +168,27 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
   sleep 5
 done
 [ "`$(sudo -n docker inspect --format '{{.State.Health.Status}}' bilibili-electronic-pet_api_1)" = "healthy" ]
-sudo -n docker exec bilibili-electronic-pet_api_1 sh -lc 'grep -o "/assets/index-[A-Za-z0-9_-]*\.js" /app/public/admin/index.html | head -n 1'
+admin_asset=`$(sudo -n docker exec bilibili-electronic-pet_api_1 sh -lc 'grep -o "/assets/index-[A-Za-z0-9_-]*\.js" /app/public/admin/index.html | head -n 1')
+echo "admin_asset=`$admin_asset"
 curl -fsS http://127.0.0.1:18000/health
 "@
 
   Write-Output "[deploy-source] applying archive and rebuilding remotely"
-  $remoteOutput = & ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i $tmpKey $remote $remoteScript
+  $remoteOutput = Invoke-RemoteScript -Script $remoteScript
   if ($LASTEXITCODE -ne 0) {
     throw "remote rebuild failed"
   }
 
   $remoteOutput | Write-Output
-  $expectedAsset = ($remoteOutput | Select-String -Pattern '/assets/index-[A-Za-z0-9_-]+\.js' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -Last 1)
+  $expectedAsset = (
+    $remoteOutput |
+      ForEach-Object {
+        if ($_ -match '^admin_asset=(/assets/index-[A-Za-z0-9_-]+\.js)$') {
+          $Matches[1]
+        }
+      } |
+      Select-Object -Last 1
+  )
   if (-not $expectedAsset) {
     throw "could not determine expected public asset"
   }
@@ -139,7 +198,7 @@ curl -fsS http://127.0.0.1:18000/health
     $verified = $false
     for ($i = 0; $i -lt 12; $i++) {
       $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-      $html = curl.exe -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "$PublicBaseUrl/admin?bust=$bust"
+      $html = Invoke-CurlText @('-fsSL', '-H', 'Cache-Control: no-cache', '-H', 'Pragma: no-cache', "$PublicBaseUrl/admin?bust=$bust")
       if ($html -match [regex]::Escape($expectedAsset)) {
         $verified = $true
         break
@@ -150,15 +209,10 @@ curl -fsS http://127.0.0.1:18000/health
       throw "public verification failed for asset $expectedAsset"
     }
 
-    & curl.exe -fsS "$PublicBaseUrl/health"
-    if ($LASTEXITCODE -ne 0) {
-      throw "public health verification failed"
-    }
+    $health = Invoke-CurlText @('-fsS', "$PublicBaseUrl/health")
+    Write-Output "health=$health"
 
-    $readinessJson = & curl.exe -fsS "$PublicBaseUrl/readiness"
-    if ($LASTEXITCODE -ne 0) {
-      throw "public readiness verification failed"
-    }
+    $readinessJson = Invoke-CurlText @('-fsS', "$PublicBaseUrl/readiness")
     $readinessObj = $readinessJson | ConvertFrom-Json
     if ($null -ne $readinessObj.product_ready) {
       Write-Output ("[deploy-source] product_ready={0}" -f $readinessObj.product_ready)
