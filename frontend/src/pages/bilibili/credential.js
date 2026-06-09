@@ -108,9 +108,7 @@ export function formatBilibiliCredentialExpiryHint(info, hasCredential = true) {
 export function renderBilibiliCredentialExpiry(value) {
   const info = getBilibiliCredentialExpiryState(value);
   const detailText = formatBilibiliCredentialExpiryHint(info);
-  const detail = detailText
-    ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(detailText)}</div>`
-    : '';
+  const detail = `<div class="form-hint" style="margin-top:4px;">${escapeHtml(detailText)}</div>`;
   return `<span class="status-badge ${info.cls}">${escapeHtml(info.label)}</span>${detail}`;
 }
 
@@ -176,9 +174,7 @@ export function getBilibiliCredentialUsageState(item) {
 
 export function renderBilibiliCredentialUsageCell(item) {
   const usage = getBilibiliCredentialUsageState(item);
-  const detail = usage.detail
-    ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(usage.detail)}</div>`
-    : '';
+  const detail = `<div class="form-hint" style="margin-top:4px;">${escapeHtml(usage.detail)}</div>`;
   return `${escapeHtml(usage.label)}${detail}`;
 }
 
@@ -206,7 +202,7 @@ export function getBilibiliCredentialMissingFields(item) {
 }
 
 function maskBilibiliIdentifier(value, visibleSuffix = 4) {
-  const text = String(value ?? '').trim();
+  const text = String(value).trim();
   if (!text) return '';
   if (text.endsWith('...')) return text;
   if (text.length <= visibleSuffix) return text;
@@ -225,7 +221,7 @@ export function renderBilibiliCredentialFingerprint(item) {
       : `缺少 ${getBilibiliCredentialMissingFields(item).join(' / ')}`,
     item?.buvid3 ? '仅展示指纹摘要' : '未记录 buvid3 指纹摘要',
   ].filter(Boolean).join('，');
-  return `${escapeHtml(summary)}${hints ? `<div class="form-hint" style="margin-top:4px;">${escapeHtml(hints)}</div>` : ''}`;
+  return `${escapeHtml(summary)}<div class="form-hint" style="margin-top:4px;">${escapeHtml(hints)}</div>`;
 }
 
 export function formatBilibiliCredentialFilterLabel(activeFilterValue = '', expiryFilterValue = '') {

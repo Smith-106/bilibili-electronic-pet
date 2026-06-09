@@ -26,7 +26,7 @@ function pickAction(index: number): string {
 }
 
 function normalizeLengthMode(mode: string): LengthMode {
-  const m = (mode || '').trim().toLowerCase();
+  const m = mode.trim().toLowerCase();
   if (m === 'short' || m === 'medium' || m === 'long' || m === 'extra_long') return m as LengthMode;
   return 'medium';
 }
@@ -165,8 +165,7 @@ function buildMessages(
     },
     {
       role: 'user',
-      content:
-        '评论内容: ' + userComment + '\n风格: ' + (roleProfile || 'auto') + '\n请生成一条可以直接发布的评论回复。',
+      content: '评论内容: ' + userComment + '\n风格: ' + roleProfile + '\n请生成一条可以直接发布的评论回复。',
     },
   ];
 }

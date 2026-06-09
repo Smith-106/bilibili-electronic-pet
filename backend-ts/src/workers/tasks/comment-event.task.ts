@@ -131,7 +131,7 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
       const recordCompanionSignal = async (
         itemKey: string,
         content: string,
-        metadata?: Record<string, unknown>,
+        metadata: Record<string, unknown>,
       ): Promise<void> => {
         try {
           await upsertCompanionFeedItem({
@@ -141,7 +141,7 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
             metadata: {
               trace_id: traceId,
               comment_id: job.data.comment_id,
-              ...(metadata ?? {}),
+              ...metadata,
             },
           });
         } catch (error) {

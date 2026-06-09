@@ -185,3 +185,7 @@ export function getPromptLengthDistribution(): Record<PromptLengthMode, number> 
   }
   return distribution;
 }
+
+export const __promptConfigTesting = {
+  readStrList,
+};

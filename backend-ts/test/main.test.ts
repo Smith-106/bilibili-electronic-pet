@@ -9,6 +9,16 @@ import { resetPlatformControlState } from '../src/platforms/control-state.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import type { ServerDependencies } from '../src/server/dependencies.js';
 
+const platformControlTempDirs: string[] = [];
+
+function useIsolatedPlatformControlState(prefix = 'platform-control-main-test-'): string {
+  const tempDir = mkdtempSync(join(tmpdir(), prefix));
+  platformControlTempDirs.push(tempDir);
+  const filePath = join(tempDir, 'control-state.json');
+  process.env.PLATFORM_CONTROL_STATE_FILE = filePath;
+  return tempDir;
+}
+
 function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSettings {
   return {
     databaseUrl: 'file:./test.db',
@@ -86,12 +96,17 @@ async function withNodeEnv<T>(value: string, run: () => Promise<T>): Promise<T> 
 }
 
 beforeEach(() => {
+  useIsolatedPlatformControlState();
   resetPlatformControlState();
 });
 
 afterEach(() => {
   resetPlatformControlState();
   delete process.env.PLATFORM_CONTROL_STATE_FILE;
+  while (platformControlTempDirs.length > 0) {
+    const tempDir = platformControlTempDirs.pop();
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 describe('health/readiness parity', () => {
@@ -1411,8 +1426,8 @@ describe('gateway/auth parity', () => {
   });
 
   it('keeps platform rollout controls durable across server restarts', async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'platform-control-main-'));
-    process.env.PLATFORM_CONTROL_STATE_FILE = join(tempDir, 'control-state.json');
+    const tempDir = useIsolatedPlatformControlState('platform-control-main-');
+    resetPlatformControlState();
 
     const { createServer: createFirstServer } = await import('../src/main.js');
     const firstApp = createFirstServer(

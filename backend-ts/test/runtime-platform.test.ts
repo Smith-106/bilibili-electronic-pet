@@ -52,13 +52,31 @@ function buildSettings(overrides: Partial<RuntimeSettings> = {}): RuntimeSetting
   };
 }
 
+const platformControlTempDirs: string[] = [];
+
+function useIsolatedPlatformControlState(prefix = 'platform-control-runtime-'): string {
+  const tempDir = mkdtempSync(join(tmpdir(), prefix));
+  platformControlTempDirs.push(tempDir);
+  process.env.PLATFORM_CONTROL_STATE_FILE = join(tempDir, 'control-state.json');
+  return tempDir;
+}
+
+function cleanupPlatformControlTempDirs(): void {
+  while (platformControlTempDirs.length > 0) {
+    const tempDir = platformControlTempDirs.pop();
+    if (tempDir) rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 beforeEach(() => {
+  useIsolatedPlatformControlState();
   resetPlatformControlState();
 });
 
 afterEach(() => {
   resetPlatformControlState();
   delete process.env.PLATFORM_CONTROL_STATE_FILE;
+  cleanupPlatformControlTempDirs();
 });
 
 describe('runtime-platform boundaries', () => {
@@ -91,8 +109,8 @@ describe('runtime-platform boundaries', () => {
   });
 
   it('reloads persisted rollout overrides after a module restart', async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), 'platform-control-'));
-    process.env.PLATFORM_CONTROL_STATE_FILE = join(tempDir, 'control-state.json');
+    useIsolatedPlatformControlState('platform-control-');
+    resetPlatformControlState();
 
     setPlatformControlState('douyin', {
       enabled: false,
@@ -104,8 +122,6 @@ describe('runtime-platform boundaries', () => {
     const runtimePlatform = await import('../src/server/runtime-platform.js');
 
     expect(runtimePlatform.defaultIsPlatformEnabled('douyin', buildSettings({ platformDouyinEnabled: true }))).toBe(false);
-
-    rmSync(tempDir, { recursive: true, force: true });
   });
 });
 

@@ -13,6 +13,11 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     getPlatformConnections: vi.fn(),
     setPlatformConnectionControl: vi.fn(),
     getJobs: vi.fn(),
+    approveJob: vi.fn(),
+    retryJob: vi.fn(),
+    batchApprove: vi.fn(),
+    batchRetry: vi.fn(),
+    exportJobsCsv: vi.fn(),
     getGatewayLogs: vi.fn(),
     getGatewayPublishLogs: vi.fn(),
     getAuditSummary: vi.fn(),
@@ -22,9 +27,13 @@ const { mockApi, mockShowToast } = vi.hoisted(() => ({
     publishGatewayReply: vi.fn(),
     publishPlatformReply: vi.fn(),
     getRoleCards: vi.fn(),
+    createRoleCard: vi.fn(),
+    updateRoleCard: vi.fn(),
+    disableRoleCard: vi.fn(),
     activateRoleCard: vi.fn(),
     getKnowledgeEntries: vi.fn(),
     createKnowledgeEntry: vi.fn(),
+    disableKnowledgeEntry: vi.fn(),
     getMemorySpaces: vi.fn(),
     createMemorySpace: vi.fn(),
     getMemoryGrants: vi.fn(),
@@ -170,6 +179,11 @@ describe('admin-core frontend regression tests', () => {
         },
       ],
     });
+    mockApi.approveJob.mockResolvedValue({ ok: true });
+    mockApi.retryJob.mockResolvedValue({ ok: true });
+    mockApi.batchApprove.mockResolvedValue({ ok: true });
+    mockApi.batchRetry.mockResolvedValue({ ok: true });
+    mockApi.exportJobsCsv.mockResolvedValue(undefined);
     mockApi.getGatewayLogs.mockResolvedValue({
       items: [
         {
@@ -239,6 +253,15 @@ describe('admin-core frontend regression tests', () => {
     mockApi.getRoleCards.mockResolvedValue({
       items: [
         {
+          key: 'active-card',
+          name: 'Active card',
+          description: 'active test',
+          system_prompt: 'active prompt',
+          tone: 'warm',
+          constraints: { max_words: 80 },
+          enabled: true,
+        },
+        {
           key: 'disabled-card',
           name: '已禁用角色',
           description: 'for test',
@@ -249,9 +272,13 @@ describe('admin-core frontend regression tests', () => {
         },
       ],
     });
+    mockApi.createRoleCard.mockResolvedValue({ ok: true });
+    mockApi.updateRoleCard.mockResolvedValue({ ok: true });
+    mockApi.disableRoleCard.mockResolvedValue({ ok: true });
     mockApi.activateRoleCard.mockResolvedValue({ ok: true });
     mockApi.getKnowledgeEntries.mockResolvedValue({ items: [] });
     mockApi.createKnowledgeEntry.mockResolvedValue({ ok: true });
+    mockApi.disableKnowledgeEntry.mockResolvedValue({ ok: true });
     mockApi.getMemorySpaces.mockResolvedValue({ items: [] });
     mockApi.createMemorySpace.mockResolvedValue({ ok: true });
     mockApi.getMemoryGrants.mockResolvedValue({ items: [] });
@@ -489,5 +516,359 @@ describe('admin-core frontend regression tests', () => {
     await flushPromises();
 
     expect(mockApi.setPlatformConnectionControl).toHaveBeenCalledWith('bilibili', false);
+  });
+
+  it('runs jobs filters, selections, single actions, batch actions, and export', async () => {
+    const container = createPageContainer();
+    mockApi.getJobs.mockResolvedValue({
+      items: [
+        {
+          id: 'job-approve-1',
+          status: 'pending_review',
+          comment_text: 'comment with risk',
+          route_context: { platform: 'bilibili', container_id: 'BV1GJ411x7fD' },
+          reply_text: 'reply',
+          risk_flags: ['needs_review'],
+          created_at: '2026-04-07T00:00:00.000Z',
+        },
+        {
+          id: 'job-retry-2',
+          status: 'failed',
+          comment_text: 'failed comment',
+          route_context: null,
+          reply_text: '',
+          risk_flags: [],
+          created_at: null,
+        },
+      ],
+    });
+
+    await renderJobs(container);
+    expect(container.querySelectorAll('.job-checkbox')).toHaveLength(2);
+    expect(container.querySelectorAll('.job-approve')).toHaveLength(1);
+    expect(container.textContent).toContain('needs_review');
+
+    container.querySelector('#jobs-status').value = 'failed';
+    container.querySelector('#jobs-limit').value = '2';
+    container.querySelector('#jobs-filter-btn').click();
+    await flushPromises();
+
+    expect(mockApi.getJobs).toHaveBeenLastCalledWith({ status: 'failed', limit: '2' });
+
+    container.querySelector('#jobs-select-all').checked = true;
+    container.querySelector('#jobs-select-all').dispatchEvent(new Event('change'));
+    expect(container.querySelector('#jobs-batch-bar').style.display).toBe('flex');
+
+    container.querySelector('.job-checkbox').checked = false;
+    container.querySelector('.job-checkbox').dispatchEvent(new Event('change'));
+    expect(container.querySelector('#jobs-batch-bar').style.display).toBe('flex');
+
+    container.querySelector('#jobs-select-all').checked = true;
+    container.querySelector('#jobs-select-all').dispatchEvent(new Event('change'));
+
+    container.querySelector('#jobs-batch-approve').click();
+    await flushPromises();
+    expect(mockApi.batchApprove).toHaveBeenCalledTimes(1);
+    expect(mockApi.batchApprove.mock.calls[0][0]).toEqual(expect.arrayContaining(['job-approve-1', 'job-retry-2']));
+
+    container.querySelector('#jobs-select-all').checked = true;
+    container.querySelector('#jobs-select-all').dispatchEvent(new Event('change'));
+    container.querySelector('#jobs-batch-retry').click();
+    await flushPromises();
+    expect(mockApi.batchRetry).toHaveBeenCalledTimes(1);
+    expect(mockApi.batchRetry.mock.calls[0][0]).toEqual(expect.arrayContaining(['job-approve-1', 'job-retry-2']));
+
+    container.querySelector('.job-approve').click();
+    await flushPromises();
+    expect(mockApi.approveJob).toHaveBeenCalledWith('job-approve-1');
+
+    container.querySelector('.job-retry').click();
+    await flushPromises();
+    expect(mockApi.retryJob).toHaveBeenCalledWith('job-approve-1');
+
+    container.querySelector('#jobs-export').click();
+    await flushPromises();
+    expect(mockApi.exportJobsCsv).toHaveBeenCalledWith({ status: 'failed', limit: '2' });
+  });
+
+  it('handles jobs empty, load errors, and action errors', async () => {
+    const container = createPageContainer();
+    mockApi.getJobs
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'job-error-1',
+            status: 'pending_review',
+            comment_text: 'comment',
+            route_context: null,
+            reply_text: '',
+            risk_flags: [],
+            created_at: null,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ items: [] })
+      .mockRejectedValueOnce(new Error('jobs down'));
+    mockApi.approveJob.mockRejectedValueOnce(new Error('approve down'));
+    mockApi.retryJob.mockRejectedValueOnce(new Error('retry down'));
+    mockApi.exportJobsCsv.mockRejectedValueOnce(new Error('export down'));
+    mockApi.batchApprove.mockRejectedValueOnce(new Error('batch approve down'));
+    mockApi.batchRetry.mockRejectedValueOnce(new Error('batch retry down'));
+
+    await renderJobs(container);
+
+    container.querySelector('.job-approve').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('approve down'), 'error');
+    expect(container.querySelector('.job-approve').disabled).toBe(false);
+
+    container.querySelector('.job-retry').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('retry down'), 'error');
+    expect(container.querySelector('.job-retry').disabled).toBe(false);
+
+    container.querySelector('#jobs-select-all').checked = true;
+    container.querySelector('#jobs-select-all').dispatchEvent(new Event('change'));
+    container.querySelector('#jobs-batch-approve').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('batch approve down'), 'error');
+
+    container.querySelector('#jobs-batch-retry').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('batch retry down'), 'error');
+
+    container.querySelector('#jobs-export').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('export down'), 'error');
+
+    container.querySelector('#jobs-refresh').click();
+    await flushPromises();
+    expect(container.querySelector('.table-empty')).toBeTruthy();
+
+    container.querySelector('#jobs-refresh').click();
+    await flushPromises();
+    expect(container.querySelector('.page-error').textContent).toContain('jobs down');
+  });
+
+  it('creates, refreshes, and disables knowledge entries', async () => {
+    const container = createPageContainer();
+    mockApi.getKnowledgeEntries.mockResolvedValue({
+      items: [
+        {
+          id: 123456789,
+          category: 'personality',
+          title: 'Greeting',
+          content: 'Use a short greeting.',
+          enabled: true,
+          created_at: '2026-04-07T00:00:00.000Z',
+        },
+        {
+          id: 987654321,
+          category: 'disabled',
+          title: 'Old',
+          content: 'Disabled entry.',
+          enabled: false,
+          created_at: null,
+        },
+      ],
+    });
+
+    await renderKnowledge(container);
+    expect(container.querySelectorAll('.knowledge-disable')).toHaveLength(1);
+    expect(container.textContent).toContain('Greeting');
+    expect(container.textContent).toContain('Disabled entry.');
+
+    container.querySelector('#knowledge-category').value = 'rules';
+    container.querySelector('#knowledge-title').value = 'Rule title';
+    container.querySelector('#knowledge-content').value = 'Rule content';
+    container.querySelector('#knowledge-create').click();
+    await flushPromises();
+
+    expect(mockApi.createKnowledgeEntry).toHaveBeenCalledWith({
+      category: 'rules',
+      title: 'Rule title',
+      content: 'Rule content',
+    });
+    expect(container.querySelector('#knowledge-category').value).toBe('');
+    expect(container.querySelector('#knowledge-title').value).toBe('');
+    expect(container.querySelector('#knowledge-content').value).toBe('');
+
+    container.querySelector('.knowledge-disable').click();
+    await flushPromises();
+    expect(mockApi.disableKnowledgeEntry).toHaveBeenCalledWith('123456789');
+
+    container.querySelector('#knowledge-refresh').click();
+    await flushPromises();
+    expect(mockApi.getKnowledgeEntries).toHaveBeenLastCalledWith({ limit: 50 });
+  });
+
+  it('handles knowledge load, create, and disable errors', async () => {
+    const container = createPageContainer();
+    mockApi.getKnowledgeEntries
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'entry-error',
+            category: 'rules',
+            title: 'Entry',
+            content: 'Entry body',
+            enabled: true,
+            created_at: null,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error('knowledge load down'));
+    mockApi.createKnowledgeEntry.mockRejectedValueOnce(new Error('create down'));
+    mockApi.disableKnowledgeEntry.mockRejectedValueOnce(new Error('disable down'));
+
+    await renderKnowledge(container);
+
+    container.querySelector('#knowledge-category').value = 'rules';
+    container.querySelector('#knowledge-title').value = 'Entry';
+    container.querySelector('#knowledge-content').value = 'Entry body';
+    container.querySelector('#knowledge-create').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('create down'), 'error');
+
+    container.querySelector('.knowledge-disable').click();
+    await flushPromises();
+    expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('disable down'), 'error');
+
+    container.querySelector('#knowledge-refresh').click();
+    await flushPromises();
+    expect(container.querySelector('.page-error').textContent).toContain('knowledge load down');
+  });
+
+  it('creates, updates, disables, and refreshes role cards', async () => {
+    const container = createPageContainer();
+
+    await renderRoleCards(container);
+    const select = container.querySelector('#rc-select');
+    select.value = 'active-card';
+    select.dispatchEvent(new Event('change'));
+
+    expect(container.querySelector('#rc-key').disabled).toBe(true);
+    expect(container.querySelector('#rc-disable').style.display).toBe('inline-flex');
+
+    container.querySelector('#rc-name').value = 'Updated active card';
+    container.querySelector('#rc-name').dispatchEvent(new Event('input'));
+    container.querySelector('#rc-constraints').value = '{"max_words":42}';
+    container.querySelector('#rc-save').click();
+    await flushPromises();
+
+    expect(mockApi.updateRoleCard).toHaveBeenCalledWith('active-card', expect.objectContaining({
+      key: 'active-card',
+      name: 'Updated active card',
+      constraints: { max_words: 42 },
+    }));
+
+    container.querySelector('#rc-disable').click();
+    await flushPromises();
+    expect(mockApi.disableRoleCard).toHaveBeenCalledWith('active-card');
+
+    container.querySelector('#rc-new').click();
+    container.querySelector('#rc-key').value = 'new-card';
+    container.querySelector('#rc-name').value = 'New card';
+    container.querySelector('#rc-desc').value = 'Created in test';
+    container.querySelector('#rc-system-prompt').value = 'Prompt';
+    container.querySelector('#rc-tone').value = 'warm';
+    container.querySelector('#rc-constraints').value = 'plain text constraint';
+    container.querySelector('#rc-save').click();
+    await flushPromises();
+
+    expect(mockApi.createRoleCard).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'new-card',
+      name: 'New card',
+      constraints: 'plain text constraint',
+    }));
+
+    container.querySelector('#rc-refresh').click();
+    await flushPromises();
+    expect(mockApi.getRoleCards).toHaveBeenLastCalledWith({ limit: 100 });
+  });
+
+  it('guards dirty role-card navigation and reports role-card errors', async () => {
+    const container = createPageContainer();
+    const originalConfirm = globalThis.confirm;
+    const confirmMock = vi.fn(() => false);
+    globalThis.confirm = confirmMock;
+    mockApi.getRoleCards
+      .mockResolvedValueOnce({
+        items: [
+          {
+            key: 'dirty-card',
+            name: 'Dirty card',
+            description: '',
+            system_prompt: '',
+            tone: '',
+            constraints: {},
+            enabled: true,
+          },
+          {
+            key: 'target-card',
+            name: 'Target card',
+            description: '',
+            system_prompt: '',
+            tone: '',
+            constraints: {},
+            enabled: false,
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error('role cards down'));
+    mockApi.createRoleCard.mockRejectedValueOnce(new Error('create role down'));
+    mockApi.updateRoleCard.mockRejectedValueOnce(new Error('update role down'));
+    mockApi.activateRoleCard.mockRejectedValueOnce(new Error('activate role down'));
+    mockApi.disableRoleCard.mockRejectedValueOnce(new Error('disable role down'));
+
+    try {
+      await renderRoleCards(container);
+      const select = container.querySelector('#rc-select');
+      select.value = 'dirty-card';
+      select.dispatchEvent(new Event('change'));
+      container.querySelector('#rc-name').value = 'Dirty change';
+      container.querySelector('#rc-name').dispatchEvent(new Event('input'));
+
+      select.value = 'target-card';
+      select.dispatchEvent(new Event('change'));
+      expect(confirmMock).toHaveBeenCalledTimes(1);
+      expect(select.value).toBe('dirty-card');
+
+      confirmMock.mockReturnValue(true);
+      select.value = 'target-card';
+      select.dispatchEvent(new Event('change'));
+      expect(container.querySelector('#rc-activate').style.display).toBe('inline-flex');
+
+      container.querySelector('#rc-activate').click();
+      await flushPromises();
+      expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('activate role down'), 'error');
+
+      select.value = 'dirty-card';
+      select.dispatchEvent(new Event('change'));
+      container.querySelector('#rc-disable').click();
+      await flushPromises();
+      expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('disable role down'), 'error');
+
+      container.querySelector('#rc-name').value = 'Updated failed';
+      container.querySelector('#rc-save').click();
+      await flushPromises();
+      expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('update role down'), 'error');
+
+      container.querySelector('#rc-new').click();
+      container.querySelector('#rc-save').click();
+      await flushPromises();
+      expect(mockApi.createRoleCard).not.toHaveBeenCalled();
+
+      container.querySelector('#rc-key').value = 'new-error-card';
+      container.querySelector('#rc-save').click();
+      await flushPromises();
+      expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('create role down'), 'error');
+
+      container.querySelector('#rc-refresh').click();
+      await flushPromises();
+      expect(mockShowToast).toHaveBeenLastCalledWith(expect.stringContaining('role cards down'), 'error');
+    } finally {
+      globalThis.confirm = originalConfirm;
+    }
   });
 });

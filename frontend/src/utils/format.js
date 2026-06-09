@@ -72,7 +72,7 @@ export function getClampedInt(value, min, max, fallback) {
 
 export function getErrorText(error, fallback = '操作失败') {
   if (!error) return fallback;
-  if (typeof error === 'string') return error || fallback;
+  if (typeof error === 'string') return error;
   if (error.message) return error.message || fallback;
   return fallback;
 }

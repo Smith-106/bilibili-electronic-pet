@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildCommentReplyPublishIntent,
+  buildGatewayPublishIntent,
+  buildPlatformPublishIntent,
   resolveCommentReplyIntentParts,
 } from '../src/domain/publish/comment-reply-intent.js';
 
@@ -57,6 +59,63 @@ describe('comment reply publish intent', () => {
         metadata: {
           chat_type: 'group',
           adapter: 'napcat',
+        },
+      },
+    });
+  });
+
+  it('normalizes blank platforms and builds wrapper intents', () => {
+    const blankPlatformIntent = buildCommentReplyPublishIntent({
+      platform: '   ',
+      commentId: ' comment-1 ',
+      replyText: 'reply text',
+      canonicalId: '   ',
+    });
+
+    expect(blankPlatformIntent.target).toMatchObject({
+      platform: 'unknown',
+      externalId: 'comment-1',
+      canonicalId: 'unknown:comment-1',
+    });
+
+    expect(
+      buildGatewayPublishIntent({
+        commentId: 'gateway-comment',
+        replyText: 'gateway reply',
+        forcePublish: false,
+        traceId: 'trace-gateway',
+        source: 'gateway',
+      }),
+    ).toMatchObject({
+      source: 'gateway',
+      target: {
+        platform: 'bilibili',
+        canonicalId: 'bilibili:gateway-comment',
+      },
+    });
+
+    expect(
+      buildPlatformPublishIntent({
+        platform: 'QQ',
+        commentId: 'message-2',
+        replyText: 'platform reply',
+        forcePublish: true,
+        traceId: 'trace-platform',
+        containerId: 'group-1',
+        parentExternalId: 'message-1',
+        userId: 'user-1',
+        routingMetadata: { scene: 'group' },
+      }),
+    ).toMatchObject({
+      source: 'platform-publish',
+      target: {
+        platform: 'qq',
+        canonicalId: 'qq:message-2',
+        route: {
+          metadata: {
+            scene: 'group',
+            user_id: 'user-1',
+          },
         },
       },
     });

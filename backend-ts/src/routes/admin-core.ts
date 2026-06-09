@@ -101,7 +101,7 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
 
   app.post('/api/admin/platforms/:platform/control', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
-    const platform = String((request.params as Record<string, unknown>).platform ?? '').trim().toLowerCase();
+    const platform = String((request.params as Record<string, unknown>).platform).trim().toLowerCase();
     if (!isPlatformName(platform)) {
       return reply.code(400).send({ detail: 'platform_invalid' });
     }

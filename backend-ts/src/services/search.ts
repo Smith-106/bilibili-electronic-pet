@@ -86,8 +86,8 @@ function expandQueries(query: string): string[] {
   const mid = Math.ceil(tokens.length / 2);
   const firstHalf = tokens.slice(0, mid).join(' ');
   const secondHalf = tokens.slice(mid).join(' ');
-  if (firstHalf !== cleaned) queries.push(firstHalf);
-  if (secondHalf !== cleaned && secondHalf !== firstHalf) queries.push(secondHalf);
+  queries.push(firstHalf);
+  if (secondHalf !== firstHalf) queries.push(secondHalf);
 
   return queries.slice(0, 3); // Max 3 expanded queries
 }
@@ -274,19 +274,18 @@ async function dispatchSearch(query: string, config: SearchConfig): Promise<RawS
  * Search web for context
  * Enhanced: multi-query expansion, deduplication, reranking
  */
-export const searchWeb: SearchWebService = async (query) => {
-  const config = loadSearchConfig();
-  if (!config) {
-    return { items: [] };
-  }
-
+async function searchWebWithConfig(
+  query: string,
+  config: SearchConfig,
+  searchDispatcher: (q: string, c: SearchConfig) => Promise<RawSearchItem[]> = dispatchSearch,
+): ReturnType<SearchWebService> {
   try {
     // Expand queries for better recall
     const queries = expandQueries(query);
     let allItems: RawSearchItem[] = [];
 
     for (const q of queries) {
-      const results = await dispatchSearch(q, config);
+      const results = await searchDispatcher(q, config);
       allItems = allItems.concat(results);
     }
 
@@ -312,6 +311,15 @@ export const searchWeb: SearchWebService = async (query) => {
       error_message: message,
     };
   }
+}
+
+export const searchWeb: SearchWebService = async (query) => {
+  const config = loadSearchConfig();
+  if (!config) {
+    return { items: [] };
+  }
+
+  return searchWebWithConfig(query, config);
 };
 
 /**
@@ -340,4 +348,19 @@ export const buildSearchContext: BuildSearchContextService = (items) => {
   }
 
   return `Search Context:\n${contextParts.join('\n')}`;
+};
+
+export const __searchTesting = {
+  buildSearchContext,
+  cleanQuery,
+  dedupeItems,
+  dispatchSearch,
+  expandQueries,
+  loadSearchConfig,
+  rerankItems,
+  searchBing,
+  searchGoogle,
+  searchSerpAPI,
+  searchWebWithConfig,
+  truncateSnippet,
 };

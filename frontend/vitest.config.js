@@ -7,5 +7,11 @@ export default defineConfig({
     include: ['test/**/*.test.js'],
     restoreMocks: true,
     clearMocks: true,
+    coverage: {
+      provider: 'v8',
+      processingConcurrency: 1,
+      include: ['src/**/*.js'],
+      exclude: ['src/**/*.test.js'],
+    },
   },
 });

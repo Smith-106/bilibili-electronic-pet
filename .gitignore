@@ -14,7 +14,13 @@ node_modules/
 **/node_modules/
 **/dist/
 output/playwright/
+coverage/
 backend-ts/coverage/
+docs-site/coverage/
+douyin-sidecar/coverage/
+frontend/coverage/
+pet-companion-web/coverage/
+qq-sidecar/coverage/
 *.sqlite3
 *.db
 *.db-journal

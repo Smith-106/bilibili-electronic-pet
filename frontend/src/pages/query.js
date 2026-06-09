@@ -19,8 +19,7 @@ function getHistory(key) {
 }
 
 function pushHistory(key, value) {
-  const trimmed = String(value || '').trim();
-  if (!trimmed) return;
+  const trimmed = value.trim();
   const entries = getHistory(key).filter((item) => item !== trimmed);
   entries.unshift(trimmed);
   sessionStorage.setItem(key, JSON.stringify(entries.slice(0, HISTORY_LIMIT)));
@@ -37,7 +36,7 @@ async function copyJsonPayload(payload) {
 }
 
 function renderDetailRows(data) {
-  const entries = Object.entries(data || {});
+  const entries = Object.entries(data);
   if (entries.length === 0) {
     return '<div class="table-empty">未返回可展示字段</div>';
   }

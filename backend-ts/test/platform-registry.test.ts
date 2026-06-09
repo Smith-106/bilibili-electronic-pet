@@ -71,6 +71,16 @@ describe('platform adapter registry', () => {
     expect(resolvePlatformAdapter('douyin').resolvePublishSource(settings)).toBe('douyin-bot');
   });
 
+  it('falls back to default publish sources for blank configured sources', () => {
+    const settings = buildSettings({
+      platformBilibiliPublishSource: '   ',
+      platformKuaishouPublishSource: '',
+    });
+
+    expect(resolvePlatformAdapter('bilibili').resolvePublishSource(settings)).toBe('bilibili-bot');
+    expect(resolvePlatformAdapter('kuaishou').resolvePublishSource(settings)).toBe('kuaishou-bot');
+  });
+
   it('keeps the bilibili reference adapter enabled when only the legacy bilibili runtime flag is on', () => {
     const settings = buildSettings({
       platformBilibiliEnabled: false,

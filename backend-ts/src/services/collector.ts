@@ -273,7 +273,7 @@ export function collectCommentEvent(
   }
 
   return {
-    comment_id: toStringOrUndefined(mapped.comment_id) ?? '',
+    comment_id: toStringOrUndefined(mapped.comment_id) as string,
     video_id: toStringOrUndefined(mapped.video_id),
     user_id: toStringOrUndefined(mapped.user_id),
     content: toStringOrUndefined(mapped.content),

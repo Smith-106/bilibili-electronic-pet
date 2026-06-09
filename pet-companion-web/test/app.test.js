@@ -604,6 +604,32 @@ describe('pet companion surface', () => {
     });
   });
 
+  it('uses a generated local fallback when the configured fallback adapter also fails', async () => {
+    const adapter = createBackendPetAdapter({
+      fetchImpl: vi.fn().mockRejectedValue(new Error('network_down')),
+      fallback: {
+        getCompanionState: vi.fn().mockRejectedValue(new Error('fallback_down')),
+      },
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.degraded).toBe(true);
+    expect(state.petName).toBe('Mochi');
+    expect(state.recentSignals[0]).toBe('Backend sync failed: network_down.');
+  });
+
+  it('falls back when no fetch implementation is available', async () => {
+    const fallback = {
+      getCompanionState: vi.fn().mockResolvedValue(createState({ petName: 'Fallback pet' })),
+    };
+    const adapter = createBackendPetAdapter({ fetchImpl: null, fallback });
+
+    await expect(adapter.getCompanionState()).resolves.toMatchObject({ petName: 'Fallback pet' });
+    expect(fallback.getCompanionState).toHaveBeenCalledTimes(1);
+    await expect(adapter.performAction('pat')).resolves.toEqual({ ok: false, fallback: true });
+  });
+
   it('renders visible degraded fallback copy when backend sync fails', async () => {
     const container = createPageContainer();
     const adapter = createBackendPetAdapter({
@@ -640,6 +666,173 @@ describe('pet companion surface', () => {
       }),
     );
     expect(state.version).toBe('v2');
+  });
+
+  it('loads the legacy companion endpoint when the v2 endpoint fails', async () => {
+    const legacyState = createState({ petName: 'Legacy Mochi' });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => legacyState,
+      });
+    const adapter = createBackendPetAdapter({ fetchImpl: fetchMock });
+
+    await expect(adapter.getCompanionState()).resolves.toBe(legacyState);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('labels degraded state when both v2 and legacy endpoints fail', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+      });
+    const adapter = createBackendPetAdapter({ fetchImpl: fetchMock });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus).toMatchObject({
+      endpoint: '/companion/state-v2',
+      legacyEndpoint: '/companion/state',
+      reason: 'companion_state_503',
+    });
+    expect(state.recentInteractions[0].detail).toContain('/companion/state-v2 -> /companion/state');
+  });
+
+  it('labels degraded state when the primary endpoint fails without a legacy endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+    });
+    const adapter = createBackendPetAdapter({
+      legacyEndpoint: '',
+      endpoint: '',
+      fetchImpl: fetchMock,
+      fallback: {
+        getCompanionState: vi.fn().mockResolvedValue({
+          petName: 'Fallback Mochi',
+          recentSignals: null,
+          recentInteractions: null,
+        }),
+      },
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(state.backendStatus).toMatchObject({
+      endpoint: '',
+      legacyEndpoint: null,
+      reason: 'companion_state_503',
+    });
+    expect(state.recentSignals).toEqual([
+      'Backend sync failed: companion_state_503.',
+      'Retry after the companion backend recovers to restore live state.',
+    ]);
+    expect(state.recentInteractions[0].detail).toContain('backend companion state could not be loaded from .');
+  });
+
+  it('labels degraded state when the legacy endpoint returns invalid JSON', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => null,
+      });
+    const adapter = createBackendPetAdapter({ fetchImpl: fetchMock });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus).toMatchObject({
+      legacyEndpoint: '/companion/state',
+      reason: 'companion_state_invalid',
+    });
+  });
+
+  it('uses a generic degraded reason for non-Error backend failures', async () => {
+    const fetchMock = vi.fn().mockRejectedValue('plain_failure');
+    const adapter = createBackendPetAdapter({
+      endpoint: '/custom/state',
+      legacyEndpoint: null,
+      fetchImpl: fetchMock,
+      fallback: {
+        getCompanionState: vi.fn().mockResolvedValue({
+          petName: 'Fallback Mochi',
+          recentSignals: ['Fallback signal'],
+          recentInteractions: [
+            {
+              title: 'Fallback interaction',
+            },
+          ],
+        }),
+      },
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus).toMatchObject({
+      endpoint: '/custom/state',
+      legacyEndpoint: null,
+      reason: 'backend_unavailable',
+    });
+    expect(state.recentInteractions[1].source).toBe('Seed state adapter · degraded snapshot');
+  });
+
+  it('normalizes blank backend error messages to the generic degraded reason', async () => {
+    const adapter = createBackendPetAdapter({
+      fetchImpl: vi.fn().mockRejectedValue(new Error()),
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus.reason).toBe('backend_unavailable');
+    expect(state.recentSignals[0]).toBe('Backend sync failed: backend_unavailable.');
+  });
+
+  it('normalizes whitespace Error messages to the generic degraded reason', async () => {
+    const adapter = createBackendPetAdapter({
+      fetchImpl: vi.fn().mockRejectedValue(new Error('   ')),
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus.reason).toBe('backend_unavailable');
+  });
+
+  it('normalizes whitespace backend failure strings to the generic degraded reason', async () => {
+    const adapter = createBackendPetAdapter({
+      fetchImpl: vi.fn().mockRejectedValue('   '),
+    });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus.reason).toBe('backend_unavailable');
+  });
+
+  it('labels degraded state when backend JSON is invalid', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => null,
+    });
+    const adapter = createBackendPetAdapter({ fetchImpl: fetchMock });
+
+    const state = await adapter.getCompanionState();
+
+    expect(state.backendStatus.reason).toBe('companion_state_invalid');
   });
 
   it('posts companion actions through the backend adapter', async () => {
@@ -691,6 +884,69 @@ describe('pet companion surface', () => {
         },
       }),
     );
+  });
+
+  it('uses global admin credentials and reports failed companion actions', async () => {
+    globalThis.__ADMIN_SESSION_TOKEN__ = 'global-session';
+    globalThis.__ADMIN_API_KEY__ = 'global-api-key';
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({}),
+    });
+    const adapter = createBackendPetAdapter({
+      actionEndpoint: '/custom/actions',
+      fetchImpl: fetchMock,
+    });
+
+    await expect(adapter.performAction('wake', undefined)).rejects.toThrow('companion_action_403');
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/custom/actions',
+      expect.objectContaining({
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'x-admin-session': 'global-session',
+          'x-api-key': 'global-api-key',
+        },
+      }),
+    );
+
+    delete globalThis.__ADMIN_SESSION_TOKEN__;
+    delete globalThis.__ADMIN_API_KEY__;
+  });
+
+  it('ignores storage errors while resolving action credentials', async () => {
+    const originalSessionStorage = globalThis.sessionStorage;
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      value: {
+        getItem: vi.fn(() => {
+          throw new Error('storage_denied');
+        }),
+      },
+    });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true }),
+    });
+    const adapter = createBackendPetAdapter({ fetchImpl: fetchMock });
+
+    await expect(adapter.performAction('feed', 'snack')).resolves.toEqual({ ok: true });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/companion/actions',
+      expect.objectContaining({
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+      }),
+    );
+
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      value: originalSessionStorage,
+    });
   });
 
   it('triggers action buttons and reloads companion state', async () => {

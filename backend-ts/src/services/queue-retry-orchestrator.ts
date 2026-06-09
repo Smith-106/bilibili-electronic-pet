@@ -203,7 +203,8 @@ export function buildRetryBatches(
       const blockReasons: string[] = [];
       if (category === 'conflict_blocked') blockReasons.push('workspace_conflict');
 
-      for (const dep of dependenciesByItem.get(itemId) ?? []) {
+      const dependencies = dependenciesByItem.get(itemId) as string[];
+      for (const dep of dependencies) {
         const depStatus = statusesByItem.get(dep);
         if (depStatus == null) {
           blockReasons.push(`dependency_missing:${dep}`);

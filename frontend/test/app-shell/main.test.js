@@ -156,6 +156,35 @@ describe('admin app shell regression tests', () => {
     expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
   });
 
+  it('ignores empty login submissions', async () => {
+    await loadMain();
+
+    document.getElementById('login-api-key').value = '   ';
+    document.getElementById('login-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushPromises();
+
+    expect(mockRequestJson).not.toHaveBeenCalled();
+    expect(renderSpies.dashboard).not.toHaveBeenCalled();
+    expect(document.getElementById('login-overlay').style.display).toBe('flex');
+  });
+
+  it('falls back to legacy login when the session response has no token', async () => {
+    mockRequestJson
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true });
+
+    await loadMain();
+
+    document.getElementById('login-api-key').value = 'legacy-after-empty-session';
+    document.getElementById('login-form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await flushPromises();
+
+    expect(window.__ADMIN_SESSION_TOKEN__).toBe('');
+    expect(window.__ADMIN_API_KEY__).toBe('legacy-after-empty-session');
+    expect(sessionStorage.getItem('admin_api_key')).toBe('legacy-after-empty-session');
+    expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
+  });
+
   it('bootstraps from stored admin session token before legacy api key', async () => {
     sessionStorage.setItem('admin_session_token', 'stored-session');
     sessionStorage.setItem('admin_api_key', 'stored-key');
@@ -200,6 +229,38 @@ describe('admin app shell regression tests', () => {
     expect(document.querySelector('.nav-item[data-page="dashboard"]').hasAttribute('aria-current')).toBe(false);
   });
 
+  it('ignores current and unknown nav targets', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session');
+    document.getElementById('nav-list').insertAdjacentHTML(
+      'beforeend',
+      '<button type="button" class="nav-item" data-page="unknown">unknown</button>',
+    );
+
+    await loadMain();
+    await flushPromises();
+
+    document.querySelector('.nav-item[data-page="dashboard"]').click();
+    document.querySelector('.nav-item[data-page="unknown"]').click();
+    await flushPromises();
+
+    expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
+    expect(document.querySelector('.nav-item[data-page="dashboard"]').classList.contains('active')).toBe(true);
+    expect(document.querySelector('.nav-item[data-page="unknown"]').classList.contains('active')).toBe(false);
+  });
+
+  it('shows a page error when a page renderer rejects', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session');
+    renderSpies.jobs.mockRejectedValueOnce(new Error('jobs render down'));
+
+    await loadMain();
+    await flushPromises();
+
+    document.querySelector('.nav-item[data-page="jobs"]').click();
+    await flushPromises();
+
+    expect(document.getElementById('page-container').textContent).toContain('jobs render down');
+  });
+
   it('clears both session token and api key on logout', async () => {
     sessionStorage.setItem('admin_session_token', 'stored-session');
     sessionStorage.setItem('admin_api_key', 'stored-key');
@@ -239,5 +300,18 @@ describe('admin app shell regression tests', () => {
     expandButton.click();
     expect(leftSidebar.classList.contains('collapsed')).toBe(false);
     expect(expandButton.style.display).toBe('none');
+  });
+
+  it('boots without optional theme and sidebar toggle controls', async () => {
+    sessionStorage.setItem('admin_session_token', 'stored-session');
+    document.getElementById('theme-toggle-btn').remove();
+    document.getElementById('toggle-left-btn').remove();
+    document.getElementById('expand-left-btn').remove();
+
+    await loadMain();
+    await flushPromises();
+
+    expect(renderSpies.dashboard).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('login-overlay').style.display).toBe('none');
   });
 });

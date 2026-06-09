@@ -173,6 +173,50 @@ describe('loadBilibiliRuntimeConfig', () => {
     warnSpy.mockRestore();
   });
 
+  it('normalizes nullish database credential fields before falling back to environment variables', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.BILIBILI_SESSDATA = 'env-sess';
+    process.env.BILIBILI_BILI_JCT = 'env-jct';
+    process.env.BILIBILI_BUVID3 = 'env-buvid';
+
+    mockPrisma.bilibiliCredential.findFirst.mockResolvedValue({
+      id: 9,
+      name: 'nullish credential',
+      sessdata: null,
+      bili_jct: null,
+      buvid3: null,
+      buvid4: undefined,
+    });
+
+    const config = await loadBilibiliRuntimeConfig();
+
+    expect(config).toMatchObject({
+      source: 'environment',
+      sessdata: 'env-sess',
+      biliJct: 'env-jct',
+      buvid: 'env-buvid',
+    });
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[bilibili] Active credential 9 is incomplete; falling back to environment variables',
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('includes non-Error database failure messages in fallback warnings', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.BILIBILI_SESSDATA = 'env-sess';
+    process.env.BILIBILI_BILI_JCT = 'env-jct';
+    process.env.BILIBILI_BUVID3 = 'env-buvid';
+
+    mockPrisma.bilibiliCredential.findFirst.mockRejectedValue('string failure');
+
+    await expect(loadBilibiliRuntimeConfig()).resolves.toMatchObject({
+      source: 'environment',
+    });
+    expect(warnSpy.mock.calls[0][0]).toContain('string failure');
+    warnSpy.mockRestore();
+  });
+
   it('returns null when database lookup fails and environment credentials are incomplete', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     process.env.BILIBILI_SESSDATA = 'env-sess';

@@ -19,11 +19,7 @@ function encodeBase64Url(value: string): string {
 }
 
 function decodeBase64Url(value: string): string | null {
-  try {
-    return Buffer.from(value, 'base64url').toString('utf8');
-  } catch {
-    return null;
-  }
+  return Buffer.from(value, 'base64url').toString('utf8');
 }
 
 function buildSignature(payload: string, secret: string): Buffer {
@@ -113,12 +109,7 @@ export function verifyAdminSessionToken(token: string, settings: RuntimeSettings
   }
 
   const expectedSignature = buildSignature(encodedPayload, secret);
-  let actualSignature: Buffer;
-  try {
-    actualSignature = Buffer.from(encodedSignature, 'base64url');
-  } catch {
-    return false;
-  }
+  const actualSignature = Buffer.from(encodedSignature, 'base64url');
 
   if (expectedSignature.length !== actualSignature.length) {
     return false;

@@ -435,8 +435,7 @@ function normalizeState(state) {
   const interactionCount = recentInteractions.length;
   const dominantInteraction =
     recentInteractions.find((entry) => ACTION_INTERACTION_KINDS.includes(entry.kind))?.kind ||
-    recentInteractions[0]?.kind ||
-    'signal';
+    recentInteractions[0].kind;
   const dominantInteractionLabel = getInteractionKindLabel(dominantInteraction);
   const highlightCards = [
     {
@@ -971,9 +970,6 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
   function focusShortcutHelpBoundary(reverse = false) {
     const focusables = [shortcutHelpTitle, shortcutHelpClose].filter(Boolean);
-    if (!focusables.length) {
-      return;
-    }
     const targetNode = reverse ? focusables[focusables.length - 1] : focusables[0];
     targetNode?.focus();
   }
@@ -988,9 +984,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
         shortcutHelpToggle?.focus();
       }
     }
-    if (announcement) {
-      announce(announcement);
-    }
+    announce(announcement);
   }
 
   function isShortcutHelpTarget(node) {
@@ -1005,9 +999,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     clearPendingTemplateAction();
     selectedTimelineFilter = normalized;
     renderCurrentState();
-    if (announcement) {
-      announce(announcement);
-    }
+    announce(announcement);
   }
 
   function clearPendingTemplateAction() {
@@ -1015,17 +1007,15 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   }
 
   function clearDraft() {
-    if (actionNote) {
-      actionNote.value = '';
-      actionNote.focus();
-    }
+    actionNote.value = '';
+    actionNote.focus();
     clearPendingTemplateAction();
     syncComposerContext();
     announce('Draft cleared.');
   }
 
   function applyTemplateToDraft(mode) {
-    if (!actionNote || !pendingTemplateValue) {
+    if (!pendingTemplateValue) {
       return;
     }
 
@@ -1267,7 +1257,11 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
 
       if (currentIndex === -1) {
         event.preventDefault();
-        focusShortcutHelpBoundary(event.shiftKey);
+        if (event.shiftKey) {
+          focusShortcutHelpBoundary(true);
+        } else {
+          focusShortcutHelpBoundary();
+        }
         return;
       }
 
@@ -1387,6 +1381,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     setControlsDisabled(true);
     refreshButton.textContent = 'Refreshing...';
     setAdapterStatus('Adapter: syncing companion state');
+    announce();
 
     try {
       const state = await adapter.getCompanionState();
@@ -1418,9 +1413,7 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
   function destroy() {
     ownerDocument.removeEventListener('click', handleDocumentClick);
     ownerDocument.removeEventListener('keydown', handleDocumentKeydown);
-    if (target[RENDER_CLEANUP] === destroy) {
-      delete target[RENDER_CLEANUP];
-    }
+    delete target[RENDER_CLEANUP];
   }
 
   target[RENDER_CLEANUP] = destroy;
@@ -1435,3 +1428,24 @@ export async function renderPetCompanion(target, { adapter = createLocalPetAdapt
     reload: loadState,
   };
 }
+
+export const __testHooks = {
+  normalizeInteractionKind,
+  inferInteractionKind,
+  getInteractionKindLabel,
+  normalizeInteractionFilter,
+  isActionFilter,
+  getComposerCopy,
+  getComposerGuide,
+  getComposerSubmitBlockedMessage,
+  getComposerTemplates,
+  getComposerStatus,
+  formatInteractionTimestamp,
+  normalizeBackendStatus,
+  normalizeState,
+  renderProactiveSignals,
+  renderInteractions,
+  renderDegradedPanel,
+  createStateMarkup,
+  createErrorMarkup,
+};

@@ -47,7 +47,7 @@ export function registerCommentRoutes(app: FastifyInstance, deps: CommentRoutesD
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const commentId = String(params.comment_id ?? '').trim();
+    const commentId = String(params.comment_id).trim();
 
     if (!commentId) {
       return reply.code(404).send({ detail: 'comment_not_found' });

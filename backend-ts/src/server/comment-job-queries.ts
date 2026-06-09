@@ -271,3 +271,9 @@ export function createCommentJobQueryHelpers(deps: CommentJobQueryDeps) {
     exportJobsCsv: (input: { status?: string; limit: number }) => exportJobsCsv(deps, input),
   };
 }
+
+export const __commentJobQueryTesting = {
+  buildAdminJobStatusWhere,
+  inferPlatformFromCanonicalCommentId,
+  normalizeQueryJobRecord,
+};

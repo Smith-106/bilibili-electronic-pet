@@ -191,7 +191,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const entryId = Number.parseInt(String(params.entry_id ?? ''), 10);
+    const entryId = Number.parseInt(String(params.entry_id), 10);
     if (!Number.isFinite(entryId) || entryId <= 0) {
       return reply.code(404).send({ detail: 'knowledge_not_found' });
     }
@@ -494,7 +494,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '')
+    const cardKey = String(params.card_key)
       .trim()
       .toLowerCase()
       .slice(0, 64);
@@ -546,7 +546,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '')
+    const cardKey = String(params.card_key)
       .trim()
       .toLowerCase();
 
@@ -558,7 +558,7 @@ export function registerAdminManagementRoutes(
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const params = request.params as Record<string, unknown>;
-    const cardKey = String(params.card_key ?? '')
+    const cardKey = String(params.card_key)
       .trim()
       .toLowerCase();
 

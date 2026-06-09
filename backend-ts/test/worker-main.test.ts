@@ -1,0 +1,223 @@
+import { resolve } from 'node:path';
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const {
+  buildWorkerServicesMock,
+  createCommentEventWorkerMock,
+  pollAllVideosMock,
+  resolvePlatformPollingRuntimeMock,
+} = vi.hoisted(() => ({
+  buildWorkerServicesMock: vi.fn(),
+  createCommentEventWorkerMock: vi.fn(),
+  pollAllVideosMock: vi.fn(),
+  resolvePlatformPollingRuntimeMock: vi.fn(),
+}));
+
+vi.mock('../src/platforms/registry.js', () => ({
+  resolvePlatformPollingRuntime: resolvePlatformPollingRuntimeMock,
+}));
+
+vi.mock('../src/services/index.js', () => ({
+  buildWorkerServices: buildWorkerServicesMock,
+}));
+
+vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
+  createCommentEventWorker: createCommentEventWorkerMock,
+}));
+
+vi.mock('../src/services/bilibili-poller.js', () => ({
+  pollAllVideos: pollAllVideosMock,
+}));
+
+import { main, parseBoolean, parseInteger } from '../src/workers/worker-main.js';
+
+type SignalCallback = () => Promise<void> | void;
+
+describe('worker main runtime', () => {
+  const originalEnv = {
+    KILL_SWITCH: process.env.KILL_SWITCH,
+    ROLE_PROFILE_DEFAULT: process.env.ROLE_PROFILE_DEFAULT,
+  };
+  const originalArgv1 = process.argv[1];
+  let callbacks: Partial<Record<NodeJS.Signals, SignalCallback>>;
+  let workerCloseMock: ReturnType<typeof vi.fn>;
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let processOnSpy: ReturnType<typeof vi.spyOn>;
+  let processExitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useRealTimers();
+    callbacks = {};
+    workerCloseMock = vi.fn(async () => undefined);
+    buildWorkerServicesMock.mockReturnValue({ services: true });
+    createCommentEventWorkerMock.mockReturnValue({ close: workerCloseMock });
+    resolvePlatformPollingRuntimeMock.mockReturnValue({ enabled: false, intervalSeconds: 60 });
+    pollAllVideosMock.mockResolvedValue({ videos: 2, events_injected: 3 });
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    processOnSpy = vi.spyOn(process, 'on').mockImplementation((event, listener) => {
+      if (event === 'SIGTERM' || event === 'SIGINT') {
+        callbacks[event] = listener as SignalCallback;
+      }
+      return process;
+    });
+    processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit:${code ?? 0}`);
+    }) as never);
+    process.env.KILL_SWITCH = 'true';
+    process.env.ROLE_PROFILE_DEFAULT = 'moe';
+  });
+
+  afterEach(() => {
+    if (originalEnv.KILL_SWITCH === undefined) {
+      delete process.env.KILL_SWITCH;
+    } else {
+      process.env.KILL_SWITCH = originalEnv.KILL_SWITCH;
+    }
+    if (originalEnv.ROLE_PROFILE_DEFAULT === undefined) {
+      delete process.env.ROLE_PROFILE_DEFAULT;
+    } else {
+      process.env.ROLE_PROFILE_DEFAULT = originalEnv.ROLE_PROFILE_DEFAULT;
+    }
+    process.argv[1] = originalArgv1;
+    vi.useRealTimers();
+    consoleLogSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+    processOnSpy.mockRestore();
+    processExitSpy.mockRestore();
+  });
+
+  it('parses worker main primitive environment values', () => {
+    expect(parseBoolean(undefined, true)).toBe(true);
+    expect(parseBoolean(' YES ', false)).toBe(true);
+    expect(parseBoolean('off', true)).toBe(false);
+    expect(parseInteger(undefined, 7)).toBe(7);
+    expect(parseInteger('42', 7)).toBe(42);
+    expect(parseInteger('0', 7)).toBe(7);
+    expect(parseInteger('invalid', 7)).toBe(7);
+  });
+
+  it('starts the worker with env-derived services and disabled polling shutdown', async () => {
+    main();
+
+    expect(buildWorkerServicesMock).toHaveBeenCalledWith({
+      killSwitch: true,
+      roleProfileDefault: 'moe',
+    });
+    expect(createCommentEventWorkerMock).toHaveBeenCalledWith('comment-event', { services: true });
+    expect(resolvePlatformPollingRuntimeMock).toHaveBeenCalledWith('bilibili', process.env);
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[worker] Bilibili polling disabled (BILIBILI_POLL_ENABLED not set)',
+    );
+    expect(processOnSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+    expect(processOnSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+
+    await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
+    expect(workerCloseMock).toHaveBeenCalledOnce();
+    await expect(callbacks.SIGTERM?.()).resolves.toBeUndefined();
+    expect(workerCloseMock).toHaveBeenCalledOnce();
+  });
+
+  it('logs close errors before exiting during disabled polling shutdown', async () => {
+    workerCloseMock.mockRejectedValueOnce(new Error('close failed'));
+    main();
+
+    await expect(callbacks.SIGINT?.()).rejects.toThrow('process.exit:0');
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[worker] Error closing worker:',
+      expect.any(Error),
+    );
+    expect(processExitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('runs scheduled polling, skips overlapping polls, and clears timer on shutdown', async () => {
+    vi.useFakeTimers();
+    process.env.KILL_SWITCH = 'false';
+    delete process.env.ROLE_PROFILE_DEFAULT;
+    resolvePlatformPollingRuntimeMock.mockReturnValue({ enabled: true, intervalSeconds: 5 });
+    let resolvePoll: (value: { videos: number; events_injected: number }) => void = () => undefined;
+    pollAllVideosMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePoll = resolve;
+      }),
+    );
+
+    main();
+
+    expect(buildWorkerServicesMock).toHaveBeenCalledWith({
+      killSwitch: false,
+      roleProfileDefault: 'doro',
+    });
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[worker] Bilibili polling scheduled every 5s (initial delay: 10s)',
+    );
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(pollAllVideosMock).toHaveBeenCalledOnce();
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(pollAllVideosMock).toHaveBeenCalledOnce();
+    expect(consoleLogSpy).toHaveBeenCalledWith('[worker] Bilibili poll already in progress, skipping');
+
+    resolvePoll({ videos: 4, events_injected: 7 });
+    await vi.runOnlyPendingTimersAsync();
+    await Promise.resolve();
+    expect(consoleLogSpy).toHaveBeenCalledWith(
+      '[worker] Bilibili poll completed: 4 videos, 7 events injected',
+    );
+
+    await expect(callbacks.SIGINT?.()).rejects.toThrow('process.exit:0');
+    expect(workerCloseMock).toHaveBeenCalledOnce();
+  });
+
+  it('logs polling failures and closes worker from polling shutdown path', async () => {
+    vi.useFakeTimers();
+    resolvePlatformPollingRuntimeMock.mockReturnValue({ enabled: true, intervalSeconds: 30 });
+    pollAllVideosMock.mockRejectedValueOnce(new Error('poll failed'));
+    workerCloseMock.mockRejectedValueOnce(new Error('close failed'));
+
+    main();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    await Promise.resolve();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[worker] Bilibili poll failed:',
+      expect.any(Error),
+    );
+    await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      '[worker] Error closing worker:',
+      expect.any(Error),
+    );
+  });
+
+  it('shuts down polling mode before the interval has been created', async () => {
+    vi.useFakeTimers();
+    resolvePlatformPollingRuntimeMock.mockReturnValue({ enabled: true, intervalSeconds: 30 });
+
+    main();
+
+    await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
+    expect(workerCloseMock).toHaveBeenCalledOnce();
+  });
+
+  it('logs fatal startup errors when executed directly', async () => {
+    vi.resetModules();
+    process.argv[1] = resolve('src/workers/worker-main.ts');
+    buildWorkerServicesMock.mockImplementationOnce(() => {
+      throw new Error('boot failed');
+    });
+    processExitSpy.mockImplementationOnce((() => undefined) as never);
+
+    await import('../src/workers/worker-main.js');
+    await Promise.resolve();
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Fatal error:', expect.any(Error));
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+});

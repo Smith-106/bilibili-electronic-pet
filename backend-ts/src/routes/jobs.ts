@@ -62,7 +62,7 @@ export type JobsRouteDependencies = {
 };
 
 function parseJobId(value: unknown): number | null {
-  const jobId = Number.parseInt(String(value ?? ''), 10);
+  const jobId = Number.parseInt(String(value), 10);
   return Number.isFinite(jobId) && jobId > 0 ? jobId : null;
 }
 

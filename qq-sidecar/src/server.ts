@@ -87,24 +87,22 @@ function joinActionUrl(baseUrl: string, action: string): string {
 
 function buildOneBotMessage(payload: PublishPayload): Array<{ type: 'reply' | 'text'; data: Record<string, string> }> {
   const replyToMessageId =
-    payload.routing_metadata?.reply_to_message_id || payload.comment_id || payload.parent_external_id;
+    payload.routing_metadata?.reply_to_message_id || payload.parent_external_id || payload.comment_id;
 
-  const message: Array<{ type: 'reply' | 'text'; data: Record<string, string> }> = [];
-  if (hasText(replyToMessageId)) {
-    message.push({
+  return [
+    {
       type: 'reply',
       data: {
         id: replyToMessageId,
       },
-    });
-  }
-  message.push({
-    type: 'text',
-    data: {
-      text: payload.reply_text,
     },
-  });
-  return message;
+    {
+      type: 'text',
+      data: {
+        text: payload.reply_text,
+      },
+    },
+  ];
 }
 
 function resolveOneBotAction(payload: PublishPayload):

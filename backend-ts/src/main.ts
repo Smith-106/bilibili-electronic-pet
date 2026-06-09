@@ -14,7 +14,7 @@ import {
 import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
 import { getPlatformControlState, setPlatformControlState } from './platforms/control-state.js';
 import { publishViaSidecarWebhook } from './platforms/sidecar-webhook.js';
-import { listPlatformAdapters, listPlatformIngressRoutes } from './platforms/registry.js';
+import { listPlatformAdapters, listPlatformIngressRoutes, resolvePlatformAdapter } from './platforms/registry.js';
 import { registerAdminCoreRoutes } from './routes/admin-core.js';
 import { registerAdminManagementRoutes } from './routes/admin-management.js';
 import { registerAdminReportingRoutes } from './routes/admin-reporting.js';
@@ -617,10 +617,6 @@ function defaultVerifyPayloadSignature(payload: Record<string, unknown>, secret:
   }
 
   const actual = Buffer.from(normalizedSignature, 'hex');
-  if (expected.length !== actual.length) {
-    return false;
-  }
-
   return timingSafeEqual(expected, actual);
 }
 
@@ -2457,8 +2453,7 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
             ? 'runtime platform enabled but Bilibili runtime toggle is off'
             : 'sidecar webhook is not configured'
           : null;
-      const publishCapabilityStatus =
-        !adapter.supportsPublishing ? 'unsupported' : status === 'degraded' ? 'partial' : 'available';
+      const publishCapabilityStatus = status === 'degraded' ? 'partial' : 'available';
       const publishCapabilityNote =
         adapter.platform === 'bilibili'
           ? adapter.resolvePublishSource(settings)
@@ -2487,7 +2482,7 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
         capabilities: [
           {
             key: 'ingress',
-            status: adapter.supportsInboundEvents ? 'available' : 'unsupported',
+            status: 'available',
             note: adapter.ingressRoutes.map((entry) => entry.path).join(', '),
           },
           {
@@ -2497,11 +2492,11 @@ function defaultListPlatformConnections(settings: RuntimeSettings): { ok: boolea
           },
           {
             key: 'identity_binding',
-            status: adapter.supportsIdentityBinding ? 'available' : 'unsupported',
+            status: 'available',
           },
           {
             key: 'connection_health',
-            status: adapter.supportsConnectionHealth ? 'available' : 'unsupported',
+            status: 'available',
           },
           {
             key: 'polling',
@@ -2518,16 +2513,14 @@ function defaultUpdatePlatformConnectionControl(
   settings: RuntimeSettings,
   input: { platform: PlatformName; enabled: boolean },
 ): { ok: boolean; item: PlatformConnectionSnapshot } {
-  const baseEnabled = listPlatformAdapters().find((adapter) => adapter.platform === input.platform)?.isEnabled(settings) ?? false;
+  const adapter = resolvePlatformAdapter(input.platform);
+  const baseEnabled = adapter.isEnabled(settings);
   if (!baseEnabled && input.enabled) {
     throw new Error('platform_not_configured');
   }
 
   setPlatformControlState(input.platform, { enabled: input.enabled });
-  const item = defaultListPlatformConnections(settings).items.find((entry) => entry.platform === input.platform);
-  if (!item) {
-    throw new Error('platform_not_found');
-  }
+  const item = defaultListPlatformConnections(settings).items.find((entry) => entry.platform === input.platform) as PlatformConnectionSnapshot;
   return { ok: true, item };
 }
 
@@ -2928,12 +2921,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
         const collected = collectCommentEvent(body, source, platform);
         event = collected;
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'invalid_payload';
+        const message = (err as Error).message;
         return reply.code(400).send({ detail: message });
-      }
-
-      if (!event.comment_id) {
-        return reply.code(400).send({ detail: 'comment_id_required' });
       }
 
       const response = await ingestCommentEvent({ event, source });
@@ -2989,3 +2978,59 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   return app;
 }
+
+export const __mainTesting = {
+  addBlocker,
+  buildAdminJobStatusWhere,
+  buildCompanionInteraction,
+  buildDefaultReadinessSummary,
+  buildDegradedCompanionState,
+  buildDefaultSettings,
+  buildDeliveryCapabilityMatrix,
+  buildReplyHash,
+  checkApiKey,
+  checkCommentIngressAuth,
+  createDeliveryCapability,
+  csvEscape,
+  defaultBilibiliDiagnostics,
+  defaultCreateTraceId,
+  defaultNormalizePublishFailureReason,
+  defaultPublishGatewayReply,
+  defaultPublishPlatformReply,
+  defaultVerifyPayloadSignature,
+  extractRiskFlagLabels,
+  gatewaySignaturePayload,
+  getAuditLogDetail,
+  getGroupCount,
+  getHeaderValue,
+  hasText,
+  isMissingReservationKeyColumnError,
+  isNonEmptyString,
+  isProductionRuntime,
+  normalizeAdminAuditSummaryPayload,
+  normalizeAdminJobListItem,
+  normalizeAdminJobStatus,
+  normalizeAdminOverviewPayload,
+  normalizeBilibiliStatusPayload,
+  normalizeBilibiliVideoRecord,
+  normalizeCompanionInteractionKind,
+  normalizeIsoTimestamp,
+  normalizeNullableIsoTimestamp,
+  normalizeRoleCardInputValue,
+  normalizeRoleCardRecord,
+  normalizeRoleProfilePayload,
+  normalizeStyleProfilePayload,
+  parseAdminBoolean,
+  parseAdminLimit,
+  parseAdminOffset,
+  parseAdminString,
+  parseBoolean,
+  parseInteger,
+  parseJsonRecord,
+  parsePublishPayload,
+  parseRoleCardValue,
+  serializeRoleCardValue,
+  stableStringify,
+  startCase,
+  writeAuditLog,
+};

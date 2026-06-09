@@ -106,6 +106,28 @@ For production signoff of QQ or Douyin delivery, keep the expanded-scope preflig
 - QQ: `QQ_DRIVER_MODE=webhook_proxy` with a reachable `QQ_UPSTREAM_URL`, or `QQ_DRIVER_MODE=onebot_http` with a reachable `QQ_ONEBOT_URL`.
 - `mock` sidecar modes are local-only and cannot be counted as remote production acceptance.
 
+Repository-managed remote sidecar smoke:
+
+```bash
+npm run smoke:remote-platform -- \
+  --platform douyin \
+  --url "https://<verified-douyin-sidecar>" \
+  --token "$DOUYIN_SIDECAR_TOKEN" \
+  --confirm-remote \
+  --report ./.artifacts/staging/douyin-remote-signoff.json
+
+npm run smoke:remote-platform -- \
+  --platform qq \
+  --url "https://<verified-qq-sidecar>" \
+  --token "$QQ_SIDECAR_TOKEN" \
+  --qq-target group \
+  --qq-group-id "<group-id>" \
+  --confirm-remote \
+  --report ./.artifacts/staging/qq-remote-signoff.json
+```
+
+The remote smoke helper refuses localhost and `example.*` URLs unless `--allow-local` is passed. Do not use `--allow-local` for production signoff reports. A passing remote report is picked up by `npm run completion:gate` together with the native Bilibili real-chain report.
+
 For the final expanded-scope evidence package, use these repo-managed templates:
 
 - `backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md`

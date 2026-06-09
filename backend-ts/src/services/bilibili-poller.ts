@@ -137,7 +137,6 @@ async function pollVideoComments(
   prisma: PrismaClient,
   video: { id: number; bvid: string; aid: number | null; last_rpid: number },
   config: BilibiliRuntimeConfig,
-  onlyNew = true,
 ): Promise<PollVideoResult> {
   // Ensure we have an aid
   let aid = video.aid;
@@ -175,7 +174,7 @@ async function pollVideoComments(
     }
   }
 
-  const lastRpid = onlyNew ? video.last_rpid : 0;
+  const lastRpid = video.last_rpid;
   const allComments: BilibiliComment[] = [];
   let hasMore = true;
   let page = 1;
@@ -196,7 +195,7 @@ async function pollVideoComments(
       break;
     }
 
-    if (onlyNew && lastRpid > 0) {
+    if (lastRpid > 0) {
       const newOnes = comments.filter((c) => c.rpid > lastRpid);
       if (newOnes.length > 0) {
         allComments.push(...newOnes);

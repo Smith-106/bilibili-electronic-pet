@@ -89,6 +89,9 @@ function loadReplyRules(): ReplyRules {
   if (process.env.REPLY_BASE_PROBABILITY) {
     rules.baseReplyProbability = parseFloat(process.env.REPLY_BASE_PROBABILITY);
   }
+  if (process.env.REPLY_GLOBAL_COOLDOWN_ENABLED) {
+    rules.globalCooldownEnabled = process.env.REPLY_GLOBAL_COOLDOWN_ENABLED !== 'false';
+  }
   if (process.env.REPLY_COOLDOWN_MINUTES) {
     rules.defaultCooldownMinutes = parseInt(process.env.REPLY_COOLDOWN_MINUTES, 10);
   }
@@ -358,4 +361,8 @@ export const decideSafetyAction: DecideSafetyActionService = (safe, riskFlags) =
 
   // Default to manual queue for unsafe content
   return 'manual_queue';
+};
+
+export const __deciderTesting = {
+  loadReplyRules,
 };

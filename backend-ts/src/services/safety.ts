@@ -233,12 +233,10 @@ function checkPii(text: string): { detected: boolean; matches: Array<{ type: str
     if (!findings) continue;
     for (const finding of findings) {
       const value = String(finding).trim();
-      if (value) {
-        const key = `${piiType}:${value}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          matches.push({ type: piiType, value });
-        }
+      const key = `${piiType}:${value}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        matches.push({ type: piiType, value });
       }
     }
   }
@@ -304,12 +302,7 @@ export const safetyCheck: SafetyCheckService = async (text) => {
   const spamScore = checkSpam(text, config);
   const urlScore = checkUrls(text, config);
 
-  let maxCategoryScore = 0;
-  for (const [, score] of categoryScores.entries()) {
-    if (score > maxCategoryScore) {
-      maxCategoryScore = score;
-    }
-  }
+  const maxCategoryScore = Math.max(0, ...categoryScores.values());
 
   const weights = { categories: 0.5, profanity: 0.3, spam: 0.1, urls: 0.1 };
   const totalScore = Math.min(
@@ -345,4 +338,18 @@ export const safetyCheck: SafetyCheckService = async (text) => {
   }
 
   return [decision === 'ok', riskFlags];
+};
+
+export const __safetyTesting = {
+  checkKeywordBlacklist,
+  checkPii,
+  checkProfanity,
+  checkSpam,
+  checkUrls,
+  detectCategories,
+  isKeywordBlacklistEnabled,
+  isPiiDetectionEnabled,
+  loadKeywordBlacklist,
+  loadSafetyConfig,
+  maxReplyChars,
 };

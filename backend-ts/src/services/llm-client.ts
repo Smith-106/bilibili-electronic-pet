@@ -24,7 +24,7 @@ function loadLLMConfig(): LLMConfig {
     throw new Error(`Unsupported LLM_PROVIDER: ${provider}. Use openai, claude, or ollama`);
   }
   const apiKey = process.env.LLM_API_KEY || '';
-  const model = process.env.LLM_MODEL || 'gpt-4';
+  const model = process.env.LLM_MODEL || '';
   const baseUrl = process.env.LLM_BASE_URL || '';
   const temperature = parseFloat(process.env.LLM_TEMPERATURE || '0.7');
   const maxTokens = parseInt(process.env.LLM_MAX_TOKENS || '150', 10);
@@ -60,17 +60,6 @@ function loadLLMConfig(): LLMConfig {
         apiKey: '',
         model: model || 'llama3.1/latest',
         baseUrl: baseUrl || 'http://localhost:11434',
-        temperature,
-        maxTokens,
-        timeoutMs,
-        retries,
-      };
-    default:
-      return {
-        provider: 'openai',
-        apiKey,
-        model: model || 'gpt-4',
-        baseUrl: 'https://api.openai.com/v1',
         temperature,
         maxTokens,
         timeoutMs,
@@ -272,7 +261,7 @@ async function callLLMWithRetry(messages: LLMMessage[], config: LLMConfig): Prom
     try {
       return await callLLM(messages, config);
     } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+      lastError = error as Error;
       if (attempt < config.retries - 1) {
         const delay = Math.pow(2, attempt) * 1000;
         console.log(`[LLM] Retry ${attempt + 1}/${config.retries} after ${delay}ms`);
@@ -334,3 +323,12 @@ function generateFallbackReply(_comment: string, _roleProfile: string, _lengthMo
   const templates = ['收到你的评论了!谢谢支持~', '你好呀,感谢关注~', '哈哈, 有意思~'];
   return templates[Math.floor(Math.random() * templates.length)];
 }
+
+export const __llmClientTesting = {
+  buildMessages,
+  callLLM,
+  callLLMWithRetry,
+  generateFallbackReply,
+  loadLLMConfig,
+  parseLLMResponse,
+};

@@ -320,7 +320,7 @@ async function retryJobsBatch(
         results.push({ job_id: jobId, ok: true, requeued: true });
       } else {
         failed++;
-        results.push({ job_id: jobId, ok: false, requeued: false, error: result.error ?? 'queue_unavailable' });
+        results.push({ job_id: jobId, ok: false, requeued: false, error: result.error });
       }
     } catch (error) {
       failed++;

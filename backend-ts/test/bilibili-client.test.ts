@@ -119,11 +119,110 @@ describe('bilibili-client runtime config integration', () => {
     expect(result).toEqual({ success: false, rpid: '' });
   });
 
+  it('clears the reply timeout when reading an HTTP error response throws', async () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 500,
+      text: async () => {
+        throw new Error('body unavailable');
+      },
+    });
+
+    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
+      success: false,
+      rpid: '',
+    });
+    expect(clearTimeoutSpy).toHaveBeenCalled();
+  });
+
+  it('returns a safe failure when the reply API payload is not successful', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: -101,
+        message: 'not logged in',
+      }),
+    });
+
+    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
+      success: false,
+      rpid: '',
+    });
+  });
+
+  it('uses the raw payload as the reply API error fallback when no message is returned', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: -101,
+        data: { reason: 'missing-message' },
+      }),
+    });
+
+    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
+      success: false,
+      rpid: '',
+    });
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[Bilibili] Reply failed:',
+      expect.objectContaining({
+        message: expect.stringContaining('"missing-message"'),
+      }),
+    );
+  });
+
+  it('returns a safe failure when the reply request throws', async () => {
+    fetchMock.mockRejectedValue(new Error('network offline'));
+
+    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
+      success: false,
+      rpid: '',
+    });
+  });
+
+  it('aborts reply requests after the configured timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    fetchMock.mockImplementation(
+      async (_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+
+    const pending = postReply('12345', 'hello', { ...runtimeConfig, timeout: 10 });
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(pending).resolves.toEqual({
+      success: false,
+      rpid: '',
+    });
+  });
+
   it('reports whether a runtime credential is available', async () => {
-    loadBilibiliRuntimeConfig.mockResolvedValueOnce(runtimeConfig).mockResolvedValueOnce(null);
+    loadBilibiliRuntimeConfig
+      .mockResolvedValueOnce(runtimeConfig)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ ...runtimeConfig, sessdata: '' });
 
     await expect(isBilibiliConfigured()).resolves.toBe(true);
     await expect(isBilibiliConfigured()).resolves.toBe(false);
+    await expect(isBilibiliConfigured()).resolves.toBe(false);
+  });
+
+  it('reports auth probe as not configured when no credential is available', async () => {
+    loadBilibiliRuntimeConfig.mockResolvedValue(null);
+
+    await expect(probeBilibiliAuth()).resolves.toEqual({
+      ok: false,
+      reason: 'not_configured',
+    });
   });
 
   it('verifies runtime auth through the nav endpoint', async () => {
@@ -168,6 +267,63 @@ describe('bilibili-client runtime config integration', () => {
     });
   });
 
+  it('reports HTTP auth probe failures with status', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+    });
+
+    await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
+      ok: false,
+      reason: 'http_503',
+      status: 503,
+    });
+  });
+
+  it('uses API error messages and fallback probe reasons', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: -1,
+          message: ' auth expired ',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          code: -1,
+          message: '   ',
+        }),
+      });
+
+    await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
+      ok: false,
+      reason: 'auth expired',
+      status: 200,
+    });
+    await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
+      ok: false,
+      reason: 'api_error',
+      status: 200,
+    });
+  });
+
+  it('normalizes Error and non-Error auth probe exceptions', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('nav timeout')).mockRejectedValueOnce('');
+
+    await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
+      ok: false,
+      reason: 'nav timeout',
+    });
+    await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
+      ok: false,
+      reason: 'probe_failed',
+    });
+  });
+
   it('caps auth probe timeout to a readiness-friendly window', async () => {
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
     loadBilibiliRuntimeConfig.mockResolvedValue(runtimeConfig);
@@ -181,6 +337,22 @@ describe('bilibili-client runtime config integration', () => {
     });
 
     await probeBilibiliAuth();
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
+  });
+
+  it('falls back to the default auth probe timeout for invalid configured timeouts', async () => {
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: { isLogin: true },
+      }),
+    });
+
+    await probeBilibiliAuth({ ...runtimeConfig, timeout: 0 });
 
     expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 5000);
   });
