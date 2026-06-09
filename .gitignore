@@ -13,6 +13,7 @@ frontend/node_modules/
 node_modules/
 **/node_modules/
 **/dist/
+output/playwright/
 backend-ts/coverage/
 *.sqlite3
 *.db

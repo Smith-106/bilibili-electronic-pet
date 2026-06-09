@@ -1,0 +1,24 @@
+{
+  "name": "bilibili-electronic-pet",
+  "private": true,
+  "version": "1.2.0",
+  "type": "module",
+  "description": "Repository-level validation scripts for the Bilibili Electronic Pet MVP.",
+  "scripts": {
+    "test": "npm --prefix backend-ts test && npm --prefix frontend test && npm --prefix pet-companion-web test && npm --prefix douyin-sidecar test && npm --prefix qq-sidecar test",
+    "test:ui": "playwright test",
+    "build": "npm --prefix backend-ts run build && npm --prefix frontend run build && npm --prefix pet-companion-web run build && npm --prefix docs-site run build && npm --prefix douyin-sidecar run build && npm --prefix qq-sidecar run build",
+    "lint": "npm --prefix backend-ts run lint",
+    "deploy:config": "docker compose config && docker compose -f backend-ts/docker-compose.yml config",
+    "staging:preflight": "npm --prefix backend-ts run staging:check -- --preflight-only --expanded-scope-trial --env-file ../.env.expanded-scope.preflight.example",
+    "audit:high": "npm audit --audit-level=high && npm --prefix backend-ts audit --audit-level=high && npm --prefix frontend audit --audit-level=high && npm --prefix pet-companion-web audit --audit-level=high && npm --prefix docs-site audit --audit-level=high && npm --prefix douyin-sidecar audit --audit-level=high && npm --prefix qq-sidecar audit --audit-level=high",
+    "check": "npm run lint && npm run test && npm run build && npm run test:ui && npm run staging:preflight && npm run deploy:config && npm run audit:high"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=9.0.0"
+  }
+}
