@@ -93,6 +93,8 @@ jobs:
           PORT: 18000
           BASE_URL: http://127.0.0.1:18000
           API_KEY: ci-admin-key
+          GATEWAY_TOKEN: ci-gateway-token
+          GATEWAY_HMAC_SECRET: ci-hmac-secret-32-bytes!!
           COMMENT_INGRESS_TOKEN: ci-comment-ingress-token
           DATABASE_URL: file:./ci-smoke.db
           LLM_PROVIDER: openai
