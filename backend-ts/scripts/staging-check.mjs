@@ -405,6 +405,18 @@ function fetchTextViaCurl(url, options = {}) {
     args.push('--resolve', `${target.hostname}:${port}:${directIp}`);
   }
 
+  if (options.body != null) {
+    const requestBodyPath = resolve(tmpDir, 'request-body.bin');
+    const requestBody =
+      typeof options.body === 'string' || Buffer.isBuffer(options.body)
+        ? options.body
+        : options.body instanceof Uint8Array
+          ? Buffer.from(options.body)
+          : String(options.body);
+    writeFileSync(requestBodyPath, requestBody);
+    args.push('--data-binary', `@${requestBodyPath}`);
+  }
+
   args.push(url);
 
   try {

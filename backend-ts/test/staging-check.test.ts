@@ -48,12 +48,18 @@ function runPreflight(envText, extraArgs = []) {
   };
 }
 
-async function runStrictWithStubRuntime(envText) {
+async function runStrictWithStubRuntime(
+  envText,
+  options: {
+    forceLoginCurlFallback?: boolean;
+  } = {},
+) {
   const tempDir = mkdtempSync(join(tmpdir(), 'staging-check-strict-'));
   const envFile = join(tempDir, 'strict.env');
   const reportPath = join(tempDir, 'report.json');
   tempDirs.push(tempDir);
   const stubSessionToken = 'stub-session-token';
+  let loginAttempts = 0;
 
   writeFileSync(envFile, envText, 'utf8');
 
@@ -259,6 +265,13 @@ async function runStrictWithStubRuntime(envText) {
       return;
     }
     if (url === '/api/admin/session/login' && request.method === 'POST') {
+      loginAttempts += 1;
+      if (options.forceLoginCurlFallback && loginAttempts === 1) {
+        response.writeHead(403, { 'Content-Type': 'text/html' });
+        response.end('<!doctype html><html><body>challenge</body></html>');
+        return;
+      }
+
       const body = await readJsonBody(request);
       if (body.api_key !== 'runtime-key') {
         response.writeHead(401, { 'Content-Type': 'application/json' });
@@ -620,6 +633,30 @@ PUBLISHER_MODE=manual_queue
       checker_env: expect.stringContaining('staging-check itself'),
       target_runtime: expect.stringContaining('/readiness'),
     });
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: 'admin_session_login', status: 'passed' }),
+        expect.objectContaining({ name: 'protected_companion_action', status: 'passed' }),
+      ]),
+    );
+  });
+
+  it('preserves POST body when retrying admin session login through curl fallback', async () => {
+    const { result, report } = await runStrictWithStubRuntime(
+      `
+LLM_PROVIDER=mock
+SEARCH_PROVIDER=serpapi
+PUBLISHER_MODE=manual_queue
+`,
+      { forceLoginCurlFallback: true },
+    );
+
+    if (result.status !== 0) {
+      throw new Error(`strict stub with curl fallback failed: status=${String(result.status)}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    }
+    expect(result.stdout).toContain('== STAGING CHECK PASS ==');
+    expect(result.stderr).toContain('/api/admin/session/login');
+    expect(result.stderr).toContain('retrying with curl fallback');
     expect(report.checks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'admin_session_login', status: 'passed' }),
