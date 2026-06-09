@@ -12,6 +12,8 @@
 
 按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend MVP 候选**，不包含 QQ / Douyin 等试点链路，也不把 companion 预览面算作已签收产品能力。
 
+`2026-06-08` 修复版的 “100%” 口径限定为 **Bilibili-first admin/backend MVP 受限生产上线标准**：仓库内可修复项已经收口，真实 B 站凭证、Douyin / QQ 外部 endpoint、远端客户环境 smoke 仍必须由实际部署配置和外部服务完成后另行验收。
+
 当前候选基线已完成：
 
 - TypeScript 后端正式基线固化
@@ -20,6 +22,8 @@
 - 管理后台 pet / platform / memory 等运营能力增强
 - `/readiness` foundation / delivery / product 多层门禁升级
 - backend / frontend / pet-companion-web 本地测试与构建验证
+- backend / frontend / pet-companion-web / docs-site / douyin-sidecar / qq-sidecar 依赖审计清零
+- 生产环境管理面与发布网关默认 fail-closed：缺少 `API_KEY` 或网关凭证时不再默认放行
 - 宿主机与容器内 `prisma:migrate:prod` 部署路径验证
 
 平台支持范围：
@@ -45,7 +49,7 @@ Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
 - 集成能力：支持 B 站评论轮询、B 站凭证管理、视频监控、手动触发轮询、发布网关、审计与后台运营
 - Companion：`pet-companion-web` 当前已由 backend 以 `/companion` 静态托管，`/companion/state-v2` 与受保护 `/companion/actions` 已接通；但该面仍属于 preview / partial 范围，不纳入当前 signed-off MVP
-- 最新 repo-local 验证快照：`2026-06-08` 已验证 backend `245`、frontend `44`、`pet-companion-web` `20` tests 与三端 builds 全部通过
+- 最新 repo-local 验证快照：`2026-06-08` 已验证 backend、frontend、`pet-companion-web`、`douyin-sidecar`、`qq-sidecar` 的测试/构建与各 package `npm audit` 全部通过
 - `2026-06-08` fresh DB 验证已通过：宿主机 3 组全新 SQLite 数据库均可通过 `npm --prefix backend-ts run prisma:migrate:prod`
 - `2026-06-08` 容器验证已通过：`docker run --rm -e DATABASE_URL=file:/tmp/container-smoke.db bilibili-electronic-pet:goal npm run prisma:migrate:prod` 成功
 - `2026-06-08` 本地运行态验收已通过：`staging-check --base-url http://127.0.0.1:18081 --api-key runtime-admin-key` 成功，`/api/admin/session/login` 与受保护 `/companion/actions` 闭环正常
@@ -301,7 +305,7 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 
 - 本地默认（mock/manual_queue）：`LLM_PROVIDER=mock`、`PUBLISHER_MODE=manual_queue`，不需要外部密钥，`/readiness.delivery_ready` 预期为 false。
 - Preflight（仅检查配置，不请求运行时）：准备一份 env 文件，包含真实链路所需的密钥；运行 `npm run staging:check -- --preflight-only --env-file <file>` 可看到缺失项。关键字段：`LLM_PROVIDER`(非 mock 时需要 `LLM_API_KEY`)、`SEARCH_API_KEY`/`SEARCH_CX`、`PUBLISHER_MODE=webhook` 时的 `PUBLISHER_WEBHOOK_URL`/`PUBLISHER_WEBHOOK_TOKEN`，或开启原生发布时的 `BILIBILI_*` 凭证与开关。
-- Strict（运行时就绪 + 管理面）：需要 API 进程可访问，`API_KEY` 可用；检查 `/health`、`/admin`、`/readiness`、`/api/admin/*`，并验证交付能力矩阵。仍可在无真实密钥时运行，但会暴露缺失项。
+- Strict（运行时就绪 + 管理面）：需要 API 进程可访问，`API_KEY` 可用；检查 `/health`、`/admin`、`/readiness`、`/api/admin/*`，并验证交付能力矩阵。非生产环境仍可在无真实密钥时运行并暴露缺失项；`NODE_ENV=production` 时管理 API 会在 auth 未配置时返回 `503 { detail: 'admin_auth_unconfigured' }`。
 - Webhook 交付（strict 基础上）：`PUBLISHER_MODE=webhook`，且 `PUBLISHER_WEBHOOK_URL`、`PUBLISHER_WEBHOOK_TOKEN` 已配置；`delivery_capabilities` 中 webhook 应为 configured。
 - 原生 B 站交付 / real-chain：`BILIBILI_ENABLED=true`、`BILIBILI_PUBLISH_ENABLED=true`，并提供凭证（DB 记录或环境三件套 `BILIBILI_SESSDATA`/`BILIBILI_BILI_JCT`/`BILIBILI_BUVID3`，可选 `BILIBILI_BUVID4`）和加密钥 `CREDENTIAL_ENCRYPTION_KEY`；`staging:check -- --strict --pre-release-real-chain` 会要求 `delivery_ready=true` 与各 release_gates 为 true。这里的 `real_auth_ready` 现在依赖运行时 auth probe，不再把“字段齐全”直接视为通过。
 
@@ -374,6 +378,7 @@ curl http://127.0.0.1:18000/readiness
 
 - 入口会先校验请求体，再按配置依次校验 `x-api-key`、`Authorization: Bearer <GATEWAY_TOKEN>`、`x-signature`
 - 只要配置了 `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET`，调用方就必须同时满足对应校验
+- `NODE_ENV=production` 时，`API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 三者必须全部配置；缺失任一项时发布接口返回 `503 { detail: 'gateway_auth_unconfigured' }`
 - 平台专用路由在平台未启用时会返回 `403 { detail: 'platform_disabled' }`
 - 常见错误响应包括：`400 { detail: 'invalid_payload' }`、`401 { detail: 'unauthorized' }`、`401 { detail: 'missing_signature' }`、`401 { detail: 'invalid_signature' }`
 - 请求体最少需要 `comment_id` 与 `reply_text`；可选字段包括 `force_publish`、`source`、`trace_id`
@@ -1184,6 +1189,7 @@ curl -X POST http://127.0.0.1:18000/events/comment/poller \
 
 #### 生产环境配置
 
+- `NODE_ENV=production`
 - `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 使用强随机值
 - 关闭 `LLM_FALLBACK_TO_MOCK`
 - 明确配置 `CREDENTIAL_ENCRYPTION_KEY`
@@ -1508,7 +1514,7 @@ docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
 
 实际覆盖内容包括：
 
-- `migrate` / `api` / `worker` 都直接使用 `ghcr.io/smith-106/bilibili-electronic-pet:latest`
+- `migrate` / `api` / `worker` 都直接使用 `GHCR_IMAGE_REF` 指向的预构建镜像
 - 配置了 `pull_policy: always`
 - 仍保留与默认 compose 相同的启动命令分工：
   - `migrate` → `npm run prisma:migrate:prod`
@@ -1520,7 +1526,7 @@ docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
 常见使用顺序是：
 
 1. 先准备好 `.env`
-2. 确认部署机器已经能拉取 `ghcr.io/smith-106/bilibili-electronic-pet:latest`
+2. 确认部署机器已经能拉取 `GHCR_IMAGE_REF` 指向的镜像
 3. 执行组合命令启动服务
 4. 用 `docker compose logs api worker migrate` 检查首轮启动结果
 5. 再执行 `/health` 与 `/readiness` 验证 API 是否就绪
@@ -1561,6 +1567,7 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 部署时优先确认这些变量：
 
 - `DATABASE_URL`
+- `NODE_ENV=production`
 - `API_KEY`
 - `GATEWAY_TOKEN`
 - `GATEWAY_HMAC_SECRET`
@@ -1570,6 +1577,15 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `BILIBILI_POLL_ENABLED`
 - `BILIBILI_PUBLISH_ENABLED`
 - `CREDENTIAL_ENCRYPTION_KEY`
+
+远端部署脚本不再携带旧主机、旧 SSH key、旧公共域名或固定 GHCR 仓库默认值。运行 `deploy-remote*.ps1` 时必须显式传参或设置：
+
+- `BILI_PET_DEPLOY_KEY_PATH`
+- `BILI_PET_DEPLOY_USER`
+- `BILI_PET_DEPLOY_HOST`
+- `BILI_PET_PUBLIC_BASE_URL`
+- `BILI_PET_GHCR_USERNAME`（GHCR 模式）
+- `BILI_PET_GHCR_IMAGE_REF` 或 `BILI_PET_GHCR_REPOSITORY`（GHCR 模式）
 
 - `.env.example:1` 中给出的 `DATABASE_URL` 仍带有 Python 时代风格的示例值，实际部署要与当前 Prisma / 运行环境匹配
 - `BILIBILI_ENABLED=true` 且 `BILIBILI_PUBLISH_ENABLED=true` 时，会优先走 B 站原生发布，覆盖普通 `PUBLISHER_MODE`
@@ -1946,8 +1962,9 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 因此，当前最准确的状态表述是：
 
 1. 主运行链路已完成迁移，并继续以 `WFS-bilibili-delivery-readiness-20260408` 作为最后一条已签收 rollout baseline
-2. `2026-06-08` 的本地候选版本是当前最强 repo-local 证据：backend `245`、frontend `44`、`pet-companion-web` `20` tests 与三端 builds 全部通过，fresh DB 与容器内 `prisma:migrate:prod` 均已验证
+2. `2026-06-08` 的本地候选版本是当前最强 repo-local 证据：backend、frontend、`pet-companion-web`、`douyin-sidecar`、`qq-sidecar` 的测试/构建与各 package `npm audit` 均已通过，fresh DB 与容器内 `prisma:migrate:prod` 均已验证
 3. 当前可诚实宣称的范围应限定为 `Bilibili-first admin/backend MVP`；QQ / Douyin 仍属于试点或外部配置未完成范围
 4. 管理后台与 Bilibili automation 面已经成熟；companion 已进入运行时集成，但完整 electronic-pet 与多平台产品能力仍只能判定为 preview / partial
+5. 生产环境必须配置 `API_KEY`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET` 与 `NODE_ENV=production`；缺少这些门禁时不能声明为可上线环境
 
 这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。

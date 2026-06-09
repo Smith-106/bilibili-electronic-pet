@@ -45,6 +45,10 @@ function isPublishingReady(snapshot: PlatformConnectionSnapshot): boolean {
   return publishCapability?.status === 'available' || publishCapability?.status === 'partial';
 }
 
+function isProductionRuntime(): boolean {
+  return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+}
+
 export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRouteDependencies): void {
   app.get('/readiness', async () => {
     const dbStatus = await deps.checkDatabaseConnection();
@@ -173,7 +177,9 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     let companionState: CompanionStateV2 | null = null;
     try {
       companionState = await deps.getCompanionStateV2();
-    } catch {}
+    } catch {
+      companionState = null;
+    }
 
     let platformConnections: PlatformConnectionSnapshot[] = [];
     let platformStatusAvailable = true;
@@ -196,6 +202,13 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
 
     const bilibiliReferencePlatform =
       platformConnections.find((entry) => entry.platform === 'bilibili') ?? null;
+    const gatewayAuthConfigured = Boolean(
+      deps.settings.apiKey?.trim() && deps.settings.gatewayToken?.trim() && deps.settings.gatewayHmacSecret?.trim(),
+    );
+    if (isProductionRuntime() && !gatewayAuthConfigured) {
+      deps.addBlocker(productBlockers, 'gateway_auth:unconfigured');
+    }
+
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
     const productReadiness = {
       scope: {
@@ -215,6 +228,7 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       bilibili_delivery_contract: {
         ready: deliveryReady,
         effective_publish_mode: effectivePublishMode,
+        gateway_auth_configured: gatewayAuthConfigured,
         delivery_capability_blocker_count: deliveryCapabilities.blockers.length,
         delivery_blocker_count: deliveryBlockers.length,
       },

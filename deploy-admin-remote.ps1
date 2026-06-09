@@ -1,7 +1,7 @@
 param(
-  [string]$KeyPath = "C:\Users\32852\Desktop\服务器\azure\ssh-key-2026-02-10.key",
-  [string]$User = "azureuser",
-  [string]$RemoteHost = "20.194.7.31",
+  [string]$KeyPath = $env:BILI_PET_DEPLOY_KEY_PATH,
+  [string]$User = $env:BILI_PET_DEPLOY_USER,
+  [string]$RemoteHost = $env:BILI_PET_DEPLOY_HOST,
   [string]$RemoteAppDir = "/opt/bilibili-electronic-pet",
   [string]$ApiContainer = "bilibili-electronic-pet_api_1",
   [string]$ComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.yml",
@@ -9,6 +9,7 @@ param(
   [switch]$SkipBuild,
   [switch]$SkipPersistImage,
   [switch]$SkipRecreate,
+  [string]$PublicBaseUrl = $env:BILI_PET_PUBLIC_BASE_URL,
   [bool]$VerifyPublic = $true
 )
 
@@ -16,6 +17,29 @@ param(
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 chcp 65001 > $null
 $ErrorActionPreference = "Stop"
+
+function Assert-RequiredValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [AllowEmptyString()][string]$Value,
+    [Parameter(Mandatory = $true)][string]$Hint
+  )
+
+  if (-not $Value) {
+    throw "$Name is required. $Hint"
+  }
+}
+
+Assert-RequiredValue -Name 'KeyPath' -Value $KeyPath -Hint 'Pass -KeyPath or set BILI_PET_DEPLOY_KEY_PATH.'
+Assert-RequiredValue -Name 'User' -Value $User -Hint 'Pass -User or set BILI_PET_DEPLOY_USER.'
+Assert-RequiredValue -Name 'RemoteHost' -Value $RemoteHost -Hint 'Pass -RemoteHost or set BILI_PET_DEPLOY_HOST.'
+if ($VerifyPublic) {
+  Assert-RequiredValue -Name 'PublicBaseUrl' -Value $PublicBaseUrl -Hint 'Pass -PublicBaseUrl or set BILI_PET_PUBLIC_BASE_URL.'
+  $PublicBaseUrl = $PublicBaseUrl.TrimEnd('/')
+}
+if (-not (Test-Path -LiteralPath $KeyPath)) {
+  throw "KeyPath does not exist: $KeyPath"
+}
 
 $repoRoot = $PSScriptRoot
 $adminDir = Join-Path $repoRoot "backend-ts/public/admin"
@@ -129,7 +153,7 @@ rm -rf $remoteBundleDir
     $verified = $false
     for ($i = 0; $i -lt 12; $i++) {
       $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-      $html = curl.exe -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "https://pet.nikoniko.tech/admin?bust=$bust"
+      $html = curl.exe -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "$PublicBaseUrl/admin?bust=$bust"
       if ($html -match [regex]::Escape($expectedAsset)) {
         $verified = $true
         break
@@ -140,7 +164,7 @@ rm -rf $remoteBundleDir
       throw "public verification failed for asset $expectedAsset"
     }
 
-    & curl.exe -fsS https://pet.nikoniko.tech/health
+    & curl.exe -fsS "$PublicBaseUrl/health"
     if ($LASTEXITCODE -ne 0) {
       throw "public health verification failed"
     }

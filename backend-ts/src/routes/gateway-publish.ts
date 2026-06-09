@@ -52,6 +52,10 @@ function normalizeGatewayLogItems(
   }));
 }
 
+function isProductionRuntime(): boolean {
+  return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
+}
+
 export function registerGatewayPublishRoutes(
   app: FastifyInstance,
   deps: GatewayPublishRouteDependencies,
@@ -67,6 +71,12 @@ export function registerGatewayPublishRoutes(
     }
 
     const expectedApiKey = deps.settings.apiKey.trim();
+    const expectedToken = deps.settings.gatewayToken.trim();
+    const hmacSecret = deps.settings.gatewayHmacSecret.trim();
+    if (isProductionRuntime() && (!expectedApiKey || !expectedToken || !hmacSecret)) {
+      return { statusCode: 503, body: { detail: 'gateway_auth_unconfigured' } };
+    }
+
     if (expectedApiKey) {
       const providedApiKey = deps.getHeaderValue(headers['x-api-key']).trim();
       if (providedApiKey !== expectedApiKey) {
@@ -76,7 +86,6 @@ export function registerGatewayPublishRoutes(
 
     const traceId = deps.createTraceId(payload.trace_id ?? deps.getHeaderValue(headers['x-trace-id']));
 
-    const expectedToken = deps.settings.gatewayToken.trim();
     if (expectedToken) {
       const authorization = deps.getHeaderValue(headers.authorization);
       const expectedAuthorization = `Bearer ${expectedToken}`;
@@ -85,7 +94,6 @@ export function registerGatewayPublishRoutes(
       }
     }
 
-    const hmacSecret = deps.settings.gatewayHmacSecret.trim();
     if (hmacSecret) {
       const signature = deps.getHeaderValue(headers['x-signature']);
       if (!signature) {

@@ -74,6 +74,30 @@ Remote status probe on 2026-04-13 also confirmed the live host is healthy but st
 
 The repo can still prepare the next retry even before the external endpoint exists.
 
+## Deploy Script Configuration
+
+The remote deployment scripts are now fail-closed by default. They no longer embed a live host, SSH key, public domain, GHCR user, or GHCR repository. Provide these values explicitly on the command line or through environment variables before running a remote operation:
+
+- `BILI_PET_DEPLOY_KEY_PATH`
+- `BILI_PET_DEPLOY_USER`
+- `BILI_PET_DEPLOY_HOST`
+- `BILI_PET_PUBLIC_BASE_URL`
+- `BILI_PET_GHCR_USERNAME` for GHCR deploys
+- `BILI_PET_GHCR_IMAGE_REF` for pinned image deploys
+- `BILI_PET_GHCR_REPOSITORY` for `-GitRef` image resolution
+
+Example:
+
+```powershell
+$env:BILI_PET_DEPLOY_KEY_PATH = "C:\path\to\deploy.key"
+$env:BILI_PET_DEPLOY_USER = "azureuser"
+$env:BILI_PET_DEPLOY_HOST = "<host-or-ip>"
+$env:BILI_PET_PUBLIC_BASE_URL = "https://<public-host>"
+$env:BILI_PET_GHCR_USERNAME = "<github-user>"
+$env:BILI_PET_GHCR_REPOSITORY = "ghcr.io/<owner>/bilibili-electronic-pet"
+pwsh ./deploy-remote.ps1 -Mode ghcr -GitRef origin/master
+```
+
 ### Required Sidecar Contract
 
 The runtime currently posts this JSON body for sidecar publishing:
@@ -144,6 +168,7 @@ The following are not sufficient to mark Douyin trial as enabled:
     - `./deploy-remote.ps1 source -Ref origin/master`
     - `./deploy-remote.ps1 ghcr`
     - `./deploy-remote.ps1 status`
+  - Requires deploy target parameters or `BILI_PET_*` environment variables; missing required values fail before any SSH or deploy action.
 
 - `deploy-remote-douyin-trial.ps1`
   - Dedicated helper for the blocked external-platform retry path.
@@ -154,6 +179,7 @@ The following are not sufficient to mark Douyin trial as enabled:
     - `pwsh ./deploy-remote-douyin-trial.ps1 smoke -ApiKey <admin-api-key>`
     - `pwsh ./deploy-remote-douyin-trial.ps1 full -WebhookUrl <verified-endpoint> -ApiKey <admin-api-key>`
   - It does not invent rollout evidence; it only packages the apply/status/smoke sequence once external prerequisites are actually available.
+  - `plan` mode is local-only; `apply` / `status` / `smoke` / `full` require deploy target and public base URL configuration.
 
 - `deploy-admin-remote.ps1`
   - Use only when the live runtime is intentionally on the local-image compose path, or when you explicitly want an ephemeral container-only admin hot patch.
@@ -168,12 +194,12 @@ The following are not sufficient to mark Douyin trial as enabled:
 - `deploy-remote-ghcr.ps1`
   - Preferred live rollout path when the target image is already published to GHCR.
   - Uploads `docker-compose.deploy.ghcr.yml`, performs a temporary GHCR login on the server, pulls the selected GHCR image ref, recreates `api` and `worker`, verifies the public site, and logs out by default.
-  - Supports pinned deploys via `-ImageRef ghcr.io/smith-106/bilibili-electronic-pet:sha-<commit>`.
-  - Also supports ref-based deploys via `-GitRef origin/master`, which resolves to the matching published `sha-<commit>` tag.
+  - Supports pinned deploys via `-ImageRef ghcr.io/<owner>/bilibili-electronic-pet:sha-<commit>`.
+  - Also supports ref-based deploys via `-GitRef origin/master`, which resolves to the matching published `sha-<commit>` tag through `-GhcrRepository` / `BILI_PET_GHCR_REPOSITORY`.
 
 - `resolve-ghcr-image-ref.ps1`
   - Resolves a Git ref to a GHCR image reference.
-  - Example: `./resolve-ghcr-image-ref.ps1 -GitRef origin/master`
+  - Example: `./resolve-ghcr-image-ref.ps1 -GitRef origin/master -Repository ghcr.io/<owner>/bilibili-electronic-pet`
 
 - `deploy-remote-status.ps1`
   - Read-only remote status probe.
@@ -194,7 +220,7 @@ The following are not sufficient to mark Douyin trial as enabled:
 ## Recommended Operational Rule
 
 - Preferred live rollout for the current host: run `./deploy-remote.ps1 ghcr -GitRef origin/master`
-- Deploy a pinned GHCR image: run `./deploy-remote.ps1 ghcr -ImageRef ghcr.io/smith-106/bilibili-electronic-pet:sha-<commit>`
+- Deploy a pinned GHCR image: run `./deploy-remote.ps1 ghcr -ImageRef ghcr.io/<owner>/bilibili-electronic-pet:sha-<commit>`
 - Frontend-only admin hot patch on a local-image runtime: run `./deploy-remote.ps1 admin`
 - Host-side source rebuild or intentional runtime-source switch: run `./deploy-remote.ps1 source -Ref origin/master -AllowImageSourceChange`
 - Inspect live runtime source and public status: run `./deploy-remote.ps1 status`

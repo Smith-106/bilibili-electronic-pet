@@ -1,8 +1,9 @@
 param(
-  [string]$KeyPath = "C:\Users\32852\Desktop\服务器\azure\ssh-key-2026-02-10.key",
-  [string]$User = "azureuser",
-  [string]$RemoteHost = "20.194.7.31",
+  [string]$KeyPath = $env:BILI_PET_DEPLOY_KEY_PATH,
+  [string]$User = $env:BILI_PET_DEPLOY_USER,
+  [string]$RemoteHost = $env:BILI_PET_DEPLOY_HOST,
   [string]$RemoteAppDir = "/opt/bilibili-electronic-pet",
+  [string]$PublicBaseUrl = $env:BILI_PET_PUBLIC_BASE_URL,
   [bool]$VerifyPublic = $true
 )
 
@@ -10,6 +11,18 @@ param(
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 chcp 65001 > $null
 $ErrorActionPreference = "Stop"
+
+function Assert-RequiredValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [AllowEmptyString()][string]$Value,
+    [Parameter(Mandatory = $true)][string]$Hint
+  )
+
+  if (-not $Value) {
+    throw "$Name is required. $Hint"
+  }
+}
 
 function Invoke-CurlText {
   param(
@@ -23,6 +36,17 @@ function Invoke-CurlText {
     throw "curl failed: $([string]::Join(' ', $Arguments))"
   }
   return $output
+}
+
+Assert-RequiredValue -Name 'KeyPath' -Value $KeyPath -Hint 'Pass -KeyPath or set BILI_PET_DEPLOY_KEY_PATH.'
+Assert-RequiredValue -Name 'User' -Value $User -Hint 'Pass -User or set BILI_PET_DEPLOY_USER.'
+Assert-RequiredValue -Name 'RemoteHost' -Value $RemoteHost -Hint 'Pass -RemoteHost or set BILI_PET_DEPLOY_HOST.'
+if ($VerifyPublic) {
+  Assert-RequiredValue -Name 'PublicBaseUrl' -Value $PublicBaseUrl -Hint 'Pass -PublicBaseUrl or set BILI_PET_PUBLIC_BASE_URL.'
+  $PublicBaseUrl = $PublicBaseUrl.TrimEnd('/')
+}
+if (-not (Test-Path -LiteralPath $KeyPath)) {
+  throw "KeyPath does not exist: $KeyPath"
 }
 
 $remote = "$User@$RemoteHost"
@@ -62,14 +86,14 @@ cat /proc/swaps 2>/dev/null || true
   if ($VerifyPublic) {
     Write-Output "[deploy-status] public endpoints"
     $bust = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-    $adminHtml = Invoke-CurlText @('-fsSL', '-H', 'Cache-Control: no-cache', '-H', 'Pragma: no-cache', "https://pet.nikoniko.tech/admin?bust=$bust")
+    $adminHtml = Invoke-CurlText @('-fsSL', '-H', 'Cache-Control: no-cache', '-H', 'Pragma: no-cache', "$PublicBaseUrl/admin?bust=$bust")
     $asset = $adminHtml | Select-String -Pattern '/assets/index-[A-Za-z0-9_-]+\.js' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 1
     if (-not $asset) {
       throw "public admin asset not found"
     }
 
-    $health = Invoke-CurlText @('-fsS', 'https://pet.nikoniko.tech/health')
-    $readiness = Invoke-CurlText @('-fsS', 'https://pet.nikoniko.tech/readiness')
+    $health = Invoke-CurlText @('-fsS', "$PublicBaseUrl/health")
+    $readiness = Invoke-CurlText @('-fsS', "$PublicBaseUrl/readiness")
     $readinessObj = $readiness | ConvertFrom-Json
 
     Write-Output "admin_asset=$asset"

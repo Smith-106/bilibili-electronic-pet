@@ -40,7 +40,6 @@ import type {
   CompanionState,
   CompanionStateV2,
   ConnectionStatus,
-  InteractionEvent,
   GatewayPublishPayload,
   IdentityLink,
   KnowledgeEntry,
@@ -54,7 +53,6 @@ import type {
   PublishGatewayInput,
   PublishPlatformInput,
   PublishReservationInput,
-  ReplyJob,
   ReservePublishLogResult,
   RoleCard,
   RoleCardValue,
@@ -166,6 +164,10 @@ function parseBoolean(value: string | undefined, defaultValue: boolean): boolean
 function parseInteger(value: string | undefined, defaultValue: number): number {
   const parsed = Number.parseInt(value ?? '', 10);
   return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function isProductionRuntime(): boolean {
+  return String(process.env.NODE_ENV ?? '').trim().toLowerCase() === 'production';
 }
 
 function parseAdminLimit(value: unknown, defaultValue: number, min: number, max: number): number {
@@ -2598,7 +2600,14 @@ function checkApiKey(request: FastifyRequest, reply: FastifyReply, settings: Run
   }
 
   const expected = settings.apiKey.trim();
-  if (!expected) return true;
+  if (!expected) {
+    if (isProductionRuntime()) {
+      void reply.code(503).send({ detail: 'admin_auth_unconfigured' });
+      return false;
+    }
+    return true;
+  }
+
   const provided = getHeaderValue(request.headers['x-api-key']).trim();
   if (provided !== expected) {
     void reply.code(401).send({ detail: 'unauthorized' });

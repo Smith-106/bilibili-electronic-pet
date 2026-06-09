@@ -1,9 +1,10 @@
 param(
   [ValidateSet('plan', 'apply', 'status', 'smoke', 'full')]
   [string]$Mode = 'plan',
-  [string]$KeyPath = "C:\Users\32852\Desktop\服务器\azure\ssh-key-2026-02-10.key",
-  [string]$User = 'azureuser',
-  [string]$RemoteHost = '20.194.7.31',
+  [string]$KeyPath = $env:BILI_PET_DEPLOY_KEY_PATH,
+  [string]$User = $env:BILI_PET_DEPLOY_USER,
+  [string]$RemoteHost = $env:BILI_PET_DEPLOY_HOST,
+  [string]$PublicBaseUrl = $env:BILI_PET_PUBLIC_BASE_URL,
   [string]$RemoteEnvFile = '/etc/bilibili-pet/pre-release.env',
   [string]$WebhookUrl = '',
   [string]$WebhookToken = '',
@@ -18,6 +19,18 @@ param(
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 chcp 65001 > $null
 $ErrorActionPreference = 'Stop'
+
+function Assert-RequiredValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [AllowEmptyString()][string]$Value,
+    [Parameter(Mandatory = $true)][string]$Hint
+  )
+
+  if (-not $Value) {
+    throw "$Name is required. $Hint"
+  }
+}
 
 function New-ScopedKeyCopy {
   param([Parameter(Mandatory = $true)][string]$SourcePath)
@@ -63,6 +76,7 @@ function Invoke-Status {
     -KeyPath $KeyPath `
     -User $User `
     -RemoteHost $RemoteHost `
+    -PublicBaseUrl $PublicBaseUrl `
     -VerifyPublic:$true
   if ($LASTEXITCODE -ne 0) {
     throw "deploy-remote-status failed"
@@ -166,6 +180,14 @@ try {
   if ($Mode -eq 'plan') {
     Show-Plan
     return
+  }
+
+  Assert-RequiredValue -Name 'KeyPath' -Value $KeyPath -Hint 'Pass -KeyPath or set BILI_PET_DEPLOY_KEY_PATH.'
+  Assert-RequiredValue -Name 'User' -Value $User -Hint 'Pass -User or set BILI_PET_DEPLOY_USER.'
+  Assert-RequiredValue -Name 'RemoteHost' -Value $RemoteHost -Hint 'Pass -RemoteHost or set BILI_PET_DEPLOY_HOST.'
+  Assert-RequiredValue -Name 'PublicBaseUrl' -Value $PublicBaseUrl -Hint 'Pass -PublicBaseUrl or set BILI_PET_PUBLIC_BASE_URL.'
+  if (-not (Test-Path -LiteralPath $KeyPath)) {
+    throw "KeyPath does not exist: $KeyPath"
   }
 
   $tempKey = New-ScopedKeyCopy -SourcePath $KeyPath

@@ -70,6 +70,20 @@ function buildDeps(overrides: Partial<ServerDependencies> = {}): Partial<ServerD
   };
 }
 
+async function withNodeEnv<T>(value: string, run: () => Promise<T>): Promise<T> {
+  const previous = process.env.NODE_ENV;
+  process.env.NODE_ENV = value;
+  try {
+    return await run();
+  } finally {
+    if (previous == null) {
+      delete process.env.NODE_ENV;
+    } else {
+      process.env.NODE_ENV = previous;
+    }
+  }
+}
+
 beforeEach(() => {
   resetPlatformControlState();
 });
@@ -484,6 +498,25 @@ describe('health/readiness parity', () => {
     expect(data.public_companion_actions_enabled).toBe(false);
 
     await app.close();
+  });
+
+  it('surfaces production auth blockers in product readiness', async () => {
+    await withNodeEnv('production', async () => {
+      const app = createServer(buildDeps());
+
+      const response = await app.inject({ method: 'GET', url: '/readiness' });
+      const data = response.json();
+
+      expect(response.statusCode).toBe(200);
+      expect(data.product_ready).toBe(false);
+      expect(data.product_blockers).toContain('admin_auth:unconfigured');
+      expect(data.product_blockers).toContain('gateway_auth:unconfigured');
+      expect(data.product_readiness.bilibili_delivery_contract).toMatchObject({
+        gateway_auth_configured: false,
+      });
+
+      await app.close();
+    });
   });
 
   it('surfaces product readiness for the bilibili-first admin/backend MVP scope', async () => {
@@ -936,6 +969,23 @@ describe('gateway/auth parity', () => {
     comment_id: 'comment-1',
     reply_text: 'reply text',
   };
+
+  it('rejects production gateway publish when auth gates are unconfigured', async () => {
+    await withNodeEnv('production', async () => {
+      const app = createServer(buildDeps());
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/gateway/publish',
+        payload: basePayload,
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ detail: 'gateway_auth_unconfigured' });
+
+      await app.close();
+    });
+  });
 
   it('rejects invalid bearer token', async () => {
     const app = createServer(
@@ -1652,6 +1702,22 @@ describe('gateway/auth parity', () => {
 });
 
 describe('admin api parity', () => {
+  it('rejects production admin API access when auth is unconfigured', async () => {
+    await withNodeEnv('production', async () => {
+      const app = createServer(buildDeps());
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/admin/overview',
+      });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ detail: 'admin_auth_unconfigured' });
+
+      await app.close();
+    });
+  });
+
   it('requires x-api-key when configured', async () => {
     const app = createServer(
       buildDeps({

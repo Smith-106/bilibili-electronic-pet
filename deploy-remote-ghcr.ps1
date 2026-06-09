@@ -1,15 +1,17 @@
 param(
-  [string]$KeyPath = "C:\Users\32852\Desktop\服务器\azure\ssh-key-2026-02-10.key",
-  [string]$User = "azureuser",
-  [string]$RemoteHost = "20.194.7.31",
+  [string]$KeyPath = $env:BILI_PET_DEPLOY_KEY_PATH,
+  [string]$User = $env:BILI_PET_DEPLOY_USER,
+  [string]$RemoteHost = $env:BILI_PET_DEPLOY_HOST,
   [string]$RemoteAppDir = "/opt/bilibili-electronic-pet",
   [string]$BaseComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.yml",
   [string]$GhcrComposeFile = "/opt/bilibili-electronic-pet/docker-compose.deploy.ghcr.yml",
-  [string]$GhcrUsername = "Smith-106",
-  [string]$ImageRef = "ghcr.io/smith-106/bilibili-electronic-pet:latest",
+  [string]$GhcrUsername = $env:BILI_PET_GHCR_USERNAME,
+  [string]$ImageRef = $env:BILI_PET_GHCR_IMAGE_REF,
+  [string]$GhcrRepository = $env:BILI_PET_GHCR_REPOSITORY,
   [string]$GitRef = "",
   [string]$GhcrToken = "",
   [switch]$PersistLogin,
+  [string]$PublicBaseUrl = $env:BILI_PET_PUBLIC_BASE_URL,
   [bool]$VerifyPublic = $true
 )
 
@@ -17,6 +19,30 @@ param(
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 chcp 65001 > $null
 $ErrorActionPreference = "Stop"
+
+function Assert-RequiredValue {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [AllowEmptyString()][string]$Value,
+    [Parameter(Mandatory = $true)][string]$Hint
+  )
+
+  if (-not $Value) {
+    throw "$Name is required. $Hint"
+  }
+}
+
+Assert-RequiredValue -Name 'KeyPath' -Value $KeyPath -Hint 'Pass -KeyPath or set BILI_PET_DEPLOY_KEY_PATH.'
+Assert-RequiredValue -Name 'User' -Value $User -Hint 'Pass -User or set BILI_PET_DEPLOY_USER.'
+Assert-RequiredValue -Name 'RemoteHost' -Value $RemoteHost -Hint 'Pass -RemoteHost or set BILI_PET_DEPLOY_HOST.'
+Assert-RequiredValue -Name 'GhcrUsername' -Value $GhcrUsername -Hint 'Pass -GhcrUsername or set BILI_PET_GHCR_USERNAME.'
+if ($VerifyPublic) {
+  Assert-RequiredValue -Name 'PublicBaseUrl' -Value $PublicBaseUrl -Hint 'Pass -PublicBaseUrl or set BILI_PET_PUBLIC_BASE_URL.'
+  $PublicBaseUrl = $PublicBaseUrl.TrimEnd('/')
+}
+if (-not (Test-Path -LiteralPath $KeyPath)) {
+  throw "KeyPath does not exist: $KeyPath"
+}
 
 $repoRoot = $PSScriptRoot
 $overridePath = Join-Path $repoRoot "docker-compose.deploy.ghcr.yml"
@@ -29,7 +55,8 @@ if ($GitRef) {
   if (-not (Test-Path $resolver)) {
     throw "missing GHCR resolver: $resolver"
   }
-  $ImageRef = (& $resolver -GitRef $GitRef).Trim()
+  Assert-RequiredValue -Name 'GhcrRepository' -Value $GhcrRepository -Hint 'Pass -GhcrRepository or set BILI_PET_GHCR_REPOSITORY.'
+  $ImageRef = (& $resolver -GitRef $GitRef -Repository $GhcrRepository).Trim()
 }
 
 if (-not $GhcrToken) {
@@ -107,11 +134,11 @@ fi
 
   if ($VerifyPublic) {
     Write-Output "[deploy-ghcr] verifying public health and admin"
-    $asset = & curl.exe -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "https://pet.nikoniko.tech/admin?bust=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" | Select-String -Pattern '/assets/index-[A-Za-z0-9_-]+\.js' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 1
+    $asset = & curl.exe -fsSL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "$PublicBaseUrl/admin?bust=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())" | Select-String -Pattern '/assets/index-[A-Za-z0-9_-]+\.js' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 1
     if (-not $asset) {
       throw "public admin asset verification failed"
     }
-    & curl.exe -fsS https://pet.nikoniko.tech/health
+    & curl.exe -fsS "$PublicBaseUrl/health"
     if ($LASTEXITCODE -ne 0) {
       throw "public health verification failed"
     }

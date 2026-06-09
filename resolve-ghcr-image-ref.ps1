@@ -1,6 +1,6 @@
 param(
   [string]$GitRef = "origin/master",
-  [string]$Repository = "ghcr.io/smith-106/bilibili-electronic-pet",
+  [string]$Repository = $env:BILI_PET_GHCR_REPOSITORY,
   [switch]$VerifyPublished = $true
 )
 
@@ -8,6 +8,10 @@ param(
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 chcp 65001 > $null
 $ErrorActionPreference = "Stop"
+
+if (-not $Repository) {
+  throw "Repository is required. Pass -Repository or set BILI_PET_GHCR_REPOSITORY."
+}
 
 $sha = (& git rev-parse $GitRef 2>$null).Trim()
 if (-not $sha) {
