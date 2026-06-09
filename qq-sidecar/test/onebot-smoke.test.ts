@@ -50,6 +50,9 @@ describe('onebot smoke report path normalization', () => {
   });
 
   it('uses process defaults when no path options are provided', () => {
-    expect(resolveReportOutputPath('report.json')).toBe(win32.resolve(process.cwd(), 'report.json'));
+    const expectedPath =
+      process.platform === 'win32' ? win32.resolve(process.cwd(), 'report.json') : resolve(process.cwd(), 'report.json');
+
+    expect(resolveReportOutputPath('report.json')).toBe(expectedPath);
   });
 });
