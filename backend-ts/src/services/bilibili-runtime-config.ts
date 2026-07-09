@@ -119,3 +119,33 @@ export async function loadBilibiliRuntimeConfig(
 
   return buildEnvironmentConfig();
 }
+
+/**
+ * Resolve the active persona identifier for antirisk signal attribution (TASK-002).
+ *
+ * Persona source: the `name` field of the active BilibiliCredential (is_active=true,
+ * latest updated_at). A-layer per-persona backoff + C-layer @self detection share this
+ * attribution key, so it MUST match the credential.name the @self gate matches against.
+ *
+ * Reuses the same query as loadBilibiliRuntimeConfig but selects only `name` (lighter row).
+ * Returns null when no active credential exists OR the lookup throws — the caller
+ * (publisher.ts publishIntentWithResult) treats null as a non-fatal persona attribution
+ * gap (logs warn, persists the antirisk signal with persona_id=null) so the tuple-return
+ * contract is never broken (L7). This is a foundational accessor, always runs (L8 — the
+ * A/C layers consume persona_id downstream; the accessor itself is not feature-flag-gated).
+ */
+export async function getActivePersonaName(prisma: BilibiliCredentialReader = getPrisma()): Promise<string | null> {
+  try {
+    const credential = await prisma.bilibiliCredential.findFirst({
+      where: { is_active: true },
+      orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      select: { name: true },
+    });
+    return credential?.name ?? null;
+  } catch (error) {
+    console.warn(
+      `[bilibili] getActivePersonaName failed; persona_id will be null for antirisk attribution: ${getErrorMessage(error)}`,
+    );
+    return null;
+  }
+}

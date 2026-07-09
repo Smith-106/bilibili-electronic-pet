@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createCommentEventQueueMock, tryEnqueueTaskMock } = vi.hoisted(() => ({
+const { createCommentEventQueueMock, tryEnqueueTaskMock, getActivePersonaNameMock } = vi.hoisted(() => ({
   createCommentEventQueueMock: vi.fn(),
   tryEnqueueTaskMock: vi.fn(),
+  getActivePersonaNameMock: vi.fn(),
 }));
 
 vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
@@ -11,6 +12,10 @@ vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
 
 vi.mock('../src/workers/task-queue.js', () => ({
   tryEnqueueTask: tryEnqueueTaskMock,
+}));
+
+vi.mock('../src/services/bilibili-runtime-config.js', () => ({
+  getActivePersonaName: getActivePersonaNameMock,
 }));
 
 import { createCommentIngestHelpers } from '../src/server/comment-ingest.js';
@@ -76,6 +81,7 @@ describe('comment ingest helper coverage', () => {
       close: vi.fn(async () => undefined),
     });
     tryEnqueueTaskMock.mockResolvedValue({ queued: true });
+    getActivePersonaNameMock.mockResolvedValue(null);
   });
 
   it('returns duplicate_ignored when duplicate insert has no pending backlog', async () => {
@@ -507,5 +513,51 @@ describe('comment ingest helper coverage', () => {
       error: 'redis refused connection',
     });
     expect(tryEnqueueTaskMock).not.toHaveBeenCalled();
+  });
+
+  it('attaches the active persona name to the comment-event queue payload for @self detection (TASK-002)', async () => {
+    const prisma = buildPrisma();
+    prisma.comment.create.mockResolvedValue({ id: 1 });
+    prisma.commentQueueBacklog.findUnique.mockResolvedValue(null);
+    getActivePersonaNameMock.mockResolvedValueOnce('bili-active-persona');
+    const deps = buildDeps(prisma);
+    const helpers = createCommentIngestHelpers(deps);
+
+    const result = await helpers.ingestInteractionEvent({
+      event: buildInteractionEvent(),
+      source: 'qq-sidecar',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      queued: true,
+      message: 'queued',
+      comment_id: 'comment-1',
+      trace_id: 'trace-input',
+    });
+    expect(getActivePersonaNameMock).toHaveBeenCalledTimes(1);
+    expect(tryEnqueueTaskMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ persona_id: 'bili-active-persona' }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it('does not attach persona_id when getActivePersonaName returns null but still enqueues', async () => {
+    const prisma = buildPrisma();
+    prisma.comment.create.mockResolvedValue({ id: 1 });
+    prisma.commentQueueBacklog.findUnique.mockResolvedValue(null);
+    const deps = buildDeps(prisma);
+    const helpers = createCommentIngestHelpers(deps);
+
+    await helpers.ingestInteractionEvent({
+      event: buildInteractionEvent(),
+      source: 'qq-sidecar',
+    });
+
+    const enqueuedPayload = tryEnqueueTaskMock.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(enqueuedPayload).toBeDefined();
+    expect('persona_id' in enqueuedPayload).toBe(false);
   });
 });

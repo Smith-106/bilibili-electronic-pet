@@ -10,7 +10,7 @@ import type { PublishIntentService, PublishReplyService } from './interfaces.js'
 import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
-import { loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
+import { getActivePersonaName } from './bilibili-runtime-config.js';
 import { recordAntiriskSignal } from './observability.js';
 import { createHash } from 'node:crypto';
 
@@ -169,29 +169,31 @@ function resolveIntentPlatform(intent: PublishIntent): string {
 }
 
 /**
- * Resolve the per-persona identifier for antirisk signal attribution.
+ * Resolve the per-persona identifier for antirisk signal attribution (TASK-002).
  *
- * TASK-001 wires the field through so it is never silently null. TASK-002 owns
- * a dedicated persona accessor; until it lands, we read the active BilibiliCredential
- * via loadBilibiliRuntimeConfig and derive a persona id from credentialId/credentialName.
- * Failures resolve to null (no throw) so the antirisk signal still records.
+ * Delegates to getActivePersonaName (the dedicated persona accessor in
+ * bilibili-runtime-config) which returns the active BilibiliCredential.name. persona_id
+ * is the credential.name string — consistent with the C-layer @self detection gate which
+ * matches on the same name field (L2: persona source = reuse BilibiliCredential.name/id,
+ * no new table).
+ *
+ * L7: publishIntentWithResult has a tuple-return contract and MUST NOT throw from here.
+ * getActivePersonaName already contains its own try/catch returning null on failure, but
+ * this wrapper adds a defensive outer guard so any unexpected throw still resolves to null
+ * (with a structured warn) rather than escaping into the antirisk-signal catch path.
  */
 async function resolveActivePersonaId(): Promise<string | null> {
   try {
-    const config = await loadBilibiliRuntimeConfig();
-    if (!config) {
-      return null;
-    }
-    if (config.source === 'database') {
-      if (config.credentialId !== null) {
-        return `bili:${config.credentialId}`;
-      }
-      if (config.credentialName) {
-        return `bili:${config.credentialName}`;
-      }
-    }
-    return config.source === 'environment' ? 'bili:env' : null;
-  } catch {
+    return await getActivePersonaName();
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'persona_id_resolution_failed',
+        error: msg,
+      }),
+    );
     return null;
   }
 }
@@ -488,10 +490,10 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     // not buffered). On DB failure the rejection propagates so readiness flags red.
     const subclass = classifyAntiriskSubclass(error);
     if (subclass) {
-      // persona_id attribution: read the active BilibiliCredential inline. TASK-002
-      // owns a dedicated persona accessor; until it lands, credentialId/credentialName
-      // from the runtime config serve as the per-persona attribution hook so the
-      // field is never silently null (ISS-20260709-005 per-persona attribution gap).
+      // persona_id attribution (TASK-002): read the active BilibiliCredential.name via
+      // getActivePersonaName. persona_id = credential.name string, shared with the C-layer
+      // @self detection gate. resolveActivePersonaId is fail-safe (null on any error, L7),
+      // so the antirisk signal still records even if the persona lookup fails.
       const personaId = await resolveActivePersonaId();
       await recordAntiriskSignal({
         event_type: 'antirisk_signal_detected',

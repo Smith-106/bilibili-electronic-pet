@@ -5,6 +5,7 @@ import {
   normalizeCommentEventToInteractionEvent,
   normalizeInteractionEventToCommentEvent,
 } from '../services/collector.js';
+import { getActivePersonaName } from '../services/bilibili-runtime-config.js';
 import {
   buildCommentEventQueuePayload,
   getPendingCommentQueueBacklog,
@@ -77,6 +78,17 @@ async function ingestInteractionEvent(
     source: input.source,
     traceId,
   });
+
+  // TASK-002: read the active persona name (BilibiliCredential.name) and attach it to the
+  // queue payload so the C-layer @self detection gate (TASK-003) can match incoming
+  // mentions against the bot's own persona. Read here (before the duplicate/queue split)
+  // so both the enqueue path AND the duplicate_ignored path carry the persona name — the
+  // non-enqueued path stays auditable via the structured payload. getActivePersonaName is
+  // fail-safe (null on error), so a persona lookup failure never breaks ingest.
+  const personaId = await getActivePersonaName();
+  if (personaId) {
+    queuePayload.persona_id = personaId;
+  }
 
   const prisma = deps.getPrisma();
   try {

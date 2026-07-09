@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { postReplyMock, prismaMock } = vi.hoisted(() => ({
+const { postReplyMock, prismaMock, getActivePersonaNameMock } = vi.hoisted(() => ({
   postReplyMock: vi.fn(),
   prismaMock: {
     publishLog: {
@@ -11,6 +11,7 @@ const { postReplyMock, prismaMock } = vi.hoisted(() => ({
       create: vi.fn(),
     },
   },
+  getActivePersonaNameMock: vi.fn(),
 }));
 
 vi.mock('../src/services/db-queries.js', () => ({
@@ -19,6 +20,10 @@ vi.mock('../src/services/db-queries.js', () => ({
 
 vi.mock('../src/services/bilibili-client.js', () => ({
   postReply: postReplyMock,
+}));
+
+vi.mock('../src/services/bilibili-runtime-config.js', () => ({
+  getActivePersonaName: getActivePersonaNameMock,
 }));
 
 const { publishIntentWithResult, publishReplyWithResult } = await import('../src/services/publisher.js');
@@ -66,6 +71,7 @@ beforeEach(() => {
   prismaMock.publishLog.findFirst.mockResolvedValue(null);
   prismaMock.publishLog.create.mockResolvedValue({ id: 1 });
   prismaMock.observabilityEvent.create.mockResolvedValue({ id: 1 });
+  getActivePersonaNameMock.mockResolvedValue(null);
 });
 
 afterEach(() => {
@@ -298,6 +304,7 @@ describe('publisher mode coverage', () => {
   it('surfaces -352 behavior_anomaly from postReply to the antirisk signal path', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     process.env.PUBLISHER_MODE = 'real_publish';
+    getActivePersonaNameMock.mockResolvedValueOnce('bili-active-persona');
     postReplyMock.mockResolvedValueOnce({
       success: false,
       rpid: '',
@@ -313,6 +320,33 @@ describe('publisher mode coverage', () => {
         data: expect.objectContaining({
           event_type: 'antirisk_signal_detected',
           error_subclass: 'behavior_anomaly',
+          persona_id: 'bili-active-persona',
+        }),
+      }),
+    );
+    expect(getActivePersonaNameMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to persona_id=null when getActivePersonaName fails without breaking the tuple contract', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    getActivePersonaNameMock.mockRejectedValueOnce(new Error('db unreachable'));
+    postReplyMock.mockResolvedValueOnce({
+      success: false,
+      rpid: '',
+      error_code: -352,
+      v_voucher: 'voucher-fallback',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    expect(result.slice(0, 2)).toEqual([false, 'rate_limited']);
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          error_subclass: 'behavior_anomaly',
+          persona_id: null,
         }),
       }),
     );
