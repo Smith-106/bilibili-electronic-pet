@@ -40,6 +40,7 @@ const trackedEnvKeys = [
   'REPLY_COOLDOWN_MINUTES',
   'REPLY_QUIET_HOURS_START',
   'REPLY_QUIET_HOURS_END',
+  'TIMING_ENGINE_ENABLED',
   'SEARCH_PROVIDER',
   'SEARCH_API_KEY',
   'SEARCH_MAX_RESULTS',
@@ -507,6 +508,7 @@ describe('decider and search coverage gaps', () => {
   });
 
   it('does not apply cooldown when user state is absent or disabled', async () => {
+    process.env.TIMING_ENGINE_ENABLED = 'false';
     vi.spyOn(Math, 'random').mockReturnValue(0);
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     mockPrisma.userState.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
