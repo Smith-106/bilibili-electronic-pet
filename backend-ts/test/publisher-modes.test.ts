@@ -6,6 +6,7 @@ const { postReplyMock, prismaMock, getActivePersonaNameMock } = vi.hoisted(() =>
     publishLog: {
       findFirst: vi.fn(),
       create: vi.fn(),
+      count: vi.fn(),
     },
     observabilityEvent: {
       create: vi.fn(),
@@ -41,6 +42,9 @@ const trackedEnvKeys = [
   'ANTIRISK_BACKOFF_ENABLED',
   'ANTIRISK_BACKOFF_CAP_RATE_LIMIT',
   'ANTIRISK_BACKOFF_CAP_BEHAVIOR_ANOMALY',
+  'STAGE_GATE_ENABLED',
+  'STAGE_REAL_PUBLISH_READY',
+  'STAGE_DAILY_QUOTA',
 ] as const;
 
 function clearPublisherEnv(): void {
@@ -71,10 +75,12 @@ beforeEach(() => {
   process.env.PUBLISHER_CIRCUIT_BREAKER_ENABLED = 'false';
   prismaMock.publishLog.findFirst.mockReset();
   prismaMock.publishLog.create.mockReset();
+  prismaMock.publishLog.count.mockReset();
   prismaMock.observabilityEvent.create.mockReset();
   postReplyMock.mockReset();
   prismaMock.publishLog.findFirst.mockResolvedValue(null);
   prismaMock.publishLog.create.mockResolvedValue({ id: 1 });
+  prismaMock.publishLog.count.mockResolvedValue(0);
   prismaMock.observabilityEvent.create.mockResolvedValue({ id: 1 });
   getActivePersonaNameMock.mockResolvedValue(null);
   __resetBackoffMapForTest();
@@ -592,5 +598,56 @@ describe('publisher mode coverage', () => {
 
     // Flag off → backoff intercept bypassed, publish proceeds to simulated mode.
     expect(result.slice(0, 2)).toEqual([true, 'simulated']);
+  });
+
+  it('dry_run mode skips publish_log, postReply, and enqueue (L1 stage 0)', async () => {
+    process.env.PUBLISHER_MODE = 'dry_run';
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // dry_run: stage 0 — pure observation, no side effects.
+    expect(result.slice(0, 2)).toEqual([true, 'dry_run_skipped']);
+    expect(result[2]).toBeInstanceOf(Date);
+    expect(result[3]).toBeNull();
+    // MUST NOT write publish_log, MUST NOT call postReply.
+    expect(prismaMock.publishLog.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.publishLog.create).not.toHaveBeenCalled();
+    expect(postReplyMock).not.toHaveBeenCalled();
+  });
+
+  it('real_publish stage gate blocks with [false, "stage_gate_blocked", ...] when not ready (L1/SC4 fail-closed)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    process.env.STAGE_GATE_ENABLED = 'true';
+    // STAGE_REAL_PUBLISH_READY unset → isStageRealPublishReady() false → fail-closed.
+    getActivePersonaNameMock.mockResolvedValue('persona-stage-gate');
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // SC4 barrier: not ready → stage_gate_blocked, no blind real_publish.
+    expect(result[0]).toBe(false);
+    expect(result[1]).toBe('stage_gate_blocked');
+    expect(result[2]).toBeInstanceOf(Date);
+    expect(result[3]).toBeNull();
+    expect(postReplyMock).not.toHaveBeenCalled();
+    expect(prismaMock.publishLog.create).not.toHaveBeenCalled();
+  });
+
+  it('real_publish stage quota exceeds returns [false, "stage_quota_exceeded", ...] (L1 limited/full 区分)', async () => {
+    process.env.PUBLISHER_MODE = 'real_publish';
+    process.env.STAGE_GATE_ENABLED = 'true';
+    process.env.STAGE_REAL_PUBLISH_READY = 'true';
+    process.env.STAGE_DAILY_QUOTA = '2';
+    getActivePersonaNameMock.mockResolvedValue('persona-quota');
+    // Today's published count already at quota.
+    prismaMock.publishLog.count.mockResolvedValue(2);
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    expect(result[0]).toBe(false);
+    expect(result[1]).toBe('stage_quota_exceeded');
+    expect(result[2]).toBeInstanceOf(Date);
+    expect(result[3]).toBeNull();
+    expect(postReplyMock).not.toHaveBeenCalled();
   });
 });

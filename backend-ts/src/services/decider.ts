@@ -126,6 +126,22 @@ function loadReplyRules(): ReplyRules {
   if (process.env.REPLY_BASE_PROBABILITY) {
     rules.baseReplyProbability = parseFloat(process.env.REPLY_BASE_PROBABILITY);
   }
+
+  // P3 warmup ramp-up (L5): RAMPUP_FIRST_DAY_FACTOR 作用于 baseReplyProbability 重派生 λ
+  // (公式 λ=-ln(1-p), NOT 直乘 λ). 默认 0.1 占位 — DD-01 待 SME 终值 (跨会话指纹对冲系数).
+  // 比例 drowsy*0.5 / quiet*0.15 为保守占位, env 入口已留可 SME 调参.
+  const rampFactor = parseFloat(process.env.RAMPUP_FIRST_DAY_FACTOR || '0.1');
+  if (rampFactor > 0 && rampFactor <= 1) {
+    rules.baseReplyProbability = rules.baseReplyProbability * rampFactor;
+  }
+  // 重派生 poissonStates λ (F1: λ = -ln(1 - p)), 保持 P(reply)=1-e^-λ 语义.
+  const p = rules.baseReplyProbability;
+  if (p > 0 && p < 1) {
+    rules.poissonStates.active.lambda = -Math.log(1 - p);
+    rules.poissonStates.drowsy.lambda = -Math.log(1 - p * 0.5);
+    rules.poissonStates.quiet.lambda = -Math.log(1 - p * 0.15);
+  }
+
   if (process.env.REPLY_GLOBAL_COOLDOWN_ENABLED) {
     rules.globalCooldownEnabled = process.env.REPLY_GLOBAL_COOLDOWN_ENABLED !== 'false';
   }

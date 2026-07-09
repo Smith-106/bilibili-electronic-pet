@@ -11,20 +11,39 @@ import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
 import { getActivePersonaName } from './bilibili-runtime-config.js';
-import { recordAntiriskSignal } from './observability.js';
+import { recordAntiriskSignal, getObservabilityDropCount } from './observability.js';
 import { isPersonaInBackoff, applyBackoff } from './backoff-decision.js';
 import { createHash } from 'node:crypto';
 
 // ── Publisher mode configuration ───────────────────────────
 
-type PublisherMode = 'manual_queue' | 'simulated' | 'webhook' | 'real_publish';
+// dry_run: stage 0 — no API call, no publish_log write, no enqueue (pure observation).
+type PublisherMode = 'dry_run' | 'manual_queue' | 'simulated' | 'webhook' | 'real_publish';
 
 function getPublisherMode(): PublisherMode {
   const mode = (process.env.PUBLISHER_MODE || 'manual_queue').trim().toLowerCase();
-  if (['manual_queue', 'simulated', 'webhook', 'real_publish'].includes(mode)) {
+  if (['dry_run', 'manual_queue', 'simulated', 'webhook', 'real_publish'].includes(mode)) {
     return mode as PublisherMode;
   }
   return 'manual_queue';
+}
+
+// ── Stage gate (P3 warmup: 阶段门禁 guard) ────────────────
+//
+// real_publish 进阶前 MUST 校验 readiness 全绿 + observability drop_count=0
+// (SC4: full real_publish 前 readiness 全绿 + drop_count=0 + 无 behavior_anomaly).
+// fail-closed: 不满足返回 stage_gate_blocked, 不盲飞.
+//
+// STAGE_GATE_ENABLED (L1 env 隔离, 默认 false) 开启后 real_publish 走门禁校验;
+// 关闭时维持既有行为 (legacy tests / 回退路径不受影响).
+// readiness 聚合通过 STAGE_REAL_PUBLISH_READY env (运营显式置 'true' 表示全绿),
+// 避免直接 import readiness route 造成循环依赖 (见 risks).
+function isStageGateEnabled(): boolean {
+  return process.env.STAGE_GATE_ENABLED === 'true';
+}
+
+function isStageRealPublishReady(): boolean {
+  return process.env.STAGE_REAL_PUBLISH_READY === 'true' && getObservabilityDropCount() === 0;
 }
 
 // ── Circuit breaker (per-platform isolation) ──────────────
@@ -314,6 +333,33 @@ async function publishReal(
   context: PublishLogContext,
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
+  // STAGE_DAILY_QUOTA (P3 warmup): limited real_publish 配额 env, 区分 limited/full.
+  // 当日 publishLog status='published' count >= STAGE_DAILY_QUOTA → stage_quota_exceeded.
+  // fail-closed, 不盲飞 (L1 配额 env). 默认 10 (保守值, 运营调参).
+  const dailyQuota = parseInt(process.env.STAGE_DAILY_QUOTA || '10', 10);
+  if (Number.isFinite(dailyQuota) && dailyQuota >= 0) {
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    let todayPublished = 0;
+    try {
+      const prisma = getPrisma();
+      todayPublished = await prisma.publishLog.count({
+        where: {
+          source: 'real_publish',
+          status: 'published',
+          published_at: { gte: startOfDay },
+        },
+      });
+    } catch (error) {
+      if (!isPublishLogStorageError(error)) {
+        throw error;
+      }
+    }
+    if (todayPublished >= dailyQuota) {
+      return [false, 'stage_quota_exceeded', new Date(), null];
+    }
+  }
+
   const result = await postReply(context.commentId, replyText);
   const publishedAt = new Date();
 
@@ -423,6 +469,27 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     return [false, 'backoff_active', new Date(), null];
   }
 
+  // P3 warmup stage gate (L1): dry_run 立即返回不写 publish_log 不调 postReply;
+  // real_publish 在 STAGE_GATE_ENABLED 开启时校验 readiness 全绿 (STAGE_REAL_PUBLISH_READY)
+  // + observability drop_count=0 (SC4), 不满足 fail-closed 返回 stage_gate_blocked.
+  const stageMode = getPublisherMode();
+  if (stageMode === 'dry_run') {
+    return [true, 'dry_run_skipped', new Date(), null];
+  }
+  if (stageMode === 'real_publish' && isStageGateEnabled() && !isStageRealPublishReady()) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'publish_blocked_by_stage_gate',
+        drop_count: getObservabilityDropCount(),
+        comment_id: commentId,
+        trace_id: intent.traceId ?? canonicalCommentId,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return [false, 'stage_gate_blocked', new Date(), null];
+  }
+
   try {
     // 1. Check duplicate via Publish log
     const prisma = getPrisma();
@@ -462,6 +529,10 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     let result: [boolean, string, Date | null, Record<string, unknown> | null];
 
     switch (mode) {
+      case 'dry_run':
+        // 防御性: guard 已在入口拦截 dry_run, 此处理论不可达.
+        result = [true, 'dry_run_skipped', new Date(), null];
+        break;
       case 'manual_queue':
         result = await publishManualQueue(context, replyText);
         break;

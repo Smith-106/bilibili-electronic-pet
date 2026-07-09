@@ -13,6 +13,7 @@ const trackedEnvKeys = [
   'REPLY_QUIET_HOURS_START',
   'REPLY_QUIET_HOURS_END',
   'TIMING_ENGINE_ENABLED',
+  'RAMPUP_FIRST_DAY_FACTOR',
 ] as const;
 
 const originalEnv = Object.fromEntries(
@@ -166,6 +167,11 @@ describe('timing engine feature flag (L8 isolation)', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T04:00:00.000Z')); // daytime → active/drowsy
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    // Isolate the timing-engine sampling from the P3 ramp-up factor (RAMPUP_FIRST_DAY_FACTOR).
+    // This test verifies the Poisson engine itself with the canonical baseReplyProbability 0.7
+    // (λ≈1.204). Ramp-up shrinks p by default (0.1) which would drop the frequency below the
+    // assertion floor — orthogonal to what this test checks, so we neutralize it here.
+    process.env.RAMPUP_FIRST_DAY_FACTOR = '1';
 
     // Statistical: over N samples, reply frequency should approximate the active/drowsy
     // λ (1.204 / 0.6), well above the legacy-fixed mock behavior. With real randomness,
