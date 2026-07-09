@@ -7,7 +7,8 @@
 import { Job } from 'bullmq';
 import { upsertCompanionFeedItem } from '../../app/memory/companion-feed.js';
 import { BaseTaskPayload, createTaskQueue, createTaskWorker } from '../task-queue.js';
-import { NonRetryableWorkerError } from '../errors.js';
+import { NonRetryableWorkerError, RetryableWorkerError } from '../errors.js';
+import { checkPersonaRateLimit, resolvePersonaIdForRateLimit } from '../../services/persona-token-bucket.js';
 import type { WorkerServices } from '../../services/interfaces.js';
 import type { KnowledgeEntry, RoleCardValue } from '../../models/entities.js';
 import type { InteractionEvent } from '../../domain/interaction/types.js';
@@ -29,6 +30,8 @@ export type CommentEventPayload = BaseTaskPayload & {
   role_profile?: string;
   role_card_key?: string;
   interaction?: InteractionEvent;
+  /** Active persona name (BilibiliCredential.name, TASK-002); attached by comment-ingest. */
+  persona_id?: string;
 };
 
 function buildInteractionEventFromPayload(payload: CommentEventPayload): InteractionEvent {
@@ -493,12 +496,63 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
           },
         );
 
+        // L10 reject classification:
+        //  - safetyAction === 'blocked' (keyword/PII violation, safety.ts:257 guard) → HARD REJECT.
+        //    Returns {ok:false, status:'hard_reject'} WITHOUT throwing → BullMQ marks the job
+        //    completed → NO retry. This is intentional: hard rejects must not stack BullMQ
+        //    exponential backoff on top of content that will never pass safety review.
+        //  - safetyAction === 'manual_queue' (medium-risk, human review) → soft path, no retry
+        //    (kept as {ok:true, status:'manual_queue'} so the operator can curate the queue).
+        if (safetyAction === 'blocked') {
+          return {
+            ok: false,
+            status: 'hard_reject',
+            risk_flags: riskFlags,
+            trace_id: traceId,
+          };
+        }
+
         return {
           ok: true,
           status: safetyAction,
           risk_flags: riskFlags,
           trace_id: traceId,
         };
+      }
+
+      // C-layer per-persona rate limit (TASK-006, F2 token bucket capacity=20 / refill 20/min).
+      // Stacks on top of the BullMQ global limiter (task-queue.ts:67 max=100/min) — the
+      // per-persona bucket is STRICTER, so one persona cannot exhaust the global budget.
+      // L10 retryable vs hard-reject distinction:
+      //  - rate_limited → throw RetryableWorkerError('rate_limited_retryable') → BullMQ retries
+      //    with exponential backoff (RETRYABLE path — transient throttle, safe to retry later).
+      //  - hard_reject (safetyAction==='blocked' above) → returns without throwing → NO retry.
+      // persona_id source: queuePayload.persona_id (TASK-002, set by comment-ingest:153) with
+      // fail-safe fallback to getActivePersonaName() (resolvePersonaIdForRateLimit). A null
+      // persona never rate-limits (fail-open, L7 tuple contract intact).
+      const rateLimitPersonaId = await resolvePersonaIdForRateLimit(job.data.persona_id);
+      const rateLimitDecision = checkPersonaRateLimit(rateLimitPersonaId);
+      if (!rateLimitDecision.allowed) {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            message: 'worker_persona_rate_limited',
+            trace_id: traceId,
+            comment_id: comment.comment_id,
+            persona_id: rateLimitPersonaId,
+            reason: rateLimitDecision.reason,
+            status: 'rate_limited_retryable',
+          }),
+        );
+
+        finishObservability('rate_limited_retryable', {
+          metadata: {
+            persona_id: rateLimitPersonaId,
+            reason: rateLimitDecision.reason,
+          },
+        });
+
+        throw new RetryableWorkerError('rate_limited_retryable');
       }
 
       // Publish reply

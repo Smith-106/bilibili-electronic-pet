@@ -6,6 +6,10 @@ const { createTaskQueueMock, createTaskWorkerMock, upsertCompanionFeedItemMock }
   upsertCompanionFeedItemMock: vi.fn(),
 }));
 
+const { getActivePersonaNameMock } = vi.hoisted(() => ({
+  getActivePersonaNameMock: vi.fn(),
+}));
+
 vi.mock('../src/app/memory/companion-feed.js', () => ({
   upsertCompanionFeedItem: upsertCompanionFeedItemMock,
 }));
@@ -15,9 +19,16 @@ vi.mock('../src/workers/task-queue.js', () => ({
   createTaskWorker: createTaskWorkerMock,
 }));
 
+// Mock the persona accessor so the C-layer rate-limit check (TASK-006) never touches the
+// real Prisma in unit tests. Default returns null → checkPersonaRateLimit(null) fail-opens.
+vi.mock('../src/services/bilibili-runtime-config.js', () => ({
+  getActivePersonaName: getActivePersonaNameMock,
+}));
+
 import type { Job } from 'bullmq';
 import type { WorkerServices } from '../src/services/interfaces.js';
-import { NonRetryableWorkerError } from '../src/workers/errors.js';
+import { NonRetryableWorkerError, RetryableWorkerError } from '../src/workers/errors.js';
+import { __resetBucketsForTest } from '../src/services/persona-token-bucket.js';
 import {
   createCommentEventQueue,
   createCommentEventWorker,
@@ -131,6 +142,9 @@ describe('comment event task worker', () => {
       }),
     );
     upsertCompanionFeedItemMock.mockResolvedValue(undefined);
+    // Default: no active persona → checkPersonaRateLimit(null) returns {allowed:true} (fail-open).
+    // Tests that exercise the rate-limit path override this with a concrete persona name.
+    getActivePersonaNameMock.mockResolvedValue(null);
     consoleInfoSpy = vi.spyOn(console, 'info').mockImplementation(() => undefined);
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   });
@@ -358,7 +372,7 @@ describe('comment event task worker', () => {
     );
   });
 
-  it('blocks unsafe replies when safety action is blocked', async () => {
+  it('blocks unsafe replies when safety action is blocked (L10 hard_reject, no BullMQ retry)', async () => {
     const services = buildServices({
       safetyCheck: vi.fn(async () => [false, { decision: 'blocked' }]),
       decideSafetyAction: vi.fn(() => 'blocked'),
@@ -367,11 +381,15 @@ describe('comment event task worker', () => {
 
     const result = await processor(buildJob());
 
+    // L10: hard_reject returns {ok:false} WITHOUT throwing → BullMQ marks the job
+    // completed → NO retry. This is intentional (avoid stacking backoff on content
+    // that will never pass safety review). createReplyJob still records status:'blocked'.
     expect(result).toMatchObject({
-      ok: true,
-      status: 'blocked',
+      ok: false,
+      status: 'hard_reject',
       risk_flags: { decision: 'blocked' },
     });
+    expect(services.publishIntentWithResult).not.toHaveBeenCalled();
     expect(services.createReplyJob).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'blocked',
@@ -657,5 +675,66 @@ describe('comment event task worker', () => {
       trace_id: 'trace-worker-1',
     });
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('plain feed failure'));
+  });
+
+  describe('C-layer per-persona rate limit (TASK-006)', () => {
+    beforeEach(() => {
+      // Reset the shared token-bucket Map between tests so capacity/refill start fresh.
+      __resetBucketsForTest();
+    });
+
+    it('throws RetryableWorkerError(rate_limited_retryable) when the persona bucket is exhausted (L10 retryable)', async () => {
+      // Use a distinct persona so this test's bucket is isolated from others.
+      const persona = 'rate-limit-persona';
+      getActivePersonaNameMock.mockResolvedValue(persona);
+      // CAPACITY=20: exhaust the bucket by running 20 successful publishes first.
+      const services = buildServices();
+      const processor = buildProcessor(services);
+      for (let i = 0; i < 20; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const r = await processor(buildJob());
+        expect(r).toMatchObject({ ok: true, status: 'published' });
+      }
+      // 21st call: bucket empty → RetryableWorkerError('rate_limited_retryable')
+      await expect(processor(buildJob())).rejects.toThrow(RetryableWorkerError);
+      await expect(processor(buildJob())).rejects.toThrow('rate_limited_retryable');
+      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('worker_persona_rate_limited'));
+    });
+
+    it('does NOT throw and does NOT retry when safety blocks (L10 hard_reject, distinct from rate_limited)', async () => {
+      // hard_reject must return a value (no throw) → BullMQ completes, no retry.
+      // This is the L10 distinction: hard_reject vs rate_limited_retryable.
+      const services = buildServices({
+        safetyCheck: vi.fn(async () => [false, { decision: 'blocked' }]),
+        decideSafetyAction: vi.fn(() => 'blocked'),
+      });
+      const processor = buildProcessor(services);
+
+      const result = await processor(buildJob());
+
+      expect(result).toMatchObject({ ok: false, status: 'hard_reject' });
+    });
+
+    it('bypasses the bucket when ANTIRISK_C_RATE_LIMIT_ENABLED=false (L8 flag isolation)', async () => {
+      const previous = process.env.ANTIRISK_C_RATE_LIMIT_ENABLED;
+      process.env.ANTIRISK_C_RATE_LIMIT_ENABLED = 'false';
+      const persona = 'flag-off-persona';
+      getActivePersonaNameMock.mockResolvedValue(persona);
+      const services = buildServices();
+      const processor = buildProcessor(services);
+
+      // Exhaust the bucket 20x, then prove the 21st still publishes (flag off → no limit).
+      for (let i = 0; i < 25; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        const r = await processor(buildJob());
+        expect(r).toMatchObject({ ok: true, status: 'published' });
+      }
+
+      if (previous === undefined) {
+        delete process.env.ANTIRISK_C_RATE_LIMIT_ENABLED;
+      } else {
+        process.env.ANTIRISK_C_RATE_LIMIT_ENABLED = previous;
+      }
+    });
   });
 });

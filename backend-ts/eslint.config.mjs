@@ -40,6 +40,18 @@ export default tseslint.config(
           varsIgnorePattern: '^_',
         },
       ],
+      // L9 legal red-line code-layer enforce (TASK-006): captcha/slider/bypass code MUST NEVER
+      // be added. The bot does not implement打码平台 (captcha-solving platforms), 绕滑块
+      // (slider bypass), or any anti-antirisk evasion. This rule fails the build on any
+      // identifier matching captcha|slider|bypass, preventing accidental introduction.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "Identifier[name=/^(captcha|slider|bypass)$/i]",
+          message:
+            'Legal red-line (L9): captcha/slider/bypass identifiers are forbidden — the bot must not implement captcha-solving, slider-bypass, or any anti-antirisk evasion. See TASK-006.',
+        },
+      ],
     },
   },
   {

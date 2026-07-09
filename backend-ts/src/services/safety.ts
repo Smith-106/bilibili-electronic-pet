@@ -4,6 +4,13 @@
  *
  * Enhanced: Combines Python rule-chain (keyword_blacklist, PII detection, length_limit)
  * with risk-scoring content categorization and spam/URL checks.
+ *
+ * LEGAL RED-LINE (L9, TASK-006): this service implements keyword/PII/length guards ONLY.
+ * It MUST NEVER implement captcha-solving, slider-bypass, or any anti-antirisk evasion.
+ * The ESLint `no-restricted-syntax` rule in eslint.config.mjs enforces this at the
+ * code layer by banning identifiers matching /captcha|slider|bypass/i. Do not add code
+ * that defeats platform risk-control — hard-reject (safetyAction==='blocked') is the
+ * ONLY sanctioned response to unsafe content; the bot does not evade detection.
  */
 
 import type { SafetyCheckService } from './interfaces.js';
