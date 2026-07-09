@@ -57,55 +57,85 @@ function resolveAuthProbeTimeoutMs(timeoutMs: number): number {
 // ============================================================
 
 /**
+ * Result of posting a reply to a Bilibili comment.
+ *
+ * `error_code` carries the structured Bilibili API `code` (e.g. -352 for
+ * behavior_anomaly risk-control, -101 for auth failure) so the publisher can
+ * classify antirisk signals without parsing error messages. `v_voucher` is
+ * surfaced from the -352 response body so the behavior_anomaly subclass is
+ * distinguishable from generic rate_limit (coding spec: 错误码352须解析v_voucher子类分流).
+ *
+ * Network / HTTP errors propagate as thrown Errors so the publisher catch path
+ * (publishIntentWithResult) can classify them — postReply no longer swallows
+ * them to a bare {success:false} (ISS-20260709-005).
+ */
+export type PostReplyResult = {
+  success: boolean;
+  rpid: string;
+  error_code?: number;
+  v_voucher?: string;
+};
+
+/**
  * Post a reply to a comment
  */
 export async function postReply(
   commentId: string,
   replyText: string,
   config?: BilibiliConfig,
-): Promise<{ success: boolean; rpid: string }> {
+): Promise<PostReplyResult> {
   const resolvedConfig = config || (await loadBilibiliConfig());
   if (!resolvedConfig) {
     console.error('[Bilibili] Cannot post reply: not configured');
     return { success: false, rpid: '' };
   }
+  const url = `${resolvedConfig.baseUrl}/x/v2/reply/add`;
+  const body = JSON.stringify({
+    type: 1,
+    oid: commentId,
+    message: replyText,
+    csrf: resolvedConfig.biliJct,
+  });
+
+  const { controller, timeoutId } = buildAbortController(resolvedConfig.timeout);
+
   try {
-    const url = `${resolvedConfig.baseUrl}/x/v2/reply/add`;
-    const body = JSON.stringify({
-      type: 1,
-      oid: commentId,
-      message: replyText,
-      csrf: resolvedConfig.biliJct,
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: buildHeaders(resolvedConfig),
+      body,
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
-    const { controller, timeoutId } = buildAbortController(resolvedConfig.timeout);
-
-    try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: buildHeaders(resolvedConfig),
-        body,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Bilibili reply API error: ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-      if (data.code === 0 && data.data?.rpid) {
-        return { success: true, rpid: String(data.data.rpid) };
-      }
-      throw new Error(`Bilibili reply API returned error: ${data.message || JSON.stringify(data)}`);
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Bilibili reply API error: ${response.status}: ${errorText}`);
     }
+
+    const data = await response.json();
+    if (data.code === 0 && data.data?.rpid) {
+      return { success: true, rpid: String(data.data.rpid) };
+    }
+
+    // -352 behavior_anomaly: surface error_code + v_voucher so the publisher can
+    // route to classifyAntiriskSubclass and the A-layer backoff can apply the
+    // behavior_anomaly cap (600s) distinct from generic rate_limit (60s).
+    if (data.code === -352) {
+      const voucher = data.data?.v_voucher;
+      return {
+        success: false,
+        rpid: '',
+        error_code: -352,
+        v_voucher: voucher !== undefined && voucher !== null ? String(voucher) : undefined,
+      };
+    }
+
+    // Other non-zero API codes: surface error_code so callers can branch on it.
+    return { success: false, rpid: '', error_code: data.code };
   } catch (error) {
-    console.error('[Bilibili] Reply failed:', error);
-    return { success: false, rpid: '' };
+    clearTimeout(timeoutId);
+    throw error;
   }
 }
 

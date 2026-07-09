@@ -106,7 +106,7 @@ describe('bilibili-client runtime config integration', () => {
     );
   });
 
-  it('returns a safe failure when configured request returns non-200', async () => {
+  it('throws when the configured request returns a non-200 HTTP status', async () => {
     loadBilibiliRuntimeConfig.mockResolvedValue(runtimeConfig);
     fetchMock.mockResolvedValue({
       ok: false,
@@ -114,9 +114,7 @@ describe('bilibili-client runtime config integration', () => {
       text: async () => 'upstream failure',
     });
 
-    const result = await postReply('12345', 'hello');
-
-    expect(result).toEqual({ success: false, rpid: '' });
+    await expect(postReply('12345', 'hello')).rejects.toThrow('Bilibili reply API error: 500');
   });
 
   it('clears the reply timeout when reading an HTTP error response throws', async () => {
@@ -129,14 +127,50 @@ describe('bilibili-client runtime config integration', () => {
       },
     });
 
-    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
-      success: false,
-      rpid: '',
-    });
+    await expect(postReply('12345', 'hello', runtimeConfig)).rejects.toThrow('body unavailable');
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
 
-  it('returns a safe failure when the reply API payload is not successful', async () => {
+  it('surfaces a -352 response with error_code and v_voucher for antirisk classification', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: -352,
+        message: '风控校验失败',
+        data: { v_voucher: 'voucher-abc-123' },
+      }),
+    });
+
+    const result = await postReply('12345', 'hello', runtimeConfig);
+
+    expect(result).toEqual({
+      success: false,
+      rpid: '',
+      error_code: -352,
+      v_voucher: 'voucher-abc-123',
+    });
+  });
+
+  it('surfaces a -352 response with undefined v_voucher when the body omits it', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: -352,
+        message: '风控校验失败',
+      }),
+    });
+
+    const result = await postReply('12345', 'hello', runtimeConfig);
+
+    expect(result).toEqual({
+      success: false,
+      rpid: '',
+      error_code: -352,
+      v_voucher: undefined,
+    });
+  });
+
+  it('returns error_code for non-zero, non-352 API codes', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -148,11 +182,27 @@ describe('bilibili-client runtime config integration', () => {
     await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
       success: false,
       rpid: '',
+      error_code: -101,
+    });
+  });
+
+  it('returns error_code when the reply API payload is not successful', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        code: -101,
+        message: 'not logged in',
+      }),
+    });
+
+    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
+      success: false,
+      rpid: '',
+      error_code: -101,
     });
   });
 
   it('uses the raw payload as the reply API error fallback when no message is returned', async () => {
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -164,29 +214,21 @@ describe('bilibili-client runtime config integration', () => {
     await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
       success: false,
       rpid: '',
+      error_code: -101,
     });
-    expect(errorSpy).toHaveBeenCalledWith(
-      '[Bilibili] Reply failed:',
-      expect.objectContaining({
-        message: expect.stringContaining('"missing-message"'),
-      }),
-    );
   });
 
-  it('returns a safe failure when the reply request throws', async () => {
+  it('propagates network errors instead of swallowing them to success:false', async () => {
     fetchMock.mockRejectedValue(new Error('network offline'));
 
-    await expect(postReply('12345', 'hello', runtimeConfig)).resolves.toEqual({
-      success: false,
-      rpid: '',
-    });
+    await expect(postReply('12345', 'hello', runtimeConfig)).rejects.toThrow('network offline');
   });
 
   it('aborts reply requests after the configured timeout', async () => {
     vi.useFakeTimers();
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     fetchMock.mockImplementation(
-      async (_url: string, init?: RequestInit) =>
+      (_url: string, init?: RequestInit) =>
         new Promise((_resolve, reject) => {
           init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {
             once: true,
@@ -195,12 +237,16 @@ describe('bilibili-client runtime config integration', () => {
     );
 
     const pending = postReply('12345', 'hello', { ...runtimeConfig, timeout: 10 });
+    // Attach an early handler so the abort rejection is never momentarily unhandled
+    // between the fake-timer firing and the await chain resuming.
+    const asserted = pending.then(
+      (value) => value,
+      (error) => error,
+    );
     await vi.advanceTimersByTimeAsync(10);
-
-    await expect(pending).resolves.toEqual({
-      success: false,
-      rpid: '',
-    });
+    await expect(pending).rejects.toThrow('aborted');
+    await asserted;
+    vi.useRealTimers();
   });
 
   it('reports whether a runtime credential is available', async () => {

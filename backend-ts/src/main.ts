@@ -1080,11 +1080,21 @@ async function defaultPublishGatewayReply(
       };
     }
 
-    const result = await postReply(commentId, replyText);
+    let result: { success: boolean; rpid: string; error_code?: number; v_voucher?: string };
+    try {
+      result = await postReply(commentId, replyText);
+    } catch (error) {
+      return {
+        published: false,
+        reason: error instanceof Error ? error.message : 'publish_failed',
+        publishedAt,
+        status: 'failed',
+      };
+    }
     if (!result.success) {
       return {
         published: false,
-        reason: 'publish_failed',
+        reason: result.error_code !== undefined ? `bilibili_error_${result.error_code}` : 'publish_failed',
         publishedAt,
         status: 'failed',
       };

@@ -295,6 +295,29 @@ describe('publisher mode coverage', () => {
     expect(rateLimited.slice(0, 2)).toEqual([false, 'rate_limited']);
   });
 
+  it('surfaces -352 behavior_anomaly from postReply to the antirisk signal path', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    postReplyMock.mockResolvedValueOnce({
+      success: false,
+      rpid: '',
+      error_code: -352,
+      v_voucher: 'voucher-xyz',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    expect(result.slice(0, 2)).toEqual([false, 'rate_limited']);
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'antirisk_signal_detected',
+          error_subclass: 'behavior_anomaly',
+        }),
+      }),
+    );
+  });
+
   it('reports publish failures and logs secondary persistence failures from the catch path', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     prismaMock.publishLog.findFirst.mockRejectedValueOnce('plain database failure');

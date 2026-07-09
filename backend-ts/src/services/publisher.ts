@@ -10,6 +10,7 @@ import type { PublishIntentService, PublishReplyService } from './interfaces.js'
 import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
+import { loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
 import { recordAntiriskSignal } from './observability.js';
 import { createHash } from 'node:crypto';
 
@@ -167,6 +168,34 @@ function resolveIntentPlatform(intent: PublishIntent): string {
   return intent.target.platform.trim() || 'unknown';
 }
 
+/**
+ * Resolve the per-persona identifier for antirisk signal attribution.
+ *
+ * TASK-001 wires the field through so it is never silently null. TASK-002 owns
+ * a dedicated persona accessor; until it lands, we read the active BilibiliCredential
+ * via loadBilibiliRuntimeConfig and derive a persona id from credentialId/credentialName.
+ * Failures resolve to null (no throw) so the antirisk signal still records.
+ */
+async function resolveActivePersonaId(): Promise<string | null> {
+  try {
+    const config = await loadBilibiliRuntimeConfig();
+    if (!config) {
+      return null;
+    }
+    if (config.source === 'database') {
+      if (config.credentialId !== null) {
+        return `bili:${config.credentialId}`;
+      }
+      if (config.credentialName) {
+        return `bili:${config.credentialName}`;
+      }
+    }
+    return config.source === 'environment' ? 'bili:env' : null;
+  } catch {
+    return null;
+  }
+}
+
 type PublishLogContext = {
   platform: string;
   canonicalCommentId: string;
@@ -271,6 +300,12 @@ async function publishWebhook(
 
 /**
  * real_publish mode: Post reply via Bilibili API
+ *
+ * On a structured API failure (e.g. -352 behavior_anomaly), postReply now
+ * surfaces `error_code` + `v_voucher` instead of swallowing to a bare
+ * {success:false}. When the error code is an antirisk signal, we throw an
+ * Error carrying the v_voucher so publishIntentWithResult's catch path
+ * classifies it via classifyAntiriskSubclass and records the antirisk signal.
  */
 async function publishReal(
   context: PublishLogContext,
@@ -281,6 +316,17 @@ async function publishReal(
 
   if (!result.success) {
     const replyHash = createReplyHash(context.commentId, replyText);
+
+    // ISS-20260709-005: surface -352 behavior_anomaly (and any antirisk-classified
+    // error_code) to the publishIntentWithResult catch path so classifyAntiriskSubclass
+    // can record the signal and apply the behavior_anomaly backoff cap.
+    if (result.error_code !== undefined) {
+      const codeProbe = { code: result.error_code, message: `-${result.error_code}` };
+      if (result.error_code === -352 || classifyAntiriskSubclass(codeProbe)) {
+        const voucher = result.v_voucher ?? '';
+        throw new Error(`-352 behavior_anomaly v_voucher=${voucher}`);
+      }
+    }
 
     await safeCreatePublishLog({
       platform: context.platform,
@@ -442,13 +488,18 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     // not buffered). On DB failure the rejection propagates so readiness flags red.
     const subclass = classifyAntiriskSubclass(error);
     if (subclass) {
+      // persona_id attribution: read the active BilibiliCredential inline. TASK-002
+      // owns a dedicated persona accessor; until it lands, credentialId/credentialName
+      // from the runtime config serve as the per-persona attribution hook so the
+      // field is never silently null (ISS-20260709-005 per-persona attribution gap).
+      const personaId = await resolveActivePersonaId();
       await recordAntiriskSignal({
         event_type: 'antirisk_signal_detected',
         trace_id: intent.traceId ?? canonicalCommentId,
         comment_id: commentId,
         status: subclass,
         error_subclass: subclass,
-        persona_id: null,
+        persona_id: personaId,
         metadata: { source, platform, error_message: errorMsg },
       });
       return [false, 'rate_limited', publishedAt, null];
