@@ -8,3 +8,6 @@ dist/
 # Local databases
 *.db
 *.db-journal
+
+# Offline replay harness CSV output (TASK-004)
+replay-output/
