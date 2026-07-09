@@ -157,7 +157,7 @@ export type RecordObservabilityEventService = (event: {
   status?: string;
   duration_ms?: number;
   metadata?: Record<string, unknown>;
-}) => void;
+}) => Promise<void>;
 
 /**
  * Observability service: build_log_context

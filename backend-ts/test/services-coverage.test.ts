@@ -16,6 +16,7 @@ const mockPrisma = vi.hoisted(() => ({
   },
   observabilityEvent: {
     create: vi.fn(),
+    createMany: vi.fn(),
   },
 }));
 
@@ -25,7 +26,7 @@ vi.mock('../src/services/db-queries.js', () => ({
 
 const { shouldReply, shouldReplyForInteraction, decideSafetyAction, __deciderTesting } =
   await import('../src/services/decider.js');
-const { buildLogContext, ensureTraceId, recordObservabilityEvent } = await import('../src/services/observability.js');
+const { buildLogContext, ensureTraceId, recordObservabilityEvent, flushObservabilityBuffer, getObservabilityDropCount, __resetObservabilityBufferForTest } = await import('../src/services/observability.js');
 
 const trackedEnvKeys = [
   'SAFETY_KEYWORD_BLACKLIST',
@@ -102,6 +103,9 @@ beforeEach(() => {
   clearTrackedEnv();
   mockPrisma.userState.findUnique.mockReset();
   mockPrisma.observabilityEvent.create.mockReset();
+  mockPrisma.observabilityEvent.createMany.mockReset();
+  mockPrisma.observabilityEvent.createMany.mockResolvedValue({ count: 0 });
+  __resetObservabilityBufferForTest();
 });
 
 afterEach(() => {
@@ -109,6 +113,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   restoreTrackedEnv();
+  __resetObservabilityBufferForTest();
 });
 
 describe('collector coverage branches', () => {
@@ -356,16 +361,14 @@ describe('collector coverage branches', () => {
 
 describe('observability coverage branches', () => {
   it('generates trace ids and preserves trimmed caller-provided trace ids', () => {
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
-
     expect(ensureTraceId(' trace-1 ')).toBe('trace-1');
-    expect(ensureTraceId()).toMatch(/^[0-9a-f-]{36}$/);
+    // L9: crypto.randomUUID produces a 36-char UUID (no Math.random)
+    expect(ensureTraceId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
-  it('records observability events with null fallbacks and survives persistence errors', async () => {
+  it('records observability events with null fallbacks and flushes via createMany', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    mockPrisma.observabilityEvent.create.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('db_down'));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
     await recordObservabilityEvent({
       event_type: 'decision',
@@ -381,30 +384,58 @@ describe('observability coverage branches', () => {
       metadata: undefined,
     });
 
-    expect(mockPrisma.observabilityEvent.create).toHaveBeenNthCalledWith(1, {
-      data: {
-        event_type: 'decision',
-        trace_id: 'trace-obs-1',
-        comment_id: null,
-        job_id: null,
-        status: null,
-        duration_ms: null,
-        event_metadata: '{}',
-      },
-    });
-    expect(mockPrisma.observabilityEvent.create).toHaveBeenNthCalledWith(2, {
-      data: {
-        event_type: 'publish',
-        trace_id: 'trace-obs-2',
-        comment_id: '',
-        job_id: '',
-        status: '',
-        duration_ms: 0,
-        event_metadata: '{}',
-      },
-    });
+    // First landing point: structured console.log per event
     expect(logSpy).toHaveBeenCalledTimes(2);
-    expect(errorSpy).toHaveBeenCalledWith('[observability] Failed to persist event:', expect.any(Error));
+
+    // Drain pending microtask flushes before asserting createMany payload.
+    // Each push triggers an independent microtask flush, so createMany may be called
+    // once per event; we assert the union of flushed batches matches the two events.
+    await flushObservabilityBuffer();
+
+    expect(mockPrisma.observabilityEvent.createMany).toHaveBeenCalled();
+    const flushedBatches = mockPrisma.observabilityEvent.createMany.mock.calls.map(
+      (call) => (call[0] as { data: Array<Record<string, unknown>> }).data,
+    );
+    const flushedEvents = flushedBatches.flat();
+    expect(flushedEvents).toContainEqual({
+      event_type: 'decision',
+      trace_id: 'trace-obs-1',
+      comment_id: null,
+      job_id: null,
+      status: null,
+      duration_ms: null,
+      event_metadata: '{}',
+    });
+    expect(flushedEvents).toContainEqual({
+      event_type: 'publish',
+      trace_id: 'trace-obs-2',
+      comment_id: '',
+      job_id: '',
+      status: '',
+      duration_ms: 0,
+      event_metadata: '{}',
+    });
+  });
+
+  it('increments drop_count when flush fails (no silent console.error catch)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    mockPrisma.observabilityEvent.createMany.mockRejectedValueOnce(new Error('db_down'));
+
+    await recordObservabilityEvent({
+      event_type: 'decision',
+      trace_id: 'trace-obs-fail',
+    });
+
+    // Allow the triggered microtask flush (which rejects) to settle
+    await vi.waitFor(() => {
+      expect(getObservabilityDropCount()).toBe(1);
+    });
+
+    // No bare console.error catch remains — failures surface via drop_count
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining('observability_flush_failed'),
+    );
   });
 
   it('builds log context with optional fields and passthrough extras', () => {
