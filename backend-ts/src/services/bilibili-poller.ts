@@ -257,8 +257,16 @@ async function pollVideoComments(
       });
       injected++;
       console.info(`[bilibili-poller] Injected comment rpid=${c.rpid} bvid=${video.bvid} user=${c.mid}`);
-    } catch {
-      // Duplicate comment — skip
+    } catch (err) {
+      // L8: Classified catch — P2002 unique violation means the comment was already
+      // injected (duplicate), so skip silently. Other errors MUST NOT be swallowed:
+      // surface via console.error so antirisk signals / DB issues reach the operator.
+      const code = (err as { code?: unknown })?.code;
+      if (code === 'P2002') {
+        // duplicate comment — skip
+        continue;
+      }
+      console.error('[bilibili-poller] inject failed:', err);
     }
   }
 

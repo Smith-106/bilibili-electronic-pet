@@ -160,6 +160,11 @@ model ObservabilityEvent {
   status       String?
   duration_ms  Int?
   event_metadata String @default("{}")
+  // L2: Antirisk signal subclass (-352 behavior_anomaly / -429 rate_limit).
+  // Indexed for online eval groupBy aggregation (Decision 2 rejected JSON).
+  error_subclass String?
+  // L2: Optional persona linkage for antirisk signal attribution.
+  persona_id     String?
   created_at   DateTime @default(now())
 
   @@index([event_type])
@@ -168,6 +173,7 @@ model ObservabilityEvent {
   @@index([job_id])
   @@index([status])
   @@index([created_at])
+  @@index([error_subclass])
   @@map("observability_events")
 }
 

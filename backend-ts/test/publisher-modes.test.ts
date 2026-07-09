@@ -7,6 +7,9 @@ const { postReplyMock, prismaMock } = vi.hoisted(() => ({
       findFirst: vi.fn(),
       create: vi.fn(),
     },
+    observabilityEvent: {
+      create: vi.fn(),
+    },
   },
 }));
 
@@ -58,9 +61,11 @@ beforeEach(() => {
   process.env.PUBLISHER_CIRCUIT_BREAKER_ENABLED = 'false';
   prismaMock.publishLog.findFirst.mockReset();
   prismaMock.publishLog.create.mockReset();
+  prismaMock.observabilityEvent.create.mockReset();
   postReplyMock.mockReset();
   prismaMock.publishLog.findFirst.mockResolvedValue(null);
   prismaMock.publishLog.create.mockResolvedValue({ id: 1 });
+  prismaMock.observabilityEvent.create.mockResolvedValue({ id: 1 });
 });
 
 afterEach(() => {
@@ -392,7 +397,9 @@ describe('publisher mode coverage', () => {
 
     expect(thirdFailure.slice(0, 2)).toEqual([false, 'webhook_not_configured']);
     expect(openCircuit.slice(0, 2)).toEqual([false, 'circuit_breaker_open']);
-    expect(warnSpy).toHaveBeenCalledWith('[publisher] Circuit breaker OPEN for platform=bilibili for 30s after 3 failures');
+    expect(warnSpy).toHaveBeenCalledWith(
+      '[publisher] Circuit breaker OPEN for platform=bilibili for 30s after 3 failures',
+    );
   });
 
   it('does not open the circuit breaker before the configured failure threshold and resets after success', async () => {

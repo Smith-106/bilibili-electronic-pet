@@ -181,6 +181,68 @@ export const recordObservabilityEvent: RecordObservabilityEventService = async (
 };
 
 /**
+ * Antirisk signal input. error_subclass is the subclass classifier
+ * (-352 behavior_anomaly / -429 rate_limit per coding spec). persona_id is the
+ * optional persona attribution.
+ */
+export type RecordAntiriskSignalInput = {
+  event_type: string;
+  trace_id: string;
+  comment_id?: string | null;
+  job_id?: number | null;
+  status?: string | null;
+  duration_ms?: number | null;
+  metadata?: Record<string, unknown>;
+  error_subclass: string;
+  persona_id?: string | null;
+};
+
+/**
+ * Record antirisk signal — synchronous fail-closed persistence (L3, BG-P1-001).
+ *
+ * Unlike recordObservabilityEvent (普通观测，内存有界缓冲 fire-and-forget),
+ * antirisk signals (-352 behavior_anomaly / -429 rate_limit) MUST be persisted
+ * synchronously via await prisma.observabilityEvent.create so they are never
+ * dropped (LD-04 > LD-02, user ruling). On DB failure the rejection propagates
+ * to the caller; readiness MUST flag red and refuse to continue (L3).
+ *
+ * First landing point: structured console.log (level:warn) for immediate visibility.
+ */
+export const recordAntiriskSignal = async (event: RecordAntiriskSignalInput): Promise<void> => {
+  // First landing point: structured log for immediate operator visibility
+  console.log(
+    JSON.stringify({
+      level: 'warn',
+      message: `antirisk_signal_${event.event_type}`,
+      trace_id: event.trace_id,
+      comment_id: event.comment_id || null,
+      job_id: event.job_id || null,
+      status: event.status || null,
+      duration_ms: event.duration_ms || null,
+      error_subclass: event.error_subclass,
+      persona_id: event.persona_id || null,
+      metadata: event.metadata || {},
+      timestamp: new Date().toISOString(),
+    }),
+  );
+
+  const prisma = getPrisma();
+  await prisma.observabilityEvent.create({
+    data: {
+      event_type: event.event_type,
+      trace_id: event.trace_id,
+      comment_id: event.comment_id ?? null,
+      job_id: event.job_id ?? null,
+      status: event.status ?? null,
+      duration_ms: event.duration_ms ?? null,
+      event_metadata: JSON.stringify(event.metadata ?? {}),
+      error_subclass: event.error_subclass,
+      persona_id: event.persona_id ?? null,
+    },
+  });
+};
+
+/**
  * Build log context for structured logging
  * Migrated from: app.services.observability.build_log_context
  */

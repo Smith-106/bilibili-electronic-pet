@@ -78,6 +78,9 @@ const {
       groupBy: vi.fn(),
       findMany: vi.fn(),
     },
+    observabilityEvent: {
+      groupBy: vi.fn(),
+    },
     roleCard: {
       findMany: vi.fn(),
       create: vi.fn(),
@@ -371,6 +374,7 @@ function resetMocks(): void {
   prismaMock.replyJob.count.mockReset();
   prismaMock.replyJob.groupBy.mockReset();
   prismaMock.replyJob.findMany.mockReset();
+  prismaMock.observabilityEvent.groupBy.mockReset();
   prismaMock.roleCard.findMany.mockReset();
   prismaMock.roleCard.create.mockReset();
   prismaMock.roleCard.update.mockReset();
@@ -929,7 +933,18 @@ describe('main default dependency coverage', () => {
       ok: true,
       role_profile: 'playful',
     });
-    expect(defaults.getObservabilitySummary({ windowMinutes: 30 })).toEqual({ ok: true, summary: {} });
+    prismaMock.observabilityEvent.groupBy.mockResolvedValueOnce([
+      { error_subclass: 'behavior_anomaly', _count: { _all: 3 } },
+      { error_subclass: 'rate_limit', _count: { _all: 5 } },
+    ]);
+    await expect(defaults.getObservabilitySummary({ windowMinutes: 30 })).resolves.toEqual({
+      ok: true,
+      summary: {
+        window_minutes: 30,
+        by_error_subclass: { behavior_anomaly: 3, rate_limit: 5 },
+        observability_drop_count: 0,
+      },
+    });
   });
 
   it('derives default companion states from pet-core, memory, legacy v2 fallback, and degraded paths', async () => {

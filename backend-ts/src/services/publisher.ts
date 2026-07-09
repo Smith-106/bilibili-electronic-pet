@@ -10,6 +10,7 @@ import type { PublishIntentService, PublishReplyService } from './interfaces.js'
 import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
+import { recordAntiriskSignal } from './observability.js';
 import { createHash } from 'node:crypto';
 
 // ── Publisher mode configuration ───────────────────────────
@@ -57,7 +58,9 @@ function recordFailure(platform: string): void {
   if (breaker.failureCount >= threshold) {
     const openSeconds = parseInt(process.env.PUBLISHER_CIRCUIT_OPEN_SECONDS || '30', 10);
     breaker.openUntil = Date.now() + openSeconds * 1000;
-    console.warn(`[publisher] Circuit breaker OPEN for platform=${platform} for ${openSeconds}s after ${breaker.failureCount} failures`);
+    console.warn(
+      `[publisher] Circuit breaker OPEN for platform=${platform} for ${openSeconds}s after ${breaker.failureCount} failures`,
+    );
   }
 }
 
@@ -80,6 +83,42 @@ function isPublishLogStorageError(error: unknown): boolean {
     message.includes('no such table: main.publish_logs') ||
     (message.includes('no such column') && message.includes('reservation_key'))
   );
+}
+
+/**
+ * Antirisk error subclass classifier (coding spec: 错误码352须解析v_voucher子类分流).
+ *
+ * Bilibili -352 → behavior_anomaly (退避 cap 600s); HTTP 429 / generic rate limit → rate_limit (cap 60s).
+ * Inspects the error message/code for known signals. Returns null when the error
+ * is not an antirisk signal (then it flows through the normal publish_failed path).
+ */
+export type AntiriskSubclass = 'behavior_anomaly' | 'rate_limit';
+
+export function classifyAntiriskSubclass(error: unknown): AntiriskSubclass | null {
+  const message = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error ?? '');
+  const lower = message.toLowerCase();
+  const code = (error as { code?: unknown })?.code;
+
+  // -352 behavior_anomaly (Bilibili risk-control). Also match the v_voucher /
+  // behavior_anomaly markers per coding spec.
+  if (message.includes('-352') || code === -352 || lower.includes('behavior_anomaly') || lower.includes('v_voucher')) {
+    return 'behavior_anomaly';
+  }
+
+  // -429 / HTTP 429 / generic rate limit.
+  if (
+    message.includes('-429') ||
+    code === -429 ||
+    lower.includes('429') ||
+    lower.includes('rate_limit') ||
+    lower.includes('rate limit') ||
+    lower.includes('rate-limited') ||
+    lower.includes('ratelimited')
+  ) {
+    return 'rate_limit';
+  }
+
+  return null;
 }
 
 async function safeCreatePublishLog(data: {
@@ -398,7 +437,20 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
       console.error('[publisher] Failed to record publish log:', dbError);
     }
 
-    if (errorMsg.includes('rate')) {
+    // L3 / coding spec: classify antirisk signal subclass (-352 behavior_anomaly /
+    // -429 rate_limit) and persist synchronously via recordAntiriskSignal (fail-closed,
+    // not buffered). On DB failure the rejection propagates so readiness flags red.
+    const subclass = classifyAntiriskSubclass(error);
+    if (subclass) {
+      await recordAntiriskSignal({
+        event_type: 'antirisk_signal_detected',
+        trace_id: intent.traceId ?? canonicalCommentId,
+        comment_id: commentId,
+        status: subclass,
+        error_subclass: subclass,
+        persona_id: null,
+        metadata: { source, platform, error_message: errorMsg },
+      });
       return [false, 'rate_limited', publishedAt, null];
     }
     return [false, 'publish_failed', publishedAt, null];

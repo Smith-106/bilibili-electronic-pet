@@ -73,6 +73,7 @@ import {
   type BilibiliAuthProbeResult,
 } from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
+import { getObservabilityDropCount } from './services/observability.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
 
 type DeliveryCapabilityName =
@@ -1992,13 +1993,44 @@ async function defaultActivateRoleCard(input: {
   };
 }
 
-function defaultGetObservabilitySummary(_input: { windowMinutes: number }): {
+async function defaultGetObservabilitySummary(input: { windowMinutes: number }): Promise<{
   ok: boolean;
   summary: Record<string, unknown>;
-} {
+}> {
+  // G-002 / coding spec: online eval groupBy antirisk signal subclass.
+  // Aggregates backoff_applied events (and antirisk_signal_detected) by error_subclass
+  // so behavior_anomaly (-352) and rate_limit (-429) can be counted separately.
+  const windowMs = Math.max(1, input.windowMinutes) * 60 * 1000;
+  const since = new Date(Date.now() - windowMs);
+  const prisma = getPrisma();
+  const [bySubclassRows, dropCount] = await Promise.all([
+    prisma.observabilityEvent.groupBy({
+      by: ['error_subclass'],
+      where: {
+        created_at: { gte: since },
+        event_type: { in: ['backoff_applied', 'antirisk_signal_detected'] },
+        error_subclass: { not: null },
+      },
+      _count: { _all: true },
+    }),
+    Promise.resolve(getObservabilityDropCount()),
+  ]);
+
+  const byErrorSubclass: Record<string, number> = {};
+  for (const row of bySubclassRows) {
+    const key = row.error_subclass;
+    if (key) {
+      byErrorSubclass[key] = getGroupCount(row._count);
+    }
+  }
+
   return {
     ok: true,
-    summary: {},
+    summary: {
+      window_minutes: input.windowMinutes,
+      by_error_subclass: byErrorSubclass,
+      observability_drop_count: dropCount,
+    },
   };
 }
 

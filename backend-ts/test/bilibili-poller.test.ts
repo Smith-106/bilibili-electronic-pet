@@ -305,7 +305,11 @@ describe('pollVideoById', () => {
       last_rpid: 10,
     });
     mockPrisma.bilibiliVideo.update.mockResolvedValue(undefined);
-    mockPrisma.comment.create.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('duplicate comment'));
+    mockPrisma.comment.create.mockResolvedValueOnce(undefined).mockRejectedValueOnce(
+      Object.assign(new Error('Unique constraint failed on the fields: (canonical_comment_id)'), {
+        code: 'P2002',
+      }),
+    );
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
