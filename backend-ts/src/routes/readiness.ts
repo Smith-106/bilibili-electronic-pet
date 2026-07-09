@@ -54,7 +54,36 @@ export type ReadinessRouteDependencies = {
   // or the persona is drifting toward passive-response territory. Async because it
   // counts ObservabilityEvent rows; the readiness route awaits it.
   isPassiveResponseViolationExceeded: () => Promise<boolean> | boolean;
+  // TASK-003/P3 SC4 gate: antirisk three-layer flag aggregation. All four antirisk
+  // feature flags (A backoff / B timing-engine / C passive-response-gate / C rate-limit)
+  // MUST be on before full real_publish is unblocked. Reads env directly (sync) — the
+  // flags default ON (`!== 'false'`), mirroring backoff-decision.ts / comment-ingest.ts /
+  // decider.ts / persona-token-bucket.ts. A flag explicitly set to 'false' flips this red.
+  // No DI callback needed: env reads are self-contained, matching the existing flag sites.
+  threeLayerFlagsAllOn: () => boolean;
+  // TASK-003/P3 SC4 gate: behavior_anomaly count within the rolling window MUST be zero.
+  // Queries ObservabilityEvent groupBy/count where event_type IN ['backoff_applied',
+  // 'antirisk_signal_detected'] AND error_subclass='behavior_anomaly' AND created_at >=
+  // now - BEHAVIOR_ANOMALY_WINDOW_SECONDS*1000. Async because it counts DB rows; the
+  // readiness route awaits it. Fail-closed (returns false on DB error): SC4 is the hard
+  // full real_publish barrier, so a DB blip must NOT be assumed safe — unlike the
+  // backoff_active_rate / passive_response_violation gates which are soft signals.
+  isBehaviorAnomalyCountZero: () => Promise<boolean> | boolean;
 };
+
+// TASK-003/P3 SC4 gate: antirisk three-layer flag aggregation. All four antirisk
+// feature flags (A backoff / B timing-engine / C passive-response-gate / C rate-limit)
+// MUST be on before full real_publish is unblocked. Flags default ON (`!== 'false'`),
+// mirroring backoff-decision.ts / comment-ingest.ts / decider.ts / persona-token-bucket.ts.
+// A flag explicitly set to 'false' flips this red (fail-closed).
+export function threeLayerFlagsAllOn(): boolean {
+  return (
+    process.env.ANTIRISK_BACKOFF_ENABLED !== 'false' &&
+    process.env.TIMING_ENGINE_ENABLED !== 'false' &&
+    process.env.PASSIVE_RESPONSE_GATE_ENABLED !== 'false' &&
+    process.env.ANTIRISK_C_RATE_LIMIT_ENABLED !== 'false'
+  );
+}
 
 function isPublishingReady(snapshot: PlatformConnectionSnapshot): boolean {
   const publishCapability = snapshot.capabilities.find((entry) => entry.key === 'publish');
@@ -250,6 +279,22 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (passiveResponseViolationExceeded) {
       deps.addBlocker(productBlockers, 'antirisk:passive_response_violation_count_exceeded');
     }
+    // TASK-003/P3 SC4 gate: three-layer antirisk flag aggregation (A backoff /
+    // B timing-engine / C passive-response-gate / C rate-limit). Any flag explicitly
+    // off flips this red — SC4 full real_publish barrier requires all four antirisk
+    // layers armed. Sync env read (flags default ON).
+    const threeLayerFlagsOn = deps.threeLayerFlagsAllOn();
+    if (!threeLayerFlagsOn) {
+      deps.addBlocker(productBlockers, 'antirisk:three_layer_flags_all_on');
+    }
+    // TASK-003/P3 SC4 gate: behavior_anomaly count within the rolling window MUST be
+    // zero. -352 behavior_anomaly is the high-severity subclass (cap 600s backoff);
+    // any occurrence in the window blocks full real_publish. Fail-closed (false on DB
+    // error): SC4 is the hard barrier, a DB blip must NOT be assumed safe.
+    const behaviorAnomalyCountZero = await deps.isBehaviorAnomalyCountZero();
+    if (!behaviorAnomalyCountZero) {
+      deps.addBlocker(productBlockers, 'antirisk:behavior_anomaly_count_zero');
+    }
 
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
 
@@ -279,6 +324,10 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       // TASK-007 antirisk signal gates (derived from observability event counts)
       { key: 'backoff_active_rate_within_budget', passed: backoffActiveRateWithinBudget },
       { key: 'passive_response_violation_count_within_budget', passed: passiveResponseViolationCountWithinBudget },
+      // TASK-003/P3 SC4 antirisk barrier gates (full real_publish requires all three
+      // antirisk layers armed AND no behavior_anomaly in the rolling window)
+      { key: 'three_layer_flags_all_on', passed: threeLayerFlagsOn },
+      { key: 'behavior_anomaly_count_zero', passed: behaviorAnomalyCountZero },
       // security
       { key: 'credential_encryption_key_present', passed: credentialEncryptionKeyPresent },
     ];

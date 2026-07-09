@@ -24,7 +24,7 @@ import { registerCommentRoutes } from './routes/comments.js';
 import { registerCompanionRoutes } from './routes/companion.js';
 import { registerGatewayPublishRoutes } from './routes/gateway-publish.js';
 import { registerJobRoutes } from './routes/jobs.js';
-import { registerReadinessRoute } from './routes/readiness.js';
+import { registerReadinessRoute, threeLayerFlagsAllOn } from './routes/readiness.js';
 import { createCommentIngestHelpers } from './server/comment-ingest.js';
 import { createCommentJobActionHelpers } from './server/comment-job-actions.js';
 import { createCommentJobQueryHelpers } from './server/comment-job-queries.js';
@@ -2118,6 +2118,45 @@ async function defaultIsPassiveResponseViolationExceeded(): Promise<boolean> {
   }
 }
 
+// TASK-003/P3 SC4 gate: behavior_anomaly count within the rolling window MUST be zero.
+// -352 behavior_anomaly is the high-severity subclass (cap 600s backoff). Any occurrence
+// in the window blocks full real_publish. Queries ObservabilityEvent rows where
+// event_type IN ['backoff_applied','antirisk_signal_detected'] AND error_subclass=
+// 'behavior_anomaly' AND created_at >= now - BEHAVIOR_ANOMALY_WINDOW_SECONDS*1000.
+// Fail-closed (returns false on DB error): SC4 is the hard full real_publish barrier,
+// so a DB blip must NOT be assumed safe — unlike the backoff_active_rate /
+// passive_response_violation gates which are soft signals (fail-open). The window
+// default (86400s / 24h) is a conservative placeholder tunable by SME DD-03.
+const BEHAVIOR_ANOMALY_WINDOW_SECONDS = Number.parseInt(
+  process.env.BEHAVIOR_ANOMALY_WINDOW_SECONDS ?? '',
+  10,
+) || 86400;
+
+async function defaultIsBehaviorAnomalyCountZero(): Promise<boolean> {
+  const prisma = getPrisma();
+  const since = new Date(Date.now() - BEHAVIOR_ANOMALY_WINDOW_SECONDS * 1000);
+  try {
+    const count = await prisma.observabilityEvent.count({
+      where: {
+        event_type: { in: ['backoff_applied', 'antirisk_signal_detected'] },
+        error_subclass: 'behavior_anomaly',
+        created_at: { gte: since },
+      },
+    });
+    return count === 0;
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'behavior_anomaly_count_query_failed',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return false;
+  }
+}
+
 async function defaultGetBilibiliStatus(input: {
   settings: RuntimeSettings;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
@@ -2950,6 +2989,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     isDropCountThresholdExceeded,
     isBackoffActiveRateExceeded: defaultIsBackoffActiveRateExceeded,
     isPassiveResponseViolationExceeded: defaultIsPassiveResponseViolationExceeded,
+    threeLayerFlagsAllOn: () => threeLayerFlagsAllOn(),
+    isBehaviorAnomalyCountZero: defaultIsBehaviorAnomalyCountZero,
   });
 
   registerGatewayPublishRoutes(app, {

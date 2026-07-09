@@ -140,6 +140,8 @@ function buildDeps(overrides: Partial<ReadinessRouteDependencies> = {}): Readine
     isDropCountThresholdExceeded: vi.fn(() => false),
     isBackoffActiveRateExceeded: vi.fn(() => false),
     isPassiveResponseViolationExceeded: vi.fn(() => false),
+    threeLayerFlagsAllOn: vi.fn(() => true),
+    isBehaviorAnomalyCountZero: vi.fn(() => true),
     ...overrides,
   };
 }
@@ -363,14 +365,16 @@ describe('readiness route coverage', () => {
   });
 
   it('derives completion_matrix.total from the gate array (Math.round(passed/total*100))', async () => {
-    // 3 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
-    // total gates = 11 (TASK-007 added backoff_active_rate + passive_response_violation_count,
-    // both fail-open here — they read false because their deps default to () => false).
+    // 5 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
+    // total gates = 13 (TASK-007 added backoff_active_rate + passive_response_violation_count,
+    // TASK-003 added three_layer_flags_all_on + behavior_anomaly_count_zero — both pass here
+    // because their deps default to () => true).
     // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
     // worker_or_publish_path_ready=T (webhook + release_gate ready), normal_buffer_healthy=F,
     // critical_queue_healthy=F, drop_count_within_budget=F,
     // backoff_active_rate_within_budget=T (default false => within budget), passive_response_violation_count_within_budget=T,
-    // credential_encryption_key_present=T => passed = 6/11 => Math.round(6/11*100)=55.
+    // three_layer_flags_all_on=T (default true), behavior_anomaly_count_zero=T (default true),
+    // credential_encryption_key_present=T => passed = 8/13 => Math.round(8/13*100)=62.
     const { response } = await injectReadiness({
       checkDatabaseConnection: () => ({ connected: false, error: 'down' }),
       checkRedisConnection: () => ({ connected: false }),
@@ -379,8 +383,8 @@ describe('readiness route coverage', () => {
 
     const body = response.json();
     // foundation down -> delivery_path_ready false, publish_mode still webhook (delivery capable)
-    expect(body.completion_matrix.total).toBe(55);
-    expect(body.completion_matrix.readiness_gates).toHaveLength(11);
+    expect(body.completion_matrix.total).toBe(62);
+    expect(body.completion_matrix.readiness_gates).toHaveLength(13);
     expect(body.completion_matrix.readiness_gates.map((g: { key: string }) => g.key)).toEqual([
       'db_connected',
       'redis_connected',
@@ -392,6 +396,8 @@ describe('readiness route coverage', () => {
       'drop_count_within_budget',
       'backoff_active_rate_within_budget',
       'passive_response_violation_count_within_budget',
+      'three_layer_flags_all_on',
+      'behavior_anomaly_count_zero',
       'credential_encryption_key_present',
     ]);
   });
@@ -451,6 +457,65 @@ describe('readiness route coverage', () => {
       (g: { key: string }) => g.key === 'drop_count_within_budget',
     );
     expect(budgetGate.passed).toBe(false);
+  });
+
+  it('passes three_layer_flags_all_on when all antirisk flags default ON (TASK-003)', async () => {
+    const { response } = await injectReadiness({
+      threeLayerFlagsAllOn: () => true,
+      isBehaviorAnomalyCountZero: () => true,
+    });
+
+    const body = response.json();
+    const flagsGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'three_layer_flags_all_on',
+    );
+    expect(flagsGate.passed).toBe(true);
+    expect(body.product_blockers).not.toContain('antirisk:three_layer_flags_all_on');
+    expect(body.product_ready).toBe(true);
+  });
+
+  it('flips three_layer_flags_all_on red when any antirisk flag is off (TASK-003)', async () => {
+    const { response } = await injectReadiness({
+      threeLayerFlagsAllOn: () => false,
+    });
+
+    const body = response.json();
+    const flagsGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'three_layer_flags_all_on',
+    );
+    expect(flagsGate.passed).toBe(false);
+    expect(body.product_blockers).toContain('antirisk:three_layer_flags_all_on');
+    expect(body.product_ready).toBe(false);
+  });
+
+  it('passes behavior_anomaly_count_zero when count is zero (TASK-003)', async () => {
+    const { response } = await injectReadiness({
+      isBehaviorAnomalyCountZero: () => true,
+    });
+
+    const body = response.json();
+    const anomalyGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'behavior_anomaly_count_zero',
+    );
+    expect(anomalyGate.passed).toBe(true);
+    expect(body.product_blockers).not.toContain('antirisk:behavior_anomaly_count_zero');
+    expect(body.product_ready).toBe(true);
+  });
+
+  it('flips behavior_anomaly_count_zero red (fail-closed) when count > 0 or DB error (TASK-003)', async () => {
+    const { response } = await injectReadiness({
+      // Fail-closed: a rejected/throwing dep must surface as passed=false (the default
+      // implementation returns false on DB error; tests inject false directly).
+      isBehaviorAnomalyCountZero: () => false,
+    });
+
+    const body = response.json();
+    const anomalyGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'behavior_anomaly_count_zero',
+    );
+    expect(anomalyGate.passed).toBe(false);
+    expect(body.product_blockers).toContain('antirisk:behavior_anomaly_count_zero');
+    expect(body.product_ready).toBe(false);
   });
 
   it('no longer exposes top-level ready field (F4 dual-semantics removal)', async () => {
