@@ -138,6 +138,8 @@ function buildDeps(overrides: Partial<ReadinessRouteDependencies> = {}): Readine
     buildDeliveryCapabilityMatrix: vi.fn(() => ({ blockers: [], capabilities: [] })),
     isEncryptionAvailable: vi.fn(() => true),
     isDropCountThresholdExceeded: vi.fn(() => false),
+    isBackoffActiveRateExceeded: vi.fn(() => false),
+    isPassiveResponseViolationExceeded: vi.fn(() => false),
     ...overrides,
   };
 }
@@ -362,8 +364,13 @@ describe('readiness route coverage', () => {
 
   it('derives completion_matrix.total from the gate array (Math.round(passed/total*100))', async () => {
     // 3 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
-    // total gates = 9; passed = 5 (admin_access, publish_mode, worker_path, 3 antirisk? no —
-    // antirisk all fail). Recompute: foundation 0/2, delivery 3/3, antirisk 0/3, security 1/1 => 4/9.
+    // total gates = 11 (TASK-007 added backoff_active_rate + passive_response_violation_count,
+    // both fail-open here — they read false because their deps default to () => false).
+    // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
+    // worker_or_publish_path_ready=T (webhook + release_gate ready), normal_buffer_healthy=F,
+    // critical_queue_healthy=F, drop_count_within_budget=F,
+    // backoff_active_rate_within_budget=T (default false => within budget), passive_response_violation_count_within_budget=T,
+    // credential_encryption_key_present=T => passed = 6/11 => Math.round(6/11*100)=55.
     const { response } = await injectReadiness({
       checkDatabaseConnection: () => ({ connected: false, error: 'down' }),
       checkRedisConnection: () => ({ connected: false }),
@@ -372,12 +379,8 @@ describe('readiness route coverage', () => {
 
     const body = response.json();
     // foundation down -> delivery_path_ready false, publish_mode still webhook (delivery capable)
-    // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
-    // worker_or_publish_path_ready=F (deliveryPathReady false because foundation blockers),
-    // normal_buffer_healthy=F, critical_queue_healthy=F, drop_count_within_budget=F,
-    // credential_encryption_key_present=T => passed = 4/9 => Math.round(4/9*100)=44.
-    expect(body.completion_matrix.total).toBe(44);
-    expect(body.completion_matrix.readiness_gates).toHaveLength(9);
+    expect(body.completion_matrix.total).toBe(55);
+    expect(body.completion_matrix.readiness_gates).toHaveLength(11);
     expect(body.completion_matrix.readiness_gates.map((g: { key: string }) => g.key)).toEqual([
       'db_connected',
       'redis_connected',
@@ -387,8 +390,38 @@ describe('readiness route coverage', () => {
       'normal_buffer_healthy',
       'critical_queue_healthy',
       'drop_count_within_budget',
+      'backoff_active_rate_within_budget',
+      'passive_response_violation_count_within_budget',
       'credential_encryption_key_present',
     ]);
+  });
+
+  it('adds antirisk:backoff_active_rate_exceeded blocker when backoff active rate crosses threshold (TASK-007)', async () => {
+    const { response } = await injectReadiness({
+      isBackoffActiveRateExceeded: () => true,
+    });
+
+    const body = response.json();
+    expect(body.product_blockers).toContain('antirisk:backoff_active_rate_exceeded');
+    expect(body.product_ready).toBe(false);
+    const rateGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'backoff_active_rate_within_budget',
+    );
+    expect(rateGate.passed).toBe(false);
+  });
+
+  it('adds antirisk:passive_response_violation_count_exceeded blocker when passive gate rejects cross threshold (TASK-007)', async () => {
+    const { response } = await injectReadiness({
+      isPassiveResponseViolationExceeded: () => true,
+    });
+
+    const body = response.json();
+    expect(body.product_blockers).toContain('antirisk:passive_response_violation_count_exceeded');
+    expect(body.product_ready).toBe(false);
+    const passiveGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'passive_response_violation_count_within_budget',
+    );
+    expect(passiveGate.passed).toBe(false);
   });
 
   it('adds credential_encryption:not_configured blocker when encryption key missing', async () => {

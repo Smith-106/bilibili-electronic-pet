@@ -2045,6 +2045,79 @@ async function defaultGetObservabilitySummary(input: { windowMinutes: number }):
   };
 }
 
+// TASK-007: readiness antirisk signal derivations. These count ObservabilityEvent /
+// PublishLog rows over rolling windows to drive the backoff_active_rate and
+// passive_response_violation_count readiness gates. Each is awaitable from the
+// readiness route; on DB error they resolve false (fail-open) so a transient DB blip
+// does not flip the gate red without evidence — the drop_count gate (fail-closed on
+// the in-memory counter) covers the DB-down case separately.
+
+// backoff_active_rate threshold (0.3): when >30% of publish attempts in the last
+// 600s hit a -352/-429 (backoff_applied), the gate flips red.
+const BACKOFF_ACTIVE_RATE_THRESHOLD = 0.3;
+// backoff window (600s) matches the behavior_anomaly cap so the rate reflects the
+// full backoff-pressure window, not just the last minute.
+const BACKOFF_ACTIVE_RATE_WINDOW_SECONDS = 600;
+
+async function defaultIsBackoffActiveRateExceeded(): Promise<boolean> {
+  const prisma = getPrisma();
+  const since = new Date(Date.now() - BACKOFF_ACTIVE_RATE_WINDOW_SECONDS * 1000);
+  try {
+    const [backoffAppliedCount, publishIntentCount] = await Promise.all([
+      prisma.observabilityEvent.count({
+        where: { event_type: 'backoff_applied', created_at: { gte: since } },
+      }),
+      prisma.publishLog.count({ where: { created_at: { gte: since } } }),
+    ]);
+    // No publish attempts in the window -> no rate to exceed (fail-open, avoids div-by-zero).
+    if (publishIntentCount === 0) return false;
+    const rate = backoffAppliedCount / publishIntentCount;
+    return rate >= BACKOFF_ACTIVE_RATE_THRESHOLD;
+  } catch (error) {
+    // Fail-open on DB error: the drop_count gate (in-memory) covers DB-down separately.
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'backoff_active_rate_derivation_failed',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return false;
+  }
+}
+
+// passive_response_gate reject-count threshold (10): when the C-layer rejects more
+// than 10 comments in the window, the gate flips red.
+const PASSIVE_RESPONSE_VIOLATION_THRESHOLD = 10;
+// Window matches the readiness probe cadence (last 10 min of passive-response activity).
+const PASSIVE_RESPONSE_VIOLATION_WINDOW_SECONDS = 600;
+
+async function defaultIsPassiveResponseViolationExceeded(): Promise<boolean> {
+  const prisma = getPrisma();
+  const since = new Date(Date.now() - PASSIVE_RESPONSE_VIOLATION_WINDOW_SECONDS * 1000);
+  try {
+    const rejectedCount = await prisma.observabilityEvent.count({
+      where: {
+        event_type: 'passive_response_gate',
+        status: 'rejected',
+        created_at: { gte: since },
+      },
+    });
+    return rejectedCount >= PASSIVE_RESPONSE_VIOLATION_THRESHOLD;
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'passive_response_violation_derivation_failed',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return false;
+  }
+}
+
 async function defaultGetBilibiliStatus(input: {
   settings: RuntimeSettings;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
@@ -2875,6 +2948,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     buildDeliveryCapabilityMatrix,
     isEncryptionAvailable,
     isDropCountThresholdExceeded,
+    isBackoffActiveRateExceeded: defaultIsBackoffActiveRateExceeded,
+    isPassiveResponseViolationExceeded: defaultIsPassiveResponseViolationExceeded,
   });
 
   registerGatewayPublishRoutes(app, {

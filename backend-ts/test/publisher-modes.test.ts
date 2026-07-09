@@ -308,6 +308,52 @@ describe('publisher mode coverage', () => {
     expect(rateLimited.slice(0, 2)).toEqual([false, 'rate_limited']);
   });
 
+  it('end-to-end mock -352 chain: postReply v_voucher → classify → backoff_applied ObservabilityEvent (TASK-007)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    // Two resolveActivePersonaId calls: entry (backoff intercept) + catch path.
+    getActivePersonaNameMock.mockResolvedValue('bili-active-persona');
+    // Mock fetch returns the -352 risk body with v_voucher — this is the eval-harness
+    // injection point (no real Bilibili API call, convergence criterion 6).
+    postReplyMock.mockResolvedValueOnce({
+      success: false,
+      rpid: '',
+      error_code: -352,
+      v_voucher: 'voucher_xxx',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // Chain: postReply {success:false,error_code:-352,v_voucher:'voucher_xxx'}
+    //   → publishReal !success throw → publishIntentWithResult catch
+    //   → classifyAntiriskSubclass → 'behavior_anomaly' (cap 600s)
+    //   → applyBackoff(persona_id,'behavior_anomaly') → backoff_applied ObservabilityEvent
+    //   → recordAntiriskSignal antirisk_signal_detected → tuple [false,'rate_limited',...].
+    expect(result.slice(0, 2)).toEqual([false, 'rate_limited']);
+
+    // backoff_applied ObservabilityEvent row written with the full antirisk attribution.
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'backoff_applied',
+          error_subclass: 'behavior_anomaly',
+          persona_id: 'bili-active-persona',
+          event_metadata: JSON.stringify({ cap_seconds: 600 }),
+        }),
+      }),
+    );
+    // antirisk_signal_detected still recorded (TASK-001 path preserved).
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'antirisk_signal_detected',
+          error_subclass: 'behavior_anomaly',
+        }),
+      }),
+    );
+  });
+
   it('surfaces -352 behavior_anomaly from postReply to the antirisk signal path', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     process.env.PUBLISHER_MODE = 'real_publish';

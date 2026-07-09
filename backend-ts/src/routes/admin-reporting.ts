@@ -285,10 +285,36 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
         typeof count === 'number' ? count : Number((count as { _all?: number } | undefined)?._all ?? 0);
     }
 
+    // TASK-007: antirisk subclass aggregation (parallel to by_status). Aggregates
+    // backoff_applied + antirisk_signal_detected events by error_subclass over the
+    // last 24h so operators can see behavior_anomaly (-352) vs rate_limit (-429)
+    // counts in the overview without a separate observability call. Mirrors the
+    // Phase 1 main.ts:2018 eval groupBy precedent.
+    const since24h = new Date(Date.now() - 24 * 3600 * 1000);
+    const byAntiriskRows = await prisma.observabilityEvent.groupBy({
+      by: ['error_subclass'],
+      where: {
+        event_type: { in: ['backoff_applied', 'antirisk_signal_detected'] },
+        created_at: { gte: since24h },
+        error_subclass: { not: null },
+      },
+      _count: { _all: true },
+    });
+    const byAntiriskSubclass: Record<string, number> = {};
+    for (const row of byAntiriskRows) {
+      const count = row._count as unknown;
+      const key = row.error_subclass;
+      if (key) {
+        byAntiriskSubclass[key] =
+          typeof count === 'number' ? count : Number((count as { _all?: number } | undefined)?._all ?? 0);
+      }
+    }
+
     return reply.send({
       ok: true,
       totals: { comments: totalComments, jobs: totalJobs },
       by_status: byStatus,
+      by_antirisk_subclass: byAntiriskSubclass,
     });
   });
 

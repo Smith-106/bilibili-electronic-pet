@@ -18,6 +18,9 @@ const mockPrisma = vi.hoisted(() => ({
     findMany: vi.fn(),
     groupBy: vi.fn(),
   },
+  observabilityEvent: {
+    groupBy: vi.fn(),
+  },
 }));
 
 vi.mock('../src/lib/prisma.js', () => ({
@@ -117,6 +120,7 @@ function resetMockPrisma(): void {
   mockPrisma.replyJob.count.mockReset();
   mockPrisma.replyJob.findMany.mockReset();
   mockPrisma.replyJob.groupBy.mockReset();
+  mockPrisma.observabilityEvent.groupBy.mockReset();
 }
 
 beforeEach(() => {
@@ -529,11 +533,25 @@ describe('admin reporting route registration', () => {
       { status: 'failed', _count: { _all: 3 } },
       { status: 'queued', _count: {} },
     ]);
+    mockPrisma.observabilityEvent.groupBy.mockResolvedValue([
+      { error_subclass: 'behavior_anomaly', _count: { _all: 4 } },
+      { error_subclass: 'rate_limit', _count: 1 },
+      { error_subclass: null, _count: { _all: 0 } },
+    ]);
     const app = buildApp();
 
     const response = await app.inject({ method: 'GET', url: '/api/metrics/overview' });
 
     expect(response.statusCode).toBe(200);
+    expect(mockPrisma.observabilityEvent.groupBy).toHaveBeenCalledWith({
+      by: ['error_subclass'],
+      where: {
+        event_type: { in: ['backoff_applied', 'antirisk_signal_detected'] },
+        created_at: { gte: expect.any(Date) },
+        error_subclass: { not: null },
+      },
+      _count: { _all: true },
+    });
     expect(response.json()).toEqual({
       ok: true,
       totals: { comments: 8, jobs: 5 },
@@ -542,6 +560,30 @@ describe('admin reporting route registration', () => {
         failed: 3,
         queued: 0,
       },
+      by_antirisk_subclass: {
+        behavior_anomaly: 4,
+        rate_limit: 1,
+      },
+    });
+
+    await app.close();
+  });
+
+  it('serves metrics overview with empty by_antirisk_subclass when no antirisk events recorded', async () => {
+    mockPrisma.replyJob.count.mockResolvedValue(0);
+    mockPrisma.comment.count.mockResolvedValue(0);
+    mockPrisma.replyJob.groupBy.mockResolvedValue([]);
+    mockPrisma.observabilityEvent.groupBy.mockResolvedValue([]);
+    const app = buildApp();
+
+    const response = await app.inject({ method: 'GET', url: '/api/metrics/overview' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      ok: true,
+      totals: { comments: 0, jobs: 0 },
+      by_status: {},
+      by_antirisk_subclass: {},
     });
 
     await app.close();

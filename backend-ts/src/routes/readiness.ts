@@ -42,6 +42,18 @@ export type ReadinessRouteDependencies = {
   isEncryptionAvailable: () => boolean;
   // F2/antirisk gate: observability buffer overflow beyond threshold -> blocker red.
   isDropCountThresholdExceeded: () => boolean;
+  // TASK-007/antirisk gate: backoff_active_rate = backoff_applied events last 600s /
+  // publishIntent count. When the rate crosses the 0.3 threshold (configured in the
+  // derivation), too high a share of publish attempts are hitting -352/-429 — surface
+  // as a product blocker so operators see accumulating风控 pressure. Async because it
+  // counts ObservabilityEvent + PublishLog rows; the readiness route awaits it.
+  isBackoffActiveRateExceeded: () => Promise<boolean> | boolean;
+  // TASK-007/antirisk gate: passive_response_gate events with status:'rejected' over
+  // the window exceed the threshold (10). Surfaces the C-layer reject rate as a
+  // product blocker — a sustained high reject rate signals the gate is over-blocking
+  // or the persona is drifting toward passive-response territory. Async because it
+  // counts ObservabilityEvent rows; the readiness route awaits it.
+  isPassiveResponseViolationExceeded: () => Promise<boolean> | boolean;
 };
 
 function isPublishingReady(snapshot: PlatformConnectionSnapshot): boolean {
@@ -226,6 +238,18 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (deps.isDropCountThresholdExceeded()) {
       deps.addBlocker(productBlockers, 'antirisk:drop_count_threshold_exceeded');
     }
+    // TASK-007: backoff_active_rate over budget (0.3) — share of publish attempts
+    // hitting -352/-429 too high. Surface as a product blocker.
+    const backoffActiveRateExceeded = await deps.isBackoffActiveRateExceeded();
+    if (backoffActiveRateExceeded) {
+      deps.addBlocker(productBlockers, 'antirisk:backoff_active_rate_exceeded');
+    }
+    // TASK-007: passive_response_gate reject count over budget (10) — the C-layer
+    // is rejecting too many comments, signaling over-block or passive-response drift.
+    const passiveResponseViolationExceeded = await deps.isPassiveResponseViolationExceeded();
+    if (passiveResponseViolationExceeded) {
+      deps.addBlocker(productBlockers, 'antirisk:passive_response_violation_count_exceeded');
+    }
 
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
 
@@ -237,6 +261,8 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     // it until a second signal source lands).
     const dropCountWithinBudget = !deps.isDropCountThresholdExceeded();
     const credentialEncryptionKeyPresent = deps.isEncryptionAvailable();
+    const backoffActiveRateWithinBudget = !backoffActiveRateExceeded;
+    const passiveResponseViolationCountWithinBudget = !passiveResponseViolationExceeded;
     const adminAccessReady = adminAccessConfigured && commentIngressAuthConfigured && gatewayAuthConfigured;
     const readinessGates: Array<{ key: string; passed: boolean }> = [
       // foundation
@@ -250,6 +276,9 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       { key: 'normal_buffer_healthy', passed: dropCountWithinBudget },
       { key: 'critical_queue_healthy', passed: dropCountWithinBudget },
       { key: 'drop_count_within_budget', passed: dropCountWithinBudget },
+      // TASK-007 antirisk signal gates (derived from observability event counts)
+      { key: 'backoff_active_rate_within_budget', passed: backoffActiveRateWithinBudget },
+      { key: 'passive_response_violation_count_within_budget', passed: passiveResponseViolationCountWithinBudget },
       // security
       { key: 'credential_encryption_key_present', passed: credentialEncryptionKeyPresent },
     ];
