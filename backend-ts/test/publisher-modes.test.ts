@@ -28,6 +28,8 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
 
 const { publishIntentWithResult, publishReplyWithResult } = await import('../src/services/publisher.js');
 
+const { applyBackoff, __resetBackoffMapForTest } = await import('../src/services/backoff-decision.js');
+
 const trackedEnvKeys = [
   'PUBLISHER_MODE',
   'PUBLISHER_WEBHOOK_URL',
@@ -36,6 +38,9 @@ const trackedEnvKeys = [
   'PUBLISHER_CIRCUIT_BREAKER_ENABLED',
   'PUBLISHER_CIRCUIT_FAILURE_THRESHOLD',
   'PUBLISHER_CIRCUIT_OPEN_SECONDS',
+  'ANTIRISK_BACKOFF_ENABLED',
+  'ANTIRISK_BACKOFF_CAP_RATE_LIMIT',
+  'ANTIRISK_BACKOFF_CAP_BEHAVIOR_ANOMALY',
 ] as const;
 
 function clearPublisherEnv(): void {
@@ -72,12 +77,14 @@ beforeEach(() => {
   prismaMock.publishLog.create.mockResolvedValue({ id: 1 });
   prismaMock.observabilityEvent.create.mockResolvedValue({ id: 1 });
   getActivePersonaNameMock.mockResolvedValue(null);
+  __resetBackoffMapForTest();
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   clearPublisherEnv();
+  __resetBackoffMapForTest();
 });
 
 describe('publisher mode coverage', () => {
@@ -304,7 +311,8 @@ describe('publisher mode coverage', () => {
   it('surfaces -352 behavior_anomaly from postReply to the antirisk signal path', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     process.env.PUBLISHER_MODE = 'real_publish';
-    getActivePersonaNameMock.mockResolvedValueOnce('bili-active-persona');
+    // Two resolveActivePersonaId calls: entry (backoff intercept) + catch path.
+    getActivePersonaNameMock.mockResolvedValue('bili-active-persona');
     postReplyMock.mockResolvedValueOnce({
       success: false,
       rpid: '',
@@ -315,6 +323,17 @@ describe('publisher mode coverage', () => {
     const result = await publishIntentWithResult(buildIntent());
 
     expect(result.slice(0, 2)).toEqual([false, 'rate_limited']);
+    // backoff_applied is recorded first (TASK-004 applyBackoff, cap 600s behavior_anomaly).
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'backoff_applied',
+          error_subclass: 'behavior_anomaly',
+          persona_id: 'bili-active-persona',
+        }),
+      }),
+    );
+    // antirisk_signal_detected still recorded (TASK-001 path preserved).
     expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -324,7 +343,7 @@ describe('publisher mode coverage', () => {
         }),
       }),
     );
-    expect(getActivePersonaNameMock).toHaveBeenCalledTimes(1);
+    expect(getActivePersonaNameMock).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to persona_id=null when getActivePersonaName fails without breaking the tuple contract', async () => {
@@ -493,5 +512,39 @@ describe('publisher mode coverage', () => {
 
     expect(success.slice(0, 2)).toEqual([true, 'webhook_published']);
     expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('blocks publishIntent with [false, "backoff_active", ...] when the persona is in backoff (no throw, L7)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'simulated';
+    process.env.ANTIRISK_BACKOFF_CAP_RATE_LIMIT = '300';
+    getActivePersonaNameMock.mockResolvedValue('persona-in-backoff');
+
+    // Put the persona into backoff via applyBackoff (rate_limit, cap 300s).
+    await applyBackoff('persona-in-backoff', 'rate_limit', 'trace-backoff-seed');
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // Tuple contract — no throw (L7). The publish never reaches the mode handler.
+    expect(result[0]).toBe(false);
+    expect(result[1]).toBe('backoff_active');
+    expect(result[2]).toBeInstanceOf(Date);
+    expect(result[3]).toBeNull();
+    // The mode handler (publishSimulated) must NOT have been reached, so no publish log.
+    expect(prismaMock.publishLog.create).not.toHaveBeenCalled();
+  });
+
+  it('does not block when ANTIRISK_BACKOFF_ENABLED is off (L8 rollback)', async () => {
+    process.env.PUBLISHER_MODE = 'simulated';
+    process.env.ANTIRISK_BACKOFF_ENABLED = 'false';
+    process.env.ANTIRISK_BACKOFF_CAP_RATE_LIMIT = '300';
+    getActivePersonaNameMock.mockResolvedValue('persona-rollback');
+
+    await applyBackoff('persona-rollback', 'rate_limit', 'trace-rollback-seed');
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // Flag off → backoff intercept bypassed, publish proceeds to simulated mode.
+    expect(result.slice(0, 2)).toEqual([true, 'simulated']);
   });
 });

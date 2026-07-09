@@ -19,6 +19,12 @@ vi.mock('../src/services/credential-crypto.js', () => ({
   isEncryptionAvailable: () => isEncryptionAvailableMock(),
 }));
 
+vi.mock('../src/services/backoff-decision.js', () => ({
+  // Fire-and-forget at boot; the test only asserts createServer + listen ran.
+  // The rebuild itself is exercised in backoff-decision.test.ts.
+  rebuildBackoffFromDb: () => Promise.resolve(),
+}));
+
 describe('backend entrypoint', () => {
   beforeEach(() => {
     vi.resetModules();

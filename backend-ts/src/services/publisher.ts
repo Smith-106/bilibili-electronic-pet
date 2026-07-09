@@ -12,6 +12,7 @@ import { prisma as getPrisma } from './db-queries.js';
 import { postReply } from './bilibili-client.js';
 import { getActivePersonaName } from './bilibili-runtime-config.js';
 import { recordAntiriskSignal } from './observability.js';
+import { isPersonaInBackoff, applyBackoff } from './backoff-decision.js';
 import { createHash } from 'node:crypto';
 
 // ── Publisher mode configuration ───────────────────────────
@@ -401,6 +402,27 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     source,
   };
 
+  // A 层 backoff intercept (TASK-004): resolve the active persona and short-circuit
+  // when that persona is currently in backoff (per-persona isolation, L5). Returns the
+  // tuple [false, 'backoff_active', date, null] — does NOT throw (L7 tuple contract),
+  // so BullMQ retry is not triggered and the in-flight job simply fails this attempt.
+  // persona_id is read via resolveActivePersonaId (TASK-002 source, fail-safe null on
+  // any error). A null persona_id never enters backoff (isPersonaInBackoff returns false).
+  const backoffPersonaId = await resolveActivePersonaId();
+  if (isPersonaInBackoff(backoffPersonaId)) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'publish_blocked_by_backoff',
+        persona_id: backoffPersonaId,
+        comment_id: commentId,
+        trace_id: intent.traceId ?? canonicalCommentId,
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return [false, 'backoff_active', new Date(), null];
+  }
+
   try {
     // 1. Check duplicate via Publish log
     const prisma = getPrisma();
@@ -495,6 +517,15 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
       // @self detection gate. resolveActivePersonaId is fail-safe (null on any error, L7),
       // so the antirisk signal still records even if the persona lookup fails.
       const personaId = await resolveActivePersonaId();
+
+      // A 层 backoff (TASK-004): apply per-persona backoff BEFORE recording the
+      // antirisk signal so the persona is blocked for subsequent publishIntent calls
+      // (cap 600s behavior_anomaly / 60s rate_limit, L6). applyBackoff writes its own
+      // ObservabilityEvent {event_type:'backoff_applied'} (fail-closed) and never throws.
+      // CRITICAL: this is ADD after TASK-001's classifyAntiriskSubclass dispatch — the
+      // existing recordAntiriskSignal path below is preserved unchanged.
+      await applyBackoff(personaId, subclass, intent.traceId ?? canonicalCommentId);
+
       await recordAntiriskSignal({
         event_type: 'antirisk_signal_detected',
         trace_id: intent.traceId ?? canonicalCommentId,

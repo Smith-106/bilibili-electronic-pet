@@ -44,6 +44,10 @@ vi.mock('../src/services/credential-crypto.js', () => ({
   isEncryptionAvailable: () => isEncryptionAvailableMock(),
 }));
 
+vi.mock('../src/services/backoff-decision.js', () => ({
+  rebuildBackoffFromDb: () => Promise.resolve(),
+}));
+
 vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
   createCommentEventWorker: createCommentEventWorkerMock,
 }));

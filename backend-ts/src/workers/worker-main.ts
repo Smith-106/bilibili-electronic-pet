@@ -13,6 +13,7 @@ import { disconnectPrisma } from '../lib/prisma.js';
 import { resolvePlatformPollingRuntime } from '../platforms/registry.js';
 import { buildWorkerServices } from '../services/index.js';
 import { isEncryptionAvailable } from '../services/credential-crypto.js';
+import { rebuildBackoffFromDb } from '../services/backoff-decision.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
 const QUEUE_NAME = 'comment-event';
@@ -51,6 +52,21 @@ export async function main(): Promise<void> {
   });
 
   console.log('[worker] Starting worker process...');
+
+  // A 层 backoff rebuild (TASK-004, F4): fire-and-forget so a slow/unavailable DB
+  // does not block boot. The in-memory backoffMap starts empty and rebuilds
+  // asynchronously; a brief window of no-backoff is acceptable because antirisk
+  // signals will re-trigger applyBackoff at runtime (L1 risk mitigation).
+  void rebuildBackoffFromDb().catch((error) => {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'worker_backoff_rebuild_at_boot_failed',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+  });
 
   const killSwitch = process.env.KILL_SWITCH === 'true';
   const roleProfileDefault = process.env.ROLE_PROFILE_DEFAULT || 'doro';
