@@ -6,6 +6,8 @@ import {
   normalizeInteractionEventToCommentEvent,
 } from '../services/collector.js';
 import { getActivePersonaName } from '../services/bilibili-runtime-config.js';
+import { TRIGGER_KEYWORDS } from '../services/decider.js';
+import { recordObservabilityEvent } from '../services/observability.js';
 import {
   buildCommentEventQueuePayload,
   getPendingCommentQueueBacklog,
@@ -25,6 +27,67 @@ export type CommentIngestResult = {
 };
 
 export type CommentQueueJobResult = { queued: boolean; error?: string };
+
+/**
+ * Feature flag for the C-layer passive-response gate (L8 isolation).
+ * Default ON — only @self / triggerKeyword-hit comments are enqueued for reply.
+ * Set PASSIVE_RESPONSE_GATE_ENABLED=false to fall back to enqueuing all comments
+ * (independent rollback that leaves poller ingestion / DB storage untouched).
+ */
+function isPassiveResponseGateEnabled(): boolean {
+  return process.env.PASSIVE_RESPONSE_GATE_ENABLED !== 'false';
+}
+
+/**
+ * C-layer passive-response gate (TASK-003, L9 legal red-line enforcement).
+ *
+ * LEGAL RED-LINE: the bot MUST only reply when passively invoked — either an
+ * explicit @<personaName> mention (the bot itself) OR a triggerKeyword hit.
+ * Active solicitation (replying to comments that did not invoke the bot) is
+ * forbidden — it is the arch red-line "全评论入队 = 主动骚扰" violation. This
+ * gate is the enforcement point: non-eligible comments are NOT enqueued for
+ * reply but ARE still persisted to DB by poller.ts:242 / comment.create above
+ * (audit trail preserved).
+ *
+ * F3 @regex (mentionRegex below): global match tolerant of B站 @格式:
+ * @用户名 with Chinese + English + underscore + surrounding whitespace.
+ * Extracts the token after @ and compares it to personaName (case-insensitive,
+ * whitespace-trimmed) to detect @self. triggerKeywords are reused from
+ * decider DEFAULT_RULES (single source of truth, not redefined here).
+ *
+ * Returns {eligible, reason} so the caller can emit a structured observability
+ * counter (passive_response_gate passed/rejected) for online eval.
+ */
+export function isPassiveResponseEligible(
+  content: string,
+  personaName: string | null,
+): { eligible: boolean; reason: string } {
+  const text = content ?? '';
+
+  // 1. @self detection — only when a persona name is configured.
+  if (personaName) {
+    const mentionRegex = /@\s*[一-龥\w]+\s*/g;
+    const normalizedName = personaName.trim().toLowerCase();
+    let match: RegExpExecArray | null;
+    while ((match = mentionRegex.exec(text)) !== null) {
+      // Strip the leading @ and surrounding whitespace to recover the token.
+      const token = match[0].replace(/^@\s*/, '').trim().toLowerCase();
+      if (token && token === normalizedName) {
+        return { eligible: true, reason: '@self' };
+      }
+    }
+  }
+
+  // 2. triggerKeyword hit — reuse decider DEFAULT_RULES.triggerKeywords.
+  const lowered = text.toLowerCase();
+  for (const keyword of TRIGGER_KEYWORDS) {
+    if (keyword && lowered.includes(keyword.toLowerCase())) {
+      return { eligible: true, reason: 'trigger_keyword' };
+    }
+  }
+
+  return { eligible: false, reason: 'no_trigger' };
+}
 
 type AuditLogInput = {
   action: string;
@@ -180,6 +243,48 @@ async function ingestInteractionEvent(
       };
     }
     throw err;
+  }
+
+  // TASK-003 / L9: C-layer passive-response gate. Before enqueuing the freshly
+  // stored comment for reply, check whether it passively invoked the bot —
+  // either @<personaName> (@self) OR a triggerKeyword hit. Non-eligible comments
+  // are NOT enqueued (no reply generated) but ARE already persisted to DB above
+  // (prisma.comment.create) so the audit trail stays complete. This is the legal
+  // red-line enforcement point — active harassment (replying without invocation)
+  // is forbidden. Flag-gated (L8): PASSIVE_RESPONSE_GATE_ENABLED=false falls back
+  // to enqueuing all comments for independent rollback. The persona read at :88
+  // is reused here (no second DB call). The recovery path above (:122) is NOT
+  // gated — it requeues a previously-gated eligible comment from the backlog.
+  if (isPassiveResponseGateEnabled()) {
+    const { eligible, reason } = isPassiveResponseEligible(commentEvent.content ?? '', personaId);
+    // Fire-and-forget observability counter (normal observation event, not an
+    // antirisk signal) so online eval can track gate pass/reject rates.
+    void recordObservabilityEvent({
+      event_type: 'passive_response_gate',
+      trace_id: traceId,
+      comment_id: commentEvent.comment_id,
+      status: eligible ? 'passed' : 'rejected',
+      metadata: { reason },
+    }).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'passive_response_gate_counter_failed',
+          trace_id: traceId,
+          comment_id: commentEvent.comment_id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+    if (!eligible) {
+      return {
+        ok: true,
+        queued: false,
+        message: 'not_passive_eligible',
+        comment_id: commentEvent.comment_id,
+        trace_id: traceId,
+      };
+    }
   }
 
   const queueResult = await enqueueCommentEventJob(queuePayload);

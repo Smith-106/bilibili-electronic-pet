@@ -109,6 +109,14 @@ const DEFAULT_RULES: ReplyRules = {
 };
 
 /**
+ * Trigger keywords reused by the C-layer passive-response gate (TASK-003).
+ * Single source of truth — derived from DEFAULT_RULES so the gate and the
+ * shouldReply content analysis share the exact same keyword list. Exported
+ * as a readonly view to prevent callers from mutating the shared list.
+ */
+export const TRIGGER_KEYWORDS: readonly string[] = DEFAULT_RULES.triggerKeywords;
+
+/**
  * Load rules from environment or use defaults
  */
 function loadReplyRules(): ReplyRules {

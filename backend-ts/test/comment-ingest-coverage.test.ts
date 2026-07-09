@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createCommentEventQueueMock, tryEnqueueTaskMock, getActivePersonaNameMock } = vi.hoisted(() => ({
-  createCommentEventQueueMock: vi.fn(),
-  tryEnqueueTaskMock: vi.fn(),
-  getActivePersonaNameMock: vi.fn(),
-}));
+const { createCommentEventQueueMock, tryEnqueueTaskMock, getActivePersonaNameMock, recordObservabilityEventMock } =
+  vi.hoisted(() => ({
+    createCommentEventQueueMock: vi.fn(),
+    tryEnqueueTaskMock: vi.fn(),
+    getActivePersonaNameMock: vi.fn(),
+    recordObservabilityEventMock: vi.fn(),
+  }));
 
 vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
   createCommentEventQueue: createCommentEventQueueMock,
@@ -18,7 +20,11 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
   getActivePersonaName: getActivePersonaNameMock,
 }));
 
-import { createCommentIngestHelpers } from '../src/server/comment-ingest.js';
+vi.mock('../src/services/observability.js', () => ({
+  recordObservabilityEvent: recordObservabilityEventMock,
+}));
+
+import { createCommentIngestHelpers, isPassiveResponseEligible } from '../src/server/comment-ingest.js';
 import type { InteractionEvent } from '../src/server/contracts.js';
 
 type FakePrisma = ReturnType<typeof buildPrisma>;
@@ -76,12 +82,18 @@ function buildDeps(prisma: FakePrisma, overrides: Record<string, unknown> = {}) 
 describe('comment ingest helper coverage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // The coverage suite exercises queue / backlog mechanics, NOT the passive-response
+    // gate (TASK-003). Disable the gate so the default 'hello' content still enqueues,
+    // keeping these tests focused on their original assertions. The gate itself is
+    // exercised by the dedicated 'passive response gate (TASK-003)' describe below.
+    process.env.PASSIVE_RESPONSE_GATE_ENABLED = 'false';
     createCommentEventQueueMock.mockReturnValue({
       name: 'comment-event',
       close: vi.fn(async () => undefined),
     });
     tryEnqueueTaskMock.mockResolvedValue({ queued: true });
     getActivePersonaNameMock.mockResolvedValue(null);
+    recordObservabilityEventMock.mockResolvedValue(undefined);
   });
 
   it('returns duplicate_ignored when duplicate insert has no pending backlog', async () => {
@@ -559,5 +571,137 @@ describe('comment ingest helper coverage', () => {
     const enqueuedPayload = tryEnqueueTaskMock.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(enqueuedPayload).toBeDefined();
     expect('persona_id' in enqueuedPayload).toBe(false);
+  });
+});
+
+describe('passive response gate (TASK-003)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.PASSIVE_RESPONSE_GATE_ENABLED = 'true';
+    createCommentEventQueueMock.mockReturnValue({
+      name: 'comment-event',
+      close: vi.fn(async () => undefined),
+    });
+    tryEnqueueTaskMock.mockResolvedValue({ queued: true });
+    getActivePersonaNameMock.mockResolvedValue(null);
+    recordObservabilityEventMock.mockResolvedValue(undefined);
+  });
+
+  it('enqueues when content @mentions the active persona (@self)', async () => {
+    const prisma = buildPrisma();
+    prisma.comment.create.mockResolvedValue({ id: 1 });
+    prisma.commentQueueBacklog.findUnique.mockResolvedValue(null);
+    getActivePersonaNameMock.mockResolvedValueOnce('小破站机器人');
+    const deps = buildDeps(prisma);
+    const helpers = createCommentIngestHelpers(deps);
+
+    const result = await helpers.ingestInteractionEvent({
+      event: buildInteractionEvent({ content: { text: '@小破站机器人 帮我看看' } }),
+      source: 'qq-sidecar',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      queued: true,
+      message: 'queued',
+      comment_id: 'comment-1',
+      trace_id: 'trace-input',
+    });
+    expect(tryEnqueueTaskMock).toHaveBeenCalledTimes(1);
+    expect(recordObservabilityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'passive_response_gate',
+        status: 'passed',
+        metadata: expect.objectContaining({ reason: '@self' }),
+      }),
+    );
+  });
+
+  it('enqueues when content hits a triggerKeyword even without @self', async () => {
+    const prisma = buildPrisma();
+    prisma.comment.create.mockResolvedValue({ id: 1 });
+    prisma.commentQueueBacklog.findUnique.mockResolvedValue(null);
+    const deps = buildDeps(prisma);
+    const helpers = createCommentIngestHelpers(deps);
+
+    const result = await helpers.ingestInteractionEvent({
+      event: buildInteractionEvent({ content: { text: '请问这个怎么用' } }),
+      source: 'qq-sidecar',
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      queued: true,
+      message: 'queued',
+    });
+    expect(tryEnqueueTaskMock).toHaveBeenCalledTimes(1);
+    expect(recordObservabilityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'passive_response_gate',
+        status: 'passed',
+        metadata: expect.objectContaining({ reason: 'trigger_keyword' }),
+      }),
+    );
+  });
+
+  it('does NOT enqueue a non-eligible comment but still persists it to DB', async () => {
+    const prisma = buildPrisma();
+    prisma.comment.create.mockResolvedValue({ id: 1 });
+    prisma.commentQueueBacklog.findUnique.mockResolvedValue(null);
+    const deps = buildDeps(prisma);
+    const helpers = createCommentIngestHelpers(deps);
+
+    const result = await helpers.ingestInteractionEvent({
+      event: buildInteractionEvent({ content: { text: '今天天气不错' } }),
+      source: 'qq-sidecar',
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      queued: false,
+      message: 'not_passive_eligible',
+      comment_id: 'comment-1',
+      trace_id: 'trace-input',
+    });
+    // Comment was still stored (audit trail preserved) — gate only controls enqueue.
+    expect(prisma.comment.create).toHaveBeenCalledTimes(1);
+    expect(tryEnqueueTaskMock).not.toHaveBeenCalled();
+    expect(recordObservabilityEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'passive_response_gate',
+        status: 'rejected',
+        metadata: expect.objectContaining({ reason: 'no_trigger' }),
+      }),
+    );
+  });
+
+  it('enqueues all comments when PASSIVE_RESPONSE_GATE_ENABLED=false (L8 rollback)', async () => {
+    process.env.PASSIVE_RESPONSE_GATE_ENABLED = 'false';
+    const prisma = buildPrisma();
+    prisma.comment.create.mockResolvedValue({ id: 1 });
+    prisma.commentQueueBacklog.findUnique.mockResolvedValue(null);
+    const deps = buildDeps(prisma);
+    const helpers = createCommentIngestHelpers(deps);
+
+    // Content has neither @self nor a triggerKeyword — would be rejected with the
+    // gate on, but the flag-off fallback enqueues it regardless.
+    const result = await helpers.ingestInteractionEvent({
+      event: buildInteractionEvent({ content: { text: '今天天气不错' } }),
+      source: 'qq-sidecar',
+    });
+
+    expect(result).toMatchObject({ ok: true, queued: true, message: 'queued' });
+    expect(tryEnqueueTaskMock).toHaveBeenCalledTimes(1);
+    // Gate counter is NOT emitted when the flag is off (no gate evaluation occurred).
+    expect(recordObservabilityEventMock).not.toHaveBeenCalled();
+  });
+
+  it('isPassiveResponseEligible matches @self case-insensitively and tolerates whitespace', () => {
+    expect(isPassiveResponseEligible('@  biliBot  你好', 'biliBot').eligible).toBe(true);
+    expect(isPassiveResponseEligible('@bilibot help', 'BILIBOT').reason).toBe('@self');
+    // @someone_else + triggerKeyword 你好 → eligible via keyword (not @self)
+    expect(isPassiveResponseEligible('@someone_else 你好', 'biliBot').eligible).toBe(true);
+    expect(isPassiveResponseEligible('没有任何触发词', 'biliBot').eligible).toBe(false);
+    expect(isPassiveResponseEligible('content', null).eligible).toBe(false); // no persona, no keyword
   });
 });

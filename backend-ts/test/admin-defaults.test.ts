@@ -179,6 +179,10 @@ beforeEach(() => {
   delete process.env.PUBLISHER_MODE;
   delete process.env.PUBLISHER_WEBHOOK_URL;
   delete process.env.PUBLISHER_WEBHOOK_TOKEN;
+  // TASK-003: the passive-response gate defaults ON in production, but this suite
+  // exercises queue/backlog mechanics with non-trigger content. Disable the gate
+  // so comments reach the enqueue path (the gate is covered by comment-ingest tests).
+  process.env.PASSIVE_RESPONSE_GATE_ENABLED = 'false';
 });
 
 describe('default admin data providers', () => {
