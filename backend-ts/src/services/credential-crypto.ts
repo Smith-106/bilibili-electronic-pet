@@ -3,7 +3,8 @@
  * Migrated from Python: app/services/platforms/bilibili.py (CredentialEncryption)
  *
  * Uses AES-256-GCM for encrypting sensitive Bilibili credentials before
- * database storage. Falls back to plaintext when no encryption key is configured.
+ * database storage. Fail-closed: when no encryption key is configured,
+ * encrypt/decrypt throw and the backend refuses to boot.
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
@@ -11,6 +12,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
+const MISSING_KEY_ERROR = 'CREDENTIAL_ENCRYPTION_KEY not configured (run scripts/generate-encryption-key.ts and set CREDENTIAL_ENCRYPTION_KEY)';
 
 function getEncryptionKey(): Buffer | null {
   const keyHex = process.env.CREDENTIAL_ENCRYPTION_KEY?.trim() || process.env.BILIBILI_COOKIE_ENCRYPTION_KEY?.trim();
@@ -29,7 +31,7 @@ export function isEncryptionAvailable(): boolean {
 
 export function encrypt(plaintext: string): string {
   const key = getEncryptionKey();
-  if (!key) return plaintext; // Fallback: store plaintext when no key configured
+  if (!key) throw new Error(MISSING_KEY_ERROR);
 
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
@@ -42,19 +44,14 @@ export function encrypt(plaintext: string): string {
 
 export function decrypt(ciphertext: string): string {
   const key = getEncryptionKey();
-  if (!key) return ciphertext; // Fallback: return as-is when no key configured
+  if (!key) throw new Error(MISSING_KEY_ERROR);
 
-  try {
-    const raw = Buffer.from(ciphertext, 'base64');
-    const iv = raw.subarray(0, IV_LENGTH);
-    const authTag = raw.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
-    const encrypted = raw.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
+  const raw = Buffer.from(ciphertext, 'base64');
+  const iv = raw.subarray(0, IV_LENGTH);
+  const authTag = raw.subarray(IV_LENGTH, IV_LENGTH + AUTH_TAG_LENGTH);
+  const encrypted = raw.subarray(IV_LENGTH + AUTH_TAG_LENGTH);
 
-    const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
-    decipher.setAuthTag(authTag);
-    return decipher.update(encrypted) + decipher.final('utf8');
-  } catch {
-    // If decryption fails, assume it's plaintext (migration from unencrypted)
-    return ciphertext;
-  }
+  const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+  decipher.setAuthTag(authTag);
+  return decipher.update(encrypted).toString('utf8') + decipher.final('utf8');
 }

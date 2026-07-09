@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import type { ServerDependencies } from '../src/server/dependencies.js';
 
+// Credential crypto is unit-tested elsewhere; here we mock it as identity so
+// diagnostics/create flows can focus on orchestration logic without real
+// AES round-trips. encrypt returns its input so stored fields stay readable.
+vi.mock('../src/services/credential-crypto.js', () => ({
+  encrypt: (plaintext: string) => plaintext,
+  decrypt: (ciphertext: string) => ciphertext,
+  isEncryptionAvailable: () => true,
+}));
+
 const { mockCommentQueueAdd, mockCommentQueueClose } = vi.hoisted(() => ({
   mockCommentQueueAdd: vi.fn(),
   mockCommentQueueClose: vi.fn().mockResolvedValue(undefined),
@@ -1286,16 +1295,18 @@ describe('default admin data providers', () => {
     expect(credentialCreateArgs).toMatchObject({
       data: {
         name: '副账号',
-        buvid3: 'buvid-1',
-        buvid4: 'buvid-4',
         is_active: true,
         expires_at: new Date('2026-12-31T00:00:00.000Z'),
       },
     });
     expect(typeof credentialCreateArgs.data.sessdata).toBe('string');
     expect(typeof credentialCreateArgs.data.bili_jct).toBe('string');
+    expect(typeof credentialCreateArgs.data.buvid3).toBe('string');
+    expect(typeof credentialCreateArgs.data.buvid4).toBe('string');
     expect(credentialCreateArgs.data.sessdata.length).toBeGreaterThan(0);
     expect(credentialCreateArgs.data.bili_jct.length).toBeGreaterThan(0);
+    expect(credentialCreateArgs.data.buvid3.length).toBeGreaterThan(0);
+    expect(credentialCreateArgs.data.buvid4.length).toBeGreaterThan(0);
     expect(response.json()).toEqual({
       ok: true,
       item: {

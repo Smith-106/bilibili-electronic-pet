@@ -8,8 +8,10 @@
 
 import { pathToFileURL } from 'node:url';
 
+import { disconnectPrisma } from '../lib/prisma.js';
 import { resolvePlatformPollingRuntime } from '../platforms/registry.js';
 import { buildWorkerServices } from '../services/index.js';
+import { isEncryptionAvailable } from '../services/credential-crypto.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
 const QUEUE_NAME = 'comment-event';
@@ -25,6 +27,22 @@ export function parseInteger(value: string | undefined, defaultValue: number): n
 }
 
 export async function main(): Promise<void> {
+  // ── boot guard：凭据加密 key 缺失则拒启动（fail-closed） ──
+  if (!isEncryptionAvailable()) {
+    console.error('[boot] CREDENTIAL_ENCRYPTION_KEY not configured');
+    process.exit(1);
+  }
+
+  // ── 全局错误防护：防止未捕获异常导致进程静默崩溃 ──
+  process.on('unhandledRejection', (reason) => {
+    console.error('[worker] Unhandled rejection:', reason);
+  });
+  process.on('uncaughtException', (error) => {
+    console.error('[worker] Uncaught exception:', error);
+    // uncaughtException 后进程状态不可靠，安全退出
+    process.exit(1);
+  });
+
   console.log('[worker] Starting worker process...');
 
   const killSwitch = process.env.KILL_SWITCH === 'true';
@@ -93,6 +111,13 @@ export async function main(): Promise<void> {
         console.error('[worker] Error closing worker:', error);
       }
 
+      try {
+        await disconnectPrisma();
+        console.log('[worker] Prisma disconnected successfully');
+      } catch (error) {
+        console.error('[worker] Error disconnecting Prisma:', error);
+      }
+
       process.exit(0);
     };
 
@@ -114,6 +139,13 @@ export async function main(): Promise<void> {
         console.log('[worker] Worker closed successfully');
       } catch (error) {
         console.error('[worker] Error closing worker:', error);
+      }
+
+      try {
+        await disconnectPrisma();
+        console.log('[worker] Prisma disconnected successfully');
+      } catch (error) {
+        console.error('[worker] Error disconnecting Prisma:', error);
       }
 
       process.exit(0);

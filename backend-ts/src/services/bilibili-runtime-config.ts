@@ -69,12 +69,17 @@ function buildEnvironmentConfig(): BilibiliRuntimeConfig | null {
 }
 
 function buildDatabaseConfig(credential: ActiveBilibiliCredential): BilibiliRuntimeConfig | null {
+  const decryptedSessdata = decrypt(String(credential.sessdata ?? ''));
+  const decryptedBiliJct = decrypt(String(credential.bili_jct ?? ''));
+  const decryptedBuvid3 = decrypt(String(credential.buvid3 ?? ''));
+  const decryptedBuvid4 = credential.buvid4 ? decrypt(String(credential.buvid4)) : '';
+
   const config: BilibiliRuntimeConfig = {
     ...buildCommonConfig(),
-    sessdata: decrypt(String(credential.sessdata ?? '')).trim(),
-    biliJct: decrypt(String(credential.bili_jct ?? '')).trim(),
-    buvid: String(credential.buvid3 ?? '').trim(),
-    buvid4: String(credential.buvid4 ?? '').trim(),
+    sessdata: decryptedSessdata.trim(),
+    biliJct: decryptedBiliJct.trim(),
+    buvid: decryptedBuvid3.trim(),
+    buvid4: decryptedBuvid4.trim(),
     source: 'database',
     credentialId: credential.id,
     credentialName: credential.name,

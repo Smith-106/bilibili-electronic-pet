@@ -32,28 +32,35 @@ afterAll(() => {
 });
 
 describe('credential crypto service', () => {
-  it('falls back to plaintext when no encryption key is configured', () => {
+  it('throws when encrypt is called without an encryption key (fail-closed)', () => {
     expect(isEncryptionAvailable()).toBe(false);
-    expect(encrypt('plain-cookie')).toBe('plain-cookie');
-    expect(decrypt('plain-cookie')).toBe('plain-cookie');
+    expect(() => encrypt('plain-cookie')).toThrowError(/CREDENTIAL_ENCRYPTION_KEY not configured/);
   });
 
-  it('rejects invalid key lengths and keeps plaintext compatibility', () => {
+  it('throws when decrypt is called without an encryption key (fail-closed)', () => {
+    expect(isEncryptionAvailable()).toBe(false);
+    expect(() => decrypt('plain-cookie')).toThrowError(/CREDENTIAL_ENCRYPTION_KEY not configured/);
+  });
+
+  it('rejects invalid key lengths and stays fail-closed', () => {
     process.env.CREDENTIAL_ENCRYPTION_KEY = 'abcd';
 
     expect(isEncryptionAvailable()).toBe(false);
-    expect(encrypt('token')).toBe('token');
-    expect(decrypt('token')).toBe('token');
+    expect(() => encrypt('token')).toThrowError(/CREDENTIAL_ENCRYPTION_KEY not configured/);
+    expect(() => decrypt('token')).toThrowError(/CREDENTIAL_ENCRYPTION_KEY not configured/);
   });
 
   it('treats key decoding errors as encryption unavailable', () => {
     process.env.CREDENTIAL_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-    const fromSpy = vi.spyOn(Buffer, 'from').mockImplementationOnce(() => {
+    const fromSpy = vi.spyOn(Buffer, 'from').mockImplementation(() => {
       throw new Error('decode failed');
     });
 
     expect(isEncryptionAvailable()).toBe(false);
     expect(fromSpy).toHaveBeenCalled();
+    expect(() => encrypt('token')).toThrowError(/CREDENTIAL_ENCRYPTION_KEY not configured/);
+
+    fromSpy.mockRestore();
   });
 
   it('encrypts and decrypts with the primary configured key', () => {
@@ -76,9 +83,9 @@ describe('credential crypto service', () => {
     expect(decrypt(ciphertext)).toBe('legacy-cookie');
   });
 
-  it('returns the original ciphertext when decryption fails', () => {
+  it('throws when decryption fails (tampered or invalid ciphertext) instead of returning null', () => {
     process.env.CREDENTIAL_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
-    expect(decrypt('not-valid-base64')).toBe('not-valid-base64');
+    expect(() => decrypt('not-valid-base64')).toThrowError();
   });
 });

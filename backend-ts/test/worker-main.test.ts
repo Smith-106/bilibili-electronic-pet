@@ -2,13 +2,21 @@ import { resolve } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { buildWorkerServicesMock, createCommentEventWorkerMock, pollAllVideosMock, resolvePlatformPollingRuntimeMock } =
-  vi.hoisted(() => ({
-    buildWorkerServicesMock: vi.fn(),
-    createCommentEventWorkerMock: vi.fn(),
-    pollAllVideosMock: vi.fn(),
-    resolvePlatformPollingRuntimeMock: vi.fn(),
-  }));
+const {
+  buildWorkerServicesMock,
+  createCommentEventWorkerMock,
+  disconnectPrismaMock,
+  isEncryptionAvailableMock,
+  pollAllVideosMock,
+  resolvePlatformPollingRuntimeMock,
+} = vi.hoisted(() => ({
+  buildWorkerServicesMock: vi.fn(),
+  createCommentEventWorkerMock: vi.fn(),
+  disconnectPrismaMock: vi.fn(async () => undefined),
+  isEncryptionAvailableMock: vi.fn(() => true),
+  pollAllVideosMock: vi.fn(),
+  resolvePlatformPollingRuntimeMock: vi.fn(),
+}));
 
 vi.mock('../src/platforms/registry.js', () => ({
   resolvePlatformPollingRuntime: resolvePlatformPollingRuntimeMock,
@@ -16,6 +24,10 @@ vi.mock('../src/platforms/registry.js', () => ({
 
 vi.mock('../src/services/index.js', () => ({
   buildWorkerServices: buildWorkerServicesMock,
+}));
+
+vi.mock('../src/services/credential-crypto.js', () => ({
+  isEncryptionAvailable: () => isEncryptionAvailableMock(),
 }));
 
 vi.mock('../src/workers/tasks/comment-event.task.js', () => ({
@@ -26,9 +38,13 @@ vi.mock('../src/services/bilibili-poller.js', () => ({
   pollAllVideos: pollAllVideosMock,
 }));
 
+vi.mock('../src/lib/prisma.js', () => ({
+  disconnectPrisma: disconnectPrismaMock,
+}));
+
 import { main, parseBoolean, parseInteger } from '../src/workers/worker-main.js';
 
-type SignalCallback = () => Promise<void> | void;
+type EventCallback = (...args: unknown[]) => void;
 
 describe('worker main runtime', () => {
   const originalEnv = {
@@ -36,7 +52,7 @@ describe('worker main runtime', () => {
     ROLE_PROFILE_DEFAULT: process.env.ROLE_PROFILE_DEFAULT,
   };
   const originalArgv1 = process.argv[1];
-  let callbacks: Partial<Record<NodeJS.Signals, SignalCallback>>;
+  let callbacks: Record<string, EventCallback>;
   let workerCloseMock: ReturnType<typeof vi.fn>;
   let consoleLogSpy: ReturnType<typeof vi.spyOn>;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
@@ -55,9 +71,7 @@ describe('worker main runtime', () => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     processOnSpy = vi.spyOn(process, 'on').mockImplementation((event, listener) => {
-      if (event === 'SIGTERM' || event === 'SIGINT') {
-        callbacks[event] = listener as SignalCallback;
-      }
+      callbacks[event] = listener as EventCallback;
       return process;
     });
     processExitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
@@ -111,8 +125,11 @@ describe('worker main runtime', () => {
 
     await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
     expect(workerCloseMock).toHaveBeenCalledOnce();
+    expect(disconnectPrismaMock).toHaveBeenCalledOnce();
+    expect(consoleLogSpy).toHaveBeenCalledWith('[worker] Prisma disconnected successfully');
     await expect(callbacks.SIGTERM?.()).resolves.toBeUndefined();
     expect(workerCloseMock).toHaveBeenCalledOnce();
+    expect(disconnectPrismaMock).toHaveBeenCalledOnce();
   });
 
   it('logs close errors before exiting during disabled polling shutdown', async () => {
@@ -122,6 +139,7 @@ describe('worker main runtime', () => {
     await expect(callbacks.SIGINT?.()).rejects.toThrow('process.exit:0');
 
     expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Error closing worker:', expect.any(Error));
+    expect(disconnectPrismaMock).toHaveBeenCalledOnce();
     expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
@@ -159,6 +177,7 @@ describe('worker main runtime', () => {
 
     await expect(callbacks.SIGINT?.()).rejects.toThrow('process.exit:0');
     expect(workerCloseMock).toHaveBeenCalledOnce();
+    expect(disconnectPrismaMock).toHaveBeenCalledOnce();
   });
 
   it('logs polling failures and closes worker from polling shutdown path', async () => {
@@ -175,6 +194,7 @@ describe('worker main runtime', () => {
     expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Bilibili poll failed:', expect.any(Error));
     await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
     expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Error closing worker:', expect.any(Error));
+    expect(disconnectPrismaMock).toHaveBeenCalledOnce();
   });
 
   it('shuts down polling mode before the interval has been created', async () => {
@@ -185,6 +205,37 @@ describe('worker main runtime', () => {
 
     await expect(callbacks.SIGTERM?.()).rejects.toThrow('process.exit:0');
     expect(workerCloseMock).toHaveBeenCalledOnce();
+  });
+
+  it('logs unhandled rejections', () => {
+    main();
+    callbacks['unhandledRejection'](new Error('test rejection'));
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Unhandled rejection:', expect.any(Error));
+  });
+
+  it('logs uncaught exceptions and exits with code 1', () => {
+    main();
+    expect(() => callbacks['uncaughtException'](new Error('fatal crash'))).toThrow('process.exit:1');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Uncaught exception:', expect.any(Error));
+    expect(processExitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('handles Prisma disconnection errors gracefully during non-polling shutdown', async () => {
+    disconnectPrismaMock.mockRejectedValueOnce(new Error('disconnect failed'));
+    main();
+    await expect(callbacks['SIGTERM']?.()).rejects.toThrow('process.exit:0');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Error disconnecting Prisma:', expect.any(Error));
+    expect(processExitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('handles Prisma disconnection errors gracefully during polling shutdown', async () => {
+    vi.useFakeTimers();
+    resolvePlatformPollingRuntimeMock.mockReturnValue({ enabled: true, intervalSeconds: 30 });
+    disconnectPrismaMock.mockRejectedValueOnce(new Error('disconnect failed'));
+    main();
+    await expect(callbacks['SIGTERM']?.()).rejects.toThrow('process.exit:0');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('[worker] Error disconnecting Prisma:', expect.any(Error));
+    expect(processExitSpy).toHaveBeenCalledWith(0);
   });
 
   it('logs fatal startup errors when executed directly', async () => {

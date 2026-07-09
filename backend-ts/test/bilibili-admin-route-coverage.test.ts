@@ -4,6 +4,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { registerBilibiliAdminRoutes, type BilibiliAdminRouteDependencies } from '../src/routes/bilibili-admin.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 
+// Fail-closed credential encryption requires a key for any encrypt() call
+// exercised by the admin credential create route.
+process.env.CREDENTIAL_ENCRYPTION_KEY =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
 const prisma = vi.hoisted(() => ({
   bilibiliVideo: {
     findUnique: vi.fn(),
@@ -580,7 +585,13 @@ describe('bilibili admin route coverage', () => {
     expect(missingDelete.json()).toEqual({ detail: 'credential_not_found' });
     expect(deleted.json()).toEqual({ ok: true, deleted_id: 2 });
     expect(prisma.bilibiliCredential.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ name: 'new', sessdata: 'sess', bili_jct: 'jct', buvid3: 'buvid', buvid4: null }),
+      data: expect.objectContaining({
+        name: 'new',
+        sessdata: expect.not.stringContaining('sess'),
+        bili_jct: expect.not.stringContaining('jct'),
+        buvid3: expect.not.stringContaining('buvid'),
+        buvid4: null,
+      }),
     });
 
     await app.close();
@@ -651,7 +662,7 @@ describe('bilibili admin route coverage', () => {
     expect(prisma.bilibiliCredential.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         name: 'expiring',
-        buvid4: 'buvid4',
+        buvid4: expect.not.stringContaining('buvid4'),
         is_active: false,
         expires_at: new Date('2026-06-10T00:00:00.000Z'),
       }),

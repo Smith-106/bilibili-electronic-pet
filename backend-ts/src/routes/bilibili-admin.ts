@@ -227,14 +227,16 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const isActive = existingCount === 0;
     const encSessdata = encrypt(sessdata);
     const encBiliJct = encrypt(biliJct);
+    const encBuvid3 = encrypt(buvid3);
+    const encBuvid4 = buvid4 ? encrypt(buvid4) : null;
 
     const credential = await prisma.bilibiliCredential.create({
       data: {
         name,
         sessdata: encSessdata,
         bili_jct: encBiliJct,
-        buvid3,
-        buvid4: buvid4 || null,
+        buvid3: encBuvid3,
+        buvid4: encBuvid4,
         is_active: isActive,
         expires_at: expiresAt,
       },
