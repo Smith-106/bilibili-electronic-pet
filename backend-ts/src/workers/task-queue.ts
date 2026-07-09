@@ -59,7 +59,7 @@ export function createTaskWorker<P extends BaseTaskPayload>(
   connection?: RedisConnectionConfig,
 ): Worker<P> {
   const config = workerConfig ?? buildDefaultWorkerConfig();
-  const killSwitch = (config as WorkerConfig).killSwitch ?? (config as Record<string, unknown>).enabled === true;
+  const killSwitch = (config as WorkerConfig).killSwitch ?? false;
   const redisConfig = connection ?? buildRedisConnectionConfig();
 
   const workerOptions: WorkerOptions = {
@@ -73,13 +73,9 @@ export function createTaskWorker<P extends BaseTaskPayload>(
   const worker = new Worker<P>(
     queueName,
     async (job: Job<P>) => {
-      // Kill-switch check
+      // Kill-switch check: throw to mark job as failed (not silently completed)
       if (killSwitch) {
-        return {
-          ok: false,
-          reason: 'kill_switch_enabled',
-          trace_id: job.data.trace_id,
-        };
+        throw new NonRetryableWorkerError('kill_switch_enabled');
       }
 
       try {

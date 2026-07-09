@@ -24,33 +24,45 @@ function getPublisherMode(): PublisherMode {
   return 'manual_queue';
 }
 
-// ── Circuit breaker ────────────────────────────────────────
+// ── Circuit breaker (per-platform isolation) ──────────────
 
 interface CircuitBreaker {
   failureCount: number;
   openUntil: number;
 }
 
-const breaker: CircuitBreaker = { failureCount: 0, openUntil: 0 };
+const breakers = new Map<string, CircuitBreaker>();
 
-function isCircuitBreakerOpen(): boolean {
+function getPlatformBreaker(platform: string): CircuitBreaker {
+  let breaker = breakers.get(platform);
+  if (!breaker) {
+    breaker = { failureCount: 0, openUntil: 0 };
+    breakers.set(platform, breaker);
+  }
+  return breaker;
+}
+
+function isCircuitBreakerOpen(platform: string): boolean {
   if (!isCircuitBreakerEnabled()) return false;
+  const breaker = getPlatformBreaker(platform);
   if (breaker.openUntil > Date.now()) return true;
   return false;
 }
 
-function recordFailure(): void {
+function recordFailure(platform: string): void {
   if (!isCircuitBreakerEnabled()) return;
+  const breaker = getPlatformBreaker(platform);
   breaker.failureCount++;
   const threshold = parseInt(process.env.PUBLISHER_CIRCUIT_FAILURE_THRESHOLD || '3', 10);
   if (breaker.failureCount >= threshold) {
     const openSeconds = parseInt(process.env.PUBLISHER_CIRCUIT_OPEN_SECONDS || '30', 10);
     breaker.openUntil = Date.now() + openSeconds * 1000;
-    console.warn(`[publisher] Circuit breaker OPEN for ${openSeconds}s after ${breaker.failureCount} failures`);
+    console.warn(`[publisher] Circuit breaker OPEN for platform=${platform} for ${openSeconds}s after ${breaker.failureCount} failures`);
   }
 }
 
-function recordSuccess(): void {
+function recordSuccess(platform: string): void {
+  const breaker = getPlatformBreaker(platform);
   breaker.failureCount = 0;
   breaker.openUntil = 0;
 }
@@ -330,8 +342,8 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
       return [true, 'duplicate_reply', existing.published_at, { rpid: String(existing.id) }];
     }
 
-    // 2. Check circuit breaker
-    if (isCircuitBreakerOpen()) {
+    // 2. Check circuit breaker (per-platform)
+    if (isCircuitBreakerOpen(platform)) {
       const now = new Date();
       return [false, 'circuit_breaker_open', now, null];
     }
@@ -356,11 +368,11 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
         break;
     }
 
-    // 4. Update circuit breaker
+    // 4. Update circuit breaker (per-platform)
     if (result[0]) {
-      recordSuccess();
+      recordSuccess(platform);
     } else {
-      recordFailure();
+      recordFailure(platform);
     }
 
     return result;

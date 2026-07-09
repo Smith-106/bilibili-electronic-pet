@@ -10,6 +10,14 @@ vi.mock('../src/lib/prisma.js', () => ({
   getPrisma: () => mockPrisma,
 }));
 
+const mockDecrypt = vi.fn((ciphertext: string) => ciphertext);
+
+vi.mock('../src/services/credential-crypto.js', () => ({
+  decrypt: (ciphertext: string) => mockDecrypt(ciphertext),
+  encrypt: vi.fn(),
+  isEncryptionAvailable: vi.fn(),
+}));
+
 const { loadBilibiliRuntimeConfig } = await import('../src/services/bilibili-runtime-config.js');
 
 const trackedEnvKeys = [
@@ -238,5 +246,36 @@ describe('loadBilibiliRuntimeConfig', () => {
     const config = await loadBilibiliRuntimeConfig();
 
     expect(config).toBeNull();
+  });
+
+  it('falls back to environment variables when decrypt returns null for encrypted credentials', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.BILIBILI_SESSDATA = 'env-sess';
+    process.env.BILIBILI_BILI_JCT = 'env-jct';
+    process.env.BILIBILI_BUVID3 = 'env-buvid';
+
+    // Simulate decrypt returning null (decryption failure with key present)
+    mockDecrypt.mockReturnValue(null);
+
+    mockPrisma.bilibiliCredential.findFirst.mockResolvedValue({
+      id: 10,
+      name: '加密凭证',
+      sessdata: 'encrypted-sessdata',
+      bili_jct: 'encrypted-bili-jct',
+      buvid3: 'db-buvid',
+      buvid4: null,
+    });
+
+    const config = await loadBilibiliRuntimeConfig();
+
+    // decrypt null → sessdata/biliJct become '' → hasRequiredCredentialFields returns false
+    // → falls back to env vars
+    expect(config).toMatchObject({
+      source: 'environment',
+      sessdata: 'env-sess',
+      biliJct: 'env-jct',
+      buvid: 'env-buvid',
+    });
+    warnSpy.mockRestore();
   });
 });

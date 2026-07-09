@@ -21,6 +21,7 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
 
 vi.mock('../src/lib/prisma.js', () => ({
   createPrismaClient,
+  getPrisma: createPrismaClient,
 }));
 
 vi.stubGlobal('fetch', fetchMock);
@@ -75,7 +76,7 @@ describe('pollAllVideos runtime config integration', () => {
       events_injected: 0,
       details: [],
     });
-    expect(mockPrisma.$disconnect).toHaveBeenCalledOnce();
+    // Poller now uses getPrisma() singleton — no longer disconnects after each poll
   });
 
   it('queries enabled videos once a runtime credential is available', async () => {
@@ -94,7 +95,7 @@ describe('pollAllVideos runtime config integration', () => {
       events_injected: 0,
       details: [],
     });
-    expect(mockPrisma.$disconnect).toHaveBeenCalledOnce();
+    // Poller now uses getPrisma() singleton — no longer disconnects after each poll
   });
 
   it('aggregates video polling errors into the detail summary', async () => {
@@ -254,7 +255,7 @@ describe('pollAllVideos runtime config integration', () => {
         parent_id: null,
       },
     });
-    expect(mockPrisma.$disconnect).toHaveBeenCalledOnce();
+    // Poller now uses getPrisma() singleton — no longer disconnects after each poll
     infoSpy.mockRestore();
   });
 });
@@ -291,7 +292,7 @@ describe('pollVideoById', () => {
       events_injected: 0,
       details: [],
     });
-    expect(mockPrisma.$disconnect).toHaveBeenCalledOnce();
+    // Poller now uses getPrisma() singleton — no longer disconnects after each poll
   });
 
   it('fetches a missing aid, injects new comments, and ignores duplicate inserts', async () => {

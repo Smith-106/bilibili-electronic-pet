@@ -50,6 +50,32 @@ describe('prisma helper coverage', () => {
     expect(client).toHaveProperty('$disconnect', mockDisconnect);
   });
 
+  it('creates a Prisma client with PRISMA_POOL_SIZE concurrency when set', () => {
+    process.env.PRISMA_POOL_SIZE = '5';
+    const client = createPrismaClient('file::memory:');
+
+    expect(mockPrismaLibSql).toHaveBeenCalledWith({ url: 'file::memory:', concurrency: 5 });
+    expect(client).toHaveProperty('$disconnect', mockDisconnect);
+  });
+
+  it('ignores non-finite PRISMA_POOL_SIZE values', () => {
+    process.env.PRISMA_POOL_SIZE = 'abc';
+    createPrismaClient('file::memory:');
+
+    expect(mockPrismaLibSql).toHaveBeenCalledWith({ url: 'file::memory:' });
+  });
+
+  it('ignores zero and negative PRISMA_POOL_SIZE values', () => {
+    process.env.PRISMA_POOL_SIZE = '0';
+    createPrismaClient('file::memory:');
+    vi.clearAllMocks();
+
+    process.env.PRISMA_POOL_SIZE = '-3';
+    createPrismaClient('file::memory:');
+
+    expect(mockPrismaLibSql).toHaveBeenCalledWith({ url: 'file::memory:' });
+  });
+
   it('reuses the singleton and disconnects it once', async () => {
     process.env.DATABASE_URL = 'file::memory:';
 

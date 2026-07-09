@@ -22,7 +22,15 @@ export function resolveDatabaseUrl(databaseUrl = process.env.DATABASE_URL ?? DEF
 }
 
 export function createPrismaClient(databaseUrl?: string): PrismaClient {
-  const adapter = new PrismaLibSql({ url: resolveDatabaseUrl(databaseUrl) });
+  const url = resolveDatabaseUrl(databaseUrl);
+  const rawPoolSize = process.env.PRISMA_POOL_SIZE
+    ? Number.parseInt(process.env.PRISMA_POOL_SIZE, 10)
+    : NaN;
+  const concurrency = Number.isFinite(rawPoolSize) && rawPoolSize > 0 ? rawPoolSize : undefined;
+  const adapter = new PrismaLibSql({
+    url,
+    ...(concurrency != null ? { concurrency } : {}),
+  });
   return new PrismaClient({ adapter } as never);
 }
 

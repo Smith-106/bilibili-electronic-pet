@@ -7,7 +7,7 @@
 
 import type { PrismaClient } from '@prisma/client';
 
-import { createPrismaClient } from '../lib/prisma.js';
+import { getPrisma } from '../lib/prisma.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibili-runtime-config.js';
 
 const MAX_RETRY_ATTEMPTS = 3;
@@ -271,115 +271,107 @@ async function pollVideoComments(
  * Poll all enabled videos — main entry point
  */
 export async function pollAllVideos(): Promise<PollResult> {
-  const prisma = createPrismaClient();
+  const prisma = getPrisma();
 
-  try {
-    const config = await loadConfig(prisma);
-    if (!config) {
-      return emptyPollResult('disabled');
-    }
-
-    const videos = await prisma.bilibiliVideo.findMany({
-      where: { poll_enabled: true },
-    });
-
-    if (videos.length === 0) {
-      return emptyPollResult('no_videos');
-    }
-
-    let totalComments = 0;
-    let totalEvents = 0;
-    const details: PollResult['details'] = [];
-
-    for (const video of videos) {
-      try {
-        const result = await pollVideoComments(
-          prisma,
-          { id: video.id, bvid: video.bvid, aid: video.aid, last_rpid: video.last_rpid },
-          config,
-        );
-        totalComments += result.new_comments;
-        totalEvents += result.new_comments;
-
-        details.push({
-          bvid: video.bvid,
-          comments: result.new_comments,
-          status: result.status,
-        });
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
-        console.error(`[bilibili-poller] Error polling bvid=${video.bvid}: ${msg}`);
-        details.push({ bvid: video.bvid, comments: 0, status: 'error', error: msg });
-      }
-    }
-
-    return {
-      status: 'completed',
-      videos: videos.length,
-      comments: totalComments,
-      events_injected: totalEvents,
-      details,
-    };
-  } finally {
-    await prisma.$disconnect();
+  const config = await loadConfig(prisma);
+  if (!config) {
+    return emptyPollResult('disabled');
   }
-}
 
-export async function pollVideoById(videoId: number): Promise<PollResult> {
-  const prisma = createPrismaClient();
+  const videos = await prisma.bilibiliVideo.findMany({
+    where: { poll_enabled: true },
+  });
 
-  try {
-    const config = await loadConfig(prisma);
-    if (!config) {
-      return emptyPollResult('disabled');
-    }
+  if (videos.length === 0) {
+    return emptyPollResult('no_videos');
+  }
 
-    const video = await prisma.bilibiliVideo.findUnique({
-      where: { id: videoId },
-    });
-    if (!video) {
-      return emptyPollResult('not_found');
-    }
+  let totalComments = 0;
+  let totalEvents = 0;
+  const details: PollResult['details'] = [];
 
+  for (const video of videos) {
     try {
       const result = await pollVideoComments(
         prisma,
         { id: video.id, bvid: video.bvid, aid: video.aid, last_rpid: video.last_rpid },
         config,
       );
+      totalComments += result.new_comments;
+      totalEvents += result.new_comments;
 
-      return {
-        status: 'completed',
-        videos: 1,
+      details.push({
+        bvid: video.bvid,
         comments: result.new_comments,
-        events_injected: result.new_comments,
-        details: [
-          {
-            bvid: video.bvid,
-            comments: result.new_comments,
-            status: result.status,
-          },
-        ],
-      };
+        status: result.status,
+      });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[bilibili-poller] Error polling bvid=${video.bvid}: ${msg}`);
-      return {
-        status: 'error',
-        videos: 1,
-        comments: 0,
-        events_injected: 0,
-        details: [
-          {
-            bvid: video.bvid,
-            comments: 0,
-            status: 'error',
-            error: msg,
-          },
-        ],
-      };
+      details.push({ bvid: video.bvid, comments: 0, status: 'error', error: msg });
     }
-  } finally {
-    await prisma.$disconnect();
+  }
+
+  return {
+    status: 'completed',
+    videos: videos.length,
+    comments: totalComments,
+    events_injected: totalEvents,
+    details,
+  };
+}
+
+export async function pollVideoById(videoId: number): Promise<PollResult> {
+  const prisma = getPrisma();
+
+  const config = await loadConfig(prisma);
+  if (!config) {
+    return emptyPollResult('disabled');
+  }
+
+  const video = await prisma.bilibiliVideo.findUnique({
+    where: { id: videoId },
+  });
+  if (!video) {
+    return emptyPollResult('not_found');
+  }
+
+  try {
+    const result = await pollVideoComments(
+      prisma,
+      { id: video.id, bvid: video.bvid, aid: video.aid, last_rpid: video.last_rpid },
+      config,
+    );
+
+    return {
+      status: 'completed',
+      videos: 1,
+      comments: result.new_comments,
+      events_injected: result.new_comments,
+      details: [
+        {
+          bvid: video.bvid,
+          comments: result.new_comments,
+          status: result.status,
+        },
+      ],
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[bilibili-poller] Error polling bvid=${video.bvid}: ${msg}`);
+    return {
+      status: 'error',
+      videos: 1,
+      comments: 0,
+      events_injected: 0,
+      details: [
+        {
+          bvid: video.bvid,
+          comments: 0,
+          status: 'error',
+          error: msg,
+        },
+      ],
+    };
   }
 }

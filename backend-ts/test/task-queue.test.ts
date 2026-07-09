@@ -153,31 +153,25 @@ describe('task queue infrastructure', () => {
     expect(instance.on).toHaveBeenCalledWith('error', expect.any(Function));
   });
 
-  it('short-circuits workers when kill switch is enabled', async () => {
+  it('throws NonRetryableWorkerError when kill switch is enabled', async () => {
     const processor = vi.fn(async () => ({ ok: true }));
 
     createTaskWorker('comment-event', processor, { killSwitch: true });
-    const result = await workerInstances[0].processor({ data: { trace_id: 'trace-kill' } });
-
-    expect(result).toEqual({
-      ok: false,
-      reason: 'kill_switch_enabled',
-      trace_id: 'trace-kill',
-    });
+    await expect(workerInstances[0].processor({ data: { trace_id: 'trace-kill' } })).rejects.toThrow(
+      'kill_switch_enabled',
+    );
     expect(processor).not.toHaveBeenCalled();
   });
 
-  it('supports legacy enabled flag as a kill switch', async () => {
+  it('no longer treats enabled=true as a kill switch (bug fix)', async () => {
     const processor = vi.fn(async () => ({ ok: true }));
 
     createTaskWorker('comment-event', processor, { enabled: true } as never);
     const result = await workerInstances[0].processor({ data: {} });
 
-    expect(result).toEqual({
-      ok: false,
-      reason: 'kill_switch_enabled',
-      trace_id: undefined,
-    });
+    // enabled=true used to trigger kill-switch (logic inversion bug) — now fixed
+    expect(result).toEqual({ ok: true });
+    expect(processor).toHaveBeenCalled();
   });
 
   it('preserves known worker errors and wraps unknown failures as retryable', async () => {

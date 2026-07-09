@@ -85,6 +85,7 @@ export async function publishViaSidecarWebhook(input: {
   }
 
   try {
+    const timeout = Number.parseInt(process.env.SIDECAR_WEBHOOK_TIMEOUT_SECONDS || '15', 10) * 1000;
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
@@ -93,6 +94,7 @@ export async function publishViaSidecarWebhook(input: {
         ...(webhookToken ? { Authorization: `Bearer ${webhookToken}` } : {}),
       },
       body: JSON.stringify(buildSidecarWebhookPayload(input)),
+      signal: AbortSignal.timeout(timeout),
     });
 
     if (!response.ok) {

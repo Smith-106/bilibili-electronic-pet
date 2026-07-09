@@ -392,7 +392,7 @@ describe('publisher mode coverage', () => {
 
     expect(thirdFailure.slice(0, 2)).toEqual([false, 'webhook_not_configured']);
     expect(openCircuit.slice(0, 2)).toEqual([false, 'circuit_breaker_open']);
-    expect(warnSpy).toHaveBeenCalledWith('[publisher] Circuit breaker OPEN for 30s after 3 failures');
+    expect(warnSpy).toHaveBeenCalledWith('[publisher] Circuit breaker OPEN for platform=bilibili for 30s after 3 failures');
   });
 
   it('does not open the circuit breaker before the configured failure threshold and resets after success', async () => {
