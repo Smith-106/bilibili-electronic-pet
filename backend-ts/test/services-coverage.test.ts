@@ -48,6 +48,7 @@ const trackedEnvKeys = [
   'REPLY_COOLDOWN_MINUTES',
   'REPLY_QUIET_HOURS_START',
   'REPLY_QUIET_HOURS_END',
+  'TIMING_ENGINE_ENABLED',
 ] as const;
 
 const originalEnv = Object.fromEntries(trackedEnvKeys.map((key) => [key, process.env[key]])) as Record<
@@ -1024,6 +1025,7 @@ describe('decider coverage branches', () => {
   it('fails open when user cooldown lookup throws', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T04:00:00.000Z'));
+    process.env.TIMING_ENGINE_ENABLED = 'false';
     vi.spyOn(Math, 'random').mockReturnValue(0);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     mockPrisma.userState.findUnique.mockRejectedValue(new Error('db_down'));
@@ -1058,6 +1060,7 @@ describe('decider coverage branches', () => {
   it('rejects invalid length and applies quiet-hour probability', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T16:00:00.000Z'));
+    process.env.TIMING_ENGINE_ENABLED = 'false';
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(Math, 'random').mockReturnValue(0.22);
 
@@ -1079,6 +1082,7 @@ describe('decider coverage branches', () => {
   it('returns long length mode for long accepted comments', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-06-08T04:00:00.000Z'));
+    process.env.TIMING_ENGINE_ENABLED = 'false';
     vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.spyOn(Math, 'random').mockReturnValue(0);
 

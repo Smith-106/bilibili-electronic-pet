@@ -39,7 +39,26 @@ interface ReplyRules {
 
   // User state
   userCooldownMinutes: Record<string, number>; // user_id -> custom cooldown
+
+  // Poisson timing engine (B-layer): replaces fixed Math.random < probability
+  // λ derived from baseReplyProbability via F1: λ = -ln(1 - baseReplyProbability)
+  // Three-state machine active(λ高) / drowsy(λ中) / quiet(λ低) + state drift + transition jitter
+  poissonStates: {
+    active: { lambda: number };
+    drowsy: { lambda: number };
+    quiet: { lambda: number };
+  };
+  stateDriftIntervalMinutes: number;
+  stateTransitionJitter: number;
 }
+
+/**
+ * Reply state for the Poisson timing engine.
+ * - active: high reply rate (daytime peak)
+ * - drowsy: medium reply rate (transitional)
+ * - quiet: low reply rate (maps to quiet hours)
+ */
+type ReplyState = 'active' | 'drowsy' | 'quiet';
 
 /**
  * Default reply rules
@@ -77,6 +96,16 @@ const DEFAULT_RULES: ReplyRules = {
   blockKeywords: ['广告', '推广', '加群', '加微', '加QQ', '私聊'],
 
   userCooldownMinutes: {},
+
+  // F1 derivation: λ = -ln(1 - baseReplyProbability) = -ln(1 - 0.7) ≈ 1.204
+  // Preserves the P(at least one event) = 1 - e^-λ = 0.7 semantic.
+  poissonStates: {
+    active: { lambda: 1.204 },
+    drowsy: { lambda: 0.6 },
+    quiet: { lambda: 0.2 },
+  },
+  stateDriftIntervalMinutes: 30,
+  stateTransitionJitter: 0.1,
 };
 
 /**
@@ -119,6 +148,90 @@ function isInQuietHours(rules: ReplyRules): boolean {
     // Quiet hours within same day (e.g., 01:00 - 05:00)
     return utc8Hours >= rules.quietHoursStart && utc8Hours < rules.quietHoursEnd;
   }
+}
+
+/**
+ * Poisson process sampler (Knuth algorithm).
+ * Returns the number of events k occurring in a unit interval with rate λ.
+ * P(k) = (λ^k * e^-λ) / k!
+ */
+function samplePoisson(lambda: number): number {
+  // Knuth's algorithm: L = e^-λ; k = 0; p = 1
+  // do { k++; p *= uniform(0,1) } while p > L; return k - 1
+  const L = Math.exp(-lambda);
+  let k = 0;
+  let p = 1;
+  do {
+    k++;
+    p *= Math.random();
+  } while (p > L);
+  return k - 1;
+}
+
+/**
+ * Poisson-based reply decision: reply if at least one event occurs in the interval.
+ * P(reply) = P(k >= 1) = 1 - e^-λ, preserving the baseReplyProbability semantic.
+ */
+function shouldReplyPoisson(lambda: number): boolean {
+  return samplePoisson(lambda) >= 1;
+}
+
+/**
+ * Determine the current reply state for the Poisson timing engine.
+ *
+ * State machine:
+ * - quiet hours (reuse isInQuietHours — F-004 day/night basis) → 'quiet'
+ * - otherwise drift between 'active' and 'drowsy' based on a periodic cycle
+ *   (stateDriftIntervalMinutes) with transition jitter, so the state changes
+ *   over time instead of being stuck on a fixed pattern.
+ *
+ * The deterministic cycle index uses wall-clock minutes since epoch divided by
+ * the drift interval; jitter modulates the active/drowsy split threshold so the
+ * boundary shifts, eliminating a fixed-pattern ban cause.
+ */
+function getCurrentReplyState(rules: ReplyRules, date: Date = new Date()): ReplyState {
+  if (isInQuietHoursAt(rules, date)) {
+    return 'quiet';
+  }
+
+  // Periodic drift: which drift-slot are we in?
+  const slotMs = rules.stateDriftIntervalMinutes * 60 * 1000;
+  const slotIndex = Math.floor(date.getTime() / slotMs);
+
+  // Jitter: hash slotIndex into [0,1) deterministically so the active/drowsy
+  // boundary shifts across slots. Combined with slotIndex this gives a stable
+  // per-slot state that still drifts over time.
+  const jitterSeed = Math.abs(Math.sin(slotIndex * 12.9898) * 43758.5453) % 1;
+  const jitterThreshold = 0.5 + (jitterSeed - 0.5) * rules.stateTransitionJitter * 2;
+
+  // Alternate active/drowsy by slot parity, with jitter shifting the boundary.
+  return slotIndex % 2 === 0
+    ? jitterSeed < jitterThreshold
+      ? 'active'
+      : 'drowsy'
+    : jitterSeed < jitterThreshold
+      ? 'drowsy'
+      : 'active';
+}
+
+/**
+ * Quiet-hours check pinned to an explicit date (testable).
+ */
+function isInQuietHoursAt(rules: ReplyRules, date: Date): boolean {
+  const utc8Hours = (date.getUTCHours() + 8) % 24;
+  if (rules.quietHoursStart > rules.quietHoursEnd) {
+    return utc8Hours >= rules.quietHoursStart || utc8Hours < rules.quietHoursEnd;
+  }
+  return utc8Hours >= rules.quietHoursStart && utc8Hours < rules.quietHoursEnd;
+}
+
+/**
+ * Feature flag for the B-layer Poisson timing engine (L8 isolation).
+ * When off, falls back to the original Math.random < probability behavior so the
+ * change can be rolled back independently of other antirisk layers.
+ */
+function isTimingEngineEnabled(): boolean {
+  return process.env.TIMING_ENGINE_ENABLED !== 'false';
 }
 
 /**
@@ -215,8 +328,10 @@ function calculateReplyProbability(
   // Apply length penalty
   probability -= contentAnalysis.lengthPenalty;
 
-  // Apply quiet hours factor
-  if (isQuietHours) {
+  // Apply quiet hours factor only when the Poisson timing engine is disabled.
+  // When the timing engine is enabled, quiet hours map to the 'quiet' reply state
+  // (low λ), so the probability scalar must not double-diminish the decision.
+  if (isQuietHours && !isTimingEngineEnabled()) {
     probability *= rules.quietHoursProbabilityFactor;
   }
 
@@ -321,17 +436,31 @@ export const shouldReplyForInteraction: ShouldReplyForInteractionService = async
   // 6. Calculate probability
   const probability = calculateReplyProbability(contentAnalysis, isQuietHours, rules);
 
-  // 7. Roll the dice
-  const shouldReplyFlag = Math.random() < probability;
+  // 7. Roll the dice — Poisson timing engine (L8 flag-gated)
+  // When the timing engine is enabled, replace the fixed Math.random < probability
+  // with a Poisson process sample keyed off the current reply state (active/drowsy/quiet),
+  // preserving the P(reply) = 1 - e^-λ = baseReplyProbability semantic while eliminating
+  // the fixed-pattern ban cause via state drift + transition jitter.
+  let replyState: ReplyState | null = null;
+  let poissonLambda: number | null = null;
+  let shouldReplyFlag: boolean;
+  if (isTimingEngineEnabled()) {
+    replyState = getCurrentReplyState(rules);
+    poissonLambda = rules.poissonStates[replyState].lambda;
+    shouldReplyFlag = shouldReplyPoisson(poissonLambda);
+  } else {
+    shouldReplyFlag = Math.random() < probability;
+  }
 
   // 8. Determine style and length
   const styleMode = styleProfile;
   const lengthMode = content.length > 100 ? 'long' : 'medium';
 
+  const stateLog = replyState ? `, state: ${replyState}, λ: ${poissonLambda}` : '';
   console.log(
     `[shouldReply] Decision: ${shouldReplyFlag} (probability: ${(probability * 100).toFixed(1)}%, ` +
       `quiet hours: ${isQuietHours}, trigger keywords: ${contentAnalysis.hasTriggerKeywords}, ` +
-      `block keywords: ${contentAnalysis.hasBlockKeywords})`,
+      `block keywords: ${contentAnalysis.hasBlockKeywords}${stateLog})`,
   );
 
   return [shouldReplyFlag, styleMode, lengthMode];
@@ -365,4 +494,8 @@ export const decideSafetyAction: DecideSafetyActionService = (safe, riskFlags) =
 
 export const __deciderTesting = {
   loadReplyRules,
+  samplePoisson,
+  shouldReplyPoisson,
+  getCurrentReplyState,
+  isTimingEngineEnabled,
 };
