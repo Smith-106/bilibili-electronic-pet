@@ -106,6 +106,58 @@ function isPublishLogStorageError(error: unknown): boolean {
   );
 }
 
+// ── Mock injection for the simulated stage (P3 warmup / L7) ──
+//
+// PUBLISHER_SIMULATED_RESPONSES drives the mock PostReplyResult injected into
+// postReply via config.mockPostReplyResult when PUBLISHER_MODE=simulated. Lets the
+// simulated stage emit -352 behavior_anomaly (or success) responses end-to-end
+// through classifyAntiriskSubclass → applyBackoff for online eval, WITHOUT touching
+// the real Bilibili API. Format: `error_code:-352,v_voucher:voucher_xxx` or
+// `success:true,rpid:mock_123`. Unset → publishSimulated keeps the legacy
+// "simulate success" behavior (backward compatible).
+//
+// Fail-closed: malformed env throws (not silently ignored) per risk mitigation.
+type MockPostReplyResult = {
+  success?: boolean;
+  rpid?: string;
+  error_code?: number;
+  v_voucher?: string;
+};
+
+function parseMockFromEnv(): MockPostReplyResult | undefined {
+  const raw = process.env.PUBLISHER_SIMULATED_RESPONSES;
+  if (!raw || !raw.trim()) return undefined;
+
+  const mock: MockPostReplyResult = {};
+  for (const pair of raw.split(',')) {
+    const sep = pair.indexOf(':');
+    if (sep <= 0) {
+      throw new Error(`PUBLISHER_SIMULATED_RESPONSES invalid pair (expected key:value): ${pair}`);
+    }
+    const key = pair.slice(0, sep).trim();
+    const value = pair.slice(sep + 1).trim();
+    if (!key) {
+      throw new Error(`PUBLISHER_SIMULATED_RESPONSES empty key in pair: ${pair}`);
+    }
+    if (key === 'success') {
+      mock.success = value === 'true';
+    } else if (key === 'rpid') {
+      mock.rpid = value;
+    } else if (key === 'error_code') {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed)) {
+        throw new Error(`PUBLISHER_SIMULATED_RESPONSES error_code not finite: ${value}`);
+      }
+      mock.error_code = parsed;
+    } else if (key === 'v_voucher') {
+      mock.v_voucher = value;
+    } else {
+      throw new Error(`PUBLISHER_SIMULATED_RESPONSES unknown key: ${key}`);
+    }
+  }
+  return mock;
+}
+
 /**
  * Antirisk error subclass classifier (coding spec: 错误码352须解析v_voucher子类分流).
  *
@@ -253,12 +305,32 @@ async function publishManualQueue(
 }
 
 /**
- * simulated mode: Simulate successful publish without calling API
+ * simulated mode: Simulate a publish. Default behavior (no PUBLISHER_SIMULATED_RESPONSES)
+ * records a 'published' row without calling the API (backward compatible).
+ *
+ * When PUBLISHER_SIMULATED_RESPONSES is set (P3 warmup / L7), inject a mock
+ * PostReplyResult via postReply's config.mockPostReplyResult short-circuit (no fetch).
+ * If the mock yields -352 behavior_anomaly, throw so publishIntentWithResult's catch
+ * path runs classifyAntiriskSubclass → applyBackoff (reuses the publishReal -352 throw
+ * path, end-to-end online eval for the simulated stage).
  */
 async function publishSimulated(
   context: PublishLogContext,
   replyText: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
+  const mock = parseMockFromEnv();
+  if (mock) {
+    // Mock injection: postReply short-circuits on config.mockPostReplyResult (no fetch).
+    // On -352, throw to route through classifyAntiriskSubclass → applyBackoff (mirrors
+    // publishReal -352 throw path) so the simulated stage can exercise the full
+    // antirisk chain end-to-end.
+    const result = await postReply(context.commentId, replyText, { mockPostReplyResult: mock });
+    if (!result.success && result.error_code === -352) {
+      throw new Error(`-352 behavior_anomaly v_voucher=${result.v_voucher ?? ''}`);
+    }
+    // Non-352 mock (e.g. success:true): fall through to record the simulated publish.
+  }
+
   const replyHash = createReplyHash(context.commentId, replyText);
   const now = new Date();
 

@@ -45,6 +45,7 @@ const trackedEnvKeys = [
   'STAGE_GATE_ENABLED',
   'STAGE_REAL_PUBLISH_READY',
   'STAGE_DAILY_QUOTA',
+  'PUBLISHER_SIMULATED_RESPONSES',
 ] as const;
 
 function clearPublisherEnv(): void {
@@ -94,6 +95,61 @@ afterEach(() => {
 });
 
 describe('publisher mode coverage', () => {
+  it('simulated stage injects mock -352 via PUBLISHER_SIMULATED_RESPONSES → classifyAntiriskSubclass → backoff_applied (L7 end-to-end)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'simulated';
+    process.env.PUBLISHER_SIMULATED_RESPONSES = 'error_code:-352,v_voucher:mock_v';
+    // Two resolveActivePersonaId calls: entry (backoff intercept) + catch path.
+    getActivePersonaNameMock.mockResolvedValue('simulated-persona');
+    // postReply (mocked at module scope) returns the -352 result that the real
+    // postReply short-circuit would yield for the injected mockPostReplyResult.
+    postReplyMock.mockResolvedValueOnce({
+      success: false,
+      rpid: '',
+      error_code: -352,
+      v_voucher: 'mock_v',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // Chain: publishSimulated parses env → postReply(mockConfig) → result.error_code=-352
+    //   → throw → publishIntentWithResult catch → classifyAntiriskSubclass='behavior_anomaly'
+    //   → applyBackoff(persona_id,'behavior_anomaly') → backoff_applied (cap 600s)
+    //   → recordAntiriskSignal antirisk_signal_detected → tuple [false,'rate_limited',...].
+    expect(result.slice(0, 2)).toEqual([false, 'rate_limited']);
+
+    expect(postReplyMock).toHaveBeenCalledWith(
+      'comment-1',
+      'reply text',
+      expect.objectContaining({
+        mockPostReplyResult: expect.objectContaining({
+          error_code: -352,
+          v_voucher: 'mock_v',
+        }),
+      }),
+    );
+
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'backoff_applied',
+          error_subclass: 'behavior_anomaly',
+          persona_id: 'simulated-persona',
+          event_metadata: JSON.stringify({ cap_seconds: 600 }),
+        }),
+      }),
+    );
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'antirisk_signal_detected',
+          error_subclass: 'behavior_anomaly',
+        }),
+      }),
+    );
+  });
+
   it('publishes simulated replies and falls back invalid modes to manual queue', async () => {
     process.env.PUBLISHER_MODE = 'simulated';
 

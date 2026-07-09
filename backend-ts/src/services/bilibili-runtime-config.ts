@@ -16,6 +16,20 @@ export interface BilibiliRuntimeConfig {
   source: 'database' | 'environment';
   credentialId: number | null;
   credentialName: string | null;
+  /**
+   * Optional mock injection for the simulated stage (P3 warmup / L7). When set,
+   * postReply short-circuits before issuing fetch and returns a fake
+   * PostReplyResult so the simulated stage can drive -352 behavior_anomaly
+   * (or success) responses end-to-end through classifyAntiriskSubclass →
+   * applyBackoff without touching the real Bilibili API. Default undefined in
+   * real_publish (loadBilibiliRuntimeConfig never populates it).
+   */
+  mockPostReplyResult?: {
+    success?: boolean;
+    rpid?: string;
+    error_code?: number;
+    v_voucher?: string;
+  };
 }
 
 type BilibiliCredentialReader = Pick<PrismaClient, 'bilibiliCredential'>;

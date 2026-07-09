@@ -77,14 +77,46 @@ export type PostReplyResult = {
 };
 
 /**
+ * Mock injection shape for postReply's config param (P3 warmup / L7). The simulated
+ * stage passes a mock-only object (no credentials) so postReply short-circuits before
+ * issuing any fetch. Distinct from the full BilibiliConfig so callers can't accidentally
+ * ship a mock-only object to real_publish.
+ */
+export type PostReplyMockConfig = {
+  mockPostReplyResult: {
+    success?: boolean;
+    rpid?: string;
+    error_code?: number;
+    v_voucher?: string;
+  };
+};
+
+/**
  * Post a reply to a comment
  */
 export async function postReply(
   commentId: string,
   replyText: string,
-  config?: BilibiliConfig,
+  config?: BilibiliConfig | PostReplyMockConfig,
 ): Promise<PostReplyResult> {
-  const resolvedConfig = config || (await loadBilibiliConfig());
+  // Mock injection short-circuit (P3 warmup / L7): when config.mockPostReplyResult
+  // is set, return the canned PostReplyResult WITHOUT issuing a fetch. Lets the
+  // simulated stage drive -352 behavior_anomaly (or success) responses end-to-end
+  // through classifyAntiriskSubclass → applyBackoff for online eval without hitting
+  // the real Bilibili API. Default undefined in real_publish (no short-circuit).
+  if (config?.mockPostReplyResult) {
+    const mock = config.mockPostReplyResult;
+    return {
+      success: mock.success ?? false,
+      rpid: mock.rpid ?? '',
+      error_code: mock.error_code,
+      v_voucher: mock.v_voucher,
+    };
+  }
+
+  // Past the short-circuit, a mock-only PostReplyMockConfig is impossible (its
+  // mockPostReplyResult is required + truthy). Narrow to BilibiliConfig for the fetch path.
+  const resolvedConfig: BilibiliConfig | null = (config as BilibiliConfig | undefined) || (await loadBilibiliConfig());
   if (!resolvedConfig) {
     console.error('[Bilibili] Cannot post reply: not configured');
     return { success: false, rpid: '' };
