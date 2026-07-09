@@ -154,6 +154,13 @@ function scheduleDropCountAlert(): void {
 /**
  * Flush buffered observability events to the database via createMany.
  * Exported for test synchronization and readiness probes.
+ *
+ * On flush failure, the entire spliced batch is counted as dropped
+ * (dropCount += batch.length), NOT a single +1 — losing a 128-event batch
+ * must register as 128 drops so the readiness threshold reflects real loss,
+ * not an undercount (ISS-003). The rejection is swallowed here (fail-closed
+ * to dropCount) so callers' fire-and-forget .catch never sees a per-event
+ * batch failure; they keep their +1 as an overflow-only backstop.
  */
 export async function flushObservabilityBuffer(): Promise<void> {
   if (flushInFlight || eventBuffer.length === 0) {
@@ -164,6 +171,18 @@ export async function flushObservabilityBuffer(): Promise<void> {
   try {
     const prisma = getPrisma();
     await prisma.observabilityEvent.createMany({ data: batch });
+  } catch (error: unknown) {
+    // Entire batch lost — count every event so drop_count reflects real loss.
+    dropCount += batch.length;
+    scheduleDropCountAlert();
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'observability_flush_failed',
+        dropped: batch.length,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
   } finally {
     flushInFlight = false;
   }
@@ -214,15 +233,16 @@ function pushToBuffer(event: BufferedObservabilityEvent): void {
   }
   eventBuffer.push(event);
   // Trigger an async flush so events persist promptly without blocking the hot path.
-  // .catch increments dropCount to avoid unhandledRejection (Fix, Don't Hide: root cause
-  // is surfaced via dropCount/readiness, not silenced).
+  // flushObservabilityBuffer swallows createMany failures internally (dropCount += batch.length,
+  // ISS-003); this .catch is a defensive backstop for unexpected sync throws only —
+  // normal flush failures are already counted inside flushObservabilityBuffer.
   void flushObservabilityBuffer().catch((error: unknown) => {
     dropCount += 1;
     scheduleDropCountAlert();
     console.warn(
       JSON.stringify({
         level: 'warn',
-        message: 'observability_flush_failed',
+        message: 'observability_flush_unexpected_error',
         error: error instanceof Error ? error.message : String(error),
       }),
     );

@@ -260,12 +260,15 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       scope: 'repo_controlled_product_completion',
       total: completionTotal,
       categories: {
-        ui_ux: companionSurfaceSignedOff ? 100 : 86,
-        frontend: companionSurfaceSignedOff ? 100 : 90,
-        backend: deliveryReady && adminAccessConfigured ? 100 : 95,
-        frontend_backend_loop: companionSurfaceSignedOff && deliveryReady ? 100 : 91,
-        test: productReady ? 100 : 93,
-        deploy: productReady ? 100 : 90,
+        // ISS-004: each category derives from a concrete boolean signal (passed?100:0),
+        // not an ungrounded magic number. No fake 86/90/95 intermediate scores — a
+        // category is either satisfied (100) or not (0) per its real evidence signal.
+        ui_ux: companionSurfaceSignedOff ? 100 : 0,
+        frontend: companionSurfaceSignedOff ? 100 : 0,
+        backend: deliveryReady && adminAccessConfigured ? 100 : 0,
+        frontend_backend_loop: companionSurfaceSignedOff && deliveryReady ? 100 : 0,
+        test: productReady ? 100 : 0,
+        deploy: productReady ? 100 : 0,
       },
       evidence: {
         admin_static_assets: true,
