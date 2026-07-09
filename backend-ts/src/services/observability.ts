@@ -17,10 +17,34 @@ import { prisma as getPrisma } from './db-queries.js';
 
 /**
  * Memory-bounded buffer capacity for observability events.
- * F1 (Free): tunable; 4096 is the Phase 1 placeholder.
+ * F1 (Free): tunable via OBSERVABILITY_BUFFER_CAPACITY env (default 4096).
  * Overflow drops incoming events and increments dropCount.
+ *
+ * Exported for tests that need the resolved capacity (env-driven, evaluated at
+ * module load). Mutating the env after import does NOT retroactively resize
+ * the running buffer.
  */
-export const OBSERVABILITY_BUFFER_CAPACITY = 4096;
+export const OBSERVABILITY_BUFFER_CAPACITY = Number.parseInt(
+  process.env.OBSERVABILITY_BUFFER_CAPACITY ?? '4096',
+  10,
+);
+
+/**
+ * Drop-count threshold (F2). When getObservabilityDropCount() >= this value,
+ * an ObservabilityEvent {event_type:'observability_drop_count'} is emitted
+ * periodically via the normal observation buffer path so readiness can flag red.
+ */
+const DROP_COUNT_THRESHOLD = Number.parseInt(
+  process.env.OBSERVABILITY_DROP_COUNT_THRESHOLD ?? '100',
+  10,
+);
+
+/**
+ * Drop-count alert interval (ms). When drop_count crosses the threshold, a
+ * periodic ObservabilityEvent is emitted (not more often than this) so the
+ * overflow stays visible in the observability stream instead of a one-shot blip.
+ */
+const DROP_COUNT_ALERT_INTERVAL_MS = 30_000;
 
 /**
  * Flush batch size for background createMany writes.
@@ -47,6 +71,7 @@ const eventBuffer: BufferedObservabilityEvent[] = [];
 let dropCount = 0;
 let flushInFlight = false;
 let flushTimer: NodeJS.Timeout | null = null;
+let dropCountAlertTimer: NodeJS.Timeout | null = null;
 
 /**
  * Generate or ensure trace ID
@@ -83,6 +108,50 @@ function scheduleBackgroundFlush(): void {
 }
 
 /**
+ * Schedule a periodic drop-count alert. When drop_count crosses DROP_COUNT_THRESHOLD,
+ * an ObservabilityEvent {event_type:'observability_drop_count', metadata:{count}}
+ * is emitted via the normal observation buffer path (recordObservabilityEvent) so
+ * the overflow stays visible in the observability stream — readiness (TASK-005)
+ * also reads isDropCountThresholdExceeded() directly to flag the blocker red.
+ *
+ * The alert itself re-enters recordObservabilityEvent → pushToBuffer; if the buffer
+ * is saturated the alert event is itself dropped (and counted), which is the correct
+ * fail-closed behaviour: a broken observability path must not crash the alerter.
+ */
+function scheduleDropCountAlert(): void {
+  if (dropCountAlertTimer) {
+    return;
+  }
+  dropCountAlertTimer = setInterval(() => {
+    if (!isDropCountThresholdExceeded()) {
+      return;
+    }
+    const count = getObservabilityDropCount();
+    // Fire-and-forget on the normal observation buffer path (L1/L4): the alert is a
+    // regular observability event, NOT an antirisk signal, so it must not block.
+    void recordObservabilityEvent({
+      event_type: 'observability_drop_count',
+      trace_id: ensureTraceId(),
+      metadata: { count, threshold: DROP_COUNT_THRESHOLD },
+    }).catch((error: unknown) => {
+      // Last-resort: even the structured-log landing point of recordObservabilityEvent
+      // could throw (e.g. JSON.stringify on a thrown proxy). Never unhandledRejection.
+      dropCount += 1;
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'observability_drop_count_alert_failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+  }, DROP_COUNT_ALERT_INTERVAL_MS);
+  if (typeof dropCountAlertTimer.unref === 'function') {
+    dropCountAlertTimer.unref();
+  }
+}
+
+/**
  * Flush buffered observability events to the database via createMany.
  * Exported for test synchronization and readiness probes.
  */
@@ -109,6 +178,15 @@ export function getObservabilityDropCount(): number {
 }
 
 /**
+ * Whether drop_count has crossed the configured threshold (F2). Readiness route
+ * (TASK-005) uses this to flag the antirisk:drop_count_threshold_exceeded blocker
+ * red — silent event loss on Redis/DB pressure must surface, not stay hidden.
+ */
+export function isDropCountThresholdExceeded(): boolean {
+  return getObservabilityDropCount() >= DROP_COUNT_THRESHOLD;
+}
+
+/**
  * Reset drop count and buffer. Test-only helper; readiness probes should read
  * getObservabilityDropCount() instead.
  */
@@ -120,11 +198,18 @@ export function __resetObservabilityBufferForTest(): void {
     clearTimeout(flushTimer);
     flushTimer = null;
   }
+  if (dropCountAlertTimer) {
+    clearTimeout(dropCountAlertTimer);
+    dropCountAlertTimer = null;
+  }
 }
 
 function pushToBuffer(event: BufferedObservabilityEvent): void {
   if (eventBuffer.length >= OBSERVABILITY_BUFFER_CAPACITY) {
     dropCount += 1;
+    // Overflow arms the drop-count alert scheduler so the threshold breach surfaces
+    // as an observability_drop_count event (and, via TASK-005, a readiness blocker).
+    scheduleDropCountAlert();
     return;
   }
   eventBuffer.push(event);
@@ -133,6 +218,7 @@ function pushToBuffer(event: BufferedObservabilityEvent): void {
   // is surfaced via dropCount/readiness, not silenced).
   void flushObservabilityBuffer().catch((error: unknown) => {
     dropCount += 1;
+    scheduleDropCountAlert();
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -203,8 +289,15 @@ export type RecordAntiriskSignalInput = {
  * Unlike recordObservabilityEvent (普通观测，内存有界缓冲 fire-and-forget),
  * antirisk signals (-352 behavior_anomaly / -429 rate_limit) MUST be persisted
  * synchronously via await prisma.observabilityEvent.create so they are never
- * dropped (LD-04 > LD-02, user ruling). On DB failure the rejection propagates
- * to the caller; readiness MUST flag red and refuse to continue (L3).
+ * dropped (LD-04 > LD-02, user ruling).
+ *
+ * DB-reject containment (TASK-003 偏差4 / TASK-004 fail-closed 传播链):
+ * Callers await this inside publisher.ts catch blocks; an uncontained prisma.create
+ * rejection would escape as unhandledRejection. Here the DB failure is caught:
+ * console.error logs the structured failure AND dropCount increments (same accounting
+ * as normal-buffer overflow), then the function resolves normally. Readiness flagging
+ * red on DB-down is handled by the TASK-005 DB gate blocker, NOT by re-rejecting here —
+ * re-rejection would just get swallowed by the enclosing catch and hide the failure.
  *
  * First landing point: structured console.log (level:warn) for immediate visibility.
  */
@@ -227,19 +320,39 @@ export const recordAntiriskSignal = async (event: RecordAntiriskSignalInput): Pr
   );
 
   const prisma = getPrisma();
-  await prisma.observabilityEvent.create({
-    data: {
-      event_type: event.event_type,
-      trace_id: event.trace_id,
-      comment_id: event.comment_id ?? null,
-      job_id: event.job_id ?? null,
-      status: event.status ?? null,
-      duration_ms: event.duration_ms ?? null,
-      event_metadata: JSON.stringify(event.metadata ?? {}),
-      error_subclass: event.error_subclass,
-      persona_id: event.persona_id ?? null,
-    },
-  });
+  try {
+    await prisma.observabilityEvent.create({
+      data: {
+        event_type: event.event_type,
+        trace_id: event.trace_id,
+        comment_id: event.comment_id ?? null,
+        job_id: event.job_id ?? null,
+        status: event.status ?? null,
+        duration_ms: event.duration_ms ?? null,
+        event_metadata: JSON.stringify(event.metadata ?? {}),
+        error_subclass: event.error_subclass,
+        persona_id: event.persona_id ?? null,
+      },
+    });
+  } catch (error) {
+    // Fail-closed containment: DB-down must NOT become an unhandledRejection escaping
+    // publisher.ts's catch block. The lost signal is accounted into dropCount (same
+    // channel as normal-buffer overflow) so the readiness drop_count blocker (TASK-005)
+    // flags red, and the structured error log gives operators an immediate trail.
+    dropCount += 1;
+    scheduleDropCountAlert();
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'antirisk_signal_persist_failed',
+        event_type: event.event_type,
+        trace_id: event.trace_id,
+        error_subclass: event.error_subclass,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+  }
 };
 
 /**

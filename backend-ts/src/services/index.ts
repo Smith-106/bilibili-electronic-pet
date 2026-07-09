@@ -58,6 +58,7 @@ export function buildWorkerServices(config: { killSwitch: boolean; roleProfileDe
     ensureTraceId: observability.ensureTraceId,
     recordObservabilityEvent: observability.recordObservabilityEvent,
     buildLogContext: observability.buildLogContext,
+    getObservabilityDropCount: observability.getObservabilityDropCount,
 
     // Settings
     killSwitch: config.killSwitch,

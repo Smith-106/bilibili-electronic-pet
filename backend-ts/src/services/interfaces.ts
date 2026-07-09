@@ -216,6 +216,7 @@ export type WorkerServices = {
   ensureTraceId: EnsureTraceIdService;
   recordObservabilityEvent: RecordObservabilityEventService;
   buildLogContext: BuildLogContextService;
+  getObservabilityDropCount: () => number;
 
   // Settings
   killSwitch: boolean;
