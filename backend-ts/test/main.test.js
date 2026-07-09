@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createServer } from '../src/main.js';
+
+// TASK-005 readiness security gate: isEncryptionAvailable() must return true so the
+// credential_encryption:not_configured blocker does not fire for product_ready assertions.
+process.env.CREDENTIAL_ENCRYPTION_KEY =
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
 function buildSettings(overrides = {}) {
   return {
     databaseUrl: 'file:./test.db',
@@ -73,7 +79,8 @@ describe('health/readiness parity', () => {
     const response = await app.inject({ method: 'GET', url: '/readiness' });
     const data = response.json();
     expect(response.statusCode).toBe(200);
-    expect(data).toHaveProperty('ready');
+    expect(data).toHaveProperty('foundation_ready');
+    expect(data).toHaveProperty('product_ready');
     expect(data).toHaveProperty('database');
     expect(data).toHaveProperty('redis');
     expect(data).toHaveProperty('config');
@@ -105,7 +112,7 @@ describe('health/readiness parity', () => {
     );
     const response = await app.inject({ method: 'GET', url: '/readiness' });
     const data = response.json();
-    expect(data.ready).toBe(false);
+    expect(data.foundation_ready).toBe(false);
     expect(data.database.connected).toBe(false);
     expect(data.foundation_ready).toBe(false);
     expect(data.delivery_ready).toBe(false);
@@ -122,7 +129,7 @@ describe('health/readiness parity', () => {
     );
     const response = await app.inject({ method: 'GET', url: '/readiness' });
     const data = response.json();
-    expect(data.ready).toBe(false);
+    expect(data.foundation_ready).toBe(false);
     expect(data.redis.connected).toBe(false);
     expect(data.foundation_ready).toBe(false);
     expect(data.delivery_ready).toBe(false);
@@ -144,7 +151,7 @@ describe('health/readiness parity', () => {
     );
     const response = await app.inject({ method: 'GET', url: '/readiness' });
     const data = response.json();
-    expect(data.ready).toBe(true);
+    expect(data.foundation_ready).toBe(true);
     expect(data.foundation_ready).toBe(true);
     expect(data.delivery_ready).toBe(false);
     expect(data.delivery_blockers).toContain('bilibili:auth:no active credential');
@@ -182,7 +189,7 @@ describe('health/readiness parity', () => {
     );
     const response = await app.inject({ method: 'GET', url: '/readiness' });
     const data = response.json();
-    expect(data.ready).toBe(true);
+    expect(data.foundation_ready).toBe(true);
     expect(data.foundation_ready).toBe(true);
     expect(data.delivery_ready).toBe(true);
     expect(data.delivery_capability_blockers).toEqual([]);
@@ -213,7 +220,7 @@ describe('health/readiness parity', () => {
     );
     const response = await app.inject({ method: 'GET', url: '/readiness' });
     const data = response.json();
-    expect(data.ready).toBe(true);
+    expect(data.foundation_ready).toBe(true);
     expect(data.foundation_ready).toBe(true);
     expect(data.delivery_ready).toBe(false);
     expect(data.delivery_blockers).toContain('bilibili:publish_mode_not_delivery_capable:simulated');

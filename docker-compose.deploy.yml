@@ -34,7 +34,7 @@ services:
     volumes:
       - ./data:/app/data
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'dist/workers/worker-main.js' >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "curl -f localhost:3100/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

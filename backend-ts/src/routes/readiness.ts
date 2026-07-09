@@ -38,6 +38,10 @@ export type ReadinessRouteDependencies = {
     diagnostics: BilibiliDiagnostics,
     effectivePublishMode: string,
   ) => DeliveryCapabilityMatrix;
+  // F4/security gate: credential encryption key must be present (fail-closed boot guard mirrors here).
+  isEncryptionAvailable: () => boolean;
+  // F2/antirisk gate: observability buffer overflow beyond threshold -> blocker red.
+  isDropCountThresholdExceeded: () => boolean;
 };
 
 function isPublishingReady(snapshot: PlatformConnectionSnapshot): boolean {
@@ -214,11 +218,47 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (!gatewayAuthConfigured) {
       deps.addBlocker(productBlockers, 'gateway_auth:unconfigured');
     }
+    // Security gate: credential encryption key missing -> fail-closed blocker (grill C-005 故障不可见根因).
+    if (!deps.isEncryptionAvailable()) {
+      deps.addBlocker(productBlockers, 'credential_encryption:not_configured');
+    }
+    // Antirisk gate: observability buffer overflow beyond threshold -> antirisk readiness blocker red.
+    if (deps.isDropCountThresholdExceeded()) {
+      deps.addBlocker(productBlockers, 'antirisk:drop_count_threshold_exceeded');
+    }
 
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
+
+    // L5: completion_matrix.total derived from a gate array (passedGates/totalGates*100),
+    // replacing the previous hardcoded `productReady ? 100 : 91`. Gates split into four
+    // classes: foundation / delivery / antirisk / security. Each gate is a concrete boolean
+    // signal — no hidden fake signals (drop_count budget is the only observable antirisk
+    // buffer signal today; normal_buffer_healthy and critical_queue_healthy both derive from
+    // it until a second signal source lands).
+    const dropCountWithinBudget = !deps.isDropCountThresholdExceeded();
+    const credentialEncryptionKeyPresent = deps.isEncryptionAvailable();
+    const adminAccessReady = adminAccessConfigured && commentIngressAuthConfigured && gatewayAuthConfigured;
+    const readinessGates: Array<{ key: string; passed: boolean }> = [
+      // foundation
+      { key: 'db_connected', passed: dbStatus.connected },
+      { key: 'redis_connected', passed: redisStatus.connected },
+      // delivery
+      { key: 'admin_access_configured', passed: adminAccessReady },
+      { key: 'publish_mode_delivery_capable', passed: deliveryCapablePublishMode },
+      { key: 'worker_or_publish_path_ready', passed: deliveryPathReady },
+      // antirisk
+      { key: 'normal_buffer_healthy', passed: dropCountWithinBudget },
+      { key: 'critical_queue_healthy', passed: dropCountWithinBudget },
+      { key: 'drop_count_within_budget', passed: dropCountWithinBudget },
+      // security
+      { key: 'credential_encryption_key_present', passed: credentialEncryptionKeyPresent },
+    ];
+    const totalGates = readinessGates.length;
+    const passedGates = readinessGates.filter((gate) => gate.passed).length;
+    const completionTotal = totalGates > 0 ? Math.round((passedGates / totalGates) * 100) : 0;
     const completionMatrix = {
       scope: 'repo_controlled_product_completion',
-      total: productReady ? 100 : 91,
+      total: completionTotal,
       categories: {
         ui_ux: companionSurfaceSignedOff ? 100 : 86,
         frontend: companionSurfaceSignedOff ? 100 : 90,
@@ -236,6 +276,7 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
         delivery_capabilities_ready: deliveryReady,
         external_platform_trials_gated: true,
       },
+      readiness_gates: readinessGates,
       external_requirements: [
         'real Bilibili credentials and real-chain smoke for native publish promotion',
         'verified Douyin/QQ sidecar endpoints before external-platform trial signoff',
@@ -299,8 +340,11 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       completion_matrix: completionMatrix,
     };
 
+    // F4: top-level `ready` removed to eliminate the dual-semantics ambiguity
+    // (previously `ready: foundationReady` coexisted with `foundation_ready: foundationReady`,
+    // misleading consumers into reading `ready` as product readiness). Consumers MUST read
+    // `foundation_ready` (foundation only) or `product_ready` (full product gate) explicitly.
     return {
-      ready: foundationReady,
       database: dbStatus,
       redis: redisStatus,
       config: configStatus.config,

@@ -73,7 +73,8 @@ import {
   type BilibiliAuthProbeResult,
 } from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
-import { getObservabilityDropCount } from './services/observability.js';
+import { getObservabilityDropCount, isDropCountThresholdExceeded } from './services/observability.js';
+import { isEncryptionAvailable } from './services/credential-crypto.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
 
 type DeliveryCapabilityName =
@@ -2862,6 +2863,8 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     normalizePublishMode,
     addBlocker,
     buildDeliveryCapabilityMatrix,
+    isEncryptionAvailable,
+    isDropCountThresholdExceeded,
   });
 
   registerGatewayPublishRoutes(app, {

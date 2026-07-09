@@ -6,6 +6,7 @@
  * Usage: node dist/workers/worker-main.js
  */
 
+import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 
 import { disconnectPrisma } from '../lib/prisma.js';
@@ -15,6 +16,12 @@ import { isEncryptionAvailable } from '../services/credential-crypto.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
 const QUEUE_NAME = 'comment-event';
+
+// F3: worker healthcheck heartbeat window. /healthz is healthy when the worker is running
+// AND a job completed within the last HEALTH_HEARTBEAT_MS ms (or no job has been processed
+// yet but the worker is still running — covers idle-but-alive state).
+const HEALTH_HEARTBEAT_MS = 30_000;
+const HEALTH_PORT = 3100;
 
 export function parseBoolean(value: string | undefined, defaultValue: boolean): boolean {
   if (value == null) return defaultValue;
@@ -56,6 +63,57 @@ export async function main(): Promise<void> {
   // Start the comment-event worker (Redis config handled internally)
   const worker = createCommentEventWorker(QUEUE_NAME, services);
   console.log(`[worker] Comment-event worker started (queue: ${QUEUE_NAME})`);
+
+  // L6/F3: functional healthcheck. Replaces the previous pgrep-based docker healthcheck
+  // (which only verified the process existed, not that it was actually processing jobs).
+  // /healthz returns 200 when worker.isRunning() AND lastCompletedAt is within
+  // HEALTH_HEARTBEAT_MS (or no job has completed yet but worker is running — idle-alive).
+  let lastCompletedAt: number | null = null;
+  // Reuse task-queue.ts:101 worker event hooks — register additional listeners on the
+  // same EventEmitter (BullMQ Worker) to refresh the heartbeat without displacing the
+  // existing completed/failed logging handlers.
+  worker.on('completed', () => {
+    lastCompletedAt = Date.now();
+  });
+  worker.on('failed', () => {
+    // A failed job still proves the worker loop is alive (it picked up and processed a job).
+    lastCompletedAt = Date.now();
+  });
+
+  const healthServer = createServer((req, res) => {
+    if (req.url !== '/healthz') {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'not_found' }));
+      return;
+    }
+    const running = typeof worker.isRunning === 'function' ? worker.isRunning() : false;
+    const now = Date.now();
+    const heartbeatFresh =
+      lastCompletedAt === null
+        ? running // idle-but-alive: no job yet, but worker loop is running
+        : now - lastCompletedAt <= HEALTH_HEARTBEAT_MS;
+    const healthy = running && heartbeatFresh;
+    const body = {
+      ok: healthy,
+      worker_running: running,
+      last_completed_at: lastCompletedAt,
+      heartbeat_ms: HEALTH_HEARTBEAT_MS,
+      heartbeat_fresh: heartbeatFresh,
+    };
+    res.writeHead(healthy ? 200 : 503, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  });
+  healthServer.on('error', (error) => {
+    console.error('[worker] Health server error:', error);
+  });
+  console.log(`[worker] Health server listening on :${HEALTH_PORT}/healthz`);
+  healthServer.listen(HEALTH_PORT);
+
+  const closeHealthServer = async (): Promise<void> => {
+    await new Promise<void>((resolve) => {
+      healthServer.close(() => resolve());
+    });
+  };
 
   // ── Bilibili polling scheduler via platform adapter registry ──
   const bilibiliPollingRuntime = resolvePlatformPollingRuntime('bilibili', process.env);
@@ -104,6 +162,8 @@ export async function main(): Promise<void> {
       if (pollTimer) clearInterval(pollTimer);
       console.log(`[worker] Received ${signal}, shutting down gracefully...`);
 
+      await closeHealthServer();
+
       try {
         await worker.close();
         console.log('[worker] Worker closed successfully');
@@ -133,6 +193,8 @@ export async function main(): Promise<void> {
       if (shuttingDown) return;
       shuttingDown = true;
       console.log(`[worker] Received ${signal}, shutting down gracefully...`);
+
+      await closeHealthServer();
 
       try {
         await worker.close();

@@ -136,6 +136,8 @@ function buildDeps(overrides: Partial<ReadinessRouteDependencies> = {}): Readine
       if (message && !target.includes(message)) target.push(message);
     },
     buildDeliveryCapabilityMatrix: vi.fn(() => ({ blockers: [], capabilities: [] })),
+    isEncryptionAvailable: vi.fn(() => true),
+    isDropCountThresholdExceeded: vi.fn(() => false),
     ...overrides,
   };
 }
@@ -157,7 +159,7 @@ describe('readiness route coverage', () => {
     });
 
     const body = response.json();
-    expect(body.ready).toBe(false);
+    expect(body.foundation_ready).toBe(false);
     expect(body.foundation_blockers).toEqual(['database:down', 'redis:unavailable']);
     expect(body.delivery_blockers).toContain('worker:redis_unavailable_for_polling');
     expect(body.bilibili_diagnostics.ready).toBe(false);
@@ -261,7 +263,7 @@ describe('readiness route coverage', () => {
     const { response } = await injectReadiness();
 
     const body = response.json();
-    expect(body.ready).toBe(true);
+    expect(body.foundation_ready).toBe(true);
     expect(body.delivery_ready).toBe(true);
     expect(body.product_ready).toBe(true);
     expect(body.completion_matrix.total).toBe(100);
@@ -356,5 +358,73 @@ describe('readiness route coverage', () => {
     expect(body.delivery_blockers).toContain('bilibili:delivery_diagnostics_not_ready');
     expect(body.product_readiness.bilibili_reference_platform).toMatchObject({ ready: false, status: 'unknown' });
     expect(body.product_readiness.external_platform_trial).toMatchObject({ active_platforms: [] });
+  });
+
+  it('derives completion_matrix.total from the gate array (Math.round(passed/total*100))', async () => {
+    // 3 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
+    // total gates = 9; passed = 5 (admin_access, publish_mode, worker_path, 3 antirisk? no —
+    // antirisk all fail). Recompute: foundation 0/2, delivery 3/3, antirisk 0/3, security 1/1 => 4/9.
+    const { response } = await injectReadiness({
+      checkDatabaseConnection: () => ({ connected: false, error: 'down' }),
+      checkRedisConnection: () => ({ connected: false }),
+      isDropCountThresholdExceeded: () => true,
+    });
+
+    const body = response.json();
+    // foundation down -> delivery_path_ready false, publish_mode still webhook (delivery capable)
+    // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
+    // worker_or_publish_path_ready=F (deliveryPathReady false because foundation blockers),
+    // normal_buffer_healthy=F, critical_queue_healthy=F, drop_count_within_budget=F,
+    // credential_encryption_key_present=T => passed = 4/9 => Math.round(4/9*100)=44.
+    expect(body.completion_matrix.total).toBe(44);
+    expect(body.completion_matrix.readiness_gates).toHaveLength(9);
+    expect(body.completion_matrix.readiness_gates.map((g: { key: string }) => g.key)).toEqual([
+      'db_connected',
+      'redis_connected',
+      'admin_access_configured',
+      'publish_mode_delivery_capable',
+      'worker_or_publish_path_ready',
+      'normal_buffer_healthy',
+      'critical_queue_healthy',
+      'drop_count_within_budget',
+      'credential_encryption_key_present',
+    ]);
+  });
+
+  it('adds credential_encryption:not_configured blocker when encryption key missing', async () => {
+    const { response } = await injectReadiness({
+      isEncryptionAvailable: () => false,
+    });
+
+    const body = response.json();
+    expect(body.product_blockers).toContain('credential_encryption:not_configured');
+    expect(body.product_ready).toBe(false);
+    // security gate should be false
+    const securityGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'credential_encryption_key_present',
+    );
+    expect(securityGate.passed).toBe(false);
+  });
+
+  it('adds antirisk:drop_count_threshold_exceeded blocker when drop count over budget', async () => {
+    const { response } = await injectReadiness({
+      isDropCountThresholdExceeded: () => true,
+    });
+
+    const body = response.json();
+    expect(body.product_blockers).toContain('antirisk:drop_count_threshold_exceeded');
+    expect(body.product_ready).toBe(false);
+    const budgetGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'drop_count_within_budget',
+    );
+    expect(budgetGate.passed).toBe(false);
+  });
+
+  it('no longer exposes top-level ready field (F4 dual-semantics removal)', async () => {
+    const { response } = await injectReadiness();
+    const body = response.json();
+    expect(body).not.toHaveProperty('ready');
+    expect(body).toHaveProperty('foundation_ready');
+    expect(body).toHaveProperty('product_ready');
   });
 });
