@@ -142,6 +142,7 @@ function buildDeps(overrides: Partial<ReadinessRouteDependencies> = {}): Readine
     isPassiveResponseViolationExceeded: vi.fn(() => false),
     threeLayerFlagsAllOn: vi.fn(() => true),
     isBehaviorAnomalyCountZero: vi.fn(() => true),
+    isAuthProbeHealthy: vi.fn(() => true),
     ...overrides,
   };
 }
@@ -366,15 +367,16 @@ describe('readiness route coverage', () => {
 
   it('derives completion_matrix.total from the gate array (Math.round(passed/total*100))', async () => {
     // 5 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
-    // total gates = 13 (TASK-007 added backoff_active_rate + passive_response_violation_count,
-    // TASK-003 added three_layer_flags_all_on + behavior_anomaly_count_zero — both pass here
-    // because their deps default to () => true).
+    // total gates = 14 (TASK-007 added backoff_active_rate + passive_response_violation_count,
+    // TASK-003 added three_layer_flags_all_on + behavior_anomaly_count_zero, TASK-005 added
+    // auth_probe_healthy — all pass here because their deps default to () => true).
     // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
     // worker_or_publish_path_ready=T (webhook + release_gate ready), normal_buffer_healthy=F,
     // critical_queue_healthy=F, drop_count_within_budget=F,
     // backoff_active_rate_within_budget=T (default false => within budget), passive_response_violation_count_within_budget=T,
     // three_layer_flags_all_on=T (default true), behavior_anomaly_count_zero=T (default true),
-    // credential_encryption_key_present=T => passed = 8/13 => Math.round(8/13*100)=62.
+    // auth_probe_healthy=T (default true, TASK-005), credential_encryption_key_present=T
+    // => passed = 9/14 => Math.round(9/14*100)=64.
     const { response } = await injectReadiness({
       checkDatabaseConnection: () => ({ connected: false, error: 'down' }),
       checkRedisConnection: () => ({ connected: false }),
@@ -383,8 +385,8 @@ describe('readiness route coverage', () => {
 
     const body = response.json();
     // foundation down -> delivery_path_ready false, publish_mode still webhook (delivery capable)
-    expect(body.completion_matrix.total).toBe(62);
-    expect(body.completion_matrix.readiness_gates).toHaveLength(13);
+    expect(body.completion_matrix.total).toBe(64);
+    expect(body.completion_matrix.readiness_gates).toHaveLength(14);
     expect(body.completion_matrix.readiness_gates.map((g: { key: string }) => g.key)).toEqual([
       'db_connected',
       'redis_connected',
@@ -398,6 +400,7 @@ describe('readiness route coverage', () => {
       'passive_response_violation_count_within_budget',
       'three_layer_flags_all_on',
       'behavior_anomaly_count_zero',
+      'auth_probe_healthy',
       'credential_encryption_key_present',
     ]);
   });

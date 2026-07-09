@@ -74,6 +74,7 @@ import {
 } from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { getObservabilityDropCount, isDropCountThresholdExceeded } from './services/observability.js';
+import { isAuthProbeHealthy } from './services/probe-scheduler.js';
 import { isEncryptionAvailable } from './services/credential-crypto.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
 
@@ -2127,10 +2128,7 @@ async function defaultIsPassiveResponseViolationExceeded(): Promise<boolean> {
 // so a DB blip must NOT be assumed safe — unlike the backoff_active_rate /
 // passive_response_violation gates which are soft signals (fail-open). The window
 // default (86400s / 24h) is a conservative placeholder tunable by SME DD-03.
-const BEHAVIOR_ANOMALY_WINDOW_SECONDS = Number.parseInt(
-  process.env.BEHAVIOR_ANOMALY_WINDOW_SECONDS ?? '',
-  10,
-) || 86400;
+const BEHAVIOR_ANOMALY_WINDOW_SECONDS = Number.parseInt(process.env.BEHAVIOR_ANOMALY_WINDOW_SECONDS ?? '', 10) || 86400;
 
 async function defaultIsBehaviorAnomalyCountZero(): Promise<boolean> {
   const prisma = getPrisma();
@@ -2991,6 +2989,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     isPassiveResponseViolationExceeded: defaultIsPassiveResponseViolationExceeded,
     threeLayerFlagsAllOn: () => threeLayerFlagsAllOn(),
     isBehaviorAnomalyCountZero: defaultIsBehaviorAnomalyCountZero,
+    isAuthProbeHealthy: () => isAuthProbeHealthy(),
   });
 
   registerGatewayPublishRoutes(app, {

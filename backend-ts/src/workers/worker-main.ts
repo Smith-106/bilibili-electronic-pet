@@ -14,6 +14,7 @@ import { resolvePlatformPollingRuntime } from '../platforms/registry.js';
 import { buildWorkerServices } from '../services/index.js';
 import { isEncryptionAvailable } from '../services/credential-crypto.js';
 import { rebuildBackoffFromDb } from '../services/backoff-decision.js';
+import { probeBilibiliAuthScheduler } from '../services/probe-scheduler.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
 const QUEUE_NAME = 'comment-event';
@@ -67,6 +68,26 @@ export async function main(): Promise<void> {
       }),
     );
   });
+
+  // L8/SC5: probeBilibiliAuth 周期调度 — 14 天观察期账号存活 observable。
+  // Default 3600s (1h), tunable via PROBE_AUTH_INTERVAL_SECONDS. unref() so the timer
+  // never keeps the event loop alive on its own (worker keeps itself alive via the
+  // BullMQ worker + polling scheduler below). not_logged_in → fail-closed
+  // recordAntiriskSignal + readiness auth_probe_healthy gate red.
+  const probeIntervalSeconds = Number.parseInt(process.env.PROBE_AUTH_INTERVAL_SECONDS || '3600', 10);
+  const probeTimer = setInterval(() => {
+    void probeBilibiliAuthScheduler().catch((error) => {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          message: 'probe_scheduler_failed',
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    });
+  }, probeIntervalSeconds * 1000);
+  probeTimer.unref();
 
   const killSwitch = process.env.KILL_SWITCH === 'true';
   const roleProfileDefault = process.env.ROLE_PROFILE_DEFAULT || 'doro';

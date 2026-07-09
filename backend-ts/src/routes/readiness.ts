@@ -69,6 +69,10 @@ export type ReadinessRouteDependencies = {
   // full real_publish barrier, so a DB blip must NOT be assumed safe — unlike the
   // backoff_active_rate / passive_response_violation gates which are soft signals.
   isBehaviorAnomalyCountZero: () => Promise<boolean> | boolean;
+  // TASK-005/P3 SC5 gate: probeBilibiliAuth 周期调度存活断言。worker-main.ts setInterval
+  // probeBilibiliAuthScheduler — not_logged_in flips this red (fail-closed: account no
+  // longer alive = readiness blocker). Sync state read from probe-scheduler.ts module.
+  isAuthProbeHealthy: () => boolean;
 };
 
 // TASK-003/P3 SC4 gate: antirisk three-layer flag aggregation. All four antirisk
@@ -295,6 +299,12 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (!behaviorAnomalyCountZero) {
       deps.addBlocker(productBlockers, 'antirisk:behavior_anomaly_count_zero');
     }
+    // TASK-005/P3 SC5 gate: probeBilibiliAuth 周期调度存活断言。not_logged_in 触发
+    // fail-closed 告警 (同步 await recordAntiriskSignal) 并翻转 authProbeUnhealthy →
+    // isAuthProbeHealthy()=false → readiness 标红。
+    if (!deps.isAuthProbeHealthy()) {
+      deps.addBlocker(productBlockers, 'antirisk:auth_probe_healthy');
+    }
 
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
 
@@ -328,6 +338,8 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       // antirisk layers armed AND no behavior_anomaly in the rolling window)
       { key: 'three_layer_flags_all_on', passed: threeLayerFlagsOn },
       { key: 'behavior_anomaly_count_zero', passed: behaviorAnomalyCountZero },
+      // TASK-005/P3 SC5 antirisk survival gate: probeBilibiliAuth not_logged_in → red.
+      { key: 'auth_probe_healthy', passed: deps.isAuthProbeHealthy() },
       // security
       { key: 'credential_encryption_key_present', passed: credentialEncryptionKeyPresent },
     ];
