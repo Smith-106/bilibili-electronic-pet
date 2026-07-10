@@ -76,6 +76,8 @@ model PublishLog {
   @@index([canonical_comment_id])
   @@index([comment_id])
   @@index([status])
+  // PERF-001: STAGE_DAILY_QUOTA count 热路径 where (source, status, published_at>=startOfDay) 复合索引.
+  @@index([source, status, published_at])
   @@map("publish_logs")
 }
 
@@ -174,6 +176,9 @@ model ObservabilityEvent {
   @@index([status])
   @@index([created_at])
   @@index([error_subclass])
+  // PERF-002: behavior_anomaly count 查询 where (error_subclass, created_at>=windowStart) 复合索引,
+  // 避免 full scan over error_subclass 行 (isBehaviorAnomalyCountZero readiness gate 热路径).
+  @@index([error_subclass, created_at])
   @@map("observability_events")
 }
 

@@ -328,7 +328,14 @@ async function publishSimulated(
     if (!result.success && result.error_code === -352) {
       throw new Error(`-352 behavior_anomaly v_voucher=${result.v_voucher ?? ''}`);
     }
-    // Non-352 mock (e.g. success:true): fall through to record the simulated publish.
+    // Non-352 mock failure (e.g. success:false without -352): MUST NOT fall through to
+    // record status:'published' — that would silently flip a mock-declared failure into a
+    // success publish_log row (state inconsistency, pollutes drop_count/quota eval).
+    // Return a distinct non-published tuple instead. L7 tuple contract (no throw).
+    if (!result.success) {
+      return [false, 'simulated_mock_failed', new Date(), { error_code: result.error_code ?? null }];
+    }
+    // success:true mock: fall through to record the simulated publish.
   }
 
   const replyHash = createReplyHash(context.commentId, replyText);
@@ -408,8 +415,14 @@ async function publishReal(
   // STAGE_DAILY_QUOTA (P3 warmup): limited real_publish 配额 env, 区分 limited/full.
   // 当日 publishLog status='published' count >= STAGE_DAILY_QUOTA → stage_quota_exceeded.
   // fail-closed, 不盲飞 (L1 配额 env). 默认 10 (保守值, 运营调参).
-  const dailyQuota = parseInt(process.env.STAGE_DAILY_QUOTA || '10', 10);
-  if (Number.isFinite(dailyQuota) && dailyQuota >= 0) {
+  // CORR-003 fix: env 显式设为非数字 (如 'abc') 时 fail-closed 返回 stage_quota_misconfigured,
+  // 不静默跳过配额守卫 (fail-open 无限发布违背 L1). env 未设走默认 10.
+  const rawQuota = process.env.STAGE_DAILY_QUOTA;
+  const dailyQuota = rawQuota === undefined ? 10 : parseInt(rawQuota, 10);
+  if (!Number.isFinite(dailyQuota) || dailyQuota < 0) {
+    return [false, 'stage_quota_misconfigured', new Date(), null];
+  }
+  {
     const startOfDay = new Date();
     startOfDay.setUTCHours(0, 0, 0, 0);
     let todayPublished = 0;

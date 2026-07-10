@@ -28,14 +28,23 @@ import { recordAntiriskSignal } from './observability.js';
 import { ensureTraceId } from './observability.js';
 
 // 14 天观察期上限 (L6)：固定作上限 + 信号作提前退出条件。阈值 DD-03 待 SME+运营。
-export const WARMUP_WINDOW_DAYS = Number.parseInt(process.env.WARMUP_WINDOW_DAYS ?? '14', 10);
+// SEC-003 fix: 下界校验 fail-closed — 非法值 (<1) 退回保守默认 14, 不允许 0/负值使窗口失效.
+const rawWarmupDays = Number.parseInt(process.env.WARMUP_WINDOW_DAYS ?? '14', 10);
+export const WARMUP_WINDOW_DAYS = Number.isFinite(rawWarmupDays) && rawWarmupDays >= 1 ? rawWarmupDays : 14;
 
 // 保守占位：14 天内最小连续健康 probe 次数才断言存活。DD-03 可调。
-const MIN_HEALTHY_PROBES_FOR_WARMUP = Number.parseInt(process.env.MIN_HEALTHY_PROBES_FOR_WARMUP ?? '4', 10);
+// SEC-003 fix: 下界校验 — 非法值 (<1) 退回默认 4.
+const rawMinHealthyProbes = Number.parseInt(process.env.MIN_HEALTHY_PROBES_FOR_WARMUP ?? '4', 10);
+const MIN_HEALTHY_PROBES_FOR_WARMUP = Number.isFinite(rawMinHealthyProbes) && rawMinHealthyProbes >= 1 ? rawMinHealthyProbes : 4;
+
+const WARMUP_WINDOW_MS = WARMUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 let authProbeUnhealthy = false;
 let consecutiveHealthyProbes = 0;
 let lastHealthyProbeAt: Date | null = null;
+// CORR-001 fix: 首次健康 probe 时间, 用于 14 天窗口下限校验 (consecutiveHealthyProbes 达标
+// 且首次健康距今 >= WARMUP_WINDOW_DAYS 才断言存活, 避免 4h 连续 probe 提前满足 14 天观察期).
+let firstHealthyProbeAt: Date | null = null;
 
 /**
  * readiness gate callback：probeBilibiliAuth 是否健康。
@@ -51,11 +60,22 @@ function setAuthProbeUnhealthy(value: boolean): void {
 
 /**
  * 14 天存活断言器 (SC5/L6/DD-03)：lastHealthyProbeAt 非 null AND
- * consecutiveHealthyProbes >= MIN_HEALTHY_PROBES_FOR_WARMUP。
- * 保守占位阈值，SME+运营 可调。
+ * consecutiveHealthyProbes >= MIN_HEALTHY_PROBES_FOR_WARMUP AND
+ * 首次健康 probe 距今 >= WARMUP_WINDOW_DAYS (CORR-001 fix: 时间窗下限, 避免 4h
+ * 连续 probe 提前满足 14 天观察期). 保守占位阈值, SME+运营 可调.
+ *
+ * 注: 本函数逻辑已正确消费 WARMUP_WINDOW_DAYS (非 dead export). 接入 readiness gate
+ * 作退出信号判定待 DD-03 SME 裁决退出阈值后单独实现 (ARCH-003 二分裁决: 接入留 DD-03).
  */
 export function isWarmupSurvivalAsserted(): boolean {
-  return lastHealthyProbeAt !== null && consecutiveHealthyProbes >= MIN_HEALTHY_PROBES_FOR_WARMUP;
+  if (lastHealthyProbeAt === null || firstHealthyProbeAt === null) {
+    return false;
+  }
+  if (consecutiveHealthyProbes < MIN_HEALTHY_PROBES_FOR_WARMUP) {
+    return false;
+  }
+  const elapsedMs = lastHealthyProbeAt.getTime() - firstHealthyProbeAt.getTime();
+  return elapsedMs >= WARMUP_WINDOW_MS;
 }
 
 /**
@@ -90,14 +110,19 @@ export async function probeBilibiliAuthScheduler(): Promise<void> {
   if (result.ok) {
     setAuthProbeUnhealthy(false);
     consecutiveHealthyProbes += 1;
-    lastHealthyProbeAt = new Date();
+    const now = new Date();
+    lastHealthyProbeAt = now;
+    // CORR-001: 记录首次健康 probe 时间作 14 天窗口下限基准 (断言器消费).
+    if (firstHealthyProbeAt === null) {
+      firstHealthyProbeAt = now;
+    }
     console.log(
       JSON.stringify({
         level: 'info',
         message: 'probe_scheduler_healthy',
         consecutive_healthy_probes: consecutiveHealthyProbes,
         persona_id: personaId,
-        timestamp: lastHealthyProbeAt.toISOString(),
+        timestamp: now.toISOString(),
       }),
     );
     return;
@@ -107,6 +132,8 @@ export async function probeBilibiliAuthScheduler(): Promise<void> {
     // L8 fail-closed：风控信号 MUST 同步 await 持久化 (不可丢)。
     setAuthProbeUnhealthy(true);
     consecutiveHealthyProbes = 0;
+    // CORR-001: 连续性中断重置 14 天窗口基准.
+    firstHealthyProbeAt = null;
     console.error(
       JSON.stringify({
         level: 'error',
@@ -126,11 +153,24 @@ export async function probeBilibiliAuthScheduler(): Promise<void> {
 
   // 其他失败分支：标红但不写 antirisk signal (非账号存活类信号)。
   setAuthProbeUnhealthy(true);
+  // CORR-001: 连续性中断重置 14 天窗口基准.
+  firstHealthyProbeAt = null;
+  // SEC-002 fix: reason 归一化为枚举类别, 不泄露 Bilibili API 原始 message
+  // (payload.message 可能含账号上下文; fetch error.message 可能含 URL 片段).
+  // 已知枚举 (not_logged_in/http_*/api_error/probe_failed) 保留; 未知原始文本归一为 'api_error'.
+  const rawReason = result.reason;
+  const safeReason =
+    rawReason === 'not_logged_in' ||
+    rawReason === 'api_error' ||
+    rawReason === 'probe_failed' ||
+    (typeof rawReason === 'string' && rawReason.startsWith('http_'))
+      ? rawReason
+      : 'api_error';
   console.error(
     JSON.stringify({
       level: 'error',
       message: 'probe_scheduler_failed',
-      reason: result.reason,
+      reason: safeReason,
       persona_id: personaId,
       timestamp: new Date().toISOString(),
     }),
