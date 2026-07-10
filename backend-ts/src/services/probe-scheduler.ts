@@ -39,6 +39,10 @@ const MIN_HEALTHY_PROBES_FOR_WARMUP = Number.isFinite(rawMinHealthyProbes) && ra
 
 const WARMUP_WINDOW_MS = WARMUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
+// MAINT-003 note: authProbeUnhealthy 采用倒置语义 (true=不健康) 是历史遗留陷阱.
+// 外部消费经正向 isAuthProbeHealthy() (= !authProbeUnhealthy), 模块内 setAuthProbeUnhealthy
+// 是唯一写点. 重命名为正向 authProbeHealthy 会改 5+ 处调用 + readiness gate 已消费
+// isAuthProbeHealthy(), 收益小风险中, 保留倒置 + 此注释消除陷阱.
 let authProbeUnhealthy = false;
 let consecutiveHealthyProbes = 0;
 let lastHealthyProbeAt: Date | null = null;

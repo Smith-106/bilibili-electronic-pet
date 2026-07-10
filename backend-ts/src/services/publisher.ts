@@ -36,8 +36,12 @@ function getPublisherMode(): PublisherMode {
 //
 // STAGE_GATE_ENABLED (L1 env 隔离, 默认 false) 开启后 real_publish 走门禁校验;
 // 关闭时维持既有行为 (legacy tests / 回退路径不受影响).
-// readiness 聚合通过 STAGE_REAL_PUBLISH_READY env (运营显式置 'true' 表示全绿),
-// 避免直接 import readiness route 造成循环依赖 (见 risks).
+//
+// MAINT-001 note: STAGE_REAL_PUBLISH_READY 是人工桥接 env (非机械派生) —
+// 运营 MUST 仅在 readiness route 全绿时显式置 'true', readiness 翻红立即清零.
+// 名称未含 _MANUAL/_ACK 是为保持 env 简短; 语义在此注释 + ISS-20260710-001 文档化.
+// 长期 SME 介入后评估 DI 注入 isStageReady callback 替代 env 桥 (消除跨层隐式耦合).
+// readiness 聚合通过此 env (避免直接 import readiness route 造成循环依赖, 见 risks).
 function isStageGateEnabled(): boolean {
   return process.env.STAGE_GATE_ENABLED === 'true';
 }

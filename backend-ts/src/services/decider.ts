@@ -516,6 +516,10 @@ export const decideSafetyAction: DecideSafetyActionService = (safe, riskFlags) =
   return 'manual_queue';
 };
 
+// MAINT-002 note: __deciderTesting 前缀 "Testing" 误导 — 该导出非仅测试用,
+// scripts/replay-timing-engine.ts (CI 级 deterministic replay harness) 也消费它
+// 跑泊松时机/昼夜分布断言. 名称保留 (重命名 breaking 4 文件引用), 语义在此标注:
+// 这是 decider 内部实现的可测性出口 (internals for harness + tests), 非公开 API.
 export const __deciderTesting = {
   loadReplyRules,
   samplePoisson,
