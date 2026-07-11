@@ -411,8 +411,10 @@ async function publishWebhook(
   // non-numeric env value. AbortSignal.timeout(NaN) throws RangeError synchronously, which
   // would surface as a misleading `webhook_error` instead of a clean config error. Guard with
   // isFinite — invalid config keeps the documented 15s default.
+  // review-odyssey 002: 加上界 300 (5min, webhook 单次超时封顶, 防挂起 × 重试长期阻塞 worker,
+  // 与 llm-client timeoutMs 上界守护同标准)。
   const timeoutRaw = parseInt(process.env.PUBLISHER_TIMEOUT_SECONDS || '15', 10);
-  const timeoutSeconds = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 15;
+  const timeoutSeconds = Number.isFinite(timeoutRaw) && timeoutRaw > 0 && timeoutRaw <= 300 ? timeoutRaw : 15;
   const timeout = timeoutSeconds * 1000;
   const now = new Date();
 
