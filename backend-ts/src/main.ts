@@ -284,10 +284,18 @@ function buildCompanionInteraction(item: {
   const title = action ? `${startCase(action)} interaction` : `${sourceLabel} signal`;
   const timestamp = item.updated_at ?? item.created_at;
 
+  // F1 (security): the legacy companion-state path feeds an UNAUTHENTICATED GET endpoint
+  // (GET /companion/state). item.content can carry user-submitted free text (POST
+  // /companion/actions note, up to 256 chars) or Bilibili external identifiers (comment_id
+  // from comment-job-actions) — both are PII that MUST NOT surface on the public response.
+  // Use a curated, non-PII detail derived from kind/title/source only. The pet-core path
+  // (toCompanionState) uses operator-authored event_detail, not user content, so it is safe.
+  const detail = `${title} from ${sourceLabel.toLowerCase()}`;
+
   return {
     kind,
     title,
-    detail: item.content,
+    detail,
     timestamp: timestamp ? normalizeIsoTimestamp(timestamp) : 'Pending',
     source: sourceLabel,
   };

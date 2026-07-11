@@ -135,6 +135,12 @@ function normalizeFailureReason(error: unknown): string {
   if (!(error instanceof Error)) return 'publish_failed';
   const message = error.message;
   if (message.startsWith('Bilibili reply API error:')) return 'bilibili_api_error';
+  // F2: publishReal/publishSimulated re-throw -352 behavior_anomaly as
+  // `-352 behavior_anomaly v_voucher=...` (publisher.ts:503/365). This is a Bilibili API
+  // reject (the highest-severity antirisk code), so classify as bilibili_api_error — not
+  // the generic publish_failed fallthrough. classifyAntiriskSubclass still routes it to
+  // rate_limited + backoff downstream; this only fixes the publish_log audit classification.
+  if (/-352|behavior_anomaly|v_voucher/i.test(message)) return 'bilibili_api_error';
   // fetch-level failures (AbortError, TypeError "fetch failed", DNS/network errors)
   if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econnrefused|enotfound|etimedout/i.test(message)) {
     return 'network_error';
@@ -684,13 +690,14 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
 
     return result;
   } catch (error) {
+    // console.error logs the raw error object (operator-only, never persisted) for diagnosis.
     console.error(`[publisher] Publish failed for comment ${commentId}:`, error);
 
-    const errorMsg = error instanceof Error ? error.message : String(error);
     const publishedAt = new Date();
-    // BUG-006: store the normalized enum, not the raw error message (which can contain
-    // upstream Bilibili response bodies / fetch URL fragments). errorMsg is retained for
-    // console.error (above) and the antirisk signal metadata below.
+    // BUG-006 + F3: store the normalized enum, not the raw error message (which can contain
+    // upstream Bilibili response bodies / v_voucher / fetch URL fragments), in BOTH
+    // publish_log.failure_reason and the antirisk signal metadata.error_message. Raw upstream
+    // content MUST NOT be persisted to either audit column.
     const failureReason = normalizeFailureReason(error);
 
     try {
@@ -743,7 +750,12 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
         status: subclass,
         error_subclass: subclass,
         persona_id: personaId,
-        metadata: { source, platform, error_message: errorMsg },
+        // F3 (security): persist the normalized failure_reason enum (not the raw errorMsg)
+        // to observabilityEvent.event_metadata — the raw message can carry upstream Bilibili
+        // response bodies / v_voucher (third-party content), which MUST NOT be stored
+        // verbatim in the audit log (same rationale as publish_log.failure_reason above).
+        // errorMsg is retained for the operator-only console.error at the catch entry.
+        metadata: { source, platform, error_message: failureReason },
       });
       return [false, 'rate_limited', publishedAt, null];
     }

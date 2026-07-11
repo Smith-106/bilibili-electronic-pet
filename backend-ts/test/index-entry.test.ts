@@ -25,6 +25,13 @@ vi.mock('../src/services/backoff-decision.js', () => ({
   rebuildBackoffFromDb: () => Promise.resolve(),
 }));
 
+vi.mock('../src/services/probe-scheduler.js', () => ({
+  // F5: index.ts fires an immediate probe at boot + schedules it. The probe itself is
+  // exercised in probe-scheduler.test.ts; here we stub it so the boot test does not
+  // touch getPrisma (which this test does not mock).
+  probeBilibiliAuthScheduler: () => Promise.resolve(),
+}));
+
 describe('backend entrypoint', () => {
   beforeEach(() => {
     vi.resetModules();

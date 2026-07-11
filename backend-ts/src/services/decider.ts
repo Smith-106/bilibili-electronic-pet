@@ -123,8 +123,15 @@ function loadReplyRules(): ReplyRules {
   const rules = { ...DEFAULT_RULES };
 
   // Load from environment if available
+  // F4: parseFloat can return NaN on a non-numeric env value, which poisons baseReplyProbability
+  // and (when the timing engine is disabled, the rollback path) silently disables all replies
+  // (Math.random() < NaN is always false). Guard with isFinite + [0,1] range — invalid config
+  // keeps the documented default, mirroring the cooldown/quiet-hours guards below.
   if (process.env.REPLY_BASE_PROBABILITY) {
-    rules.baseReplyProbability = parseFloat(process.env.REPLY_BASE_PROBABILITY);
+    const baseProb = parseFloat(process.env.REPLY_BASE_PROBABILITY);
+    if (Number.isFinite(baseProb) && baseProb >= 0 && baseProb <= 1) {
+      rules.baseReplyProbability = baseProb;
+    }
   }
 
   // P3 warmup ramp-up (L5): RAMPUP_FIRST_DAY_FACTOR 作用于 baseReplyProbability 重派生 λ

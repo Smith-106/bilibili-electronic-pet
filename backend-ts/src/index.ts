@@ -79,6 +79,22 @@ async function start(): Promise<void> {
   }, probeIntervalSeconds * 1000);
   probeTimer.unref();
 
+  // F5: setInterval does not fire until probeIntervalSeconds (default 1h) elapse, so without
+  // an immediate first probe the API server's authProbeUnhealthy stays at its default (healthy)
+  // for ~1h after boot — /readiness would false-green auth_probe_healthy even if the account is
+  // already logged out. Fire one probe now (fire-and-forget, does not block app.listen) so the
+  // module state reflects real account state on the first /readiness hit.
+  void probeBilibiliAuthScheduler().catch((error) => {
+    console.error(
+      JSON.stringify({
+        level: 'error',
+        message: 'probe_scheduler_initial_failed',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+  });
+
   await app.listen({ port, host });
 }
 
