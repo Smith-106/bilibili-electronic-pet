@@ -26,10 +26,18 @@ function loadLLMConfig(): LLMConfig {
   const apiKey = process.env.LLM_API_KEY || '';
   const model = process.env.LLM_MODEL || '';
   const baseUrl = process.env.LLM_BASE_URL || '';
-  const temperature = parseFloat(process.env.LLM_TEMPERATURE || '0.7');
-  const maxTokens = parseInt(process.env.LLM_MAX_TOKENS || '150', 10);
-  const timeoutMs = parseInt(process.env.LLM_TIMEOUT || '30000', 10);
-  const retries = parseInt(process.env.LLM_RETRIES || '2') as LLMConfig['retries'];
+  // 守护 env 数值配置：非数字/越界值回退到默认，避免 NaN 进请求体或 setTimeout。
+  // 与 decider.ts REPLY_BASE_PROBABILITY / publisher.ts 超时阈值同一 isFinite 守护标准。
+  const tempRaw = parseFloat(process.env.LLM_TEMPERATURE || '0.7');
+  const temperature = Number.isFinite(tempRaw) && tempRaw >= 0 && tempRaw <= 2 ? tempRaw : 0.7;
+  const maxTokensRaw = parseInt(process.env.LLM_MAX_TOKENS || '150', 10);
+  const maxTokens = Number.isFinite(maxTokensRaw) && maxTokensRaw > 0 ? maxTokensRaw : 150;
+  const timeoutRaw = parseInt(process.env.LLM_TIMEOUT || '30000', 10);
+  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 30000;
+  const retriesRaw = parseInt(process.env.LLM_RETRIES || '2', 10);
+  const retries = (Number.isFinite(retriesRaw) && retriesRaw >= 0 && retriesRaw <= 10
+    ? retriesRaw
+    : 2) as LLMConfig['retries'];
 
   switch (provider) {
     case 'openai':

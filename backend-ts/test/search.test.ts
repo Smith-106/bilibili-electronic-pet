@@ -225,7 +225,7 @@ describe('search service', () => {
     expect(result).toEqual({ items: [] });
   });
 
-  it('treats invalid max result configuration as an empty result slice', async () => {
+  it('falls back to default max results when configuration is invalid', async () => {
     process.env.SEARCH_PROVIDER = 'serpapi';
     process.env.SEARCH_API_KEY = 'serp-key';
     process.env.SEARCH_MAX_RESULTS = 'not-a-number';
@@ -238,7 +238,8 @@ describe('search service', () => {
 
     const result = await searchWeb('unexpected failure');
 
-    expect(result).toEqual({ items: [] });
+    // Invalid config falls back to default (5) instead of silently slicing empty.
+    expect(result.items).toHaveLength(1);
   });
 
   it('returns empty results when bing and google providers fail internally', async () => {

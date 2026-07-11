@@ -23,8 +23,13 @@ interface SearchConfig {
 function loadSearchConfig(): SearchConfig | null {
   const provider = (process.env.SEARCH_PROVIDER || 'serpapi') as SearchConfig['provider'];
   const apiKey = process.env.SEARCH_API_KEY || '';
-  const maxResults = parseInt(process.env.SEARCH_MAX_RESULTS || '5', 10);
-  const timeout = parseInt(process.env.SEARCH_TIMEOUT || '10000', 10);
+  // 守护 env 数值配置：非数字/越界值回退到默认。NaN maxResults 会静默 slice 出空数组，
+  // NaN timeout 会即时 abort 导致空结果——两者都是 silent failure，与 llm-client/decider
+  // 的 isFinite 守护标准一致。
+  const maxResultsRaw = parseInt(process.env.SEARCH_MAX_RESULTS || '5', 10);
+  const maxResults = Number.isFinite(maxResultsRaw) && maxResultsRaw > 0 ? maxResultsRaw : 5;
+  const timeoutRaw = parseInt(process.env.SEARCH_TIMEOUT || '10000', 10);
+  const timeout = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 10000;
 
   if (!apiKey) {
     return null;
