@@ -82,11 +82,39 @@ function buildEnvironmentConfig(): BilibiliRuntimeConfig | null {
   return hasRequiredCredentialFields(config) ? config : null;
 }
 
+/**
+ * BUG-006: thrown when an active DB credential row exists but its ciphertext cannot be
+ * decrypted (e.g. CREDENTIAL_ENCRYPTION_KEY rotated after the credential was encrypted, or
+ * ciphertext corruption). Distinct from a DB query failure: a decrypt failure MUST NOT
+ * silently fall back to environment credentials — that would mask the credential-store
+ * failure and publish with the wrong persona. loadBilibiliRuntimeConfig surfaces it as null
+ * so postReply throws NotConfiguredError and the real root cause is visible.
+ */
+export class CredentialDecryptError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CredentialDecryptError';
+  }
+}
+
 function buildDatabaseConfig(credential: ActiveBilibiliCredential): BilibiliRuntimeConfig | null {
-  const decryptedSessdata = decrypt(String(credential.sessdata ?? ''));
-  const decryptedBiliJct = decrypt(String(credential.bili_jct ?? ''));
-  const decryptedBuvid3 = decrypt(String(credential.buvid3 ?? ''));
-  const decryptedBuvid4 = credential.buvid4 ? decrypt(String(credential.buvid4)) : '';
+  // BUG-006: decrypt failures (rotated key / corrupted ciphertext) MUST surface, not be
+  // masked by env fallback. Wrap so the outer catch can distinguish a decrypt failure from a
+  // generic DB query failure and refuse to fall back to env credentials in the decrypt case.
+  let decryptedSessdata: string;
+  let decryptedBiliJct: string;
+  let decryptedBuvid3: string;
+  let decryptedBuvid4: string;
+  try {
+    decryptedSessdata = decrypt(String(credential.sessdata ?? ''));
+    decryptedBiliJct = decrypt(String(credential.bili_jct ?? ''));
+    decryptedBuvid3 = decrypt(String(credential.buvid3 ?? ''));
+    decryptedBuvid4 = credential.buvid4 ? decrypt(String(credential.buvid4)) : '';
+  } catch (error) {
+    throw new CredentialDecryptError(
+      `credential ${credential.id} decrypt failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 
   const config: BilibiliRuntimeConfig = {
     ...buildCommonConfig(),
@@ -109,26 +137,42 @@ function getErrorMessage(error: unknown): string {
 export async function loadBilibiliRuntimeConfig(
   prisma: BilibiliCredentialReader = getPrisma(),
 ): Promise<BilibiliRuntimeConfig | null> {
+  let credential: ActiveBilibiliCredential | null = null;
   try {
-    const credential = await prisma.bilibiliCredential.findFirst({
+    credential = (await prisma.bilibiliCredential.findFirst({
       where: { is_active: true },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
-    });
-
-    if (credential) {
-      const config = buildDatabaseConfig(credential as ActiveBilibiliCredential);
-      if (config) {
-        return config;
-      }
-
-      console.warn(
-        `[bilibili] Active credential ${credential.id} is incomplete; falling back to environment variables`,
-      );
-    }
+    })) as ActiveBilibiliCredential | null;
   } catch (error) {
+    // DB query failure (table missing, connection error): fall back to env so a transient DB
+    // issue does not hard-block publishing. Signals will re-trigger readiness flags red.
     console.warn(
       `[bilibili] Failed to load active credential from database; falling back to environment variables: ${getErrorMessage(error)}`,
     );
+    return buildEnvironmentConfig();
+  }
+
+  if (credential) {
+    try {
+      const config = buildDatabaseConfig(credential);
+      if (config) {
+        return config;
+      }
+      // Decrypt succeeded but the credential is incomplete (missing required fields) — env
+      // fallback is safe here (no decrypt failure is being masked).
+      console.warn(
+        `[bilibili] Active credential ${credential.id} is incomplete; falling back to environment variables`,
+      );
+    } catch (error) {
+      // BUG-006: decrypt failure (rotated key / corrupted ciphertext) MUST NOT fall back to
+      // env — that would mask the credential-store failure and publish with the wrong
+      // persona. Return null so postReply throws NotConfiguredError and the operator sees
+      // the real root cause (credential_decrypt_failed) instead of a silent env swap.
+      console.error(
+        `[bilibili] Active credential ${credential.id} could not be decrypted; refusing to fall back to environment variables: ${getErrorMessage(error)}`,
+      );
+      return null;
+    }
   }
 
   return buildEnvironmentConfig();

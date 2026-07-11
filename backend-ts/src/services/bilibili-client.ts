@@ -12,6 +12,20 @@ import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibil
 type BilibiliConfig = BilibiliRuntimeConfig;
 const DEFAULT_AUTH_PROBE_TIMEOUT_MS = 5000;
 
+/**
+ * BUG-003: thrown by postReply when no Bilibili runtime config is loaded (credentials
+ * unconfigured OR decryption failure forced an env fallback that also yielded nothing).
+ * Distinct from a Bilibili-side publish failure: a not-configured state is an operator
+ * error that MUST surface (credential/decrypt blocker), not be masked as a routine
+ * publish_failed. The publisher catch path classifies it as 'not_configured'.
+ */
+export class NotConfiguredError extends Error {
+  constructor(message = 'bilibili_runtime_config_not_loaded') {
+    super(message);
+    this.name = 'NotConfiguredError';
+  }
+}
+
 export type BilibiliAuthProbeResult = {
   ok: boolean;
   reason: string;
@@ -118,8 +132,11 @@ export async function postReply(
   // mockPostReplyResult is required + truthy). Narrow to BilibiliConfig for the fetch path.
   const resolvedConfig: BilibiliConfig | null = (config as BilibiliConfig | undefined) || (await loadBilibiliConfig());
   if (!resolvedConfig) {
-    console.error('[Bilibili] Cannot post reply: not configured');
-    return { success: false, rpid: '' };
+    // BUG-003: throw a typed NotConfiguredError instead of returning a bare {success:false}.
+    // A not-loaded config (credentials unconfigured / decryption failure) is an operator
+    // error that MUST be visible — masking it as success:false makes the publisher record a
+    // generic 'publish_failed', hiding the real credential/decrypt root cause.
+    throw new NotConfiguredError();
   }
   const url = `${resolvedConfig.baseUrl}/x/v2/reply/add`;
   const body = JSON.stringify({
@@ -193,23 +210,22 @@ export async function probeBilibiliAuth(config?: BilibiliConfig): Promise<Bilibi
 
     const payload = await response.json();
     if (payload?.code !== 0) {
-      return {
-        ok: false,
-        reason: typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'api_error',
-        status: response.status,
-      };
+      // BUG-004 (security): the raw upstream payload.message can contain account-specific
+      // context (per the SEC-002 note in probe-scheduler.ts) and flows into /api/admin/
+      // bililibi/status diagnostics. Return the safe 'api_error' enum — mirrors the
+      // safeReason normalization in probe-scheduler.ts. The raw message is not surfaced.
+      return { ok: false, reason: 'api_error', status: response.status };
     }
     if (payload?.data?.isLogin !== true) {
       return { ok: false, reason: 'not_logged_in', status: response.status };
     }
 
     return { ok: true, reason: 'verified', status: response.status };
-  } catch (error) {
+  } catch {
     clearTimeout(timeoutId);
-    return {
-      ok: false,
-      reason: error instanceof Error && error.message ? error.message : 'probe_failed',
-    };
+    // BUG-004 (security): error.message can contain URL fragments / upstream context —
+    // return the safe 'probe_failed' enum instead (mirrors probe-scheduler safeReason).
+    return { ok: false, reason: 'probe_failed' };
   }
 }
 

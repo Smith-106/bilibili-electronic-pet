@@ -2068,14 +2068,24 @@ async function defaultIsBackoffActiveRateExceeded(): Promise<boolean> {
       prisma.observabilityEvent.count({
         where: { event_type: 'backoff_applied', created_at: { gte: since } },
       }),
-      prisma.publishLog.count({ where: { created_at: { gte: since } } }),
+      // BUG-002: filter the denominator to delivery-attempted statuses only. Counting ALL
+      // publishLog rows (incl. manual_queue 'pending_review') dilutes the rate: manual_queue
+      // rows never hit the Bilibili API so they can't contribute to backoff_applied, yet they
+      // inflate the denominator within the 600s window and mask real -352 pressure as green
+      // (e.g. 100 manual + 10 real attempts, 4 backoff → 0.036 < 0.3 false green).
+      prisma.publishLog.count({
+        where: { created_at: { gte: since }, status: { in: ['published', 'failed'] } },
+      }),
     ]);
     // No publish attempts in the window -> no rate to exceed (fail-open, avoids div-by-zero).
     if (publishIntentCount === 0) return false;
     const rate = backoffAppliedCount / publishIntentCount;
     return rate >= BACKOFF_ACTIVE_RATE_THRESHOLD;
   } catch (error) {
-    // Fail-open on DB error: the drop_count gate (in-memory) covers DB-down separately.
+    // BUG-003: fail-closed on DB query error. The generic SELECT 1 ping (foundation gate)
+    // can pass while these observability/publishLog queries fail (schema drift, row lock,
+    // query timeout) — treating that as "no antirisk pressure" (green) masks real -352/-429
+    // pressure. Mirror defaultIsBehaviorAnomalyCountZero: a query-level failure MUST flip red.
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -2084,7 +2094,7 @@ async function defaultIsBackoffActiveRateExceeded(): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     );
-    return false;
+    return true;
   }
 }
 
@@ -2107,6 +2117,7 @@ async function defaultIsPassiveResponseViolationExceeded(): Promise<boolean> {
     });
     return rejectedCount >= PASSIVE_RESPONSE_VIOLATION_THRESHOLD;
   } catch (error) {
+    // BUG-003: fail-closed on DB query error (mirrors backoff_active_rate + behavior_anomaly).
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -2115,7 +2126,7 @@ async function defaultIsPassiveResponseViolationExceeded(): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     );
-    return false;
+    return true;
   }
 }
 
@@ -2337,12 +2348,13 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       .slice(0, 3)
       .map((space) => space.title)
       .filter(Boolean);
-    const recentSubjects = links
-      .slice(0, 3)
-      .map((link) => `${link.platform}:${link.external_id}`)
-      .filter(Boolean);
-    const recentItems = items.slice(0, 3);
-    const recentItemSummaries = recentItems.map((item) => `${item.item_key}: ${item.content.slice(0, 48)}`);
+    // BUG-002 (security/data-leak): GET /companion/state is intentionally unauthenticated (it
+    // feeds the frontend companion surface), so it MUST NOT surface user-identifying PII.
+    // external_id (e.g. Bilibili mid) from identity links and raw memory-item content are
+    // PII — replace them with aggregate counts only. Pet interaction narrative
+    // (recentCompanionItems via buildCompanionInteraction) is curated content, not PII.
+    const identityLinkCount = links.length;
+    const recentItemCount = items.length;
     const recentCompanionItems = (timelineSourceItems.length > 0 ? timelineSourceItems : companionItems).slice(0, 4);
     const recentCompanionSummaries = recentCompanionItems.map((item) => {
       const interaction = buildCompanionInteraction(item);
@@ -2386,7 +2398,7 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         recentCompanionSummaries.length > 0
           ? recentCompanionSummaries.join(' | ')
           : items.length > 0
-            ? recentItemSummaries.join(' | ')
+            ? `${recentItemCount} persisted memory item${recentItemCount === 1 ? '' : 's'}.`
             : hasMemory
               ? `Known spaces: ${recentSpaceTitles.join(', ') || 'untitled'}.`
               : 'Persisted memory has not been populated yet.',
@@ -2405,9 +2417,9 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         recentCompanionSummaries.length > 0
           ? `Recent companion feed: ${recentCompanionSummaries.join(' | ')}`
           : 'No companion feed items yet.',
-        recentItemSummaries.length > 0 ? `Recent items: ${recentItemSummaries.join(' | ')}` : 'No recent items.',
+        recentItemCount > 0 ? `${recentItemCount} persisted memory item${recentItemCount === 1 ? '' : 's'}.` : 'No recent items.',
         recentSpaceTitles.length > 0 ? `Recent spaces: ${recentSpaceTitles.join(', ')}` : 'No recent spaces.',
-        recentSubjects.length > 0 ? `Recent links: ${recentSubjects.join(', ')}` : 'No recent identity links.',
+        identityLinkCount > 0 ? `${identityLinkCount} linked identit${identityLinkCount === 1 ? 'y' : 'ies'}.` : 'No linked identities.',
       ],
       recentInteractions,
     };

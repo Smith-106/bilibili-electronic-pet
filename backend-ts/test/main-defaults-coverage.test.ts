@@ -1173,7 +1173,7 @@ describe('main default dependency coverage', () => {
       detail: 'Persisted memory exists, but no companion-specific feed items have been written yet.',
       timestamp: now.toISOString(),
     });
-    expect(pendingFeedState.memorySummary).toContain('general: General memory content');
+    expect(pendingFeedState.memorySummary).toContain('1 persisted memory item');
     expect(pendingFeedState.vitals).toEqual(expect.arrayContaining([{ label: 'Focus', value: 'Active memory' }]));
 
     createMemoryServiceMock.mockReturnValue({

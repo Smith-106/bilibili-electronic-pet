@@ -256,7 +256,7 @@ async function pollVideoComments(
         },
       });
       injected++;
-      console.info(`[bilibili-poller] Injected comment rpid=${c.rpid} bvid=${video.bvid} user=${c.mid}`);
+      console.info(`[bilibili-poller] Injected comment rpid=${c.rpid} bvid=${video.bvid}`);
     } catch (err) {
       // L8: Classified catch — P2002 unique violation means the comment was already
       // injected (duplicate), so skip silently. Other errors MUST NOT be swallowed:

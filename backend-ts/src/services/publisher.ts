@@ -79,9 +79,15 @@ function recordFailure(platform: string): void {
   if (!isCircuitBreakerEnabled()) return;
   const breaker = getPlatformBreaker(platform);
   breaker.failureCount++;
-  const threshold = parseInt(process.env.PUBLISHER_CIRCUIT_FAILURE_THRESHOLD || '3', 10);
+  // Fix-Don't-Hide: parseInt can return NaN on a non-numeric env value (e.g. 'abc' is
+  // truthy so the `|| '3'` fallback does not apply), which would make the threshold
+  // comparison always false and silently disable the circuit breaker (fail-open).
+  // Guard with isFinite — invalid config keeps the documented default.
+  const thresholdRaw = parseInt(process.env.PUBLISHER_CIRCUIT_FAILURE_THRESHOLD || '3', 10);
+  const threshold = Number.isFinite(thresholdRaw) && thresholdRaw > 0 ? thresholdRaw : 3;
   if (breaker.failureCount >= threshold) {
-    const openSeconds = parseInt(process.env.PUBLISHER_CIRCUIT_OPEN_SECONDS || '30', 10);
+    const openSecondsRaw = parseInt(process.env.PUBLISHER_CIRCUIT_OPEN_SECONDS || '30', 10);
+    const openSeconds = Number.isFinite(openSecondsRaw) && openSecondsRaw > 0 ? openSecondsRaw : 30;
     breaker.openUntil = Date.now() + openSeconds * 1000;
     console.warn(
       `[publisher] Circuit breaker OPEN for platform=${platform} for ${openSeconds}s after ${breaker.failureCount} failures`,
@@ -108,6 +114,32 @@ function isPublishLogStorageError(error: unknown): boolean {
     message.includes('no such table: main.publish_logs') ||
     (message.includes('no such column') && message.includes('reservation_key'))
   );
+}
+
+/**
+ * BUG-006 (security): normalize a publish failure reason into a safe enum before persisting
+ * it to publish_log.failure_reason (surfaced via admin gateway-logs routes). The raw thrown
+ * Error.message can contain upstream Bilibili response bodies (e.g.
+ * "Bilibili reply API error: 500: <raw upstream body>") or fetch URL fragments — third-party
+ * content that must not be stored verbatim in the audit log. The raw message is still logged
+ * to console.error (operator-only) and into the antirisk signal metadata for diagnosis.
+ *
+ * Classification mirrors the failure surface: not_configured (operator/credential error),
+ * bilibili_api_error (non-2xx HTTP or Bilibili API reject), network_error (fetch-level),
+ * publish_failed (anything else).
+ */
+function normalizeFailureReason(error: unknown): string {
+  // BUG-003: duck-type NotConfiguredError by name (not instanceof) so the check still works
+  // when the caller's module mock of bilibili-client does not re-export the class.
+  if (error instanceof Error && error.name === 'NotConfiguredError') return 'not_configured';
+  if (!(error instanceof Error)) return 'publish_failed';
+  const message = error.message;
+  if (message.startsWith('Bilibili reply API error:')) return 'bilibili_api_error';
+  // fetch-level failures (AbortError, TypeError "fetch failed", DNS/network errors)
+  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econnrefused|enotfound|etimedout/i.test(message)) {
+    return 'network_error';
+  }
+  return 'publish_failed';
 }
 
 // ── Mock injection for the simulated stage (P3 warmup / L7) ──
@@ -369,7 +401,13 @@ async function publishWebhook(
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
   const webhookUrl = process.env.PUBLISHER_WEBHOOK_URL;
   const webhookToken = process.env.PUBLISHER_WEBHOOK_TOKEN;
-  const timeout = parseInt(process.env.PUBLISHER_TIMEOUT_SECONDS || '15', 10) * 1000;
+  // Fix-Don't-Hide: parseInt('abc') === NaN, so the `|| '15'` fallback does not apply to a
+  // non-numeric env value. AbortSignal.timeout(NaN) throws RangeError synchronously, which
+  // would surface as a misleading `webhook_error` instead of a clean config error. Guard with
+  // isFinite — invalid config keeps the documented 15s default.
+  const timeoutRaw = parseInt(process.env.PUBLISHER_TIMEOUT_SECONDS || '15', 10);
+  const timeoutSeconds = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 15;
+  const timeout = timeoutSeconds * 1000;
   const now = new Date();
 
   if (!webhookUrl) {
@@ -650,6 +688,10 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
 
     const errorMsg = error instanceof Error ? error.message : String(error);
     const publishedAt = new Date();
+    // BUG-006: store the normalized enum, not the raw error message (which can contain
+    // upstream Bilibili response bodies / fetch URL fragments). errorMsg is retained for
+    // console.error (above) and the antirisk signal metadata below.
+    const failureReason = normalizeFailureReason(error);
 
     try {
       const replyHash = createReplyHash(commentId, replyText);
@@ -660,11 +702,19 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
         reply_hash: replyHash,
         source,
         status: 'failed',
-        failure_reason: errorMsg,
+        failure_reason: failureReason,
         published_at: publishedAt,
       });
     } catch (dbError) {
       console.error('[publisher] Failed to record publish log:', dbError);
+    }
+
+    // BUG-003: a NotConfiguredError (credentials unconfigured / decryption failure) is an
+    // operator error, not an antirisk signal — short-circuit to 'not_configured' so the real
+    // root cause surfaces instead of being masked as a generic publish_failed. Duck-typed by
+    // name (not instanceof) for mock safety (see normalizeFailureReason).
+    if (error instanceof Error && error.name === 'NotConfiguredError') {
+      return [false, 'not_configured', publishedAt, null];
     }
 
     // L3 / coding spec: classify antirisk signal subclass (-352 behavior_anomaly /

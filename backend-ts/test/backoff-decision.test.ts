@@ -28,7 +28,6 @@ const {
   __resetBackoffMapForTest,
   __getBackoffStateForTest,
   DEFAULT_BACKOFF_CAP_BEHAVIOR_ANOMALY_SECONDS,
-  DEFAULT_BACKOFF_CAP_RATE_LIMIT_SECONDS,
 } = await import('../src/services/backoff-decision.js');
 
 const trackedEnvKeys = [

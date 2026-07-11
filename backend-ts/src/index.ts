@@ -2,6 +2,7 @@ import { createServer } from './main.js';
 import { disconnectPrisma } from './lib/prisma.js';
 import { isEncryptionAvailable } from './services/credential-crypto.js';
 import { rebuildBackoffFromDb } from './services/backoff-decision.js';
+import { probeBilibiliAuthScheduler } from './services/probe-scheduler.js';
 
 // ── 全局错误防护：防止未捕获异常导致进程静默崩溃 ──
 process.on('unhandledRejection', (reason) => {
@@ -53,6 +54,30 @@ async function start(): Promise<void> {
       }),
     );
   });
+
+  // BUG-001 (readiness contract): the API server process serves /readiness, but
+  // isAuthProbeHealthy() reads in-process module state (authProbeUnhealthy in
+  // probe-scheduler.ts). Without scheduling the probe here, the API server's copy of that
+  // state stays at its default (false → healthy) forever, so the auth_probe_healthy
+  // readiness gate is permanently green on port 8000 even when the account is logged out.
+  // Schedule probeBilibiliAuthScheduler in the API server too (mirrors worker-main.ts) so
+  // each process maintains its own probe state. unref() keeps the timer from holding the
+  // event loop open on its own.
+  const probeIntervalRaw = Number.parseInt(process.env.PROBE_AUTH_INTERVAL_SECONDS || '3600', 10);
+  const probeIntervalSeconds = Number.isFinite(probeIntervalRaw) && probeIntervalRaw > 0 ? probeIntervalRaw : 3600;
+  const probeTimer = setInterval(() => {
+    void probeBilibiliAuthScheduler().catch((error) => {
+      console.error(
+        JSON.stringify({
+          level: 'error',
+          message: 'probe_scheduler_failed',
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }),
+      );
+    });
+  }, probeIntervalSeconds * 1000);
+  probeTimer.unref();
 
   await app.listen({ port, host });
 }

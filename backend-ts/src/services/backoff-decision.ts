@@ -248,11 +248,24 @@ export async function rebuildBackoffFromDb(): Promise<void> {
     }
   }
 
-  // Swap into the live map. Clear expired/evicted entries first to honor the
-  // "memory-bounded" property (mirrors breaker Map eviction).
-  backoffMap.clear();
+  // Swap into the live map. BUG-002 (race): the previous `backoffMap.clear()` here would
+  // wipe any backoff just applied by a concurrent applyBackoff() that landed during the
+  // `await prisma.observabilityEvent.findMany` window above — losing antirisk state and
+  // letting the next publish fire into an active behavior_anomaly window. Merge instead of
+  // clearing: keep the later backoffUntil per persona, and evict only entries that are both
+  // expired AND absent from the rebuilt set.
   for (const [personaId, state] of latestPerPersona) {
-    backoffMap.set(personaId, state);
+    const live = backoffMap.get(personaId);
+    if (!live || live.backoffUntil < state.backoffUntil) {
+      backoffMap.set(personaId, state);
+    }
+  }
+  // Evict expired entries the rebuild did not surface (memory-bounded property, mirrors
+  // breaker Map eviction). Concurrent applyBackoff entries that are still live are kept.
+  for (const [personaId, state] of backoffMap) {
+    if (state.backoffUntil <= now && !latestPerPersona.has(personaId)) {
+      backoffMap.delete(personaId);
+    }
   }
 
   console.log(

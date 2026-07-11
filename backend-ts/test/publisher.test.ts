@@ -70,7 +70,9 @@ describe('publisher duplicate log lookup fallback', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'failed',
-          failure_reason: 'db offline',
+          // BUG-006: failure_reason is the normalized enum, not the raw error message (which
+          // could contain upstream content / DB internals). 'db offline' → 'publish_failed'.
+          failure_reason: 'publish_failed',
         }),
       }),
     );

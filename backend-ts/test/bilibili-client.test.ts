@@ -9,7 +9,7 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
 
 vi.stubGlobal('fetch', fetchMock);
 
-const { isBilibiliConfigured, postReply, probeBilibiliAuth } = await import('../src/services/bilibili-client.js');
+const { isBilibiliConfigured, postReply, probeBilibiliAuth, NotConfiguredError } = await import('../src/services/bilibili-client.js');
 
 const runtimeConfig = {
   sessdata: 'db-sess',
@@ -68,12 +68,10 @@ describe('bilibili-client runtime config integration', () => {
     );
   });
 
-  it('returns a safe failure result when no runtime credential is available', async () => {
+  it('throws NotConfiguredError when no runtime credential is available', async () => {
     loadBilibiliRuntimeConfig.mockResolvedValue(null);
 
-    const result = await postReply('12345', 'hello');
-
-    expect(result).toEqual({ success: false, rpid: '' });
+    await expect(postReply('12345', 'hello')).rejects.toBeInstanceOf(NotConfiguredError);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -324,7 +322,7 @@ describe('bilibili-client runtime config integration', () => {
     });
   });
 
-  it('uses API error messages and fallback probe reasons', async () => {
+  it('normalizes non-zero API codes to a safe api_error enum (no raw upstream message)', async () => {
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -343,9 +341,12 @@ describe('bilibili-client runtime config integration', () => {
         }),
       });
 
+    // BUG-004: raw upstream payload.message can contain account-specific context and flows
+    // into /api/admin/bilibili/status diagnostics — both non-zero codes normalize to the
+    // safe 'api_error' enum regardless of message content.
     await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
       ok: false,
-      reason: 'auth expired',
+      reason: 'api_error',
       status: 200,
     });
     await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
@@ -355,12 +356,14 @@ describe('bilibili-client runtime config integration', () => {
     });
   });
 
-  it('normalizes Error and non-Error auth probe exceptions', async () => {
+  it('normalizes fetch exceptions to the safe probe_failed enum', async () => {
     fetchMock.mockRejectedValueOnce(new Error('nav timeout')).mockRejectedValueOnce('');
 
+    // BUG-004: error.message can contain URL fragments / upstream context — both Error and
+    // non-Error fetch rejections normalize to the safe 'probe_failed' enum.
     await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
       ok: false,
-      reason: 'nav timeout',
+      reason: 'probe_failed',
     });
     await expect(probeBilibiliAuth(runtimeConfig)).resolves.toEqual({
       ok: false,

@@ -248,14 +248,18 @@ describe('loadBilibiliRuntimeConfig', () => {
     expect(config).toBeNull();
   });
 
-  it('falls back to environment variables when decrypt returns null for encrypted credentials', async () => {
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('refuses to fall back to environment variables when the active credential cannot be decrypted', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     process.env.BILIBILI_SESSDATA = 'env-sess';
     process.env.BILIBILI_BILI_JCT = 'env-jct';
     process.env.BILIBILI_BUVID3 = 'env-buvid';
 
-    // Simulate decrypt returning null (decryption failure with key present)
-    mockDecrypt.mockReturnValue(null);
+    // BUG-006: a decrypt failure (rotated key / corrupted ciphertext) MUST NOT silently fall
+    // back to env — that would mask the credential-store failure and publish with the wrong
+    // persona. Simulate decrypt throwing (the real behavior on GCM authTag mismatch).
+    mockDecrypt.mockImplementation(() => {
+      throw new Error('Unsupported state or unable to authenticate data');
+    });
 
     mockPrisma.bilibiliCredential.findFirst.mockResolvedValue({
       id: 10,
@@ -268,14 +272,11 @@ describe('loadBilibiliRuntimeConfig', () => {
 
     const config = await loadBilibiliRuntimeConfig();
 
-    // decrypt null → sessdata/biliJct become '' → hasRequiredCredentialFields returns false
-    // → falls back to env vars
-    expect(config).toMatchObject({
-      source: 'environment',
-      sessdata: 'env-sess',
-      biliJct: 'env-jct',
-      buvid: 'env-buvid',
-    });
-    warnSpy.mockRestore();
+    // Returns null (not env fallback) so postReply throws NotConfiguredError and the
+    // operator sees the real root cause (credential_decrypt_failed) instead of a silent
+    // env swap that publishes with the wrong persona.
+    expect(config).toBeNull();
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('could not be decrypted'));
+    errorSpy.mockRestore();
   });
 });

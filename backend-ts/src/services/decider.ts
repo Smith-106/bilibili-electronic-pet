@@ -145,14 +145,27 @@ function loadReplyRules(): ReplyRules {
   if (process.env.REPLY_GLOBAL_COOLDOWN_ENABLED) {
     rules.globalCooldownEnabled = process.env.REPLY_GLOBAL_COOLDOWN_ENABLED !== 'false';
   }
+  // Fix-Don't-Hide: parseInt can return NaN on a non-numeric env value, which would
+  // poison cooldown/quiet-hours math and silently disable these rate-limit safety controls
+  // (fail-open). Guard with isFinite + range check — invalid config keeps the default,
+  // mirroring the fail-closed parseInt guards in publisher.ts / probe-scheduler.ts.
   if (process.env.REPLY_COOLDOWN_MINUTES) {
-    rules.defaultCooldownMinutes = parseInt(process.env.REPLY_COOLDOWN_MINUTES, 10);
+    const cooldown = parseInt(process.env.REPLY_COOLDOWN_MINUTES, 10);
+    if (Number.isFinite(cooldown) && cooldown >= 0) {
+      rules.defaultCooldownMinutes = cooldown;
+    }
   }
   if (process.env.REPLY_QUIET_HOURS_START) {
-    rules.quietHoursStart = parseInt(process.env.REPLY_QUIET_HOURS_START, 10);
+    const start = parseInt(process.env.REPLY_QUIET_HOURS_START, 10);
+    if (Number.isFinite(start) && start >= 0 && start < 24) {
+      rules.quietHoursStart = start;
+    }
   }
   if (process.env.REPLY_QUIET_HOURS_END) {
-    rules.quietHoursEnd = parseInt(process.env.REPLY_QUIET_HOURS_END, 10);
+    const end = parseInt(process.env.REPLY_QUIET_HOURS_END, 10);
+    if (Number.isFinite(end) && end >= 0 && end < 24) {
+      rules.quietHoursEnd = end;
+    }
   }
 
   return rules;
@@ -438,7 +451,7 @@ export const shouldReplyForInteraction: ShouldReplyForInteractionService = async
   if (actorUserId) {
     const cooldown = await checkUserCooldown(actorUserId, rules);
     if (cooldown.inCooldown) {
-      console.log(`[shouldReply] User ${actorUserId} in cooldown for ${cooldown.remainingMinutes} more minutes`);
+      console.log(`[shouldReply] User in cooldown for ${cooldown.remainingMinutes} more minutes`);
       return [false, styleProfile, 'medium'];
     }
   }
