@@ -26,8 +26,9 @@ function loadSearchConfig(): SearchConfig | null {
   // 守护 env 数值配置：非数字/越界值回退到默认。NaN maxResults 会静默 slice 出空数组，
   // NaN timeout 会即时 abort 导致空结果——两者都是 silent failure，与 llm-client/decider
   // 的 isFinite 守护标准一致。
+  // F4: maxResults 加上界 10 (Google CSE num 硬限 10, Bing/SerpAPI 上限更低; 防 num=999999 上游 400/巨量返回 × 3 expand 内存放大)。
   const maxResultsRaw = parseInt(process.env.SEARCH_MAX_RESULTS || '5', 10);
-  const maxResults = Number.isFinite(maxResultsRaw) && maxResultsRaw > 0 ? maxResultsRaw : 5;
+  const maxResults = Number.isFinite(maxResultsRaw) && maxResultsRaw > 0 && maxResultsRaw <= 10 ? maxResultsRaw : 5;
   const timeoutRaw = parseInt(process.env.SEARCH_TIMEOUT || '10000', 10);
   const timeout = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 10000;
 

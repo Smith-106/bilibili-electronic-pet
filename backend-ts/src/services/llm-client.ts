@@ -28,16 +28,19 @@ function loadLLMConfig(): LLMConfig {
   const baseUrl = process.env.LLM_BASE_URL || '';
   // 守护 env 数值配置：非数字/越界值回退到默认，避免 NaN 进请求体或 setTimeout。
   // 与 decider.ts REPLY_BASE_PROBABILITY / publisher.ts 超时阈值同一 isFinite 守护标准。
+  // F2: temperature 收紧到 0-1 (Claude API 官方范围, OpenAI 也接受 0-1; 旧的 0-2 会放行 Claude 拒绝的 >1 值)。
   const tempRaw = parseFloat(process.env.LLM_TEMPERATURE || '0.7');
-  const temperature = Number.isFinite(tempRaw) && tempRaw >= 0 && tempRaw <= 2 ? tempRaw : 0.7;
+  const temperature = Number.isFinite(tempRaw) && tempRaw >= 0 && tempRaw <= 1 ? tempRaw : 0.7;
+  // F3: maxTokens 加上界 8192 (model cap 量级, 防 per-token 计费经济 DoS + 超 cap API 400)。
   const maxTokensRaw = parseInt(process.env.LLM_MAX_TOKENS || '150', 10);
-  const maxTokens = Number.isFinite(maxTokensRaw) && maxTokensRaw > 0 ? maxTokensRaw : 150;
+  const maxTokens = Number.isFinite(maxTokensRaw) && maxTokensRaw > 0 && maxTokensRaw <= 8192 ? maxTokensRaw : 150;
+  // F1: timeoutMs 加上界 120000 (2min, 防单次挂起 LLM 调用 × retries 长期阻塞 worker 饥饿)。
   const timeoutRaw = parseInt(process.env.LLM_TIMEOUT || '30000', 10);
-  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 30000;
+  const timeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 && timeoutRaw <= 120000 ? timeoutRaw : 30000;
+  // F5/F6: retries 下界 ≥1 (顺修 pre-existing throw undefined: retries=0 循环不执行 lastError 仍 undefined),
+  // 上界降到 4 (对未限速外部 API 防滥用, 指数退避末次 8s 可接受)。
   const retriesRaw = parseInt(process.env.LLM_RETRIES || '2', 10);
-  const retries = (Number.isFinite(retriesRaw) && retriesRaw >= 0 && retriesRaw <= 10
-    ? retriesRaw
-    : 2) as LLMConfig['retries'];
+  const retries = Number.isFinite(retriesRaw) && retriesRaw >= 1 && retriesRaw <= 4 ? retriesRaw : 2;
 
   switch (provider) {
     case 'openai':
