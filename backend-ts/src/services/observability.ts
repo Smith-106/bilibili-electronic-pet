@@ -24,24 +24,23 @@ import { prisma as getPrisma } from './db-queries.js';
  * module load). Mutating the env after import does NOT retroactively resize
  * the running buffer.
  */
-export const OBSERVABILITY_BUFFER_CAPACITY = (() => {
-  const raw = Number.parseInt(process.env.OBSERVABILITY_BUFFER_CAPACITY ?? '4096', 10);
-  // Guard (review-odyssey 002): NaN 会让 `length >= NaN` 永真 false → buffer 永不溢出 →
-  // 无限增长 OOM。isFinite + [1, 1_000_000] 守护, 与 llm-client/search env 数值守护标准一致。
-  return Number.isFinite(raw) && raw > 0 && raw <= 1_000_000 ? raw : 4096;
-})();
+const rawBufferCapacity = Number.parseInt(process.env.OBSERVABILITY_BUFFER_CAPACITY ?? '4096', 10);
+// Guard (review-odyssey 002): NaN 会让 `length >= NaN` 永真 false → buffer 永不溢出 →
+// 无限增长 OOM。isFinite + [1, 1_000_000] 守护, 与 llm-client/search env 数值守护标准一致。
+// 两语句形式与 backoff-decision.ts / probe-scheduler.ts 一致 (review-odyssey 003 arch)。
+export const OBSERVABILITY_BUFFER_CAPACITY = Number.isFinite(rawBufferCapacity)
+  && rawBufferCapacity > 0 && rawBufferCapacity <= 1_000_000 ? rawBufferCapacity : 4096;
 
 /**
  * Drop-count threshold (F2). When getObservabilityDropCount() >= this value,
  * an ObservabilityEvent {event_type:'observability_drop_count'} is emitted
  * periodically via the normal observation buffer path so readiness can flag red.
  */
-const DROP_COUNT_THRESHOLD = (() => {
-  const raw = Number.parseInt(process.env.OBSERVABILITY_DROP_COUNT_THRESHOLD ?? '100', 10);
-  // Guard (review-odyssey 002): NaN 会让 `dropCount >= NaN` 永真 false → 告警永不触发,
-  // 且 NaN 进 event_metadata 持久化。isFinite + [1, 1_000_000] 守护。
-  return Number.isFinite(raw) && raw > 0 && raw <= 1_000_000 ? raw : 100;
-})();
+const rawDropCountThreshold = Number.parseInt(process.env.OBSERVABILITY_DROP_COUNT_THRESHOLD ?? '100', 10);
+// Guard (review-odyssey 002): NaN 会让 `dropCount >= NaN` 永真 false → 告警永不触发,
+// 且 NaN 进 event_metadata 持久化。isFinite + [1, 1_000_000] 守护。两语句形式与邻近文件一致。
+const DROP_COUNT_THRESHOLD = Number.isFinite(rawDropCountThreshold)
+  && rawDropCountThreshold > 0 && rawDropCountThreshold <= 1_000_000 ? rawDropCountThreshold : 100;
 
 /**
  * Drop-count alert interval (ms). When drop_count crosses the threshold, a

@@ -444,8 +444,11 @@ async function publishWebhook(
     const data = await response.json();
     return [true, 'webhook_published', now, { webhook_response: data }];
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return [false, `webhook_error: ${msg}`, now, null];
+    // F1 (review-odyssey 003, fix-completeness): webhook catch 走与 publishReal/publishIntentWithResult
+    // catch 同一的 normalizeFailureReason 收敛为 enum, raw error.message (可含 webhook 主机名/URL 片段)
+    // 仅留 console.error (operator-only), 不进 event_metadata/risk_flags durable 列 (spec S-20260711-9n3j)。
+    console.error('[publisher] webhook publish failed:', error);
+    return [false, normalizeFailureReason(error), now, null];
   }
 }
 

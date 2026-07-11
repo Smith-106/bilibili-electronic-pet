@@ -301,7 +301,9 @@ describe('publisher mode coverage', () => {
     );
 
     expect(httpResult.slice(0, 2)).toEqual([false, 'webhook_http_503']);
-    expect(thrownResult.slice(0, 2)).toEqual([false, 'webhook_error: network_down']);
+    // F1 (review-odyssey 003): webhook catch now normalizes via normalizeFailureReason
+    // (raw error.message no longer persisted). 'network_down' → network_error.
+    expect(thrownResult.slice(0, 2)).toEqual([false, 'network_error']);
     expect(prismaMock.publishLog.create).not.toHaveBeenCalled();
   });
 
@@ -312,7 +314,9 @@ describe('publisher mode coverage', () => {
 
     const result = await publishIntentWithResult(buildIntent());
 
-    expect(result.slice(0, 2)).toEqual([false, 'webhook_error: plain webhook failure']);
+    // F1: non-Error reject value → normalizeFailureReason returns 'publish_failed' (enum),
+    // raw string no longer persisted to durable columns.
+    expect(result.slice(0, 2)).toEqual([false, 'publish_failed']);
     expect(prismaMock.publishLog.create).not.toHaveBeenCalled();
   });
 
