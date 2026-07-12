@@ -142,7 +142,7 @@ function normalizeFailureReason(error: unknown): string {
   // rate_limited + backoff downstream; this only fixes the publish_log audit classification.
   if (/-352|behavior_anomaly|v_voucher/i.test(message)) return 'bilibili_api_error';
   // fetch-level failures (AbortError, TypeError "fetch failed", DNS/network errors)
-  // F2 (review-odyssey 004): 衡全 errno 族 — econn 前缀覆盖 econnreset/econnrefused/econnreset,
+  // F2 (review-odyssey 004): 衡全 errno 族 — econn 前缀覆盖 econnreset/econnrefused/econnaborted,
   // eaddr 覆盖 eaddrinuse/eaddrnotavail (原正则漏 ECONNRESET 误分类为 publish_failed)。
   if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr/i.test(message)) {
     return 'network_error';
