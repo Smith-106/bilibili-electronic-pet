@@ -155,7 +155,7 @@ function renderSummaryGrid(entries, emptyText) {
 }
 
 export async function render(container) {
-  container.innerHTML = '<div class="page-loading">加载中...</div>';
+  container.innerHTML = '<div class="page-loading" role="status" aria-live="polite">加载中...</div>';
 
   try {
     const [overview, jobs, gatewayLogs, auditSummary, metricsOverview, observabilitySummary, readinessStatus] = await Promise.all([
@@ -183,7 +183,7 @@ export async function render(container) {
     container.innerHTML = `
       <div class="page-header">
         <h2>系统概览</h2>
-        <button class="btn" id="dashboard-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
+        <button class="btn" id="dashboard-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
       </div>
 
       <div class="stat-grid">
@@ -226,7 +226,7 @@ export async function render(container) {
               <tbody>
                 ${jobItems.length === 0 ? '<tr><td colspan="4" class="table-empty-cell">暂无任务</td></tr>' :
                   jobItems.map(j => `<tr>
-                    <td class="cell-id">${escapeHtml(j.id?.substring(0, 8))}</td>
+                    <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(j.id?.substring(0, 8))}</td>
                     <td>${renderBadge(j.status)}</td>
                     <td class="cell-truncate">${escapeHtml(j.comment_text?.substring(0, 60))}</td>
                     <td class="cell-time">${escapeHtml(formatIsoDateTime(j.created_at))}</td>
@@ -272,9 +272,12 @@ export async function render(container) {
       </div>
     `;
 
-    container.querySelector('#dashboard-refresh').addEventListener('click', () => {
+    container.querySelector('#dashboard-refresh').addEventListener('click', (event) => {
+      const btn = event.currentTarget;
+      // INT-001 (UI-odyssey 001): refresh 期间 disabled 防重复点击并发
+      btn.disabled = true;
       showToast('正在刷新...', 'info');
-      render(container);
+      render(container).finally(() => { btn.disabled = false; });
     });
   } catch (err) {
     container.innerHTML = `<div class="page-error">加载失败: ${escapeHtml(err.message)}</div>`;

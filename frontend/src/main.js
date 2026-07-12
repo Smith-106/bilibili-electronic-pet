@@ -1,5 +1,6 @@
 import './style.css';
 import { requestJson } from './api/client.js';
+import { escapeHtml } from './utils/format.js';
 
 import { render as renderDashboard } from './pages/dashboard.js';
 import { render as renderJobs } from './pages/jobs.js';
@@ -91,6 +92,9 @@ function ensureStoredAdminAuth() {
 function showLogin() {
   document.getElementById('login-overlay').style.display = 'flex';
   document.getElementById('logout-btn').style.display = 'none';
+  // A11Y-003 (UI-odyssey 001): 打开 login 模态时聚焦 API Key 输入框
+  const apiKeyInput = document.getElementById('login-api-key');
+  if (apiKeyInput) apiKeyInput.focus();
 }
 
 function hideLogin() {
@@ -172,9 +176,13 @@ function navigateTo(page) {
   document.getElementById('page-title').textContent = PAGES[page].title;
 
   const container = document.getElementById('page-container');
-  container.innerHTML = '<div class="page-loading">加载中...</div>';
-  PAGES[page].render(container).catch((err) => {
-    container.innerHTML = `<div class="page-error">加载失败: ${err.message}</div>`;
+  container.innerHTML = '<div class="page-loading" role="status" aria-live="polite">加载中...</div>';
+  PAGES[page].render(container).then(() => {
+    // A11Y-002 (UI-odyssey 001): 渲染完成后将焦点移至页面容器, 让读屏播报新页内容
+    container.setAttribute('tabindex', '-1');
+    container.focus({ preventScroll: true });
+  }).catch((err) => {
+    container.innerHTML = `<div class="page-error" role="alert">加载失败: ${escapeHtml(err.message)}</div>`;
   });
 }
 
@@ -210,13 +218,21 @@ function setupTheme() {
   const btn = document.getElementById('theme-toggle-btn');
   if (!btn) return;
   const themes = ['', 'dark', 'sepia'];
-  let idx = 0;
+  // D5 (UI-odyssey 001): 主题持久化 localStorage, 避免刷新丢失
+  const stored = localStorage.getItem('admin_theme');
+  const initialIdx = themes.indexOf(stored);
+  let idx = initialIdx >= 0 ? initialIdx : 0;
+  if (themes[idx]) {
+    document.body.setAttribute('data-theme', themes[idx]);
+  }
   btn.addEventListener('click', () => {
     idx = (idx + 1) % themes.length;
     if (themes[idx]) {
       document.body.setAttribute('data-theme', themes[idx]);
+      localStorage.setItem('admin_theme', themes[idx]);
     } else {
       document.body.removeAttribute('data-theme');
+      localStorage.setItem('admin_theme', '');
     }
   });
 }

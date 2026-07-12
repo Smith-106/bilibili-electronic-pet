@@ -1,11 +1,12 @@
 import { createAdminApi } from '../api/admin.js';
 import { escapeHtml } from '../utils/format.js';
+import { showToast } from '../components/toast.js';
 
 const api = createAdminApi();
 
 function renderConnectionCards(items) {
   if (!Array.isArray(items) || !items.length) {
-    return '<div class="table-empty">暂无平台连接信息</div>';
+    return '<div class="table-empty" role="status">暂无平台连接信息</div>';
   }
 
   return items
@@ -54,26 +55,38 @@ export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
       <h2>平台连接</h2>
-      <button class="btn" id="connections-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
+      <button class="btn" id="connections-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
     </div>
-    <div id="connections-wrapper"><div class="page-loading">加载中...</div></div>
+    <div id="connections-wrapper"><div class="page-loading" role="status" aria-live="polite">加载中...</div></div>
   `;
 
   async function load() {
     const response = await api.getPlatformConnections();
     container.querySelector('#connections-wrapper').innerHTML = renderConnectionCards(response?.items);
     container.querySelectorAll('[data-role="platform-toggle"]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        const platform = button.getAttribute('data-platform') || '';
-        const enabled = button.getAttribute('data-enabled') === 'true';
-        await api.setPlatformConnectionControl(platform, enabled);
-        await load();
+      button.addEventListener('click', async (event) => {
+        // INT-003 (UI-odyssey 001): 异步期间 disabled 防竞态 + try/catch 错误反馈
+        const target = event.currentTarget;
+        target.disabled = true;
+        const platform = target.getAttribute('data-platform') || '';
+        const enabled = target.getAttribute('data-enabled') === 'true';
+        try {
+          await api.setPlatformConnectionControl(platform, enabled);
+          await load();
+        } catch (err) {
+          showToast(`操作失败: ${err.message}`, 'error');
+          target.disabled = false;
+        }
       });
     });
   }
 
-  container.querySelector('#connections-refresh').addEventListener('click', () => {
-    void load();
+  container.querySelector('#connections-refresh').addEventListener('click', (event) => {
+    // INT-002 (UI-odyssey 001): refresh 期间 disabled 防重复点击并发
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    showToast('正在刷新...', 'info');
+    load().finally(() => { btn.disabled = false; });
   });
 
   await load();

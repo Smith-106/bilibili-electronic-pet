@@ -17,7 +17,7 @@ export async function render(container) {
         <h3>风格配置</h3>
         <p class="form-hint">选择回复生成风格</p>
         <div class="form-group">
-          <select id="profile-style" class="form-input">
+          <select id="profile-style" class="form-input" aria-label="回复风格">
             <option value="auto">auto (自动)</option>
             <option value="empathy">empathy (共情)</option>
             <option value="meme">meme (热梗)</option>
@@ -32,7 +32,7 @@ export async function render(container) {
         <h3>角色配置</h3>
         <p class="form-hint">选择角色行为模式</p>
         <div class="form-group">
-          <select id="profile-role" class="form-input">
+          <select id="profile-role" class="form-input" aria-label="角色模式">
             <option value="auto">auto (自动)</option>
             <option value="default">default (默认)</option>
             <option value="comfort">comfort (安慰)</option>

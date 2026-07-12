@@ -82,7 +82,7 @@ export async function render(container) {
                 <td>${renderBadge(j.status)}</td>
                 <td class="cell-truncate" title="${escapeHtml(j.comment_text)}">${escapeHtml(j.comment_text?.substring(0, 80))}</td>
                 <td class="cell-truncate" title="${escapeHtml(formatRouteContextLabel(j.route_context))}">${escapeHtml(formatRouteContextLabel(j.route_context))}</td>
-                <td class="cell-truncate">${escapeHtml(j.reply_text?.substring(0, 60))}</td>
+                <td class="cell-truncate" title="${escapeHtml(j.reply_text)}">${escapeHtml(j.reply_text?.substring(0, 60))}</td>
                 <td>${j.risk_flags?.length ? j.risk_flags.map(f => `<span class="risk-flag">${escapeHtml(f)}</span>`).join(' ') : '-'}</td>
                 <td class="cell-time">${renderTimestamp(j.created_at)}</td>
                 <td class="cell-actions">
@@ -114,7 +114,7 @@ export async function render(container) {
         });
       });
 
-      // Approve buttons
+      // Approve buttons (INT-004 UI-odyssey 001: finally 统一复位, 防 loadJobs 失败时按钮卡死)
       wrapper.querySelectorAll('.job-approve').forEach(btn => {
         btn.addEventListener('click', async () => {
           btn.disabled = true;
@@ -122,9 +122,10 @@ export async function render(container) {
           try {
             await api.approveJob(btn.dataset.id);
             showToast('审批成功', 'success');
-            loadJobs();
+            await loadJobs();
           } catch (err) {
             showToast(`审批失败: ${err.message}`, 'error');
+          } finally {
             btn.disabled = false;
             btn.textContent = '审批';
           }
@@ -139,9 +140,10 @@ export async function render(container) {
           try {
             await api.retryJob(btn.dataset.id);
             showToast('重试已提交', 'success');
-            loadJobs();
+            await loadJobs();
           } catch (err) {
             showToast(`重试失败: ${err.message}`, 'error');
+          } finally {
             btn.disabled = false;
             btn.textContent = '重试';
           }
