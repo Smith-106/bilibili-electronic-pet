@@ -225,11 +225,11 @@ export async function render(container) {
 
       wrapper.innerHTML = renderTable({
         columns: [
-          { key: 'id', label: 'ID', class: 'cell-id', render: r => escapeHtml(r.id?.toString().substring(0, 8)) },
-          { key: 'comment_id', label: 'Comment ID', class: 'cell-id', render: r => escapeHtml(r.comment_id?.substring(0, 12)) },
+          { key: 'id', label: 'ID', class: 'cell-id', render: r => escapeHtml(String(r.id ?? '').substring(0, 8)) },
+          { key: 'comment_id', label: 'Comment ID', class: 'cell-id', render: r => escapeHtml(String(r.comment_id ?? '').substring(0, 12)) },
           { key: 'status', label: '状态', render: r => renderBadge(r.status) },
           { key: 'platform', label: '平台', render: r => escapeHtml(r.platform || '-') },
-          { key: 'reply_text', label: '回复摘要', class: 'cell-truncate', render: r => escapeHtml(r.reply_text?.substring(0, 60)) },
+          { key: 'reply_text', label: '回复摘要', class: 'cell-truncate', render: r => escapeHtml(String(r.reply_text ?? '').substring(0, 60)) },
           { key: 'created_at', label: '时间', class: 'cell-time', render: r => renderTimestamp(r.created_at) },
         ],
         rows: items,
