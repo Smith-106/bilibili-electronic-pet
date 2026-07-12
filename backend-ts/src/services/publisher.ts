@@ -142,7 +142,9 @@ function normalizeFailureReason(error: unknown): string {
   // rate_limited + backoff downstream; this only fixes the publish_log audit classification.
   if (/-352|behavior_anomaly|v_voucher/i.test(message)) return 'bilibili_api_error';
   // fetch-level failures (AbortError, TypeError "fetch failed", DNS/network errors)
-  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econnrefused|enotfound|etimedout/i.test(message)) {
+  // F2 (review-odyssey 004): 衡全 errno 族 — econn 前缀覆盖 econnreset/econnrefused/econnreset,
+  // eaddr 覆盖 eaddrinuse/eaddrnotavail (原正则漏 ECONNRESET 误分类为 publish_failed)。
+  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr/i.test(message)) {
     return 'network_error';
   }
   return 'publish_failed';
@@ -438,7 +440,18 @@ async function publishWebhook(
     });
 
     if (!response.ok) {
-      return [false, `webhook_http_${response.status}`, now, null];
+      // F1 (review-odyssey 004, fix-completeness): HTTP 非 2xx 是 L7 tuple-return 失败路径,
+      // 与 catch 路径一样 MUST 走 normalize 收敛 (spec S-20260711-x96s)。status 是安全 number
+      // 但 `webhook_http_${status}` 非 enum, queue 路径会原样持久化到 risk_flags 破坏 enum 一致性。
+      // 5xx → '5xx' (STANDARD enum, 可重试 channel failure), 4xx → 'publish_failed' (client 配置错)。
+      // status 保留进 metadata 供 operator 诊断, 不进 reason enum。
+      console.error(`[publisher] webhook HTTP ${response.status}`);
+      return [
+        false,
+        response.status >= 500 ? '5xx' : 'publish_failed',
+        now,
+        { webhook_http_status: response.status },
+      ];
     }
 
     const data = await response.json();

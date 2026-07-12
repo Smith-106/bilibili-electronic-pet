@@ -300,7 +300,10 @@ describe('publisher mode coverage', () => {
       }),
     );
 
-    expect(httpResult.slice(0, 2)).toEqual([false, 'webhook_http_503']);
+    // F1 (review-odyssey 004, fix-completeness): HTTP 非 2xx 是 L7 tuple-return 失败路径,
+    // MUST 走 normalize 收敛 (spec S-20260711-x96s)。503 → '5xx' (STANDARD enum, 可重试 channel failure),
+    // 不再用非 enum 的 webhook_http_503。
+    expect(httpResult.slice(0, 2)).toEqual([false, '5xx']);
     // F1 (review-odyssey 003): webhook catch now normalizes via normalizeFailureReason
     // (raw error.message no longer persisted). 'network_down' → network_error.
     expect(thrownResult.slice(0, 2)).toEqual([false, 'network_error']);
