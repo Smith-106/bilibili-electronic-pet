@@ -362,7 +362,7 @@ describe('publisher mode coverage', () => {
     process.env.PUBLISHER_MODE = 'real_publish';
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    for (const errnoMessage of ['connect EHOSTUNREACH 1.2.3.4:443', 'connect ENETUNREACH', 'write EPIPE']) {
+    for (const errnoMessage of ['connect EHOSTUNREACH 1.2.3.4:443', 'connect ENETUNREACH', 'write EPIPE', 'getaddrinfo EAI_AGAIN', 'network ENETRESET']) {
       postReplyMock.mockRejectedValueOnce(new Error(errnoMessage));
       const result = await publishIntentWithResult(buildIntent());
       expect(result.slice(0, 2)).toEqual([false, 'network_error']);

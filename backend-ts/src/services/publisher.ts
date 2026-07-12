@@ -144,10 +144,11 @@ function normalizeFailureReason(error: unknown): string {
   // fetch-level failures (AbortError, TypeError "fetch failed", DNS/network errors)
   // F2 (review-odyssey 004): 衡全 errno 族 — econn 前缀覆盖 econnreset/econnrefused/econnaborted,
   // eaddr 覆盖 eaddrinuse/eaddrnotavail (原正则漏 ECONNRESET 误分类为 publish_failed)。
-  // F2 (review-odyssey 006): 补 ehostunreach/enetunreach/epipe — f74e00a 漏的同类 errno 族
-  // (host/network unreachable + broken pipe 同属 fetch 层网络失败, 误分类 publish_failed 会污染
-  // real_publish throw 路径的 publish_log.failure_reason enum, 隐藏 network_error 语义)。
-  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr|ehostunreach|enetunreach|epipe/i.test(message)) {
+  // F2 (review-odyssey 006): 补 ehostunreach/enetunreach/epipe/eai/enetreset — f74e00a 漏的同类 errno 族
+  // (host/network unreachable + broken pipe + DNS EAI_AGAIN 临时失败 + ENETRESET 网络重置同属 fetch 层
+  // 网络失败, 误分类 publish_failed 会污染 real_publish throw 路径的 publish_log.failure_reason enum,
+  // 隐藏 network_error 语义)。eai 前缀覆盖 eai_again/eai_nodata 等 getaddrinfo 族。
+  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr|ehostunreach|enetunreach|epipe|eai|enetreset/i.test(message)) {
     return 'network_error';
   }
   return 'publish_failed';
