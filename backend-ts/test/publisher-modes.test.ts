@@ -355,6 +355,20 @@ describe('publisher mode coverage', () => {
     );
   });
 
+  it('classifies errno-family network errors as network_error (F2 review-odyssey 006)', async () => {
+    // F2: normalizeFailureReason errno regex MUST cover EHOSTUNREACH/ENETUNREACH/EPIPE
+    // (f74e00a 漏的同类 errno族, 误分类 publish_failed 会污染 real_publish throw 路径的
+    // publish_log.failure_reason enum). 经 real_publish throw 路径触发 normalizeFailureReason。
+    process.env.PUBLISHER_MODE = 'real_publish';
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    for (const errnoMessage of ['connect EHOSTUNREACH 1.2.3.4:443', 'connect ENETUNREACH', 'write EPIPE']) {
+      postReplyMock.mockRejectedValueOnce(new Error(errnoMessage));
+      const result = await publishIntentWithResult(buildIntent());
+      expect(result.slice(0, 2)).toEqual([false, 'network_error']);
+    }
+  });
+
   it('maps unsupported targets and rate-limit failures through the catch path', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     prismaMock.publishLog.findFirst.mockRejectedValueOnce(new Error('rate limit exceeded'));

@@ -78,7 +78,7 @@ export async function render(container) {
             ${items.map(j => `
               <tr data-id="${escapeHtml(j.id)}">
                 <td class="cell-check"><input type="checkbox" class="job-checkbox" data-id="${escapeHtml(j.id)}" /></td>
-                <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(j.id?.substring(0, 8))}</td>
+                <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(String(j.id ?? '').substring(0, 8))}</td>
                 <td>${renderBadge(j.status)}</td>
                 <td class="cell-truncate" title="${escapeHtml(j.comment_text)}">${escapeHtml(j.comment_text?.substring(0, 80))}</td>
                 <td class="cell-truncate" title="${escapeHtml(formatRouteContextLabel(j.route_context))}">${escapeHtml(formatRouteContextLabel(j.route_context))}</td>
@@ -126,8 +126,11 @@ export async function render(container) {
           } catch (err) {
             showToast(`审批失败: ${err.message}`, 'error');
           } finally {
-            btn.disabled = false;
-            btn.textContent = '审批';
+            // F9 (review-odyssey 006): isConnected 防操作 detached node (loadJobs 重渲染后 btn detached)
+            if (btn.isConnected) {
+              btn.disabled = false;
+              btn.textContent = '审批';
+            }
           }
         });
       });
@@ -144,8 +147,11 @@ export async function render(container) {
           } catch (err) {
             showToast(`重试失败: ${err.message}`, 'error');
           } finally {
-            btn.disabled = false;
-            btn.textContent = '重试';
+            // F9 (review-odyssey 006): isConnected 防操作 detached node (loadJobs 重渲染后 btn detached)
+            if (btn.isConnected) {
+              btn.disabled = false;
+              btn.textContent = '重试';
+            }
           }
         });
       });

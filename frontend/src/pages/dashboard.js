@@ -226,7 +226,7 @@ export async function render(container) {
               <tbody>
                 ${jobItems.length === 0 ? '<tr><td colspan="4" class="table-empty-cell">暂无任务</td></tr>' :
                   jobItems.map(j => `<tr>
-                    <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(j.id?.substring(0, 8))}</td>
+                    <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(String(j.id ?? '').substring(0, 8))}</td>
                     <td>${renderBadge(j.status)}</td>
                     <td class="cell-truncate" title="${escapeHtml(j.comment_text)}">${escapeHtml(j.comment_text?.substring(0, 60))}</td>
                     <td class="cell-time">${escapeHtml(formatIsoDateTime(j.created_at))}</td>

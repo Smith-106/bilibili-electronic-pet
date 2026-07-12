@@ -93,7 +93,7 @@ export async function render(container) {
           </tr></thead>
           <tbody>
             ${items.map(l => `<tr>
-              <td class="cell-id" title="${escapeHtml(l.id?.toString() || '')}">${escapeHtml(l.id?.toString().substring(0, 8))}</td>
+              <td class="cell-id" title="${escapeHtml(l.id?.toString() || '')}">${escapeHtml(String(l.id ?? '').substring(0, 8))}</td>
               <td>${escapeHtml(l.action)}</td>
               <td class="cell-truncate" title="${escapeHtml(l.target_id || '-')}">${escapeHtml(l.target_id || '-')}</td>
               <td>${l.ok ? '<span class="status-badge badge-success">成功</span>' : '<span class="status-badge badge-danger">失败</span>'}</td>

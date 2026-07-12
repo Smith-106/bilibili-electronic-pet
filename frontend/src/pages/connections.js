@@ -75,7 +75,10 @@ export async function render(container) {
           await load();
         } catch (err) {
           showToast(`操作失败: ${err.message}`, 'error');
-          target.disabled = false;
+        } finally {
+          // F8 (review-odyssey 006): finally 对称复位 + isConnected 防操作 detached node
+          // (success 路径 load() 重渲染后 target 已 detached, catch 路径 load 抛错时新按钮需 enabled)
+          if (target.isConnected) target.disabled = false;
         }
       });
     });

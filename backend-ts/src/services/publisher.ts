@@ -144,7 +144,10 @@ function normalizeFailureReason(error: unknown): string {
   // fetch-level failures (AbortError, TypeError "fetch failed", DNS/network errors)
   // F2 (review-odyssey 004): 衡全 errno 族 — econn 前缀覆盖 econnreset/econnrefused/econnaborted,
   // eaddr 覆盖 eaddrinuse/eaddrnotavail (原正则漏 ECONNRESET 误分类为 publish_failed)。
-  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr/i.test(message)) {
+  // F2 (review-odyssey 006): 补 ehostunreach/enetunreach/epipe — f74e00a 漏的同类 errno 族
+  // (host/network unreachable + broken pipe 同属 fetch 层网络失败, 误分类 publish_failed 会污染
+  // real_publish throw 路径的 publish_log.failure_reason enum, 隐藏 network_error 语义)。
+  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr|ehostunreach|enetunreach|epipe/i.test(message)) {
     return 'network_error';
   }
   return 'publish_failed';
@@ -777,6 +780,10 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
       });
       return [false, 'rate_limited', publishedAt, null];
     }
-    return [false, 'publish_failed', publishedAt, null];
+    // F15 (review-odyssey 006): 返回 normalize 算出的 failureReason (非硬编码 publish_failed),
+    // 保持 tuple reason 与 L733 写入 publish_log.failure_reason 一致 — 否则同一失败的
+    // risk_flags.publish_reason/gateway_reason (消费 tuple) 与 publish_log.failure_reason 分类不同
+    // (network_error 错误会被 caller 记为 publish_failed, 隐藏网络错误语义, 与 ISS-20260712-001 同类不一致)。
+    return [false, failureReason, publishedAt, null];
   }
 };

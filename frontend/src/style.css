@@ -584,8 +584,6 @@ body[data-theme="dark"] .btn:hover:not(:disabled):not(.btn-primary) {
   background: var(--grey-4) !important;
 }
 
-body[data-theme="dark"] .risk-flag { background: #3a2a1a; color: #fb923c; }
-
 body[data-theme="dark"] .btn-danger { background: #3a1a1a; }
 
 /* UI-odyssey 001, VIS-002: dark 主题补全 toast/login risk-flag token 覆盖 */

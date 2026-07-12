@@ -56,7 +56,7 @@ export async function render(container) {
           </tr></thead>
           <tbody>
             ${items.map(e => `<tr>
-              <td class="cell-id" title="${escapeHtml(e.id?.toString() || '')}">${escapeHtml(e.id?.toString().substring(0, 8))}</td>
+              <td class="cell-id" title="${escapeHtml(e.id?.toString() || '')}">${escapeHtml(String(e.id ?? '').substring(0, 8))}</td>
               <td>${escapeHtml(e.category)}</td>
               <td>${escapeHtml(e.title)}</td>
               <td class="cell-truncate" title="${escapeHtml(e.content || '')}">${escapeHtml(e.content?.substring(0, 80))}</td>
