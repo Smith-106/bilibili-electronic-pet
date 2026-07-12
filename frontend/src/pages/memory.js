@@ -29,11 +29,11 @@ function renderSpacesTable(items) {
         ${items
           .map(
             (item) => `<tr>
-              <td class="cell-id">${escapeHtml(String(item.id))}</td>
+              <td class="cell-id" title="${escapeHtml(String(item.id))}">${escapeHtml(String(item.id))}</td>
               <td>${escapeHtml(item.space_key)}</td>
               <td>${escapeHtml(item.space_type)}</td>
               <td>${escapeHtml(item.title)}</td>
-              <td class="cell-truncate">${escapeHtml((item.summary || '').substring(0, 80))}</td>
+              <td class="cell-truncate" title="${escapeHtml(item.summary || '')}">${escapeHtml((item.summary || '').substring(0, 80))}</td>
               <td class="cell-time">${renderTimestamp(item.updated_at)}</td>
             </tr>`,
           )
@@ -57,7 +57,7 @@ function renderGrantsTable(items) {
         ${items
           .map(
             (item) => `<tr>
-              <td class="cell-id">${escapeHtml(String(item.id))}</td>
+              <td class="cell-id" title="${escapeHtml(String(item.id))}">${escapeHtml(String(item.id))}</td>
               <td>${escapeHtml(String(item.space_id))}</td>
               <td>${escapeHtml(item.subject_type)}</td>
               <td>${escapeHtml(item.subject_id)}</td>
@@ -85,12 +85,12 @@ function renderItemsTable(items) {
         ${items
           .map(
             (item) => `<tr>
-              <td class="cell-id">${escapeHtml(String(item.id))}</td>
+              <td class="cell-id" title="${escapeHtml(String(item.id))}">${escapeHtml(String(item.id))}</td>
               <td>${escapeHtml(String(item.space_id))}</td>
               <td>${escapeHtml(item.item_key)}</td>
               <td>${escapeHtml(item.content_type)}</td>
               <td>${escapeHtml(item.source)}</td>
-              <td class="cell-truncate">${escapeHtml((item.content || '').substring(0, 100))}</td>
+              <td class="cell-truncate" title="${escapeHtml(item.content || '')}">${escapeHtml((item.content || '').substring(0, 100))}</td>
               <td class="cell-time">${renderTimestamp(item.updated_at)}</td>
             </tr>`,
           )
@@ -114,7 +114,7 @@ function renderIdentityLinksTable(items) {
         ${items
           .map(
             (item) => `<tr>
-              <td class="cell-id">${escapeHtml(String(item.id))}</td>
+              <td class="cell-id" title="${escapeHtml(String(item.id))}">${escapeHtml(String(item.id))}</td>
               <td>${escapeHtml(item.subject_type)}</td>
               <td>${escapeHtml(item.subject_id)}</td>
               <td>${escapeHtml(item.platform)}</td>

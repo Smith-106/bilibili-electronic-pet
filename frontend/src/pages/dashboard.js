@@ -228,7 +228,7 @@ export async function render(container) {
                   jobItems.map(j => `<tr>
                     <td class="cell-id" title="${escapeHtml(j.id)}">${escapeHtml(j.id?.substring(0, 8))}</td>
                     <td>${renderBadge(j.status)}</td>
-                    <td class="cell-truncate">${escapeHtml(j.comment_text?.substring(0, 60))}</td>
+                    <td class="cell-truncate" title="${escapeHtml(j.comment_text)}">${escapeHtml(j.comment_text?.substring(0, 60))}</td>
                     <td class="cell-time">${escapeHtml(formatIsoDateTime(j.created_at))}</td>
                   </tr>`).join('')}
               </tbody>

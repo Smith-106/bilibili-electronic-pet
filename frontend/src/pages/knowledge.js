@@ -56,10 +56,10 @@ export async function render(container) {
           </tr></thead>
           <tbody>
             ${items.map(e => `<tr>
-              <td class="cell-id">${escapeHtml(e.id?.toString().substring(0, 8))}</td>
+              <td class="cell-id" title="${escapeHtml(e.id?.toString() || '')}">${escapeHtml(e.id?.toString().substring(0, 8))}</td>
               <td>${escapeHtml(e.category)}</td>
               <td>${escapeHtml(e.title)}</td>
-              <td class="cell-truncate">${escapeHtml(e.content?.substring(0, 80))}</td>
+              <td class="cell-truncate" title="${escapeHtml(e.content || '')}">${escapeHtml(e.content?.substring(0, 80))}</td>
               <td>${renderBoolBadge(e.enabled !== false)}</td>
               <td class="cell-time">${renderTimestamp(e.created_at)}</td>
               <td class="cell-actions">
