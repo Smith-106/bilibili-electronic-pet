@@ -12,7 +12,7 @@
  * fail-closed 路径，backoff_applied 是风控信号，MUST NOT 丢）。
  *
  * 进程重启从 DB antirisk_signal_detected last 600s 重建 backoffUntil（F4）—
- * backoffMap 内存清空，rebuildBackoffFromDb 异步重建；短暂的"无退避"窗口可接受，
+ * backoffState 内存清空，rebuildBackoffFromDb 异步重建；短暂的"无退避"窗口可接受，
  * 因为风控信号会重新触发 applyBackoff。
  *
  * Feature flag ANTIRISK_BACKOFF_ENABLED 默认 true（L8 隔离）：off 时
@@ -41,10 +41,61 @@ export interface BackoffState {
 }
 
 /**
- * Per-persona backoff map. Reuses the breaker Map pattern (publisher.ts:36):
- * module-level in-memory Map keyed by persona_id.
+ * Per-persona backoff state container. Encapsulates the in-memory Map so that
+ * all state access (get/set/delete/iterate/size/clear) goes through a bounded
+ * surface instead of a bare module-level Map (MAINT-006: state encapsulation).
+ *
+ * Reuses the breaker Map pattern (publisher.ts:36): module-level in-memory Map
+ * keyed by persona_id. The factory `createBackoffStateContainer` lets tests (or
+ * a future non-forking vitest pool that shares module state across files) obtain
+ * an isolated instance; production paths use the shared `backoffState` singleton
+ * below, preserving the existing single-process-single-map behavior.
  */
-const backoffMap = new Map<string, BackoffState>();
+export class BackoffStateContainer {
+  private readonly map = new Map<string, BackoffState>();
+
+  get(persona_id: string): BackoffState | undefined {
+    return this.map.get(persona_id);
+  }
+
+  set(persona_id: string, state: BackoffState): void {
+    this.map.set(persona_id, state);
+  }
+
+  delete(persona_id: string): boolean {
+    return this.map.delete(persona_id);
+  }
+
+  entries(): IterableIterator<[string, BackoffState]> {
+    return this.map.entries();
+  }
+
+  get size(): number {
+    return this.map.size;
+  }
+
+  clear(): void {
+    this.map.clear();
+  }
+}
+
+/**
+ * Factory for an isolated backoff state container. Production code uses the
+ * shared `backoffState` singleton below; this factory exists so that tests
+ * running under a non-forking vitest pool (which shares module state across
+ * test files) can obtain a private container and avoid cross-file pollution
+ * (MAINT-006 preventive surface). Currently unused by the test suite because
+ * the default forks pool gives each file its own process — see ISS-20260710-004.
+ */
+export function createBackoffStateContainer(): BackoffStateContainer {
+  return new BackoffStateContainer();
+}
+
+/**
+ * Shared module-level singleton. Production code (isPersonaInBackoff /
+ * applyBackoff / rebuildBackoffFromDb) reads/writes through this instance.
+ */
+const backoffState = new BackoffStateContainer();
 
 // ── Configurable caps (L6, DEFAULT_RULES extension) ─────
 
@@ -98,18 +149,18 @@ export function isBackoffEnabled(): boolean {
 export function isPersonaInBackoff(persona_id: string | null | undefined): boolean {
   if (!isBackoffEnabled()) return false;
   if (!persona_id) return false;
-  const state = backoffMap.get(persona_id);
+  const state = backoffState.get(persona_id);
   if (!state) return false;
   if (state.backoffUntil > Date.now()) return true;
   // Expired — evict to keep the map bounded (mirrors breaker openUntil expiry semantics).
-  backoffMap.delete(persona_id);
+  backoffState.delete(persona_id);
   return false;
 }
 
 /**
  * Apply per-persona backoff for the given subclass. Sets backoffUntil =
  * Date.now() + cap*1000 (cap 600s behavior_anomaly / 60s rate_limit, L6),
- * stores in backoffMap, and synchronously writes an ObservabilityEvent
+ * stores in backoffState, and synchronously writes an ObservabilityEvent
  * {event_type:'backoff_applied'} via recordAntiriskSignal (Phase1 fail-closed
  * persistence — backoff_applied is a风控信号, MUST NOT be dropped).
  *
@@ -132,7 +183,7 @@ export async function applyBackoff(
   const backoffUntil = now + capSeconds * 1000;
 
   if (persona_id) {
-    backoffMap.set(persona_id, {
+    backoffState.set(persona_id, {
       persona_id,
       backoffUntil,
       subclass,
@@ -168,7 +219,7 @@ export async function applyBackoff(
 }
 
 /**
- * Rebuild backoffMap from DB on process restart (F4). Queries
+ * Rebuild backoffState from DB on process restart (F4). Queries
  * ObservabilityEvent where event_type='antirisk_signal_detected' AND
  * created_at >= (now - 600s) — the max backoff window — grouped by persona_id,
  * taking the latest backoffUntil-equivalent per persona.
@@ -211,7 +262,7 @@ export async function rebuildBackoffFromDb(): Promise<void> {
       orderBy: { created_at: 'desc' },
     });
   } catch (error) {
-    // Fix-Don't-Hide: log the failure, do not silently swallow. The backoffMap
+    // Fix-Don't-Hide: log the failure, do not silently swallow. The backoffState
     // stays empty; signals will re-trigger applyBackoff at runtime (L1 acceptable).
     console.warn(
       JSON.stringify({
@@ -248,23 +299,23 @@ export async function rebuildBackoffFromDb(): Promise<void> {
     }
   }
 
-  // Swap into the live map. BUG-002 (race): the previous `backoffMap.clear()` here would
+  // Swap into the live container. BUG-002 (race): the previous `backoffState.clear()` here would
   // wipe any backoff just applied by a concurrent applyBackoff() that landed during the
   // `await prisma.observabilityEvent.findMany` window above — losing antirisk state and
   // letting the next publish fire into an active behavior_anomaly window. Merge instead of
   // clearing: keep the later backoffUntil per persona, and evict only entries that are both
   // expired AND absent from the rebuilt set.
   for (const [personaId, state] of latestPerPersona) {
-    const live = backoffMap.get(personaId);
+    const live = backoffState.get(personaId);
     if (!live || live.backoffUntil < state.backoffUntil) {
-      backoffMap.set(personaId, state);
+      backoffState.set(personaId, state);
     }
   }
   // Evict expired entries the rebuild did not surface (memory-bounded property, mirrors
   // breaker Map eviction). Concurrent applyBackoff entries that are still live are kept.
-  for (const [personaId, state] of backoffMap) {
+  for (const [personaId, state] of backoffState.entries()) {
     if (state.backoffUntil <= now && !latestPerPersona.has(personaId)) {
-      backoffMap.delete(personaId);
+      backoffState.delete(personaId);
     }
   }
 
@@ -272,7 +323,7 @@ export async function rebuildBackoffFromDb(): Promise<void> {
     JSON.stringify({
       level: 'info',
       message: 'backoff_rebuilt_from_db',
-      persona_count: backoffMap.size,
+      persona_count: backoffState.size,
       window_seconds: maxCapSeconds,
       timestamp: new Date().toISOString(),
     }),
@@ -282,11 +333,11 @@ export async function rebuildBackoffFromDb(): Promise<void> {
 // ── Test-only helpers ─────────────────────────────────────
 
 /**
- * Test-only: clear the in-memory backoffMap. NOT for production use —
+ * Test-only: clear the in-memory backoffState. NOT for production use —
  * production relies on rebuildBackoffFromDb + natural expiry eviction.
  */
 export function __resetBackoffMapForTest(): void {
-  backoffMap.clear();
+  backoffState.clear();
 }
 
 /**
@@ -294,5 +345,5 @@ export function __resetBackoffMapForTest(): void {
  * Returns undefined when no state is tracked.
  */
 export function __getBackoffStateForTest(persona_id: string): BackoffState | undefined {
-  return backoffMap.get(persona_id);
+  return backoffState.get(persona_id);
 }
