@@ -243,7 +243,7 @@ export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
       <h2>B站集成</h2>
-      <button class="btn" id="bili-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
+      <button class="btn" id="bili-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
     </div>
 
     <!-- Status cards -->
@@ -793,7 +793,7 @@ export async function render(container) {
       await Promise.all([loadStatus(), loadVideos(), loadCredentials()]);
     } finally {
       btn.disabled = false;
-      btn.innerHTML = '<svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新';
+      btn.innerHTML = '<svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新';
     }
   });
   container.querySelector('#bili-video-filter-btn').addEventListener('click', () => {

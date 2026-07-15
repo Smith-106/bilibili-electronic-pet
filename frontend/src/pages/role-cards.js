@@ -15,7 +15,7 @@ export async function render(container) {
     <div class="page-header">
       <h2>角色卡管理</h2>
       <div class="page-actions">
-        <button class="btn" id="rc-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
+        <button class="btn" id="rc-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
       </div>
     </div>
 
@@ -25,7 +25,7 @@ export async function render(container) {
         <select id="rc-select" class="form-input"><option value="">-- 新建 --</option></select>
       </div>
       <div class="form-group">
-        <button class="btn" id="rc-new"><svg width="14" height="14"><use href="#icon-plus"></use></svg> 新建</button>
+        <button class="btn" id="rc-new"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg> 新建</button>
       </div>
     </div>
 

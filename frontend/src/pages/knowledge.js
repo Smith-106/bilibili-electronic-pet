@@ -9,7 +9,7 @@ export async function render(container) {
   container.innerHTML = `
     <div class="page-header">
       <h2>知识库</h2>
-      <button class="btn" id="knowledge-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
+      <button class="btn" id="knowledge-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
     </div>
 
     <div class="form-card">

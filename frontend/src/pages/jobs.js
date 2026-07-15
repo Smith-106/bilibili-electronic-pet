@@ -12,8 +12,8 @@ export async function render(container) {
     <div class="page-header">
       <h2>任务管理</h2>
       <div class="page-actions">
-        <button class="btn" id="jobs-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
-        <button class="btn" id="jobs-export"><svg width="14" height="14"><use href="#icon-download"></use></svg> 导出 CSV</button>
+        <button class="btn" id="jobs-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
+        <button class="btn" id="jobs-export"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg> 导出 CSV</button>
       </div>
     </div>
 

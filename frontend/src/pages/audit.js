@@ -10,8 +10,8 @@ export async function render(container) {
     <div class="page-header">
       <h2>审计日志</h2>
       <div class="page-actions">
-        <button class="btn" id="audit-refresh"><svg width="14" height="14"><use href="#icon-refresh"></use></svg> 刷新</button>
-        <button class="btn" id="audit-export"><svg width="14" height="14"><use href="#icon-download"></use></svg> 导出 CSV</button>
+        <button class="btn" id="audit-refresh"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg> 刷新</button>
+        <button class="btn" id="audit-export"><svg width="14" height="14" aria-hidden="true" focusable="false"><use href="#icon-download"></use></svg> 导出 CSV</button>
       </div>
     </div>
 
