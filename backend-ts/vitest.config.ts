@@ -1,8 +1,9 @@
-import { defineConfig } from 'vitest/config';
+﻿import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     include: ['test/**/*.{test,spec}.{ts,js}'],
+    setupFiles: ['./test/setup-memory-db.ts'],
     restoreMocks: true,
     clearMocks: true,
     coverage: {
@@ -12,3 +13,4 @@ export default defineConfig({
     },
   },
 });
+
