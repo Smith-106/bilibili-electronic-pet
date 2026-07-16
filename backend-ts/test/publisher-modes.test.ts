@@ -27,7 +27,7 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
   getActivePersonaName: getActivePersonaNameMock,
 }));
 
-const { publishIntentWithResult, publishReplyWithResult } = await import('../src/services/publisher.js');
+const { publishIntentWithResult, publishReplyWithResult, setStageReadyResolver, __resetStageReadyResolverForTest } = await import('../src/services/publisher.js');
 
 const { applyBackoff, __resetBackoffMapForTest } = await import('../src/services/backoff-decision.js');
 
@@ -85,6 +85,7 @@ beforeEach(() => {
   prismaMock.observabilityEvent.create.mockResolvedValue({ id: 1 });
   getActivePersonaNameMock.mockResolvedValue(null);
   __resetBackoffMapForTest();
+  __resetStageReadyResolverForTest();
 });
 
 afterEach(() => {
@@ -92,6 +93,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   clearPublisherEnv();
   __resetBackoffMapForTest();
+  __resetStageReadyResolverForTest();
 });
 
 describe('publisher mode coverage', () => {
@@ -696,7 +698,9 @@ describe('publisher mode coverage', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     process.env.PUBLISHER_MODE = 'real_publish';
     process.env.STAGE_GATE_ENABLED = 'true';
-    // STAGE_REAL_PUBLISH_READY unset → isStageRealPublishReady() false → fail-closed.
+    // ISS-20260710-001: stageReady resolver defaults to fail-closed (() => false) when
+    // not injected → isStageRealPublishReady() false → stage_gate_blocked. publisher no
+    // longer reads STAGE_REAL_PUBLISH_READY env directly (DI resolver replaces env bridge).
     getActivePersonaNameMock.mockResolvedValue('persona-stage-gate');
 
     const result = await publishIntentWithResult(buildIntent());
@@ -713,7 +717,10 @@ describe('publisher mode coverage', () => {
   it('real_publish stage quota exceeds returns [false, "stage_quota_exceeded", ...] (L1 limited/full 区分)', async () => {
     process.env.PUBLISHER_MODE = 'real_publish';
     process.env.STAGE_GATE_ENABLED = 'true';
-    process.env.STAGE_REAL_PUBLISH_READY = 'true';
+    // ISS-20260710-001: inject a stage-ready resolver (mimics worker-main boot wiring)
+    // so the gate passes and execution proceeds to quota enforcement. Replaces the
+    // previous direct STAGE_REAL_PUBLISH_READY env set.
+    setStageReadyResolver(() => true);
     process.env.STAGE_DAILY_QUOTA = '2';
     getActivePersonaNameMock.mockResolvedValue('persona-quota');
     // Today's published count already at quota.

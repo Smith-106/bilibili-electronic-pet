@@ -37,17 +37,42 @@ function getPublisherMode(): PublisherMode {
 // STAGE_GATE_ENABLED (L1 env 隔离, 默认 false) 开启后 real_publish 走门禁校验;
 // 关闭时维持既有行为 (legacy tests / 回退路径不受影响).
 //
-// MAINT-001 note: STAGE_REAL_PUBLISH_READY 是人工桥接 env (非机械派生) —
-// 运营 MUST 仅在 readiness route 全绿时显式置 'true', readiness 翻红立即清零.
-// 名称未含 _MANUAL/_ACK 是为保持 env 简短; 语义在此注释 + ISS-20260710-001 文档化.
-// 长期 SME 介入后评估 DI 注入 isStageReady callback 替代 env 桥 (消除跨层隐式耦合).
-// readiness 聚合通过此 env (避免直接 import readiness route 造成循环依赖, 见 risks).
+// ISS-20260710-001 fix-landed: stageReady 注入点 (DI) 替代 publisher 直接读 env 桥.
+// publisher 不再 process.env.STAGE_REAL_PUBLISH_READY 跨层隐式耦合; 由 worker 边界
+// (worker-main.ts) 启动时 setStageReadyResolver 注入 readiness ACK callback.
+// resolver 默认 fail-closed (() => false): 未注入即拒绝 real_publish, 进程重启自动
+// 归零消除 env 残留忘清零风险. publisher 仍同步校验 drop_count=0 (SC4 硬屏障).
 function isStageGateEnabled(): boolean {
   return process.env.STAGE_GATE_ENABLED === 'true';
 }
 
+// Injected readiness ACK resolver. Default fail-closed — real_publish blocked until
+// worker-main injects a real callback. Replaced the previous direct
+// process.env.STAGE_REAL_PUBLISH_READY read (ISS-20260710-001: cross-layer env coupling
+// + stale-env blind-fly risk eliminated; resolver resets to false on process restart).
+let stageReadyResolver: () => boolean = () => false;
+
+/**
+ * Inject the stage-ready resolver (called once at worker boot, worker-main.ts).
+ * The resolver SHOULD AND-gate the operator ACK with live antirisk flags so a stale
+ * ACK env cannot blind-fly past a readiness flip (e.g. threeLayerFlagsAllOn).
+ * publisher additionally requires observability drop_count=0 (SC4) — keep that here,
+ * not in the resolver, so the hard barrier stays in the publishing layer.
+ */
+export function setStageReadyResolver(resolver: () => boolean): void {
+  stageReadyResolver = resolver;
+}
+
+/**
+ * Test-only: reset the stageReady resolver to its fail-closed default so tests do not
+ * leak an injected resolver across cases. Mirrors __resetBackoffMapForTest isolation.
+ */
+export function __resetStageReadyResolverForTest(): void {
+  stageReadyResolver = () => false;
+}
+
 function isStageRealPublishReady(): boolean {
-  return process.env.STAGE_REAL_PUBLISH_READY === 'true' && getObservabilityDropCount() === 0;
+  return stageReadyResolver() && getObservabilityDropCount() === 0;
 }
 
 // ── Circuit breaker (per-platform isolation) ──────────────

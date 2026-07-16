@@ -15,6 +15,8 @@ import { buildWorkerServices } from '../services/index.js';
 import { isEncryptionAvailable } from '../services/credential-crypto.js';
 import { rebuildBackoffFromDb } from '../services/backoff-decision.js';
 import { probeBilibiliAuthScheduler } from '../services/probe-scheduler.js';
+import { setStageReadyResolver } from '../services/publisher.js';
+import { threeLayerFlagsAllOn } from '../routes/readiness.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
 
 const QUEUE_NAME = 'comment-event';
@@ -96,6 +98,17 @@ export async function main(): Promise<void> {
     killSwitch,
     roleProfileDefault,
   });
+
+  // ISS-20260710-001 fix-landed: inject the stage-ready resolver so publisher's stage
+  // gate reads a DI callback instead of process.env directly (cross-layer env coupling
+  // removed). The resolver AND-gates the operator ACK env (STAGE_REAL_PUBLISH_READY,
+  // set only when /readiness is fully green) with the live threeLayerFlagsAllOn() so a
+  // stale ACK cannot blind-fly past a readiness flip — even if the operator forgets to
+  // clear the env, any antirisk flag dropping blocks real_publish. publisher still
+  // independently requires drop_count=0 (SC4 hard barrier, kept in publisher.ts).
+  setStageReadyResolver(
+    () => process.env.STAGE_REAL_PUBLISH_READY === 'true' && threeLayerFlagsAllOn(),
+  );
 
   // Start the comment-event worker (Redis config handled internally)
   const worker = createCommentEventWorker(QUEUE_NAME, services);
