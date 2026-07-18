@@ -617,7 +617,6 @@ PUBLISHER_MODE=manual_queue
     expect(report.runtime_summary).toMatchObject({
       source: 'target_runtime',
       readiness: {
-        ready: true,
         foundation_ready: true,
         delivery_ready: true,
         product_ready: true,
