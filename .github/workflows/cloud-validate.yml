@@ -12,7 +12,7 @@ env:
   GIT_CONFIG_VALUE_0: "false"
 
 jobs:
-  # TypeScript backend 鈥?primary validation gate
+  # TypeScript backend 閳?primary validation gate
   backend-ts-validate:
     runs-on: ubuntu-latest
     services:
@@ -83,7 +83,7 @@ jobs:
           BILIBILI_SESSDATA: ci-placeholder-sessdata
           BILIBILI_BILI_JCT: ci-placeholder-jct
           BILIBILI_BUVID3: ci-placeholder-buvid3
-          CREDENTIAL_ENCRYPTION_KEY: ci-placeholder-encryption-key
+          CREDENTIAL_ENCRYPTION_KEY: ef6e945de4590077bcf7857bdbde3ceedcd3268741b04cfa7a77208d1c2ef79c
         run: |
           bash smoke.sh preflight --strict --api-key "$API_KEY" --report "$REPORT_PATH"
           node -e "const fs=require('node:fs'); const report=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (report.status !== 'preflight_ready') { console.error('Preflight gate failed:', report.status); console.error(JSON.stringify(report.delivery_preflight, null, 2)); process.exit(1); } console.log('Preflight gate passed.');" "$REPORT_PATH"
@@ -97,7 +97,7 @@ jobs:
           GATEWAY_HMAC_SECRET: ci-hmac-secret-32-bytes!!
           COMMENT_INGRESS_TOKEN: ci-comment-ingress-token
           DATABASE_URL: file:./ci-smoke.db
-          CREDENTIAL_ENCRYPTION_KEY: ci-placeholder-encryption-key
+          CREDENTIAL_ENCRYPTION_KEY: ef6e945de4590077bcf7857bdbde3ceedcd3268741b04cfa7a77208d1c2ef79c
           LLM_PROVIDER: openai
           LLM_API_KEY: ci-strict-placeholder
           LLM_FALLBACK_TO_MOCK: "false"
@@ -191,7 +191,7 @@ jobs:
       - name: Smoke containerized Prisma migrate path
         run: docker run --rm -e DATABASE_URL=file:/tmp/container-smoke.db bilibili-electronic-pet:ci npm run prisma:migrate:prod
 
-  # Release gate 鈥?full TS suite
+  # Release gate 閳?full TS suite
   release-only-gate:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
