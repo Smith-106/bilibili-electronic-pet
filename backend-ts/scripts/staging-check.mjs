@@ -192,7 +192,6 @@ function summarizeRuntimeState(
   return {
     source: 'target_runtime',
     readiness: {
-      ready: readinessPayload?.ready === true,
       foundation_ready: readinessPayload?.foundation_ready === true,
       delivery_ready: readinessPayload?.delivery_ready === true,
       product_ready: readinessPayload?.product_ready === true,
@@ -884,11 +883,16 @@ async function main() {
 
     const readinessUrl = buildUrl(baseUrl, '/readiness');
     const { response: readinessResponse, parsed: readinessPayload } = await fetchJson(readinessUrl);
-    if (readinessResponse.status !== 200 || readinessPayload?.ready !== true) {
+    // readiness route 已去除两套语义并存的顶层 `ready` (原 ready: foundationReady),
+    // 改为显式 foundation_ready/delivery_ready/product_ready (readiness.ts:437-456).
+    // strict smoke 校验 backend 启动 + foundation 健康 (DB/Redis connected),
+    // 对齐旧顶层 ready=foundationReady 语义, 不要求 product_ready 全 gate 绿
+    // (CI 无真实 auth probe / behavior_anomaly 信号, product gate 在此环境本不满足).
+    if (readinessResponse.status !== 200 || readinessPayload?.foundation_ready !== true) {
       fail(
         'readiness',
-        `expected readiness.ready=true, got status=${readinessResponse.status}, ready=${String(
-          readinessPayload?.ready,
+        `expected readiness.foundation_ready=true, got status=${readinessResponse.status}, foundation_ready=${String(
+          readinessPayload?.foundation_ready,
         )}`,
         { payload: readinessPayload },
       );
