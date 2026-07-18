@@ -76,6 +76,7 @@ jobs:
           APP_ENV: test
           PORT: 18000
           DATABASE_URL: file:./test.db
+          CREDENTIAL_ENCRYPTION_KEY: ef6e945de4590077bcf7857bdbde3ceedcd3268741b04cfa7a77208d1c2ef79c
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: 6379
           REDIS_DB: 0
@@ -107,7 +108,10 @@ jobs:
           done
 
           curl -fsS http://localhost:18000/health || exit 1
-          bash ../smoke.sh strict --base-url "$BASE_URL" --api-key "$API_KEY"
+          # CI 跑 preflight (foundation+delivery 契约), strict/real-chain 留预发布环境
+          # (pre-release-smoke job + 甲骨文 PRE_RELEASE_SMOKE_BASE_URL) — strict_product 需
+          # 真实 auth_probe, CI 占位凭据无法满足. 对齐 cloud-validate 决策.
+          bash ../smoke.sh preflight --strict --base-url "$BASE_URL" --api-key "$API_KEY"
 
   pre-release-smoke:
     if: ${{ needs.release-gate-config.outputs.pre_release_smoke_ready == 'true' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch))) }}
