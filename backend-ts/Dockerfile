@@ -2,7 +2,7 @@
 # Example: docker build -f backend-ts/Dockerfile -t bilibili-pet-backend:latest .
 
 # Stage 0: Build frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app
 COPY frontend/package*.json ./
 RUN npm ci
@@ -11,7 +11,7 @@ ENV BUILD_OUT_DIR=/app/dist
 RUN npm run build
 
 # Stage 0b: Build companion surface
-FROM node:20-alpine AS companion-builder
+FROM node:22-alpine AS companion-builder
 WORKDIR /app
 COPY pet-companion-web/package*.json ./
 RUN npm ci
@@ -21,7 +21,7 @@ ENV BUILD_BASE=/companion/
 RUN npm run build
 
 # Stage 1: Build backend
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY backend-ts/package*.json ./
 COPY backend-ts/prisma ./prisma/
@@ -31,7 +31,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 RUN apk add --no-cache dumb-init
 RUN addgroup -g 1001 -S nodejs
