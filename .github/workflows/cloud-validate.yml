@@ -97,6 +97,7 @@ jobs:
           GATEWAY_HMAC_SECRET: ci-hmac-secret-32-bytes!!
           COMMENT_INGRESS_TOKEN: ci-comment-ingress-token
           DATABASE_URL: file:./ci-smoke.db
+          CREDENTIAL_ENCRYPTION_KEY: ci-placeholder-encryption-key
           LLM_PROVIDER: openai
           LLM_API_KEY: ci-strict-placeholder
           LLM_FALLBACK_TO_MOCK: "false"
