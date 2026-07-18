@@ -48,8 +48,9 @@ COPY backend-ts/config ./config
 ENV NODE_ENV=production
 ENV PORT=3000
 USER nodejs
-EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1)})"
+# HEALTHCHECK is defined per-role in docker-compose.*.yml (api -> :3000/health,
+# worker -> :3100/healthz) because this single image serves both roles with
+# different listen ports — a single Dockerfile HEALTHCHECK would probe the wrong
+# port for one of them.
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/index.js"]
