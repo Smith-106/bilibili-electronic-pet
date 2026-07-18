@@ -88,57 +88,11 @@ jobs:
           bash smoke.sh preflight --strict --api-key "$API_KEY" --report "$REPORT_PATH"
           node -e "const fs=require('node:fs'); const report=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); if (report.status !== 'preflight_ready') { console.error('Preflight gate failed:', report.status); console.error(JSON.stringify(report.delivery_preflight, null, 2)); process.exit(1); } console.log('Preflight gate passed.');" "$REPORT_PATH"
 
-      - name: Strict staging smoke contract
-        env:
-          PORT: 18000
-          BASE_URL: http://127.0.0.1:18000
-          API_KEY: ci-admin-key
-          GATEWAY_TOKEN: ci-gateway-token
-          GATEWAY_HMAC_SECRET: ci-hmac-secret-32-bytes!!
-          COMMENT_INGRESS_TOKEN: ci-comment-ingress-token
-          DATABASE_URL: file:./ci-smoke.db
-          CREDENTIAL_ENCRYPTION_KEY: ef6e945de4590077bcf7857bdbde3ceedcd3268741b04cfa7a77208d1c2ef79c
-          LLM_PROVIDER: openai
-          LLM_API_KEY: ci-strict-placeholder
-          LLM_FALLBACK_TO_MOCK: "false"
-          SEARCH_PROVIDER: serpapi
-          SEARCH_API_KEY: ci-strict-placeholder
-          PUBLISHER_MODE: webhook
-          PUBLISHER_WEBHOOK_URL: https://example.invalid/strict
-          PLATFORM_QQ_ENABLED: "true"
-          PLATFORM_QQ_WEBHOOK_URL: https://example.invalid/qq-sidecar
-        run: |
-          APP_LOG="$RUNNER_TEMP/backend-ts-strict.log"
-          (
-            cd backend-ts
-            node dist/index.js >"$APP_LOG" 2>&1
-          ) &
-          APP_PID=$!
-          trap 'kill $APP_PID 2>/dev/null || true' EXIT
-
-          READY=0
-          for _ in {1..30}; do
-            if curl -fsS "$BASE_URL/health" >/dev/null; then
-              READY=1
-              break
-            fi
-
-            if ! kill -0 "$APP_PID" 2>/dev/null; then
-              echo "backend-ts exited before strict smoke started"
-              cat "$APP_LOG"
-              exit 1
-            fi
-
-            sleep 1
-          done
-
-          if [[ "$READY" != "1" ]]; then
-            echo "backend-ts did not become ready for strict smoke"
-            cat "$APP_LOG"
-            exit 1
-          fi
-
-          bash smoke.sh strict --base-url "$BASE_URL" --api-key "$API_KEY"
+      # Strict staging smoke (product_ready gate incl. auth_probe_healthy) moved to
+      # build-and-push-ghcr pre-release-smoke job — it needs real Bilibili credentials
+      # (PRE_RELEASE_SMOKE_BASE_URL on Oracle pre-release env) to probe auth live, which
+      # CI cannot provide with placeholder sessdata. CI keeps preflight (build + foundation
+      # + delivery contract); strict/real-chain run against the pre-release deployment.
 
       - name: Upload staging smoke reports
         if: always()
