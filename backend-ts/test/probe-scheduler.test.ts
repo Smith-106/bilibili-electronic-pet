@@ -43,10 +43,14 @@ beforeEach(() => {
   recordAntiriskSignalMock.mockReset();
   configMock.mockReset();
   configMock.mockResolvedValue(baseConfig);
+  // probe-scheduler gates on BILIBILI_ENABLED: probe only runs when collection is on.
+  // Existing cases exercise probe behavior, so enable it here by default.
+  process.env.BILIBILI_ENABLED = 'true';
 });
 
 afterEach(() => {
   __resetProbeSchedulerForTest();
+  delete process.env.BILIBILI_ENABLED;
 });
 
 describe('probeBilibiliAuthScheduler (TASK-005)', () => {
@@ -95,6 +99,21 @@ describe('probeBilibiliAuthScheduler (TASK-005)', () => {
 
     expect(isAuthProbeHealthy()).toBe(false);
     expect(probeBilibiliAuthMock).not.toHaveBeenCalled();
+    expect(recordAntiriskSignalMock).not.toHaveBeenCalled();
+  });
+
+  it('skips probe + stays healthy when BILIBILI_ENABLED is false (webhook-only mode)', async () => {
+    // webhook-only / no-collection deployment: account liveness is irrelevant, probe must
+    // not run and must not flip the readiness auth_probe_healthy gate red.
+    process.env.BILIBILI_ENABLED = 'false';
+    // Even with no credential configured, disabled mode stays healthy (early return).
+    configMock.mockResolvedValue(null);
+
+    await probeBilibiliAuthScheduler();
+
+    expect(isAuthProbeHealthy()).toBe(true);
+    expect(probeBilibiliAuthMock).not.toHaveBeenCalled();
+    expect(configMock).not.toHaveBeenCalled();
     expect(recordAntiriskSignalMock).not.toHaveBeenCalled();
   });
 

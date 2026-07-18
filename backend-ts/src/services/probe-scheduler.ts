@@ -95,6 +95,14 @@ export function isWarmupSurvivalAsserted(): boolean {
  * antirisk signal (非风控类账号状态信号)；仅 console.error 告警。
  */
 export async function probeBilibiliAuthScheduler(): Promise<void> {
+  // BILIBILI_ENABLED=false (不采集 bilibili 评论, 通常配合 webhook 发布模式) 时不依赖
+  // bilibili 账号存活 — probe 跳过探活并保持 healthy, readiness auth_probe_healthy gate
+  // 不红. BILIBILI_ENABLED=true (采集开) 时账号存活是采集前置, probe 照常探活, 失效即 red.
+  // 这样 webhook-only 预发布环境无需有效 bilibili cookie 即可通过 strict smoke.
+  if (process.env.BILIBILI_ENABLED !== 'true') {
+    setAuthProbeUnhealthy(false);
+    return;
+  }
   const config = await loadBilibiliRuntimeConfig();
   if (!config) {
     setAuthProbeUnhealthy(true);
