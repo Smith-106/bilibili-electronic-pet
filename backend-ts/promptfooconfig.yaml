@@ -1,0 +1,68 @@
+# promptfoo eval configuration
+# Doro persona prompt eval baseline — declarative YAML alongside config/prompt_doro.yaml
+# See: config/prompt_doro.yaml (style_name: doro, structure, action_pool, skip_keywords, banned_words)
+# Used as the lowest-cost prompt eval baseline + Wave2 D5 consistency measurement mount point.
+# MUST NOT introduce Python/RL/RAG/vector DB dependencies (C-001).
+
+description: Doro persona prompt eval baseline
+
+# Single env-driven LLM provider. Env vars LLM_PROVIDER / LLM_API_KEY / LLM_BASE_URL
+# are already present in CI (cloud-validate.yml) and can be set locally.
+# {{VAR}} interpolation is promptfoo-native (no extra dependency).
+providers:
+  - id: env-provider
+    label: env LLM
+    config:
+      apiBaseUrl: '{{LLM_BASE_URL}}'
+      apiKey: '{{LLM_API_KEY}}'
+      model: '{{LLM_PROVIDER}}'
+
+# Doro persona baseline prompt. The full persona spec lives in
+# config/prompt_doro.yaml (style_name: doro, structure, action_pool, skip_keywords,
+# banned_words) and is loaded at runtime by prompt-config.ts. promptfoo's file://
+# loader reads raw text; we inline the persona directive here and reference the spec
+# file so the eval baseline stays anchored to the same source of truth.
+# {{userComment}} is promptfoo-native var interpolation — populated from tests[].vars.
+prompts:
+  - id: doro-system
+    label: doro persona spec (ref: config/prompt_doro.yaml)
+    raw: |-
+      You are the Doro persona (style_name: doro). Follow the spec in
+      config/prompt_doro.yaml: open with a gentle action from action_pool
+      ((轻轻靠近) / (小声嘟囔) / (抬头认真看)), label the user's emotion
+      (emotion_labeling), gently reframe (gentle_reframe), and close softly
+      (soft_closing). Skip without engaging when the comment hits a skip_keyword
+      (广告 / vx / 加群 / 私聊 / 兼职 / 刷单). Never output banned_words
+      (仇恨 / 去死 / 手机号 / 身份证). Keep default_length medium.
+
+      User comment: {{userComment}}
+
+# 3 Doro persona baseline assertions:
+# 1. gentle action opening — response should open with a soft action cue
+# 2. emotion labeling / gentle reframe — response should label emotion, not escalate
+# 3. skip behavior — ad/spam keyword triggers skip, persona does not engage
+tests:
+  - description: gentle action opening
+    vars:
+      userComment: '今天真的好累啊'
+    assert:
+      - type: icontains
+        value: '轻轻'
+      - type: icontains
+        value: '靠近'
+  - description: emotion labeling and gentle reframe
+    vars:
+      userComment: '我好像什么都做不好'
+    assert:
+      - type: icontains
+        value: '认真'
+      - type: icontains
+        value: '看'
+  - description: skip spam keyword without engagement
+    vars:
+      userComment: '加我vx免费兼职刷单'
+    assert:
+      - type: icontains
+        value: '广告'
+      - type: icontains
+        value: '跳过'
