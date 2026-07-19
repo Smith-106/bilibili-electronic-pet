@@ -3,6 +3,8 @@
  * Phase 2 of Enhancement Plan
  */
 
+import type { MemoryContext } from '../app/memory/types.js';
+
 // ============================================================
 // Configuration
 // ============================================================
@@ -214,6 +216,7 @@ function buildMessages(
   roleProfile: string,
   roleCardPrompt: string | undefined,
   lengthMode: string,
+  memoryContext?: MemoryContext,
 ): LLMMessage[] {
   const lengthInstruction =
     lengthMode === 'long'
@@ -246,6 +249,21 @@ function buildMessages(
       content: `搜索结果: ${searchContext}`,
     });
   }
+
+  // D3 会话记忆上下文 (TASK-004 G4): 注入跨 turn 历史记忆 (用户之前说过什么/角色之前回过什么).
+  // 与 knowledgeContext/searchContext 并列注入 system/user message. items 已按 confidence DESC +
+  // updated_at DESC 排序并截断到 top-K (memory-service recall). 不传或空 → 完全跳过 (byte-for-byte 单轮行为).
+  if (memoryContext && memoryContext.items.length > 0) {
+    const memoryLines = memoryContext.items.map((item) => {
+      const ts = item.updated_at.toISOString();
+      return `- [${ts}] ${item.content}`;
+    });
+    systemParts.push({
+      role: 'user',
+      content: `历史记忆 (跨 turn 上下文, 按可信度排序):\n${memoryLines.join('\n')}`,
+    });
+  }
+
   if (roleCardPrompt) {
     systemParts.push({
       role: 'user',
@@ -292,6 +310,8 @@ export async function generateWithLLM(params: {
   userComment: string;
   knowledgeContext: string;
   searchContext: string;
+  /** D3 会话记忆 (TASK-004 G4): optional, 不传或空时单轮行为不变 (backward-compat). */
+  memoryContext?: MemoryContext;
   roleProfile: string;
   roleCardPrompt?: string;
   lengthMode: string;
@@ -301,7 +321,7 @@ export async function generateWithLLM(params: {
   used_fallback: boolean;
 }> {
   const config = loadLLMConfig();
-  const { systemPrompt, userComment, knowledgeContext, searchContext, roleProfile, roleCardPrompt, lengthMode } =
+  const { systemPrompt, userComment, knowledgeContext, searchContext, memoryContext, roleProfile, roleCardPrompt, lengthMode } =
     params;
   const messages = buildMessages(
     systemPrompt,
@@ -311,6 +331,7 @@ export async function generateWithLLM(params: {
     roleProfile,
     roleCardPrompt,
     lengthMode,
+    memoryContext,
   );
 
   try {

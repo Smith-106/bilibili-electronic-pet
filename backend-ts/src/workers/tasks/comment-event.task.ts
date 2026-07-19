@@ -10,6 +10,7 @@ import { BaseTaskPayload, createTaskQueue, createTaskWorker } from '../task-queu
 import { NonRetryableWorkerError, RetryableWorkerError } from '../errors.js';
 import { checkPersonaRateLimit, resolvePersonaIdForRateLimit } from '../../services/persona-token-bucket.js';
 import type { WorkerServices } from '../../services/interfaces.js';
+import type { MemoryContext } from '../../app/memory/types.js';
 import type { KnowledgeEntry, RoleCardValue } from '../../models/entities.js';
 import type { InteractionEvent } from '../../domain/interaction/types.js';
 import type { PublishIntent } from '../../domain/publish/types.js';
@@ -32,6 +33,13 @@ export type CommentEventPayload = BaseTaskPayload & {
   interaction?: InteractionEvent;
   /** Active persona name (BilibiliCredential.name, TASK-002); attached by comment-ingest. */
   persona_id?: string;
+  /**
+   * D3 memory space id (TASK-004 G4). Optional — when present, comment-event.task recalls
+   * top-K MemoryItem from this space and injects as memory_context into GenerateReplyService.
+   * When absent, recall is skipped (byte-for-byte single-turn behavior, backward-compat).
+   * Per-pet isolation (C-009): each pet maps to its own memory_space_id; caller resolves it.
+   */
+  memory_space_id?: number;
 };
 
 function buildInteractionEventFromPayload(payload: CommentEventPayload): InteractionEvent {
@@ -315,6 +323,20 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         searchError = `${(exc as Error).constructor.name}: ${(exc as Error).message}`;
       }
 
+      // D3 会话记忆召回 (TASK-004 G4): recall top-K MemoryItem from memory_space_id (per-pet isolation, C-009).
+      // memory_space_id optional — absent → skip recall (single-turn backward-compat).
+      // DB 故障 fail-open (返空 memory_context + log), 不静默吞 — 复用 knowledge/search 的 try-catch + error 记录 pattern.
+      let memoryContext: MemoryContext | undefined;
+      let memoryRecallError: string | null = null;
+      if (typeof job.data.memory_space_id === 'number') {
+        try {
+          memoryContext = await services.recallMemory(job.data.memory_space_id);
+        } catch (exc) {
+          memoryContext = undefined;
+          memoryRecallError = `${(exc as Error).constructor.name}: ${(exc as Error).message}`;
+        }
+      }
+
       // Role card resolution
       let explicitRoleCard:
         | {
@@ -365,6 +387,7 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         length_mode: lengthMode,
         knowledge_context: knowledgeContext,
         search_context: searchContext,
+        memory_context: memoryContext,
         role_profile:
           job.data.role_profile && job.data.role_profile !== 'auto'
             ? job.data.role_profile
@@ -381,6 +404,8 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
         knowledge_categories: knowledgeEntries.map((e) => e.category),
         search_hit: searchItems.length > 0,
         search_sources: searchItems.map((i) => i.source),
+        memory_hit: (memoryContext?.items.length ?? 0) > 0,
+        memory_recall_count: memoryContext?.items.length ?? 0,
         role_profile: generation.resolved_role_profile,
         role_card_key: generation.resolved_role_card_key,
       };
@@ -389,6 +414,9 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
       }
       if (searchError) {
         generationFlags.search_error = searchError;
+      }
+      if (memoryRecallError) {
+        generationFlags.memory_recall_error = memoryRecallError;
       }
       if (generation.error_type) {
         generationFlags.llm_error_type = generation.error_type;

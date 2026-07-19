@@ -94,6 +94,9 @@ function buildServices(overrides: Partial<WorkerServices> = {}): WorkerServices 
     buildKnowledgeContext: vi.fn(() => 'knowledge context'),
     searchWeb: vi.fn(async () => ({ items: [{ source: 'https://example.test' }] })),
     buildSearchContext: vi.fn(() => 'search context'),
+    // D3 (TASK-004 G4): default recallMemory mock — returns empty MemoryContext.
+    // Tests exercising the recall path override this to return concrete items.
+    recallMemory: vi.fn(async () => ({ items: [], limit: 20 })),
     getRoleCardByKey: vi.fn(async () => null),
     getActiveRoleCard: vi.fn(async () => null),
     ensureTraceId: vi.fn((traceId?: string) => traceId ?? 'trace-worker-1'),
@@ -675,6 +678,100 @@ describe('comment event task worker', () => {
       trace_id: 'trace-worker-1',
     });
     expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('plain feed failure'));
+  });
+
+  describe('D3 会话记忆 recall 接入 (TASK-004 G4)', () => {
+    it('recalls memory by payload.memory_space_id and injects memory_context into generateReplyWithMeta', async () => {
+      const memoryItems = [
+        {
+          id: 1,
+          space_id: 7,
+          item_key: 'memory-1',
+          content: 'user mentioned being sad on Monday',
+          content_type: 'note',
+          source: 'operator',
+          item_metadata: { confidence: 0.8 },
+          created_at: new Date('2026-07-01T00:00:00.000Z'),
+          updated_at: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      ];
+      const services = buildServices({
+        recallMemory: vi.fn(async (spaceId: number) => ({
+          items: spaceId === 7 ? memoryItems : [],
+          limit: 20,
+        })),
+      });
+      const processor = buildProcessor(services);
+
+      const result = await processor(buildJob({ memory_space_id: 7 }));
+
+      expect(result).toMatchObject({ ok: true, status: 'published' });
+      // recall called with the payload spaceId (per-pet isolation, C-009).
+      expect(services.recallMemory).toHaveBeenCalledWith(7);
+      // memory_context injected into GenerateReplyService params (alongside knowledge_context/search_context).
+      expect(services.generateReplyWithMeta).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memory_context: expect.objectContaining({
+            items: memoryItems,
+            limit: 20,
+          }),
+        }),
+      );
+      // memory_hit + memory_recall_count surfaced in generationFlags (createReplyJob risk_flags).
+      expect(services.createReplyJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          risk_flags: expect.objectContaining({
+            memory_hit: true,
+            memory_recall_count: 1,
+          }),
+        }),
+      );
+    });
+
+    it('skips recall when memory_space_id is absent (backward-compat, byte-for-byte single-turn)', async () => {
+      const services = buildServices();
+      const processor = buildProcessor(services);
+
+      await processor(buildJob());
+
+      expect(services.recallMemory).not.toHaveBeenCalled();
+      expect(services.generateReplyWithMeta).toHaveBeenCalledWith(
+        expect.objectContaining({ memory_context: undefined }),
+      );
+      // No memory_* flags when recall skipped.
+      const call = (services.createReplyJob as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      const riskFlags = call.risk_flags as Record<string, unknown>;
+      expect(riskFlags.memory_hit).toBe(false);
+      expect(riskFlags.memory_recall_count).toBe(0);
+      expect(riskFlags.memory_recall_error).toBeUndefined();
+    });
+
+    it('fail-opens (empty memory_context + error flag) when recallMemory throws', async () => {
+      const services = buildServices({
+        recallMemory: vi.fn(async () => {
+          throw new Error('memory db offline');
+        }),
+      });
+      const processor = buildProcessor(services);
+
+      // Recall failure MUST NOT break the worker (fail-open, like knowledge/search errors).
+      const result = await processor(buildJob({ memory_space_id: 7 }));
+
+      expect(result).toMatchObject({ ok: true, status: 'published' });
+      expect(services.generateReplyWithMeta).toHaveBeenCalledWith(
+        expect.objectContaining({ memory_context: undefined }),
+      );
+      expect(services.createReplyJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          risk_flags: expect.objectContaining({
+            memory_recall_error: 'Error: memory db offline',
+          }),
+        }),
+      );
+    });
   });
 
   describe('C-layer per-persona rate limit (TASK-006)', () => {

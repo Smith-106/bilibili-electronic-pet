@@ -98,6 +98,23 @@ export type UpsertIdentityLinkInput = {
   display_name?: string | null;
 };
 
+/**
+ * D3 会话记忆上下文 (TASK-004 G4)
+ * recall 返回的 top-K MemoryItem (已按 confidence DESC + updated_at DESC 排序, 截断到 MEMORY_RECALL_LIMIT).
+ * confidence 存 item_metadata.confidence (number 0-1, optional; 缺失视为 0) — 不改 schema (C-009 零 migration).
+ * memoryContext 是 GenerateReplyService 的 optional param, 不传时单轮行为 byte-for-byte 不变 (backward-compat).
+ */
+export type MemoryContext = {
+  items: MemoryItemRecord[];
+  limit: number;
+};
+
+/**
+ * D3 记忆召回结果 (TASK-004 G4)
+ * C-003: 全量召回后按 confidence DESC + updated_at DESC 排序, 取 top-MEMORY_RECALL_LIMIT 截断.
+ */
+export type RecallMemoryResult = MemoryContext;
+
 export type MemoryService = {
   listSpaces(filters?: ListMemorySpaceOptions): Promise<MemorySpaceRecord[]>;
   listAccessibleSpaces(subjectType: string, subjectId: string): Promise<MemorySpaceRecord[]>;
@@ -105,6 +122,13 @@ export type MemoryService = {
   listItems(filters?: ListMemoryItemOptions): Promise<MemoryItemRecord[]>;
   listSpaceItems(spaceId: number): Promise<MemoryItemRecord[]>;
   upsertItem(input: UpsertMemoryItemInput): Promise<MemoryItemRecord>;
+  /**
+   * D3 会话记忆召回 (TASK-004 G4, C-003/C-009)
+   * 取 spaceId 下全量 MemoryItem, 按 confidence DESC + updated_at DESC 排序, 取 top-MEMORY_RECALL_LIMIT.
+   * confidence 从 item_metadata.confidence 读取 (number 0-1; 缺失/非有限数视为 0).
+   * MEMORY_RECALL_LIMIT env (默认 20) 控制截断上限, 防爆 LLM context window.
+   */
+  recall(spaceId: number): Promise<RecallMemoryResult>;
   listGrants(filters?: ListMemoryGrantOptions): Promise<MemoryGrantRecord[]>;
   listSpaceGrants(spaceId: number): Promise<MemoryGrantRecord[]>;
   listSubjectGrants(subjectType: string, subjectId: string): Promise<MemoryGrantRecord[]>;

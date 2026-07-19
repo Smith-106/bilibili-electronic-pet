@@ -13,6 +13,12 @@ import * as dedupe from './dedupe.js';
 import * as generator from './generator.js';
 import * as publisher from './publisher.js';
 import * as dbQueries from './db-queries.js';
+import { createMemoryService } from '../app/memory/memory-service.js';
+
+// D3 (TASK-004 G4): shared memory-service instance for worker recall. repository 内部用 getPrisma()
+// 单例, 这里建一次 service wrapper 复用 (避免每次 recall 重建 wrapper, 与 main.ts 每次 create 不同 —
+// worker 高频路径, 单例更经济; 无状态, 线程安全).
+const memoryService = createMemoryService();
 
 /**
  * Build worker services with configuration
@@ -49,6 +55,10 @@ export function buildWorkerServices(config: { killSwitch: boolean; roleProfileDe
     // Search
     searchWeb: search.searchWeb,
     buildSearchContext: search.buildSearchContext,
+
+    // D3 Memory recall (TASK-004 G4): recall(spaceId) returns top-K MemoryContext
+    // (per-pet isolation via spaceId, C-009; C-003 全量召回 + top-K 截断 in memory-service).
+    recallMemory: (spaceId: number) => memoryService.recall(spaceId),
 
     // Role cards
     getRoleCardByKey: dbQueries.getRoleCardByKey,

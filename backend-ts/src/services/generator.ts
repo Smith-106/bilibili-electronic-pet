@@ -7,6 +7,7 @@
  */
 
 import type { GenerateReplyService } from './interfaces.js';
+import type { MemoryContext } from '../app/memory/types.js';
 import { generateWithLLM } from './llm-client.js';
 import {
   getPromptActionPool,
@@ -173,7 +174,7 @@ function buildMessages(
 // ── Public API ──────────────────────────────────────────────
 
 export const generateReplyWithMeta: GenerateReplyService = async (params) => {
-  const { content, style_mode, length_mode, role_profile, role_card, knowledge_context, search_context } = params;
+  const { content, style_mode, length_mode, role_profile, role_card, knowledge_context, search_context, memory_context } = params;
 
   try {
     // Skip by keywords from config
@@ -194,6 +195,7 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
       userComment: content,
       knowledgeContext: knowledge_context || '',
       searchContext: search_context || '',
+      memoryContext: memory_context,
       roleProfile: role_profile,
       roleCardPrompt: role_card?.system_prompt ?? undefined,
       lengthMode: length_mode,

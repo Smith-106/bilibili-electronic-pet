@@ -6,6 +6,7 @@
 import type { Comment, ReplyJob, KnowledgeEntry, RoleCard, RoleCardValue } from '../models/entities.js';
 import type { InteractionEvent } from '../domain/interaction/types.js';
 import type { PublishIntent } from '../domain/publish/types.js';
+import type { MemoryContext } from '../app/memory/types.js';
 
 /**
  * Decision service: should_reply
@@ -59,6 +60,12 @@ export type GenerateReplyService = (params: {
   length_mode: string;
   knowledge_context: string;
   search_context: string;
+  /**
+   * D3 会话记忆上下文 (TASK-004 G4, terminology.md MemoryContext)
+   * Optional — 不传时单轮行为 byte-for-byte 不变 (backward-compat).
+   * 由 comment-event.task recall step 注入 (top-K MemoryItem, 已按 confidence DESC + updated_at DESC 排序).
+   */
+  memory_context?: MemoryContext;
   role_profile: string;
   role_card?: {
     key: string;
@@ -207,6 +214,9 @@ export type WorkerServices = {
   // Search
   searchWeb: SearchWebService;
   buildSearchContext: BuildSearchContextService;
+
+  // D3 Memory recall (TASK-004 G4): per-spaceId 记忆召回, comment-event.task recall step 调用.
+  recallMemory: (spaceId: number) => Promise<MemoryContext>;
 
   // Role cards
   getRoleCardByKey: (key: string) => Promise<RoleCard | null>;
