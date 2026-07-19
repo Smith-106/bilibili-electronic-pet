@@ -7,6 +7,8 @@ import type {
   PlatformConnectionSnapshot,
   RuntimeSettings,
 } from '../server/contracts.js';
+import { isCompliancePassive } from '../services/compliance-mode.js';
+import { recordObservabilityEvent, ensureTraceId } from '../services/observability.js';
 
 type DeliveryCapabilityMatrix = {
   blockers: string[];
@@ -83,6 +85,14 @@ export type ReadinessRouteDependencies = {
   // counts ObservabilityEvent rows; the readiness route awaits it. DB error → fail-closed
   // false (mirrors isBehaviorAnomalyCountZero: a DB blip must NOT be assumed safe).
   isReplyVisibilityHealthy: () => Promise<boolean> | boolean;
+  // TASK-003/G3 compliance gate (ISS-001): COMPLIANCE_MODE='passive' surfaces a
+  // passive_mode_active signal so operators can see the system is running in the
+  // legal-risk-reduced pure-webhook passive mode. This is an informational signal (NOT a
+  // product blocker — passive mode is a deliberate operator opt-in, not a fault). Sync env
+  // read via the compliance-mode accessor (single source of truth shared with publisher /
+  // probe-scheduler / comment-ingest). Optional dep so existing test fixtures compile without
+  // wiring it (defaults to the env read).
+  isComplianceModePassive?: () => boolean;
 };
 
 // TASK-003/P3 SC4 gate: antirisk three-layer flag aggregation. All four antirisk
@@ -97,6 +107,27 @@ export function threeLayerFlagsAllOn(): boolean {
     process.env.PASSIVE_RESPONSE_GATE_ENABLED !== 'false' &&
     process.env.ANTIRISK_C_RATE_LIMIT_ENABLED !== 'false'
   );
+}
+
+// TASK-003/G3 compliance signal helpers (ISS-001). isCompliancePassiveFromEnv reads the
+// shared compliance-mode accessor (single source of truth). recordComplianceModeCheck emits
+// a fire-and-forget ObservabilityEvent {event_type:'compliance_mode_check'} so the mode
+// switch stays observable for online eval / audit (C-002 zero-migration: reuses the existing
+// ObservabilityEvent path, NOT an antirisk signal — mirrors the passive_response_gate
+// counter pattern in comment-ingest.ts). Defined here (not in compliance-mode.ts) so the
+// readiness route stays self-contained and does not add an observability import to the
+// shared accessor module.
+function isCompliancePassiveFromEnv(): boolean {
+  return isCompliancePassive();
+}
+
+async function recordComplianceModeCheck(passive: boolean): Promise<void> {
+  await recordObservabilityEvent({
+    event_type: 'compliance_mode_check',
+    trace_id: ensureTraceId(),
+    status: passive ? 'passive' : 'off',
+    metadata: { compliance_mode: passive ? 'passive' : 'off' },
+  });
 }
 
 function isPublishingReady(snapshot: PlatformConnectionSnapshot): boolean {
@@ -174,6 +205,17 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
 
     const pollingRequested = deps.settings.bilibiliEnabled && deps.settings.bilibiliPollEnabled;
 
+    // TASK-003/G3 compliance signal (ISS-001): COMPLIANCE_MODE='passive' surfaces
+    // passive_mode_active. This is NOT a product blocker — passive mode is a deliberate
+    // operator opt-in for legal-risk reduction (pure-webhook passive response, no active
+    // probing/publishing). The signal makes the mode observable in readiness so operators
+    // can confirm the switch took effect. Defaults to the env read when the dep is unset
+    // (mirrors the existing threeLayerFlagsAllOn sync env-read pattern). Resolved here
+    // (before deliverySignals) so the delivery_signals.compliance_mode field reflects it.
+    const compliancePassive = deps.isComplianceModePassive
+      ? deps.isComplianceModePassive()
+      : isCompliancePassiveFromEnv();
+
     const deliverySignals = {
       kill_switch_enabled: deps.settings.killSwitch,
       polling_requested: pollingRequested,
@@ -185,6 +227,11 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       worker_or_publish_ready: workerOrPublishReady,
       raw_publish_mode: deps.normalizePublishMode(deps.settings.publisherMode),
       effective_publish_mode: effectivePublishMode,
+      // TASK-003/G3 (ISS-001): compliance mode signal — 'passive' = pure-webhook passive
+      // response (legal-risk-reduced), 'off' = default. Read via the shared accessor so
+      // readiness reflects the same switch consumed by publisher / probe-scheduler /
+      // comment-ingest.
+      compliance_mode: compliancePassive ? 'passive' : 'off',
     };
 
     const deliveryBlockers = [...foundationBlockers];
@@ -324,6 +371,26 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       deps.addBlocker(productBlockers, 'antirisk:reply_visibility_verified');
     }
 
+    // TASK-003/G3 compliance signal (ISS-001): COMPLIANCE_MODE='passive' surfaces
+    // passive_mode_active. This is NOT a product blocker — passive mode is a deliberate
+    // operator opt-in for legal-risk reduction (pure-webhook passive response, no active
+    // probing/publishing). The signal makes the mode observable in readiness so operators
+    // can confirm the switch took effect. Defaults to the env read when the dep is unset
+    // (mirrors the existing threeLayerFlagsAllOn sync env-read pattern).
+    // compliance_mode_check ObservabilityEvent (C-002 zero-migration: reuses the existing
+    // ObservabilityEvent path, fire-and-forget normal observation event — NOT an antirisk
+    // signal). Emitted once per readiness probe so the mode switch stays observable in the
+    // observability stream for online eval / audit. Status 'passive' | 'off'.
+    void recordComplianceModeCheck(compliancePassive).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'compliance_mode_check_record_failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
 
     // L5: completion_matrix.total derived from a gate array (passedGates/totalGates*100),
@@ -361,6 +428,10 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       // TASK-002/D1 antirisk gate: reply-visibility shadowbanned verdict in the window → red
       // (fail-closed). probe_failed does NOT flip red (C-004 fail-open).
       { key: 'reply_visibility_verified', passed: replyVisibilityHealthy },
+      // TASK-003/G3 compliance signal (ISS-001): passive_mode_active is an informational
+      // gate (always "passed" — passive mode is a deliberate operator opt-in, not a fault).
+      // Surfaced in the gate array so completion_matrix / observability reflect the mode.
+      { key: 'passive_mode_active', passed: true },
       // security
       { key: 'credential_encryption_key_present', passed: credentialEncryptionKeyPresent },
     ];

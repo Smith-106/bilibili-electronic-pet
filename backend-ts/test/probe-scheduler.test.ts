@@ -51,6 +51,9 @@ beforeEach(() => {
 afterEach(() => {
   __resetProbeSchedulerForTest();
   delete process.env.BILIBILI_ENABLED;
+  // TASK-003/G3: clear COMPLIANCE_MODE so a 'passive' value leaked from another suite
+  // cannot silently skip probing in the cases below.
+  delete process.env.COMPLIANCE_MODE;
 });
 
 describe('probeBilibiliAuthScheduler (TASK-005)', () => {

@@ -26,6 +26,7 @@ import { probeBilibiliAuth } from './bilibili-client.js';
 import { loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
 import { recordAntiriskSignal } from './observability.js';
 import { ensureTraceId } from './observability.js';
+import { isCompliancePassive } from './compliance-mode.js';
 
 // 14 天观察期上限 (L6)：固定作上限 + 信号作提前退出条件。阈值 DD-03 待 SME+运营。
 // SEC-003 fix: 下界校验 fail-closed — 非法值 (<1) 退回保守默认 14, 不允许 0/负值使窗口失效.
@@ -99,7 +100,12 @@ export async function probeBilibiliAuthScheduler(): Promise<void> {
   // bilibili 账号存活 — probe 跳过探活并保持 healthy, readiness auth_probe_healthy gate
   // 不红. BILIBILI_ENABLED=true (采集开) 时账号存活是采集前置, probe 照常探活, 失效即 red.
   // 这样 webhook-only 预发布环境无需有效 bilibili cookie 即可通过 strict smoke.
-  if (process.env.BILIBILI_ENABLED !== 'true') {
+  //
+  // COMPLIANCE_MODE='passive' (TASK-003, G3 ISS-001): 合规被动模式同样跳过主动探活 —
+  // 主动探活 (周期性访问 Bilibili API 验证账号) 是主动行为, 被动模式下不实现. 复用同一
+  // skip 分支语义 (setAuthProbeUnhealthy(false) 保持 healthy, readiness 不红), webhook
+  // 被动响应不依赖账号存活探活.
+  if (process.env.BILIBILI_ENABLED !== 'true' || isCompliancePassive()) {
     setAuthProbeUnhealthy(false);
     return;
   }

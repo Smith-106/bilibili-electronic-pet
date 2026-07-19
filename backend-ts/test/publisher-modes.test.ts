@@ -60,6 +60,9 @@ const trackedEnvKeys = [
   'STAGE_DAILY_QUOTA',
   'PUBLISHER_SIMULATED_RESPONSES',
   'ANTIRISK_C_RATE_LIMIT_ENABLED',
+  // TASK-003/G3 (ISS-001): COMPLIANCE_MODE forces webhook when 'passive'. Tracked here so
+  // a value leaked from another suite cannot silently flip this suite's mode dispatch.
+  'COMPLIANCE_MODE',
 ] as const;
 
 function clearPublisherEnv(): void {

@@ -87,6 +87,10 @@ describe('comment ingest helper coverage', () => {
     // keeping these tests focused on their original assertions. The gate itself is
     // exercised by the dedicated 'passive response gate (TASK-003)' describe below.
     process.env.PASSIVE_RESPONSE_GATE_ENABLED = 'false';
+    // TASK-003/G3: clear COMPLIANCE_MODE so a leaked 'passive' value cannot force the
+    // gate back on (compliance overrides PASSIVE_RESPONSE_GATE_ENABLED=false) and break
+    // the queue / backlog mechanics cases that expect all comments to enqueue.
+    delete process.env.COMPLIANCE_MODE;
     createCommentEventQueueMock.mockReturnValue({
       name: 'comment-event',
       close: vi.fn(async () => undefined),
@@ -578,6 +582,10 @@ describe('passive response gate (TASK-003)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.PASSIVE_RESPONSE_GATE_ENABLED = 'true';
+    // TASK-003/G3: clear COMPLIANCE_MODE so a 'passive' value leaked from another suite
+    // cannot force the gate on and break the PASSIVE_RESPONSE_GATE_ENABLED=false rollback
+    // case below.
+    delete process.env.COMPLIANCE_MODE;
     createCommentEventQueueMock.mockReturnValue({
       name: 'comment-event',
       close: vi.fn(async () => undefined),

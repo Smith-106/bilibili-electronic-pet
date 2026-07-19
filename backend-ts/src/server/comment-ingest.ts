@@ -8,6 +8,7 @@ import {
 import { getActivePersonaName } from '../services/bilibili-runtime-config.js';
 import { TRIGGER_KEYWORDS } from '../services/decider.js';
 import { recordObservabilityEvent } from '../services/observability.js';
+import { isCompliancePassive } from '../services/compliance-mode.js';
 import {
   buildCommentEventQueuePayload,
   getPendingCommentQueueBacklog,
@@ -33,8 +34,16 @@ export type CommentQueueJobResult = { queued: boolean; error?: string };
  * Default ON — only @self / triggerKeyword-hit comments are enqueued for reply.
  * Set PASSIVE_RESPONSE_GATE_ENABLED=false to fall back to enqueuing all comments
  * (independent rollback that leaves poller ingestion / DB storage untouched).
+ *
+ * COMPLIANCE_MODE='passive' (TASK-003, G3 ISS-001): 合规被动模式强制启用被动响应门 —
+ * 合规红线 (仅被动响应) 优先于 L8 rollback flag. 运维即使在 PASSIVE_RESPONSE_GATE_ENABLED=false
+ * 时, COMPLIANCE_MODE='passive' 仍强制走 isPassiveResponseEligible 硬约束. isPassiveResponseEligible
+ * 在本文件 :61 是真实判定 (@ 自己 / 关键词命中), 非 stub.
  */
 function isPassiveResponseGateEnabled(): boolean {
+  if (isCompliancePassive()) {
+    return true;
+  }
   return process.env.PASSIVE_RESPONSE_GATE_ENABLED !== 'false';
 }
 

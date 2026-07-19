@@ -368,18 +368,19 @@ describe('readiness route coverage', () => {
 
   it('derives completion_matrix.total from the gate array (Math.round(passed/total*100))', async () => {
     // 5 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
-    // total gates = 15 (TASK-007 added backoff_active_rate + passive_response_violation_count,
+    // total gates = 16 (TASK-007 added backoff_active_rate + passive_response_violation_count,
     // TASK-003 added three_layer_flags_all_on + behavior_anomaly_count_zero, TASK-005 added
-    // auth_probe_healthy, TASK-002/D1 added reply_visibility_verified — all pass here because
-    // their deps default to () => true).
+    // auth_probe_healthy, TASK-002/D1 added reply_visibility_verified, TASK-003/G3 added
+    // passive_mode_active (ISS-001 compliance signal, informational — always passes) — all
+    // pass here because their deps default to () => true).
     // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
     // worker_or_publish_path_ready=T (webhook + release_gate ready), normal_buffer_healthy=F,
     // critical_queue_healthy=F, drop_count_within_budget=F,
     // backoff_active_rate_within_budget=T (default false => within budget), passive_response_violation_count_within_budget=T,
     // three_layer_flags_all_on=T (default true), behavior_anomaly_count_zero=T (default true),
     // auth_probe_healthy=T (default true, TASK-005), reply_visibility_verified=T (default true, TASK-002/D1),
-    // credential_encryption_key_present=T
-    // => passed = 10/15 => Math.round(10/15*100)=67.
+    // passive_mode_active=T (TASK-003/G3, informational always-pass), credential_encryption_key_present=T
+    // => passed = 11/16 => Math.round(11/16*100)=69.
     const { response } = await injectReadiness({
       checkDatabaseConnection: () => ({ connected: false, error: 'down' }),
       checkRedisConnection: () => ({ connected: false }),
@@ -388,8 +389,8 @@ describe('readiness route coverage', () => {
 
     const body = response.json();
     // foundation down -> delivery_path_ready false, publish_mode still webhook (delivery capable)
-    expect(body.completion_matrix.total).toBe(67);
-    expect(body.completion_matrix.readiness_gates).toHaveLength(15);
+    expect(body.completion_matrix.total).toBe(69);
+    expect(body.completion_matrix.readiness_gates).toHaveLength(16);
     expect(body.completion_matrix.readiness_gates.map((g: { key: string }) => g.key)).toEqual([
       'db_connected',
       'redis_connected',
@@ -405,6 +406,7 @@ describe('readiness route coverage', () => {
       'behavior_anomaly_count_zero',
       'auth_probe_healthy',
       'reply_visibility_verified',
+      'passive_mode_active',
       'credential_encryption_key_present',
     ]);
   });

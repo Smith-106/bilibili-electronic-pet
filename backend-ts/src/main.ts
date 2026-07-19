@@ -75,6 +75,7 @@ import {
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
 import { getObservabilityDropCount, isDropCountThresholdExceeded } from './services/observability.js';
 import { isAuthProbeHealthy } from './services/probe-scheduler.js';
+import { isCompliancePassive } from './services/compliance-mode.js';
 import { isEncryptionAvailable } from './services/credential-crypto.js';
 import { buildRedisConnectionConfig } from './workers/config.js';
 
@@ -3048,6 +3049,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     isBehaviorAnomalyCountZero: defaultIsBehaviorAnomalyCountZero,
     isAuthProbeHealthy: () => isAuthProbeHealthy(),
     isReplyVisibilityHealthy: defaultIsReplyVisibilityHealthy,
+    isComplianceModePassive: () => isCompliancePassive(),
   });
 
   registerGatewayPublishRoutes(app, {

@@ -103,6 +103,11 @@ WORKER_RETRY_JITTER=true
 # Application
 KILL_SWITCH=false
 ROLE_PROFILE_DEFAULT=doro
+
+# Compliance mode (TASK-003, G3 ISS-001 legal-risk降险)
+# off (default): 现有行为不变. passive: 纯 webhook 被动响应 (不主动探活 / 不主动发评论,
+#   仅被动响应 @ 自己 / 关键词命中). 单一运维开关一键切合规降险模式.
+COMPLIANCE_MODE=off
 ```
 
 ## API Endpoints
@@ -283,6 +288,32 @@ See [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) for:
 - mode aliases in wrappers: `preflight`, `strict`, `real-chain`
 - JSON reports for preflight / pass / fail outcomes
 - `runtime_summary` and `input_scopes` in strict/real-chain reports so checker-env context is separated from target-runtime state
+
+## Compliance Mode (TASK-003, G3 ISS-001)
+
+ISS-001 法律风险 (bilibili-api 弘安律所侵权告知函 + 主动骚扰法律红线) 通过 `COMPLIANCE_MODE` 单一运维开关降险。设为 `passive` 后系统一键切到纯 webhook 被动响应模式 — 不主动发评论、不主动探活、仅被动响应 `@ 自己` / 关键词命中的评论。
+
+### 取值
+
+| 值 | 行为 |
+|----|------|
+| `off` (默认) | 现有行为 byte-for-byte 不变 (backward compat). |
+| `passive` | 合规被动模式 — 见下方四点硬约束. |
+
+### `passive` 模式硬约束 (合规红线)
+
+1. **Publisher** (`src/services/publisher.ts`): 强制走 `publishWebhook` (非 `publishReal` native Bilibili API). `PUBLISHER_MODE=real_publish` 在 passive 下被覆盖成 webhook — 永不达主动发布路径. `dry_run` 保留 (合规不强制主动发布).
+2. **Probe-scheduler** (`src/services/probe-scheduler.ts`): 跳过主动探活 (复用 `BILIBILI_ENABLED=false` skip 语义). 主动探活是主动行为, 被动模式下不实现.
+3. **Comment-ingest** (`src/server/comment-ingest.ts`): 强制启用被动响应门 (`isPassiveResponseEligible` 真实判定 `@ 自己` / 关键词命中, 非 stub). 即使 `PASSIVE_RESPONSE_GATE_ENABLED=false` (L8 rollback), passive 模式仍强制走被动响应硬约束 — 合规红线优先于 rollback flag. 非被动命中 MUST 不入队 (主动骚扰 MUST NOT 实现).
+4. **Readiness** (`src/routes/readiness.ts`): `delivery_signals.compliance_mode` 暴露当前模式 (`off` / `passive`); `completion_matrix.readiness_gates` 含 `passive_mode_active` 信号 (informational, 非 blocker — passive 是运维主动 opt-in, 非故障); 每次探针发 `compliance_mode_check` ObservabilityEvent (零 migration, 复用 ObservabilityEvent path).
+
+### 与 BILIBILI_ENABLED 的关系
+
+`COMPLIANCE_MODE=passive` **不强制** `BILIBILI_ENABLED=false` — webhook 模式仍需 `BILIBILI_ENABLED=true` 收 webhook 事件, 但 probe 主动探活跳过. 典型合规部署: `COMPLIANCE_MODE=passive` + `BILIBILI_ENABLED=true` + `PUBLISHER_WEBHOOK_URL=<configured>` + `PUBLISHER_MODE=webhook` (或任意值, passive 会覆盖).
+
+### 切换方式
+
+运维改 env `COMPLIANCE_MODE=passive` 重启即可生效. `/readiness` 的 `delivery_signals.compliance_mode` 字段确认切换已生效. 单一 accessor (`src/services/compliance-mode.ts` `isCompliancePassive()`) 是 publisher / probe-scheduler / comment-ingest / readiness 四点共享的 single source of truth.
 
 ## Deployment
 

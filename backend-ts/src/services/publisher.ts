@@ -15,6 +15,7 @@ import { recordAntiriskSignal, recordObservabilityEvent, getObservabilityDropCou
 import { isPersonaInBackoff, applyBackoff } from './backoff-decision.js';
 import { checkPersonaRateLimit } from './persona-token-bucket.js';
 import { createHash } from 'node:crypto';
+import { isCompliancePassive } from './compliance-mode.js';
 
 // ── Publisher mode configuration ───────────────────────────
 
@@ -27,6 +28,20 @@ function getPublisherMode(): PublisherMode {
     return mode as PublisherMode;
   }
   return 'manual_queue';
+}
+
+// COMPLIANCE_MODE='passive' (TASK-003, G3 ISS-001): single compliance switch forces webhook
+// publishing (never real_publish — active solicitation via the native Bilibili API is the
+// legal red-line). Resolved once per publish call so the stage-gate check AND the dispatch
+// share the same override. Default 'off' is byte-for-byte backward compatible (returns the
+// env-declared mode unchanged). 'passive' overrides real_publish/manual_queue/simulated
+// → 'webhook'; dry_run is preserved (compliance does not force active publishing).
+function resolveEffectivePublisherMode(): PublisherMode {
+  const mode = getPublisherMode();
+  if (isCompliancePassive() && mode !== 'dry_run') {
+    return 'webhook';
+  }
+  return mode;
 }
 
 // ── Stage gate (P3 warmup: 阶段门禁 guard) ────────────────
@@ -789,7 +804,9 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
   // P3 warmup stage gate (L1): dry_run 立即返回不写 publish_log 不调 postReply;
   // real_publish 在 STAGE_GATE_ENABLED 开启时校验 readiness 全绿 (STAGE_REAL_PUBLISH_READY)
   // + observability drop_count=0 (SC4), 不满足 fail-closed 返回 stage_gate_blocked.
-  const stageMode = getPublisherMode();
+  // COMPLIANCE_MODE='passive' (TASK-003): effectiveMode 已经把 real_publish 覆盖成 webhook,
+  // 所以 stage-gate 分支在 passive 模式下天然不可达 — 合规红线不依赖 stage gate 拦截.
+  const stageMode = resolveEffectivePublisherMode();
   if (stageMode === 'dry_run') {
     return [true, 'dry_run_skipped', new Date(), null];
   }
@@ -842,7 +859,9 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     }
 
     // 3. Dispatch to mode-specific handler
-    const mode = getPublisherMode();
+    // COMPLIANCE_MODE='passive' (TASK-003): resolveEffectivePublisherMode 已把 real_publish
+    // 覆盖成 webhook, dispatch 走 publishWebhook, 永不达 publishReal (合规红线).
+    const mode = resolveEffectivePublisherMode();
     let result: [boolean, string, Date | null, Record<string, unknown> | null];
 
     switch (mode) {
