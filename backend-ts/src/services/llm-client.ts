@@ -217,6 +217,7 @@ function buildMessages(
   roleCardPrompt: string | undefined,
   lengthMode: string,
   memoryContext?: MemoryContext,
+  threeLayerSegment?: string,
 ): LLMMessage[] {
   const lengthInstruction =
     lengthMode === 'long'
@@ -227,12 +228,20 @@ function buildMessages(
 
   const roleInstruction = roleCardPrompt ? `角色设定: ${roleCardPrompt}，不要跳出角色。` : '';
 
+  // D4 三层角色 (TASK-005 G5, terminology.md ThreeLayerPersona):
+  // threeLayerSegment 为空串 → 不追加 (byte-for-byte 单层 fallback, C-007 + backward-compat).
+  // 非空 → 追加到 system message (Core Traits 人格底色 + Speaking Style 风格 + Dynamic State 当前状态).
+  // 注: segment 已由 generator.ts 从 role_card.tone 解析+渲染 (parseThreeLayerPersona + renderThreeLayerPersonaSegment).
+  const personaSegment = threeLayerSegment ? `\n${threeLayerSegment}` : '';
+
+  const baseSystem =
+    systemPrompt ||
+    `你是 ${roleProfile}，一个B站用户。你要自然地回复评论，永远保持角色设定，不要跳出角色。${roleInstruction}`;
+
   const systemParts: LLMMessage[] = [
     {
       role: 'system',
-      content:
-        systemPrompt ||
-        `你是 ${roleProfile}，一个B站用户。你要自然地回复评论，永远保持角色设定，不要跳出角色。${roleInstruction}`,
+      content: baseSystem + personaSegment,
     },
   ];
 
@@ -315,13 +324,20 @@ export async function generateWithLLM(params: {
   roleProfile: string;
   roleCardPrompt?: string;
   lengthMode: string;
+  /**
+   * D4 三层角色 (TASK-005 G5, terminology.md ThreeLayerPersona): optional.
+   * 已渲染的人类可读三层片段 (Core Traits + Speaking Style + Dynamic State).
+   * 空串或不传 → 不追加到 system message (byte-for-byte 单层 fallback, C-007 + backward-compat).
+   * 由 generator.ts 从 role_card.tone 解析+渲染后注入.
+   */
+  threeLayerSegment?: string;
 }): Promise<{
   reply_text: string;
   provider: string;
   used_fallback: boolean;
 }> {
   const config = loadLLMConfig();
-  const { systemPrompt, userComment, knowledgeContext, searchContext, memoryContext, roleProfile, roleCardPrompt, lengthMode } =
+  const { systemPrompt, userComment, knowledgeContext, searchContext, memoryContext, roleProfile, roleCardPrompt, lengthMode, threeLayerSegment } =
     params;
   const messages = buildMessages(
     systemPrompt,
@@ -332,6 +348,7 @@ export async function generateWithLLM(params: {
     roleCardPrompt,
     lengthMode,
     memoryContext,
+    threeLayerSegment,
   );
 
   try {

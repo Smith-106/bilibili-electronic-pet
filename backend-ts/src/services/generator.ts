@@ -10,6 +10,11 @@ import type { GenerateReplyService } from './interfaces.js';
 import type { MemoryContext } from '../app/memory/types.js';
 import { generateWithLLM } from './llm-client.js';
 import {
+  parseThreeLayerPersona,
+  renderThreeLayerPersonaSegment,
+  type ThreeLayerPersona,
+} from './three-layer-persona.js';
+import {
   getPromptActionPool,
   getPromptBannedWords,
   getPromptLengthDistribution,
@@ -132,6 +137,21 @@ function mockReply(
 
 // ── Build LLM messages ─────────────────────────────────────
 
+/**
+ * 合并三层角色: explicit card 优先, 缺失层回退 active card.
+ * (TASK-005 G5): role_card 三层 key 缺失时 fallback active_role_card 对应层, 逐层合并.
+ */
+function mergeThreeLayerPersona(explicit: ThreeLayerPersona, active: ThreeLayerPersona): ThreeLayerPersona {
+  const merged: ThreeLayerPersona = {};
+  const core = explicit.core_traits ?? active.core_traits;
+  if (core) merged.core_traits = core;
+  const style = explicit.speaking_style ?? active.speaking_style;
+  if (style) merged.speaking_style = style;
+  const dyn = explicit.dynamic_state ?? active.dynamic_state;
+  if (dyn) merged.dynamic_state = dyn;
+  return merged;
+}
+
 function buildMessages(
   systemPrompt: string,
   userComment: string,
@@ -190,6 +210,15 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
 
     const messages = buildMessages('', content, length_mode || 'medium', role_profile || 'auto');
 
+    // D4 三层角色 (TASK-005 G5, terminology.md ThreeLayerPersona):
+    // 从 role_card.tone 解析三层 (CoreTraits/SpeakingStyle/DynamicState). 缺失层 fallback undefined.
+    // 若 role_card 无三层 key → 回退 active_role_card.tone (active card 的三层). 两卡都无 → segment '' (单层 fallback).
+    // C-007: tone 是已存在 String 列, 三层内嵌不触发 migration. backward-compat: 无三层时 segment='' 不追加.
+    const personaFromExplicit = role_card ? parseThreeLayerPersona(role_card.tone) : {};
+    const personaFromActive = params.active_role_card ? parseThreeLayerPersona(params.active_role_card.tone) : {};
+    const mergedPersona = mergeThreeLayerPersona(personaFromExplicit, personaFromActive);
+    const threeLayerSegment = renderThreeLayerPersonaSegment(mergedPersona);
+
     const result = await generateWithLLM({
       systemPrompt: messages[0].content,
       userComment: content,
@@ -199,6 +228,7 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
       roleProfile: role_profile,
       roleCardPrompt: role_card?.system_prompt ?? undefined,
       lengthMode: length_mode,
+      threeLayerSegment,
     });
 
     if (!result.used_fallback) {
