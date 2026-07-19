@@ -143,6 +143,7 @@ function buildDeps(overrides: Partial<ReadinessRouteDependencies> = {}): Readine
     threeLayerFlagsAllOn: vi.fn(() => true),
     isBehaviorAnomalyCountZero: vi.fn(() => true),
     isAuthProbeHealthy: vi.fn(() => true),
+    isReplyVisibilityHealthy: vi.fn(() => true),
     ...overrides,
   };
 }
@@ -367,16 +368,18 @@ describe('readiness route coverage', () => {
 
   it('derives completion_matrix.total from the gate array (Math.round(passed/total*100))', async () => {
     // 5 gates fail: db, redis, plus drop_count budget (3 antirisk gates share it).
-    // total gates = 14 (TASK-007 added backoff_active_rate + passive_response_violation_count,
+    // total gates = 15 (TASK-007 added backoff_active_rate + passive_response_violation_count,
     // TASK-003 added three_layer_flags_all_on + behavior_anomaly_count_zero, TASK-005 added
-    // auth_probe_healthy — all pass here because their deps default to () => true).
+    // auth_probe_healthy, TASK-002/D1 added reply_visibility_verified — all pass here because
+    // their deps default to () => true).
     // Recompute gates: db=F, redis=F, admin_access=T, publish_mode_delivery_capable=T(webhook),
     // worker_or_publish_path_ready=T (webhook + release_gate ready), normal_buffer_healthy=F,
     // critical_queue_healthy=F, drop_count_within_budget=F,
     // backoff_active_rate_within_budget=T (default false => within budget), passive_response_violation_count_within_budget=T,
     // three_layer_flags_all_on=T (default true), behavior_anomaly_count_zero=T (default true),
-    // auth_probe_healthy=T (default true, TASK-005), credential_encryption_key_present=T
-    // => passed = 9/14 => Math.round(9/14*100)=64.
+    // auth_probe_healthy=T (default true, TASK-005), reply_visibility_verified=T (default true, TASK-002/D1),
+    // credential_encryption_key_present=T
+    // => passed = 10/15 => Math.round(10/15*100)=67.
     const { response } = await injectReadiness({
       checkDatabaseConnection: () => ({ connected: false, error: 'down' }),
       checkRedisConnection: () => ({ connected: false }),
@@ -385,8 +388,8 @@ describe('readiness route coverage', () => {
 
     const body = response.json();
     // foundation down -> delivery_path_ready false, publish_mode still webhook (delivery capable)
-    expect(body.completion_matrix.total).toBe(64);
-    expect(body.completion_matrix.readiness_gates).toHaveLength(14);
+    expect(body.completion_matrix.total).toBe(67);
+    expect(body.completion_matrix.readiness_gates).toHaveLength(15);
     expect(body.completion_matrix.readiness_gates.map((g: { key: string }) => g.key)).toEqual([
       'db_connected',
       'redis_connected',
@@ -401,6 +404,7 @@ describe('readiness route coverage', () => {
       'three_layer_flags_all_on',
       'behavior_anomaly_count_zero',
       'auth_probe_healthy',
+      'reply_visibility_verified',
       'credential_encryption_key_present',
     ]);
   });
@@ -518,6 +522,37 @@ describe('readiness route coverage', () => {
     );
     expect(anomalyGate.passed).toBe(false);
     expect(body.product_blockers).toContain('antirisk:behavior_anomaly_count_zero');
+    expect(body.product_ready).toBe(false);
+  });
+
+  it('passes reply_visibility_verified when no shadowbanned verdict is in the window (TASK-002/D1)', async () => {
+    const { response } = await injectReadiness({
+      isReplyVisibilityHealthy: () => true,
+    });
+
+    const body = response.json();
+    const visibilityGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'reply_visibility_verified',
+    );
+    expect(visibilityGate.passed).toBe(true);
+    expect(body.product_blockers).not.toContain('antirisk:reply_visibility_verified');
+    expect(body.product_ready).toBe(true);
+  });
+
+  it('flips reply_visibility_verified red (fail-closed) when a shadowbanned verdict is present or DB errors (TASK-002/D1, C-004)', async () => {
+    const { response } = await injectReadiness({
+      // Fail-closed: a shadowbanned verdict in the window (or a DB query failure surfacing as
+      // false) flips the gate red. probe_failed verdicts do NOT flip this (they record no
+      // antirisk signal, so the default impl never counts them).
+      isReplyVisibilityHealthy: () => false,
+    });
+
+    const body = response.json();
+    const visibilityGate = body.completion_matrix.readiness_gates.find(
+      (g: { key: string }) => g.key === 'reply_visibility_verified',
+    );
+    expect(visibilityGate.passed).toBe(false);
+    expect(body.product_blockers).toContain('antirisk:reply_visibility_verified');
     expect(body.product_ready).toBe(false);
   });
 

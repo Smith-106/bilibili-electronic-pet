@@ -14,7 +14,7 @@ const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
 const MAX_PAGES = 5;
 
-interface BilibiliComment {
+export interface BilibiliComment {
   rpid: number;
   mid: number;
   content: string;
@@ -51,9 +51,16 @@ function emptyPollResult(status: string): PollResult {
 }
 
 /**
- * Fetch comments page from Bilibili API
+ * Fetch comments page from Bilibili API.
+ *
+ * Exported (TASK-002) so verifyReplyVisible in bilibili-client.ts can reuse the
+ * /x/v2/reply list fetch + parse logic as the visibility-probe backing call
+ * (dual-view sender-cookie path AND seek_rpid fallback). Throws on network /
+ * non-2xx HTTP / abort so the probe can classify those as 'probe_failed'
+ * (fail-open) distinct from a successful-but-rpid-absent 'shadowbanned'
+ * (fail-closed) — see C-004.
  */
-async function fetchCommentsPage(
+export async function fetchCommentsPage(
   aid: number,
   page: number,
   config: { baseUrl: string; sessdata: string; biliJct: string; buvid: string; userAgent: string; timeout: number },

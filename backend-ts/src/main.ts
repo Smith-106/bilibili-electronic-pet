@@ -2174,6 +2174,43 @@ async function defaultIsBehaviorAnomalyCountZero(): Promise<boolean> {
   }
 }
 
+// TASK-002/D1 gate: reply-visibility shadowbanned verdict count within the rolling window.
+// A confirmed shadowbanned publish (ObservabilityEvent event_type='reply_visibility_check'
+// AND error_subclass='shadowban') means the platform is silently swallowing replies — a
+// sustained封号-grade signal. Fail-closed (returns false on ANY shadowbanned event in the
+// window OR on DB error): mirrors isBehaviorAnomalyCountZero — a DB blip must NOT be assumed
+// safe. probe_failed verdicts are NOT counted here (they record no antirisk signal, C-004
+// fail-open), so a transient probe glitch cannot flip this red.
+const REPLY_VISIBILITY_WINDOW_SECONDS = Number.parseInt(
+  process.env.REPLY_VISIBILITY_WINDOW_SECONDS ?? '',
+  10,
+) || 86400;
+
+async function defaultIsReplyVisibilityHealthy(): Promise<boolean> {
+  const prisma = getPrisma();
+  const since = new Date(Date.now() - REPLY_VISIBILITY_WINDOW_SECONDS * 1000);
+  try {
+    const count = await prisma.observabilityEvent.count({
+      where: {
+        event_type: 'reply_visibility_check',
+        error_subclass: 'shadowban',
+        created_at: { gte: since },
+      },
+    });
+    return count === 0;
+  } catch (error) {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'reply_visibility_count_query_failed',
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    return false;
+  }
+}
+
 async function defaultGetBilibiliStatus(input: {
   settings: RuntimeSettings;
   buildBilibiliDiagnostics: () => Promise<BilibiliDiagnostics> | BilibiliDiagnostics;
@@ -3010,6 +3047,7 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
     threeLayerFlagsAllOn: () => threeLayerFlagsAllOn(),
     isBehaviorAnomalyCountZero: defaultIsBehaviorAnomalyCountZero,
     isAuthProbeHealthy: () => isAuthProbeHealthy(),
+    isReplyVisibilityHealthy: defaultIsReplyVisibilityHealthy,
   });
 
   registerGatewayPublishRoutes(app, {

@@ -102,13 +102,18 @@ const backoffState = new BackoffStateContainer();
 /**
  * Backoff cap (seconds) per subclass (L6 configurable). Defaults:
  * - behavior_anomaly (-352): 600s — higher降频力度，持续累积会封号
+ * - shadowban (TASK-002/D1): 600s — a platform-side shadowban is a sustained封号-grade
+ *   signal (the reply is silently invisible), so it shares the high-severity cap with
+ *   behavior_anomaly. Mirrors the Avalon 阿瓦隆风控 ShadowBan 8-state platform semantics.
  * - rate_limit (-429): 60s
  *
  * Configurable via env ANTIRISK_BACKOFF_CAP_BEHAVIOR_ANOMALY /
- * ANTIRISK_BACKOFF_CAP_RATE_LIMIT (DEFAULT_RULES extension, decider.ts-compatible
- * numeric fields). Read at applyBackoff call time so env mutation is honored.
+ * ANTIRISK_BACKOFF_CAP_SHADOWBAN / ANTIRISK_BACKOFF_CAP_RATE_LIMIT (DEFAULT_RULES
+ * extension, decider.ts-compatible numeric fields). Read at applyBackoff call time so
+ * env mutation is honored.
  */
 export const DEFAULT_BACKOFF_CAP_BEHAVIOR_ANOMALY_SECONDS = 600;
+export const DEFAULT_BACKOFF_CAP_SHADOWBAN_SECONDS = 600;
 export const DEFAULT_BACKOFF_CAP_RATE_LIMIT_SECONDS = 60;
 
 function resolveBackoffCapSeconds(subclass: AntiriskSubclass): number {
@@ -118,6 +123,13 @@ function resolveBackoffCapSeconds(subclass: AntiriskSubclass): number {
       10,
     );
     return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_BACKOFF_CAP_BEHAVIOR_ANOMALY_SECONDS;
+  }
+  if (subclass === 'shadowban') {
+    const raw = Number.parseInt(
+      process.env.ANTIRISK_BACKOFF_CAP_SHADOWBAN ?? '',
+      10,
+    );
+    return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_BACKOFF_CAP_SHADOWBAN_SECONDS;
   }
   const raw = Number.parseInt(
     process.env.ANTIRISK_BACKOFF_CAP_RATE_LIMIT ?? '',
@@ -238,6 +250,7 @@ export async function rebuildBackoffFromDb(): Promise<void> {
   const prisma = getPrisma();
   const maxCapSeconds = Math.max(
     DEFAULT_BACKOFF_CAP_BEHAVIOR_ANOMALY_SECONDS,
+    DEFAULT_BACKOFF_CAP_SHADOWBAN_SECONDS,
     DEFAULT_BACKOFF_CAP_RATE_LIMIT_SECONDS,
   );
   const since = new Date(Date.now() - maxCapSeconds * 1000);
@@ -250,7 +263,9 @@ export async function rebuildBackoffFromDb(): Promise<void> {
   try {
     rows = await prisma.observabilityEvent.findMany({
       where: {
-        event_type: 'antirisk_signal_detected',
+        // TASK-002: 'reply_visibility_check' carries error_subclass='shadowban' for the
+        // D1 shadowbanned verdict; include it so the 600s shadowban backoff survives restart.
+        event_type: { in: ['antirisk_signal_detected', 'reply_visibility_check'] },
         created_at: { gte: since },
         persona_id: { not: null },
       },
@@ -280,8 +295,8 @@ export async function rebuildBackoffFromDb(): Promise<void> {
 
   for (const row of rows) {
     if (!row.persona_id || !row.error_subclass) continue;
-    // Only reconstruct for known subclasses.
-    if (row.error_subclass !== 'behavior_anomaly' && row.error_subclass !== 'rate_limit') {
+    // Only reconstruct for known subclasses (incl. TASK-002 'shadowban').
+    if (row.error_subclass !== 'behavior_anomaly' && row.error_subclass !== 'rate_limit' && row.error_subclass !== 'shadowban') {
       continue;
     }
     const subclass = row.error_subclass as AntiriskSubclass;

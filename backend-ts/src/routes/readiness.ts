@@ -73,6 +73,16 @@ export type ReadinessRouteDependencies = {
   // probeBilibiliAuthScheduler — not_logged_in flips this red (fail-closed: account no
   // longer alive = readiness blocker). Sync state read from probe-scheduler.ts module.
   isAuthProbeHealthy: () => boolean;
+  // TASK-002/D1 gate: reply-visibility probe shadowbanned verdict count within the rolling
+  // window. A confirmed shadowbanned publish (postReply succeeded but the rpid is absent
+  // from the comment list in BOTH views) means the platform is silently swallowing replies —
+  // the persona is effectively shadowbanned, a sustained封号-grade signal. Fail-closed:
+  // any shadowbanned event_type='reply_visibility_check' AND error_subclass='shadowban' in
+  // the window flips this red (readiness blocker). probe_failed verdicts do NOT flip red
+  // (C-004 fail-open — a transient probe glitch must not block readiness). Async because it
+  // counts ObservabilityEvent rows; the readiness route awaits it. DB error → fail-closed
+  // false (mirrors isBehaviorAnomalyCountZero: a DB blip must NOT be assumed safe).
+  isReplyVisibilityHealthy: () => Promise<boolean> | boolean;
 };
 
 // TASK-003/P3 SC4 gate: antirisk three-layer flag aggregation. All four antirisk
@@ -305,6 +315,14 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (!deps.isAuthProbeHealthy()) {
       deps.addBlocker(productBlockers, 'antirisk:auth_probe_healthy');
     }
+    // TASK-002/D1 gate: reply-visibility shadowbanned verdict in the window. Any confirmed
+    // shadowbanned publish (postReply ok but rpid absent in both views) means the platform
+    // is silently swallowing replies — fail-closed readiness blocker. probe_failed does NOT
+    // block (C-004 fail-open).
+    const replyVisibilityHealthy = await deps.isReplyVisibilityHealthy();
+    if (!replyVisibilityHealthy) {
+      deps.addBlocker(productBlockers, 'antirisk:reply_visibility_verified');
+    }
 
     const productReady = foundationReady && deliveryReady && productBlockers.length === 0;
 
@@ -340,6 +358,9 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
       { key: 'behavior_anomaly_count_zero', passed: behaviorAnomalyCountZero },
       // TASK-005/P3 SC5 antirisk survival gate: probeBilibiliAuth not_logged_in → red.
       { key: 'auth_probe_healthy', passed: deps.isAuthProbeHealthy() },
+      // TASK-002/D1 antirisk gate: reply-visibility shadowbanned verdict in the window → red
+      // (fail-closed). probe_failed does NOT flip red (C-004 fail-open).
+      { key: 'reply_visibility_verified', passed: replyVisibilityHealthy },
       // security
       { key: 'credential_encryption_key_present', passed: credentialEncryptionKeyPresent },
     ];

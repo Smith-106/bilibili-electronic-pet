@@ -9,10 +9,11 @@
 import type { PublishIntentService, PublishReplyService } from './interfaces.js';
 import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
-import { postReply } from './bilibili-client.js';
-import { getActivePersonaName } from './bilibili-runtime-config.js';
-import { recordAntiriskSignal, getObservabilityDropCount } from './observability.js';
+import { postReply, verifyReplyVisible } from './bilibili-client.js';
+import { getActivePersonaName, loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
+import { recordAntiriskSignal, recordObservabilityEvent, getObservabilityDropCount } from './observability.js';
 import { isPersonaInBackoff, applyBackoff } from './backoff-decision.js';
+import { checkPersonaRateLimit } from './persona-token-bucket.js';
 import { createHash } from 'node:crypto';
 
 // ── Publisher mode configuration ───────────────────────────
@@ -235,15 +236,32 @@ function parseMockFromEnv(): MockPostReplyResult | undefined {
  * Antirisk error subclass classifier (coding spec: 错误码352须解析v_voucher子类分流).
  *
  * Bilibili -352 → behavior_anomaly (退避 cap 600s); HTTP 429 / generic rate limit → rate_limit (cap 60s).
- * Inspects the error message/code for known signals. Returns null when the error
- * is not an antirisk signal (then it flows through the normal publish_failed path).
+ * TASK-002/D1: post-publish visibility probe shadowbanned verdict → 'shadowban' (cap 600s,
+ * mirrors behavior_anomaly — a platform-side shadowban is a sustained-封号-grade signal so it
+ * shares the high-severity backoff cap). Inspects the error message/code for known signals.
+ * Returns null when the error is not an antirisk signal (then it flows through the normal
+ * publish_failed path).
+ *
+ * The 'shadowban' branch is matched when publishReal re-throws a structured marker carrying
+ * the shadowbanned probe verdict (mirrors the existing -352 re-throw pattern): the catch path
+ * then routes through applyBackoff('shadowban') + recordAntiriskSignal. A probe_failed verdict
+ * MUST NOT match here — it is fail-open and only recorded in PublishLog (C-004).
  */
-export type AntiriskSubclass = 'behavior_anomaly' | 'rate_limit';
+export type AntiriskSubclass = 'behavior_anomaly' | 'rate_limit' | 'shadowban';
 
 export function classifyAntiriskSubclass(error: unknown): AntiriskSubclass | null {
   const message = error instanceof Error ? error.message : typeof error === 'string' ? error : String(error ?? '');
   const lower = message.toLowerCase();
   const code = (error as { code?: unknown })?.code;
+
+  // TASK-002/D1: shadowbanned visibility verdict (probe succeeded but the reply is absent
+  // from the comment list in both views). publishReal throws a marker carrying the
+  // 'shadowbanned' token + the probe_method so this classifier routes it to the shadowban
+  // backoff + readiness gate. probe_failed verdicts never reach here (publishReal records
+  // those as a published row with a probe_failed failure_reason and does NOT throw).
+  if (lower.includes('shadowbanned') || lower.includes('shadowban')) {
+    return 'shadowban';
+  }
 
   // -352 behavior_anomaly (Bilibili risk-control). Also match the v_voucher /
   // behavior_anomaly markers per coding spec.
@@ -506,6 +524,7 @@ async function publishWebhook(
 async function publishReal(
   context: PublishLogContext,
   replyText: string,
+  traceId?: string,
 ): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
   // STAGE_DAILY_QUOTA (P3 warmup): limited real_publish 配额 env, 区分 limited/full.
   // 当日 publishLog status='published' count >= STAGE_DAILY_QUOTA → stage_quota_exceeded.
@@ -573,18 +592,136 @@ async function publishReal(
 
   const replyHash = createReplyHash(context.commentId, replyText);
 
+  // TASK-002/D1: post-publish visibility self-check. postReply returned a real rpid, but the
+  // platform may have silently shadowbanned the reply (Avalon 阿瓦隆风控 ShadowBan 8-state —
+  // the reply is accepted with 200 + rpid yet never appears in the public comment list). Probe
+  // the comment list via verifyReplyVisible to close the platform-side semantic gap: a
+  // publish_success MUST mean the reply is actually visible, not just accepted.
+  //
+  // C-008: the probe shares the C-layer persona token bucket (capacity 20 / refill 20-min) —
+  // checkPersonaRateLimit consumes 1 token so the probe counts against the publish quota (a
+  // probe-heavy loop leaves fewer tokens for real publishing). A null persona never consumes
+  // (checkPersonaRateLimit fail-open on null). The probe runs regardless of the rate-limit
+  // verdict: the publish already succeeded, withholding the visibility check would hide a
+  // shadowban — the token accounting is the budget signal, not a probe gate.
+  const probePersonaId = await resolveActivePersonaId();
+  checkPersonaRateLimit(probePersonaId);
+
+  const probeConfig = await loadBilibiliRuntimeConfig();
+  // Visibility probe outcome — default fail-open ('probe_failed' with reason 'config_unavailable')
+  // when the runtime config could not be reloaded: the publish itself succeeded (postReply
+  // surfaced the rpid), so a config-reload gap MUST NOT flip this to shadowbanned (C-004
+  // fail-open). Only a successful dual-view probe that finds the rpid absent in BOTH views
+  // is classified shadowbanned (fail-closed).
+  let visibilityStatus: 'visible' | 'shadowbanned' | 'probe_failed' = 'probe_failed';
+  let visibilityProbeMethod: 'sender_cookie' | 'seek_rpid' | null = null;
+  let visibilityReason: string | null = 'config_unavailable';
+  if (probeConfig) {
+    const probeResult = await verifyReplyVisible(result.rpid, context.commentId, probeConfig);
+    visibilityStatus = probeResult.status;
+    visibilityProbeMethod = probeResult.probe_method;
+    visibilityReason = probeResult.reason ?? null;
+  }
+
+  // Map the probe verdict to the PublishLog row. Reuses the existing `status` column to carry
+  // the visibility_status value (status='shadowbanned' on a confirmed shadowban; 'published'
+  // otherwise) + `failure_reason` for the probe_method/detail — ZERO schema migration
+  // (C-002/ZM-001: no new ReplyVisibilityLog model, no metadata JSON column added; the
+  // visibility_status semantic rides on the existing status enum). The ObservabilityEvent
+  // side of the double-write (event_type='reply_visibility_check') is persisted below only
+  // for the shadowbanned verdict (antirisk signal path) per C-004 — probe_failed is fail-open
+  // and records NO antirisk signal (only this PublishLog row + a normal observability event).
+  const publishLogStatus =
+    visibilityStatus === 'shadowbanned'
+      ? 'shadowbanned'
+      : visibilityStatus === 'probe_failed'
+        ? 'published' // publish succeeded; probe faulted — keep 'published', record detail in failure_reason
+        : 'published';
+  const publishLogFailureReason =
+    visibilityStatus === 'shadowbanned'
+      ? `shadowbanned:${visibilityProbeMethod ?? 'unknown'}`
+      : visibilityStatus === 'probe_failed'
+        ? `probe_failed:${visibilityReason ?? 'unknown'}`
+        : null;
+
   await safeCreatePublishLog({
     platform: context.platform,
     canonical_comment_id: context.canonicalCommentId,
     comment_id: context.commentId,
     reply_hash: replyHash,
     source: context.source,
-    status: 'published',
+    // visibility_status (TASK-002/D1): 'shadowbanned' on a confirmed shadowban, else 'published'.
+    status: publishLogStatus,
     published_at: publishedAt,
-    failure_reason: null,
+    failure_reason: publishLogFailureReason,
   });
 
-  return [true, 'published', publishedAt, { new_rpid: result.rpid }];
+  // C-002/C-004 double-write: only a confirmed shadowbanned verdict records an antirisk
+  // signal (event_type='reply_visibility_check', error_subclass='shadowban') + applies the
+  // A-layer 600s backoff (mirrors behavior_anomaly cap). probe_failed records NOTHING here
+  // (fail-open — a transient probe glitch must not trip 600s backoff / readiness red); the
+  // visible verdict records a normal fire-and-forget observability event for online eval.
+  if (visibilityStatus === 'shadowbanned') {
+    // applyBackoff writes its own ObservabilityEvent {event_type:'backoff_applied'} with
+    // error_subclass='shadowban' (fail-closed, never throws) — TASK-004 A-layer seam.
+    await applyBackoff(probePersonaId, 'shadowban', traceId ?? context.canonicalCommentId);
+    await recordAntiriskSignal({
+      event_type: 'reply_visibility_check',
+      trace_id: traceId ?? context.canonicalCommentId,
+      comment_id: context.commentId,
+      status: 'shadowbanned',
+      error_subclass: 'shadowban',
+      persona_id: probePersonaId,
+      metadata: {
+        visibility_status: 'shadowbanned',
+        probe_method: visibilityProbeMethod ?? 'unknown',
+        rpid: result.rpid,
+        reason: visibilityReason ?? 'rpid_absent',
+      },
+    });
+    // Fail-closed tuple: the publish is not actually visible, so surface failure (not
+    // 'published') so the catch path / circuit breaker / readiness all reflect the truth.
+    // Does NOT throw (L7 tuple contract) — publishIntentWithResult returns this tuple and
+    // classifyAntiriskSubclass is NOT re-invoked (the antirisk signal was already recorded
+    // inline above, the backoff already applied).
+    return [false, 'shadowbanned', publishedAt, { new_rpid: result.rpid, visibility: visibilityStatus }];
+  }
+
+  // visible / probe_failed: record a normal observability event (fire-and-forget) for online
+  // eval of the visibility-probe pass rate. NOT an antirisk signal.
+  void recordObservabilityEvent({
+    event_type: 'reply_visibility_check',
+    trace_id: traceId ?? context.canonicalCommentId,
+    comment_id: context.commentId,
+    status: visibilityStatus,
+    metadata: {
+      visibility_status: visibilityStatus,
+      probe_method: visibilityProbeMethod ?? 'unknown',
+      rpid: result.rpid,
+      reason: visibilityReason,
+    },
+  }).catch((error: unknown) => {
+    // Fire-and-forget failure must not break the publish tuple (mirrors recordObservabilityEvent
+    // containment in observability.ts). Log only.
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'reply_visibility_check_record_failed',
+        trace_id: traceId ?? context.canonicalCommentId,
+        comment_id: context.commentId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
+
+  if (visibilityStatus === 'probe_failed') {
+    // Fail-open: publish succeeded, probe faulted. Return published (not 'published_visible'
+    // to avoid a status enum explosion — the probe detail is in failure_reason). Keep the
+    // success tuple so the publish pipeline proceeds; the probe detail is auditable.
+    return [true, 'published', publishedAt, { new_rpid: result.rpid, visibility: 'probe_failed' }];
+  }
+
+  return [true, 'published', publishedAt, { new_rpid: result.rpid, visibility: 'visible' }];
 }
 
 // ── Public API ─────────────────────────────────────────────
@@ -724,7 +861,7 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
         break;
       case 'real_publish':
       default:
-        result = await publishReal(context, replyText);
+        result = await publishReal(context, replyText, intent.traceId);
         break;
     }
 

@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { postReplyMock, prismaMock, getActivePersonaNameMock } = vi.hoisted(() => ({
+const { postReplyMock, verifyReplyVisibleMock, loadBilibiliRuntimeConfigMock, prismaMock, getActivePersonaNameMock } = vi.hoisted(() => ({
   postReplyMock: vi.fn(),
+  verifyReplyVisibleMock: vi.fn(),
+  loadBilibiliRuntimeConfigMock: vi.fn(),
   prismaMock: {
     publishLog: {
       findFirst: vi.fn(),
@@ -10,6 +12,12 @@ const { postReplyMock, prismaMock, getActivePersonaNameMock } = vi.hoisted(() =>
     },
     observabilityEvent: {
       create: vi.fn(),
+      // TASK-002/D1: the visibility probe's visible/probe_failed path records a normal
+      // observability event via recordObservabilityEvent → pushToBuffer → background
+      // createMany flush. Without a createMany mock, the flush throws and dropCount climbs,
+      // which would flip isStageRealPublishReady() false (getObservabilityDropCount()!==0)
+      // and break the stage_quota test. Stub createMany so the flush is a no-op.
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
   },
   getActivePersonaNameMock: vi.fn(),
@@ -21,15 +29,19 @@ vi.mock('../src/services/db-queries.js', () => ({
 
 vi.mock('../src/services/bilibili-client.js', () => ({
   postReply: postReplyMock,
+  verifyReplyVisible: verifyReplyVisibleMock,
 }));
 
 vi.mock('../src/services/bilibili-runtime-config.js', () => ({
   getActivePersonaName: getActivePersonaNameMock,
+  loadBilibiliRuntimeConfig: loadBilibiliRuntimeConfigMock,
 }));
 
 const { publishIntentWithResult, publishReplyWithResult, setStageReadyResolver, __resetStageReadyResolverForTest } = await import('../src/services/publisher.js');
 
 const { applyBackoff, __resetBackoffMapForTest } = await import('../src/services/backoff-decision.js');
+
+const { __resetObservabilityBufferForTest } = await import('../src/services/observability.js');
 
 const trackedEnvKeys = [
   'PUBLISHER_MODE',
@@ -42,10 +54,12 @@ const trackedEnvKeys = [
   'ANTIRISK_BACKOFF_ENABLED',
   'ANTIRISK_BACKOFF_CAP_RATE_LIMIT',
   'ANTIRISK_BACKOFF_CAP_BEHAVIOR_ANOMALY',
+  'ANTIRISK_BACKOFF_CAP_SHADOWBAN',
   'STAGE_GATE_ENABLED',
   'STAGE_REAL_PUBLISH_READY',
   'STAGE_DAILY_QUOTA',
   'PUBLISHER_SIMULATED_RESPONSES',
+  'ANTIRISK_C_RATE_LIMIT_ENABLED',
 ] as const;
 
 function clearPublisherEnv(): void {
@@ -79,13 +93,42 @@ beforeEach(() => {
   prismaMock.publishLog.count.mockReset();
   prismaMock.observabilityEvent.create.mockReset();
   postReplyMock.mockReset();
+  verifyReplyVisibleMock.mockReset();
+  loadBilibiliRuntimeConfigMock.mockReset();
+  // TASK-002/D1 default probe path: a visible verdict so the legacy real_publish success
+  // tests (which do not mock the probe) still get status='published'. Tests that exercise
+  // the shadowbanned / probe_failed paths override this mock per-case.
+  verifyReplyVisibleMock.mockResolvedValue({
+    visible: true,
+    status: 'visible',
+    probe_method: 'sender_cookie',
+  });
+  loadBilibiliRuntimeConfigMock.mockResolvedValue({
+    sessdata: 'sess',
+    biliJct: 'jct',
+    buvid: 'buv',
+    buvid4: '',
+    dedeuserid: '',
+    baseUrl: 'https://api.bilibili.com',
+    userAgent: 'TestAgent/1.0',
+    timeout: 30000,
+    retries: 3,
+    source: 'database',
+    credentialId: 1,
+    credentialName: 'probe-persona',
+  });
   prismaMock.publishLog.findFirst.mockResolvedValue(null);
   prismaMock.publishLog.create.mockResolvedValue({ id: 1 });
   prismaMock.publishLog.count.mockResolvedValue(0);
   prismaMock.observabilityEvent.create.mockResolvedValue({ id: 1 });
+  prismaMock.observabilityEvent.createMany.mockResolvedValue({ count: 0 });
   getActivePersonaNameMock.mockResolvedValue(null);
   __resetBackoffMapForTest();
   __resetStageReadyResolverForTest();
+  // TASK-002/D1: reset the observability buffer + dropCount so the visible/probe_failed
+  // probe path's fire-and-forget recordObservabilityEvent does not leak dropCount across
+  // cases (would otherwise flip isStageRealPublishReady false via getObservabilityDropCount).
+  __resetObservabilityBufferForTest();
 });
 
 afterEach(() => {
@@ -94,6 +137,7 @@ afterEach(() => {
   clearPublisherEnv();
   __resetBackoffMapForTest();
   __resetStageReadyResolverForTest();
+  __resetObservabilityBufferForTest();
 });
 
 describe('publisher mode coverage', () => {
@@ -343,7 +387,10 @@ describe('publisher mode coverage', () => {
 
     expect(success[0]).toBe(true);
     expect(success[1]).toBe('published');
-    expect(success[3]).toEqual({ new_rpid: 'rpid-1' });
+    // TASK-002/D1: the visibility probe (default mock returns 'visible') enriches the
+    // success tuple metadata with the visibility verdict without changing the 'published'
+    // status — the publish is still considered successful when the reply is visible.
+    expect(success[3]).toEqual({ new_rpid: 'rpid-1', visibility: 'visible' });
     expect(failure[0]).toBe(false);
     expect(failure[1]).toBe('publish_failed');
     expect(prismaMock.publishLog.create).toHaveBeenLastCalledWith(
@@ -475,6 +522,176 @@ describe('publisher mode coverage', () => {
       }),
     );
     expect(getActivePersonaNameMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('records a shadowbanned verdict → applyBackoff(600s) + reply_visibility_check antirisk signal + tuple [false,"shadowbanned",...] (TASK-002/D1, C-002/C-004 fail-closed)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    // probePersonaId resolves to the active persona; entry backoff check uses the same value.
+    getActivePersonaNameMock.mockResolvedValue('shadowbanned-persona');
+    postReplyMock.mockResolvedValueOnce({ success: true, rpid: 'rpid-shadow' });
+    // Probe returns shadowbanned (both views absent) → fail-closed.
+    verifyReplyVisibleMock.mockResolvedValueOnce({
+      visible: false,
+      status: 'shadowbanned',
+      probe_method: 'seek_rpid',
+      reason: 'rpid_absent_dual_view',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // Fail-closed tuple: the publish is not actually visible, so surface failure.
+    expect(result[0]).toBe(false);
+    expect(result[1]).toBe('shadowbanned');
+    expect(result[2]).toBeInstanceOf(Date);
+    expect(result[3]).toMatchObject({ new_rpid: 'rpid-shadow', visibility: 'shadowbanned' });
+
+    // PublishLog reuses the existing `status` column for the shadowbanned verdict (zero
+    // migration — no new ReplyVisibilityLog model, C-002/ZM-001), and failure_reason carries
+    // the probe_method detail.
+    expect(prismaMock.publishLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'shadowbanned',
+          failure_reason: 'shadowbanned:seek_rpid',
+        }),
+      }),
+    );
+
+    // A-layer backoff applied (cap 600s, mirrors behavior_anomaly).
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'backoff_applied',
+          error_subclass: 'shadowban',
+          persona_id: 'shadowbanned-persona',
+          event_metadata: JSON.stringify({ cap_seconds: 600 }),
+        }),
+      }),
+    );
+    // C-002 double-write: reply_visibility_check antirisk signal recorded with the
+    // shadowbanned verdict.
+    expect(prismaMock.observabilityEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'reply_visibility_check',
+          error_subclass: 'shadowban',
+          status: 'shadowbanned',
+          persona_id: 'shadowbanned-persona',
+        }),
+      }),
+    );
+
+    // C-008: the probe consumed one token from the shared C-layer bucket (single deduction
+    // per publish regardless of verdict). Verify the bucket was decremented (the persona is
+    // 'shadowbanned-persona').
+    const { __getBucketForTest } = await import('../src/services/persona-token-bucket.js');
+    const bucket = __getBucketForTest('shadowbanned-persona');
+    expect(bucket).toBeDefined();
+    // Capacity 20 - 1 (probe) = 19 remaining (within float tolerance).
+    expect(bucket!.tokens).toBeLessThanOrEqual(19.01);
+    expect(bucket!.tokens).toBeGreaterThanOrEqual(18.99);
+
+    // Verify the persona is now in backoff (600s shadowban cap).
+    const { isPersonaInBackoff } = await import('../src/services/backoff-decision.js');
+    expect(isPersonaInBackoff('shadowbanned-persona')).toBe(true);
+  });
+
+  it('records a probe_failed verdict → fail-open (no applyBackoff, no antirisk signal, status="published") (TASK-002/D1, C-004 fail-open)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    getActivePersonaNameMock.mockResolvedValue('probe-failed-persona');
+    postReplyMock.mockResolvedValueOnce({ success: true, rpid: 'rpid-probe-fail' });
+    // Probe faults (network/5xx) → fail-open.
+    verifyReplyVisibleMock.mockResolvedValueOnce({
+      visible: false,
+      status: 'probe_failed',
+      probe_method: 'sender_cookie',
+      reason: 'fetch_failed',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    // Fail-open: publish succeeded, probe faulted → still 'published' (not shadowbanned).
+    expect(result[0]).toBe(true);
+    expect(result[1]).toBe('published');
+    expect(result[2]).toBeInstanceOf(Date);
+    expect(result[3]).toMatchObject({ new_rpid: 'rpid-probe-fail', visibility: 'probe_failed' });
+
+    // PublishLog keeps status='published' (the publish did succeed), failure_reason records
+    // the probe_failed detail for audit.
+    expect(prismaMock.publishLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'published',
+          failure_reason: 'probe_failed:fetch_failed',
+        }),
+      }),
+    );
+
+    // C-004 fail-open: NO backoff_applied, NO reply_visibility_check antirisk signal.
+    expect(prismaMock.observabilityEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'backoff_applied',
+          error_subclass: 'shadowban',
+        }),
+      }),
+    );
+    expect(prismaMock.observabilityEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          event_type: 'reply_visibility_check',
+          error_subclass: 'shadowban',
+        }),
+      }),
+    );
+    // The visible/probe_failed path records a normal (non-antirisk) observability event for
+    // online eval — verify it was recorded with status='probe_failed' (NOT error_subclass).
+    expect(prismaMock.observabilityEvent.create).not.toHaveBeenCalled();
+    // (recordObservabilityEvent buffers to the in-memory observability buffer + background
+    // flush, NOT prisma.observabilityEvent.create — so the create spy stays untouched here.
+    // The fire-and-forget path is covered by observability.test.ts.)
+
+    // Fail-open: persona NOT in backoff (probe_failed did not apply backoff).
+    const { isPersonaInBackoff } = await import('../src/services/backoff-decision.js');
+    expect(isPersonaInBackoff('probe-failed-persona')).toBe(false);
+  });
+
+  it('records a visible verdict → success tuple with visibility="visible" and no antirisk signal (TASK-002/D1)', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    process.env.PUBLISHER_MODE = 'real_publish';
+    getActivePersonaNameMock.mockResolvedValue('visible-persona');
+    postReplyMock.mockResolvedValueOnce({ success: true, rpid: 'rpid-visible' });
+    verifyReplyVisibleMock.mockResolvedValueOnce({
+      visible: true,
+      status: 'visible',
+      probe_method: 'sender_cookie',
+    });
+
+    const result = await publishIntentWithResult(buildIntent());
+
+    expect(result.slice(0, 2)).toEqual([true, 'published']);
+    expect(result[3]).toMatchObject({ new_rpid: 'rpid-visible', visibility: 'visible' });
+    // PublishLog status='published', failure_reason=null (clean publish, reply visible).
+    expect(prismaMock.publishLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'published',
+          failure_reason: null,
+        }),
+      }),
+    );
+    // No antirisk signal (backoff_applied / reply_visibility_check with shadowban) recorded.
+    expect(prismaMock.observabilityEvent.create).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ error_subclass: 'shadowban' }),
+      }),
+    );
   });
 
   it('falls back to persona_id=null when getActivePersonaName fails without breaking the tuple contract', async () => {

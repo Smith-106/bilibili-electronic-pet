@@ -291,8 +291,19 @@ export const recordObservabilityEvent: RecordObservabilityEventService = async (
 
 /**
  * Antirisk signal input. error_subclass is the subclass classifier
- * (-352 behavior_anomaly / -429 rate_limit per coding spec). persona_id is the
+ * (-352 behavior_anomaly / -429 rate_limit / 'shadowban' for TASK-002 D1 reply
+ * visibility probe shadowbanned verdicts per coding spec). persona_id is the
  * optional persona attribution.
+ *
+ * TASK-002/D1 (C-002): the reply-visibility probe persists its outcome through
+ * BOTH PublishLog (reusing the existing `status` + `failure_reason` columns, zero
+ * migration — no new ReplyVisibilityLog model) AND a recordAntiriskSignal call
+ * with event_type='reply_visibility_check'. Only a confirmed shadowbanned verdict
+ * records an antirisk signal (error_subclass='shadowban'); a probe_failed verdict
+ * is fail-open and records NOTHING here (it surfaces only in PublishLog metadata
+ * via the reused failure_reason column) — C-004 strict error-type separation so a
+ * transient probe glitch can never trip the 600s backoff / readiness red that a
+ * real shadowban warrants.
  */
 export type RecordAntiriskSignalInput = {
   event_type: string;

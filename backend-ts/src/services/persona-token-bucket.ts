@@ -87,6 +87,15 @@ function refill(bucket: TokenBucket, now: number): void {
  * only answers the rate-limit question.
  *
  * L8: when ANTIRISK_C_RATE_LIMIT_ENABLED=false, always returns {allowed:true, reason:'ok'}.
+ *
+ * TASK-002/D1 (C-008): the reply-visibility probe (verifyReplyVisible, called from
+ * publisher.ts publishReal after postReply succeeds) ALSO consumes one token via this same
+ * checkPersonaRateLimit call — the probe shares the publish quota (capacity 20 / refill
+ * 20-min), NOT an independent budget. Rationale: the probe is an extra API call per publish
+ * that amplifies request frequency; sharing the bucket keeps total request pressure within
+ * the C-layer rhythm guard so the probe cannot push the persona into -429 territory on its
+ * own. Single deduction per publish: the probe consumes once regardless of its verdict
+ * (visible / shadowbanned / probe_failed), so a probe_failed verdict does NOT re-deduct.
  */
 export function checkPersonaRateLimit(
   persona_id: string | null | undefined,

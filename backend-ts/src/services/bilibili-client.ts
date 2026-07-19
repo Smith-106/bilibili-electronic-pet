@@ -4,6 +4,7 @@
  */
 
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibili-runtime-config.js';
+import { fetchCommentsPage } from './bilibili-poller.js';
 
 // ============================================================
 // Configuration
@@ -235,4 +236,159 @@ export async function probeBilibiliAuth(config?: BilibiliConfig): Promise<Bilibi
 export async function isBilibiliConfigured(): Promise<boolean> {
   const config = await loadBilibiliConfig();
   return !!(config?.sessdata && config?.biliJct && config?.buvid);
+}
+
+// ============================================================
+// Reply visibility self-check (TASK-002 / D1)
+// ============================================================
+
+/**
+ * Outcome of the post-publish visibility probe. `status` is the fail-closed /
+ * fail-open discriminator (C-004):
+ *  - 'visible'       — probe succeeded and the rpid is present in the comment list
+ *  - 'shadowbanned'  — probe succeeded BUT the rpid is absent (fail-closed: triggers
+ *                      'shadowban' antirisk subclass + applyBackoff + readiness red)
+ *  - 'probe_failed'  — probe itself faulted (network / 5xx / timeout); fail-open:
+ *                      MUST NOT trigger backoff or block readiness (a transient probe
+ *                      glitch must not be misclassified as a shadowban and apply a 600s
+ *                      backoff that would withhold legitimate publishing).
+ *
+ * `probe_method` records which view surfaced the verdict:
+ *  - 'sender_cookie' — the probe ran with the publisher's own SESSDATA cookie (default
+ *                       dual-view path; a missing rpid here is the strong shadowban signal)
+ *  - 'seek_rpid'      — the anonymous fallback (no auth cookie) re-listed the page and
+ *                       still did not find the rpid, confirming shadowban across views
+ */
+export type ReplyVisibilityResult = {
+  visible: boolean;
+  status: 'visible' | 'shadowbanned' | 'probe_failed';
+  probe_method: 'sender_cookie' | 'seek_rpid';
+  reason?: string;
+};
+
+/**
+ * Visibility-probe backing config shape. Mirrors the subset of BilibiliRuntimeConfig
+ * that fetchCommentsPage consumes (baseUrl / sessdata / biliJct / buvid / userAgent /
+ * timeout). Typed as an explicit interface so the probe + its tests can pass a minimal
+ * config without constructing a full BilibiliRuntimeConfig (and so the anonymous
+ * seek_rpid fallback can pass a cookieless variant).
+ */
+export interface VisibilityProbeConfig {
+  baseUrl: string;
+  sessdata: string;
+  biliJct: string;
+  buvid: string;
+  userAgent: string;
+  timeout: number;
+}
+
+/**
+ * Verify a freshly-posted reply is actually visible on the Bilibili comment list
+ * (D1 platform-side semantic closure). Returns a fail-closed/fail-open-classified
+ * result; NEVER throws — all fetch/parse failures collapse to status='probe_failed'
+ * so the publisher can applyBackoff only on confirmed shadowbanned verdicts.
+ *
+ * Dual-view probe (R2):
+ *  1. sender_cookie — list /x/v2/reply with the publisher's own SESSDATA cookie. A
+ *     present rpid means visible. A missing rpid is suspicious (the platform may be
+ *     filtering the author's own shadowbanned reply from their own view) so we fall
+ *     through to the anonymous view rather than declaring shadowban on one sample.
+ *  2. seek_rpid fallback — re-list the page WITHOUT the auth cookie (anonymous view).
+ *     If the rpid is still absent, the reply is genuinely not publicly visible →
+ *     'shadowbanned' (fail-closed). If the anonymous view surfaces it, the reply is
+ *     visible to the public (the sender's own view was just filtered) → 'visible'.
+ *
+ * `commentId` is the oid (video aid) the reply was posted under — /x/v2/reply lists
+ * by oid, so we need it to scope the page fetch. Mirrors postReply's oid semantics.
+ *
+ * C-004 error classification:
+ *  - Network / non-2xx HTTP / AbortError from fetchCommentsPage → 'probe_failed'
+ *    (fail-open). The thrown Error.message is NOT persisted verbatim upstream —
+ *    publisher.ts stores only the safe 'probe_failed' enum in failure_reason.
+ *  - Successful list fetch with the rpid absent in BOTH views → 'shadowbanned'
+ *    (fail-closed → shadowban antirisk subclass + applyBackoff + readiness red).
+ */
+export async function verifyReplyVisible(
+  rpid: string | number,
+  commentId: string,
+  config: VisibilityProbeConfig,
+): Promise<ReplyVisibilityResult> {
+  const targetRpid = Number(rpid);
+  if (!Number.isFinite(targetRpid) || targetRpid <= 0) {
+    // A non-finite / non-positive rpid means postReply did not actually surface a real
+    // rpid — there is nothing to verify. Treat as probe_failed (fail-open) rather than
+    // shadowbanned so we do not punish a publish that did not even return an rpid.
+    return {
+      visible: false,
+      status: 'probe_failed',
+      probe_method: 'sender_cookie',
+      reason: 'invalid_rpid',
+    };
+  }
+
+  const aid = Number(commentId);
+  if (!Number.isFinite(aid) || aid <= 0) {
+    // Without a valid oid we cannot list the comment page — fail-open (probe_failed),
+    // not fail-closed (shadowbanned), so a malformed commentId does not trigger backoff.
+    return {
+      visible: false,
+      status: 'probe_failed',
+      probe_method: 'sender_cookie',
+      reason: 'invalid_oid',
+    };
+  }
+
+  // View 1: sender_cookie (publisher's own auth). fetchCommentsPage throws on
+  // network / non-2xx / abort — catch collapses to probe_failed (fail-open, C-004).
+  try {
+    const replies = await fetchCommentsPage(aid, 1, config);
+    if (replies.some((r) => r.rpid === targetRpid)) {
+      return { visible: true, status: 'visible', probe_method: 'sender_cookie' };
+    }
+  } catch {
+    // Fail-open: a probe infrastructure fault is NOT a shadowban. Persist the safe
+    // enum upstream (publisher stores 'probe_failed' in failure_reason), never the
+    // raw error.message (can carry URL fragments / upstream bodies — BUG-006 pattern).
+    return {
+      visible: false,
+      status: 'probe_failed',
+      probe_method: 'sender_cookie',
+      reason: 'fetch_failed',
+    };
+  }
+
+  // View 2: seek_rpid fallback (anonymous — no auth cookie). The Bilibili reply list
+  // endpoint is public; passing an empty SESSDATA/bili_jct/buvid yields the anonymous
+  // view. A shadowbanned reply is absent from BOTH views; a reply visible to the public
+  // but filtered from the author's own view surfaces here.
+  const anonymousConfig: VisibilityProbeConfig = {
+    ...config,
+    sessdata: '',
+    biliJct: '',
+    buvid: '',
+  };
+  try {
+    const replies = await fetchCommentsPage(aid, 1, anonymousConfig);
+    if (replies.some((r) => r.rpid === targetRpid)) {
+      // Anonymous view sees the reply → it is publicly visible (sender's own view was
+      // just filtered, e.g. by author-self-hide). Not a shadowban.
+      return { visible: true, status: 'visible', probe_method: 'seek_rpid' };
+    }
+  } catch {
+    // seek_rpid fetch faulted — still fail-open (probe_failed), never shadowbanned.
+    return {
+      visible: false,
+      status: 'probe_failed',
+      probe_method: 'seek_rpid',
+      reason: 'seek_fetch_failed',
+    };
+  }
+
+  // Both views succeeded and neither surfaced the rpid — fail-closed: shadowbanned.
+  return {
+    visible: false,
+    status: 'shadowbanned',
+    probe_method: 'seek_rpid',
+    reason: 'rpid_absent_dual_view',
+  };
 }

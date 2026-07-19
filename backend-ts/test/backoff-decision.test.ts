@@ -33,6 +33,7 @@ const {
 const trackedEnvKeys = [
   'ANTIRISK_BACKOFF_ENABLED',
   'ANTIRISK_BACKOFF_CAP_BEHAVIOR_ANOMALY',
+  'ANTIRISK_BACKOFF_CAP_SHADOWBAN',
   'ANTIRISK_BACKOFF_CAP_RATE_LIMIT',
 ] as const;
 
@@ -93,6 +94,44 @@ describe('backoff-decision applyBackoff', () => {
     expect(recordAntiriskSignalMock).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: { cap_seconds: 60 },
+      }),
+    );
+  });
+
+  it('sets backoffMap with cap 600s for shadowban (TASK-002/D1, mirrors behavior_anomaly)', async () => {
+    const before = Date.now();
+    await applyBackoff('persona-shadow', 'shadowban', 'trace-shadow');
+
+    const state = __getBackoffStateForTest('persona-shadow');
+    expect(state).toBeDefined();
+    expect(state!.subclass).toBe('shadowban');
+    // shadowban cap mirrors behavior_anomaly (600s) — a platform-side shadowban is a
+    // sustained封号-grade signal (reply silently invisible), so it shares the high-severity cap.
+    expect(state!.backoffUntil).toBeGreaterThanOrEqual(before + 600 * 1000 - 50);
+    expect(state!.backoffUntil).toBeLessThanOrEqual(Date.now() + 600 * 1000 + 50);
+    expect(recordAntiriskSignalMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event_type: 'backoff_applied',
+        persona_id: 'persona-shadow',
+        error_subclass: 'shadowban',
+        status: 'shadowban',
+        metadata: { cap_seconds: 600 },
+      }),
+    );
+  });
+
+  it('honors configurable shadowban cap via env (TASK-002/D1)', async () => {
+    process.env.ANTIRISK_BACKOFF_CAP_SHADOWBAN = '120';
+    const before = Date.now();
+    await applyBackoff('persona-shadow-env', 'shadowban', 'trace-shadow-env');
+
+    const state = __getBackoffStateForTest('persona-shadow-env');
+    expect(state).toBeDefined();
+    expect(state!.backoffUntil).toBeGreaterThanOrEqual(before + 120 * 1000 - 50);
+    expect(state!.backoffUntil).toBeLessThanOrEqual(Date.now() + 120 * 1000 + 50);
+    expect(recordAntiriskSignalMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: { cap_seconds: 120 },
       }),
     );
   });
@@ -173,6 +212,8 @@ describe('backoff-decision rebuildBackoffFromDb', () => {
       { persona_id: 'persona-J', error_subclass: 'unknown_subclass', created_at: createdBehavior },
       // Null persona — skipped.
       { persona_id: null, error_subclass: 'behavior_anomaly', created_at: createdBehavior },
+      // TASK-002/D1: shadowban row from 30s ago → cap 600s → backoffUntil = created_at + 600s (active).
+      { persona_id: 'persona-K', error_subclass: 'shadowban', created_at: createdBehavior },
     ]);
 
     await rebuildBackoffFromDb();
@@ -181,6 +222,7 @@ describe('backoff-decision rebuildBackoffFromDb', () => {
     const stateH = __getBackoffStateForTest('persona-H');
     const stateI = __getBackoffStateForTest('persona-I');
     const stateJ = __getBackoffStateForTest('persona-J');
+    const stateK = __getBackoffStateForTest('persona-K');
 
     expect(stateG).toBeDefined();
     expect(stateG!.subclass).toBe('behavior_anomaly');
@@ -195,11 +237,17 @@ describe('backoff-decision rebuildBackoffFromDb', () => {
     // Unknown subclass skipped.
     expect(stateJ).toBeUndefined();
 
-    // Queries antirisk_signal_detected within the max cap window (600s).
+    // TASK-002/D1: shadowban reconstructed with the 600s cap (mirrors behavior_anomaly).
+    expect(stateK).toBeDefined();
+    expect(stateK!.subclass).toBe('shadowban');
+    expect(stateK!.backoffUntil).toBe(createdBehavior.getTime() + 600 * 1000);
+
+    // Queries antirisk_signal_detected + reply_visibility_check (TASK-002/D1 shadowban)
+    // within the max cap window (600s).
     expect(prismaMock.observabilityEvent.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
-          event_type: 'antirisk_signal_detected',
+          event_type: { in: ['antirisk_signal_detected', 'reply_visibility_check'] },
           persona_id: { not: null },
         }),
       }),
