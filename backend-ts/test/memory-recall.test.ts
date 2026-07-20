@@ -5,9 +5,10 @@ import type { MemoryItemRecord } from '../src/app/memory/types.js';
 import type { MemoryRepository } from '../src/infra/db/repositories/memory-repository.js';
 import { __llmClientTesting } from '../src/services/llm-client.js';
 
-// MEMORY_RECALL_LIMIT env (TASK-004 G4): 与 llm-client.ts loadLLMConfig 同 process.env 内联读取 pattern
-// (TASK-003 发现 trackedEnvKeys 是各测试文件本地 const, 非中心列表 — 故本文件独立维护).
-const trackedEnvKeys = ['MEMORY_RECALL_LIMIT'] as const;
+// MEMORY_RECALL_LIMIT + MEMORY_CONFIDENCE_THRESHOLD env (TASK-004 G4 / TASK-M3-004 G4): 与 llm-client.ts
+// loadLLMConfig 同 process.env 内联读取 pattern (TASK-003 发现 trackedEnvKeys 是各测试文件本地 const, 非中心列表
+// — 故本文件独立维护).
+const trackedEnvKeys = ['MEMORY_RECALL_LIMIT', 'MEMORY_CONFIDENCE_THRESHOLD'] as const;
 
 const originalEnv = Object.fromEntries(trackedEnvKeys.map((key) => [key, process.env[key]])) as Record<
   (typeof trackedEnvKeys)[number],
@@ -105,6 +106,137 @@ describe('D3 memory recall (TASK-004 G4, C-003/C-009)', () => {
       expect(__memoryServiceTesting.readConfidence(buildItem({ id: 1, item_metadata: { confidence: 'high' } }))).toBe(0);
       expect(__memoryServiceTesting.readConfidence(buildItem({ id: 1, item_metadata: { confidence: NaN } }))).toBe(0);
       expect(__memoryServiceTesting.readConfidence(buildItem({ id: 1, item_metadata: { confidence: Infinity } }))).toBe(0);
+    });
+  });
+
+  describe('resolveConfidenceThreshold (TASK-M3-004 G4)', () => {
+    it('defaults to 0 (byte-for-byte full recall) when env unset', () => {
+      expect(__memoryServiceTesting.resolveConfidenceThreshold()).toBe(0);
+    });
+
+    it('honors a valid threshold in [0, 1]', () => {
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '0.5';
+      expect(__memoryServiceTesting.resolveConfidenceThreshold()).toBe(0.5);
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '1';
+      expect(__memoryServiceTesting.resolveConfidenceThreshold()).toBe(1);
+    });
+
+    it('clamps >1 to 1 (strictest, only confidence=1 recalled)', () => {
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '2';
+      expect(__memoryServiceTesting.resolveConfidenceThreshold()).toBe(1);
+    });
+
+    it('falls back to 0 for non-finite or negative values (fail-open)', () => {
+      for (const v of ['-0.5', 'abc', 'NaN', '']) {
+        process.env.MEMORY_CONFIDENCE_THRESHOLD = v;
+        expect(__memoryServiceTesting.resolveConfidenceThreshold()).toBe(0);
+      }
+    });
+  });
+
+  describe('recall confidence threshold filtering (TASK-M3-004 G4)', () => {
+    it('threshold=0 recalls full set byte-for-byte (backward-compat, no filtering)', async () => {
+      // Mixed confidence incl. 0 and low values — threshold=0 MUST recall all.
+      const items: MemoryItemRecord[] = [
+        buildItem({ id: 1, item_metadata: { confidence: 0 }, updated_at: new Date('2026-01-01T00:00:00.000Z') }),
+        buildItem({ id: 2, item_metadata: { confidence: 0.9 }, updated_at: new Date('2026-01-02T00:00:00.000Z') }),
+        buildItem({ id: 3, item_metadata: { confidence: 0.1 }, updated_at: new Date('2026-01-03T00:00:00.000Z') }),
+      ];
+      const repo = buildRepository({ 1: items });
+      const service = createMemoryService(repo);
+
+      const result = await service.recall(1);
+
+      // All 3 recalled (sorted by confidence DESC: 0.9, 0.1, 0).
+      expect(result.items.map((i) => i.id)).toEqual([2, 3, 1]);
+      expect(result.limit).toBe(20);
+    });
+
+    it('threshold=0.5 filters out items below threshold (keeps only confidence >= 0.5)', async () => {
+      const items: MemoryItemRecord[] = [
+        buildItem({ id: 1, item_metadata: { confidence: 0 }, updated_at: new Date('2026-01-01T00:00:00.000Z') }),
+        buildItem({ id: 2, item_metadata: { confidence: 0.9 }, updated_at: new Date('2026-01-02T00:00:00.000Z') }),
+        buildItem({ id: 3, item_metadata: { confidence: 0.4 }, updated_at: new Date('2026-01-03T00:00:00.000Z') }),
+        buildItem({ id: 4, item_metadata: { confidence: 0.5 }, updated_at: new Date('2026-01-04T00:00:00.000Z') }),
+        buildItem({ id: 5, item_metadata: { confidence: 0.6 }, updated_at: new Date('2026-01-05T00:00:00.000Z') }),
+      ];
+      const repo = buildRepository({ 1: items });
+      const service = createMemoryService(repo);
+
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '0.5';
+      const result = await service.recall(1);
+
+      // Only confidence >= 0.5 retained (0.9, 0.6, 0.5), sorted DESC.
+      expect(result.items.map((i) => i.id)).toEqual([2, 5, 4]);
+      expect(result.limit).toBe(20);
+    });
+
+    it('threshold>0 returns empty when all items below threshold (fail-open, no throw)', async () => {
+      const items: MemoryItemRecord[] = [
+        buildItem({ id: 1, item_metadata: { confidence: 0.1 } }),
+        buildItem({ id: 2, item_metadata: { confidence: 0.2 } }),
+      ];
+      const repo = buildRepository({ 1: items });
+      const service = createMemoryService(repo);
+
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '0.5';
+      const result = await service.recall(1);
+
+      expect(result.items).toEqual([]);
+      expect(result.limit).toBe(20);
+    });
+
+    it('threshold=1.0 strictest — only confidence=1 recalled', async () => {
+      const items: MemoryItemRecord[] = [
+        buildItem({ id: 1, item_metadata: { confidence: 0.99 }, updated_at: new Date('2026-01-01T00:00:00.000Z') }),
+        buildItem({ id: 2, item_metadata: { confidence: 1 }, updated_at: new Date('2026-01-02T00:00:00.000Z') }),
+        buildItem({ id: 3, item_metadata: { confidence: 0.5 }, updated_at: new Date('2026-01-03T00:00:00.000Z') }),
+      ];
+      const repo = buildRepository({ 1: items });
+      const service = createMemoryService(repo);
+
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '1';
+      const result = await service.recall(1);
+
+      expect(result.items.map((i) => i.id)).toEqual([2]);
+    });
+
+    it('threshold>0 filters out items with missing confidence (treated as 0)', async () => {
+      const items: MemoryItemRecord[] = [
+        buildItem({ id: 1, item_metadata: {}, updated_at: new Date('2026-01-01T00:00:00.000Z') }),
+        buildItem({ id: 2, item_metadata: { confidence: 'high' }, updated_at: new Date('2026-01-02T00:00:00.000Z') }),
+        buildItem({ id: 3, item_metadata: { confidence: 0.8 }, updated_at: new Date('2026-01-03T00:00:00.000Z') }),
+      ];
+      const repo = buildRepository({ 1: items });
+      const service = createMemoryService(repo);
+
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '0.5';
+      const result = await service.recall(1);
+
+      // Items 1 (missing) and 2 (non-number) read as 0 → filtered. Only id=3 (0.8) survives.
+      expect(result.items.map((i) => i.id)).toEqual([3]);
+    });
+
+    it('threshold filtering composes with top-K truncation (filter then sort then slice)', async () => {
+      // 6 items, 3 below threshold 0.5. Of 3 surviving, top-2 by confidence.
+      process.env.MEMORY_RECALL_LIMIT = '2';
+      process.env.MEMORY_CONFIDENCE_THRESHOLD = '0.5';
+      const items: MemoryItemRecord[] = [
+        buildItem({ id: 1, item_metadata: { confidence: 0.1 } }),
+        buildItem({ id: 2, item_metadata: { confidence: 0.9 } }),
+        buildItem({ id: 3, item_metadata: { confidence: 0.2 } }),
+        buildItem({ id: 4, item_metadata: { confidence: 0.7 } }),
+        buildItem({ id: 5, item_metadata: { confidence: 0.3 } }),
+        buildItem({ id: 6, item_metadata: { confidence: 0.6 } }),
+      ];
+      const repo = buildRepository({ 1: items });
+      const service = createMemoryService(repo);
+
+      const result = await service.recall(1);
+
+      // Surviving: 0.9 (id=2), 0.7 (id=4), 0.6 (id=6). Top-2 by confidence DESC.
+      expect(result.items.map((i) => i.id)).toEqual([2, 4]);
+      expect(result.limit).toBe(2);
     });
   });
 

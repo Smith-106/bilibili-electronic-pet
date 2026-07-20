@@ -28,6 +28,23 @@ function resolveMemoryRecallLimit(): number {
   return raw > MAX_MEMORY_RECALL_LIMIT ? MAX_MEMORY_RECALL_LIMIT : raw;
 }
 
+// G4 可信度阈值过滤 (TASK-M3-004): MEMORY_CONFIDENCE_THRESHOLD 控制 recall 只召回高可信度记忆.
+// 默认 0 → 不过滤, byte-for-byte 全量召回 (backward-compat, 用户 opt-in 设 0.5 启用过滤).
+// env 走 process.env 内联读取 (与 resolveMemoryRecallLimit 同 pattern, C-009 零 migration).
+// 非有限数/负数回退默认 0 (fail-open, 不阻断召回). >1 视为 1 (只召回 confidence=1).
+const DEFAULT_MEMORY_CONFIDENCE_THRESHOLD = 0;
+
+function resolveConfidenceThreshold(): number {
+  const raw = Number(process.env.MEMORY_CONFIDENCE_THRESHOLD ?? String(DEFAULT_MEMORY_CONFIDENCE_THRESHOLD));
+  if (!Number.isFinite(raw) || raw < 0) {
+    return DEFAULT_MEMORY_CONFIDENCE_THRESHOLD;
+  }
+  if (raw > 1) {
+    return 1;
+  }
+  return raw;
+}
+
 /**
  * 从 item_metadata.confidence 读取可信度 (number 0-1).
  * 缺失/非有限数视为 0 (低优先级), 不抛错 — recall fail-open 不阻断主流程.
@@ -76,13 +93,17 @@ export function createMemoryService(repository: MemoryRepository = createMemoryR
       return repository.upsertItem(input);
     },
 
-    // D3 会话记忆召回 (TASK-004 G4): 全量召回 → confidence DESC + updated_at DESC 排序 → top-K 截断.
+    // D3 会话记忆召回 (TASK-004 G4): 全量召回 → confidence 阈值过滤 → confidence DESC + updated_at DESC 排序 → top-K 截断.
     // 复用 repository.listItems({spaceId}) (现有 spaceId 索引, C-009 零 migration).
     // C-003: MUST 全量召回再截断, 不可即注入全量 (爆 context window).
+    // G4 (TASK-M3-004): threshold>0 时过滤掉 confidence < threshold 的记忆 (真实召回质量升级, 应用层零 migration).
+    //   threshold=0 → 不过滤, byte-for-byte 全量召回 (backward-compat). 无高可信记忆返空 (fail-open, 不阻断主流程).
     async recall(spaceId: number): Promise<RecallMemoryResult> {
       const limit = resolveMemoryRecallLimit();
+      const threshold = resolveConfidenceThreshold();
       const items = await repository.listItems({ spaceId });
-      const sorted = [...items].sort((a, b) => {
+      const filtered = threshold > 0 ? items.filter((item) => readConfidence(item) >= threshold) : items;
+      const sorted = [...filtered].sort((a, b) => {
         const confDiff = readConfidence(b) - readConfidence(a);
         if (confDiff !== 0) {
           return confDiff;
@@ -130,8 +151,9 @@ export function createMemoryService(repository: MemoryRepository = createMemoryR
   };
 }
 
-// Testing exports: recall 排序/截断逻辑的纯函数 (memory-recall.test.ts 单测, 不依赖 DB).
+// Testing exports: recall 排序/截断/阈值过滤逻辑的纯函数 (memory-recall.test.ts 单测, 不依赖 DB).
 export const __memoryServiceTesting = {
   resolveMemoryRecallLimit,
+  resolveConfidenceThreshold,
   readConfidence,
 };
