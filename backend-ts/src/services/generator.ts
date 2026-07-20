@@ -222,10 +222,12 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
     // 从 role_card.tone 解析三层 (CoreTraits/SpeakingStyle/DynamicState). 缺失层 fallback undefined.
     // 若 role_card 无三层 key → 回退 active_role_card.tone (active card 的三层). 两卡都无 → segment '' (单层 fallback).
     // C-007: tone 是已存在 String 列, 三层内嵌不触发 migration. backward-compat: 无三层时 segment='' 不追加.
+    // G2 (TASK-M3-002): 传 content 作 query, 若 speaking_style.style_hints 存在 → BM25 检索 top-K;
+    //                   无 query/无 style_hints → byte-for-byte 单条. query optional, 不破坏现有调用.
     const personaFromExplicit = role_card ? parseThreeLayerPersona(role_card.tone) : {};
     const personaFromActive = params.active_role_card ? parseThreeLayerPersona(params.active_role_card.tone) : {};
     const mergedPersona = mergeThreeLayerPersona(personaFromExplicit, personaFromActive);
-    const threeLayerSegment = renderThreeLayerPersonaSegment(mergedPersona);
+    const threeLayerSegment = renderThreeLayerPersonaSegment(mergedPersona, content);
 
     const result = await generateWithLLM({
       systemPrompt: messages[0].content,

@@ -7,7 +7,7 @@
  *   1. Core Traits   — Big Five + Vaillant 人格底色 (openness/conscientiousness/extraversion/
  *                      agreeableness/neuroticism, 0-1 分数). MVP 仅承载结构, 不引入测量工具.
  *   2. Speaking Style — 风格 hints (tone/formality/emoji_usage/sentence_length). MVP 仅 JSON hints,
- *                      不加 vector DB style RAG.
+ *                      G2 升级: 加 style_hints 语料库 + 纯 TS BM25 检索 (TASK-M3-002), 非全量塞 prompt.
  *   3. Dynamic State  — 跨 turn 当前状态 (mood/energy/relationship). 复用 PetState 字段持久化,
  *                      不加跨 turn relationship graph.
  *
@@ -30,6 +30,7 @@
  */
 
 import type { RoleCardValue } from '../models/entities.js';
+import { retrieveTopKStyleHints } from './style-rag.js';
 
 // ============================================================
 // Layer 1: Core Traits (Big Five + Vaillant)
@@ -68,6 +69,13 @@ export type SpeakingStyle = {
   emoji_usage?: number;
   /** 句长 hint: 'short' | 'medium' | 'long' */
   sentence_length?: 'short' | 'medium' | 'long';
+  /**
+   * G2 style hints 语料库 (TASK-M3-002): 可选数组, 复用 tone 列承载 (零 migration C-007).
+   *
+   * 缺失 → BM25 检索返回空 → render 走原单条 SpeakingStyle byte-for-byte.
+   * 存在 + query → retrieveTopKStyleHints 检索 top-K 相关 hints 渲染 (非全量塞 prompt).
+   */
+  style_hints?: SpeakingStyle[];
 };
 
 // ============================================================
@@ -172,6 +180,19 @@ function sanitizeSpeakingStyle(raw: Record<string, unknown>): SpeakingStyle {
   if (emoji !== undefined) result.emoji_usage = emoji;
   if (raw.sentence_length === 'short' || raw.sentence_length === 'medium' || raw.sentence_length === 'long') {
     result.sentence_length = raw.sentence_length;
+  }
+  // G2 style_hints 语料库 (TASK-M3-002): 递归 sanitize 每条 hint (复用 tone 列, 零 migration).
+  // 缺失/非数组 → undefined (byte-for-byte fallback).
+  if (Array.isArray(raw.style_hints)) {
+    const hints: SpeakingStyle[] = [];
+    for (const item of raw.style_hints) {
+      if (item && typeof item === 'object' && !Array.isArray(item)) {
+        hints.push(sanitizeSpeakingStyle(item as Record<string, unknown>));
+      }
+    }
+    if (hints.length > 0) {
+      result.style_hints = hints;
+    }
   }
   return result;
 }
@@ -280,8 +301,15 @@ function findEnergyScore(needs: unknown): number | undefined {
  *   - Core Traits: 列出非 undefined 维度作人类可读 hint (分数映射描述词).
  *   - Speaking Style: 列出 hint.
  *   - Dynamic State: 列出 mood/energy/relationship 当前值.
+ *
+ * G2 升级 (TASK-M3-002): query optional. 若 query + style_hints 存在 → 调
+ * retrieveTopKStyleHints 检索 top-K 相关 hints 渲染 (非全量塞); 若无 query 或无
+ * style_hints → 走原单条 SpeakingStyle byte-for-byte (backward-compat).
+ *
+ * @param persona 三层角色
+ * @param query   可选检索查询 (user_comment). 不传/空 → byte-for-byte 单条.
  */
-export function renderThreeLayerPersonaSegment(persona: ThreeLayerPersona): string {
+export function renderThreeLayerPersonaSegment(persona: ThreeLayerPersona, query?: string): string {
   const parts: string[] = [];
 
   if (persona.core_traits) {
@@ -299,11 +327,7 @@ export function renderThreeLayerPersonaSegment(persona: ThreeLayerPersona): stri
 
   if (persona.speaking_style) {
     const ss = persona.speaking_style;
-    const styleLines: string[] = [];
-    if (ss.tone) styleLines.push(`tone=${ss.tone}`);
-    if (ss.formality !== undefined) styleLines.push(`formality=${scoreLabel(ss.formality)}`);
-    if (ss.emoji_usage !== undefined) styleLines.push(`emoji=${scoreLabel(ss.emoji_usage)}`);
-    if (ss.sentence_length) styleLines.push(`sentence_length=${ss.sentence_length}`);
+    const styleLines = renderSpeakingStyleLines(ss, query);
     if (styleLines.length > 0) {
       parts.push(`说话风格 (Speaking Style): ${styleLines.join(', ')}`);
     }
@@ -322,6 +346,45 @@ export function renderThreeLayerPersonaSegment(persona: ThreeLayerPersona): stri
 
   if (parts.length === 0) return '';
   return parts.join('\n');
+}
+
+/**
+ * 渲染 Speaking Style 行: G2 检索 top-K hints 或 byte-for-byte 单条.
+ *
+ * - query + style_hints 非空 → retrieveTopKStyleHints 检索 top-K, 每条 hint 渲染独立行
+ *   (prefix=style_hint[n]); 检索返回空 (无相关性) → fallback 到单条 byte-for-byte.
+ * - 无 query 或无 style_hints → 走原单条 SpeakingStyle byte-for-byte.
+ */
+function renderSpeakingStyleLines(ss: SpeakingStyle, query?: string): string[] {
+  const singleHintLines: string[] = [];
+  if (ss.tone) singleHintLines.push(`tone=${ss.tone}`);
+  if (ss.formality !== undefined) singleHintLines.push(`formality=${scoreLabel(ss.formality)}`);
+  if (ss.emoji_usage !== undefined) singleHintLines.push(`emoji=${scoreLabel(ss.emoji_usage)}`);
+  if (ss.sentence_length) singleHintLines.push(`sentence_length=${ss.sentence_length}`);
+
+  // G2 BM25 检索分支: query + style_hints 存在时检索 top-K
+  if (query && ss.style_hints && ss.style_hints.length > 0) {
+    const topK = retrieveTopKStyleHints(query, ss.style_hints);
+    if (topK.length > 0) {
+      const hintLines: string[] = [];
+      topK.forEach((hint, i) => {
+        const lines: string[] = [];
+        if (hint.tone) lines.push(`tone=${hint.tone}`);
+        if (hint.formality !== undefined) lines.push(`formality=${scoreLabel(hint.formality)}`);
+        if (hint.emoji_usage !== undefined) lines.push(`emoji=${scoreLabel(hint.emoji_usage)}`);
+        if (hint.sentence_length) lines.push(`sentence_length=${hint.sentence_length}`);
+        if (lines.length > 0) {
+          hintLines.push(`style_hint[${i}]: ${lines.join(', ')}`);
+        }
+      });
+      if (hintLines.length > 0) {
+        return hintLines;
+      }
+    }
+    // 检索返回空 (无相关性) → fallback 到单条 byte-for-byte (fail-open)
+  }
+
+  return singleHintLines;
 }
 
 function scoreLabel(score: number): string {
@@ -344,4 +407,5 @@ export const __threeLayerPersonaTesting = {
   sanitizeDynamicState,
   clamp01,
   scoreLabel,
+  renderSpeakingStyleLines,
 };

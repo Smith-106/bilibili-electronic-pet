@@ -6,6 +6,7 @@ import {
   deriveDynamicStateFromPetState,
   __threeLayerPersonaTesting,
 } from '../src/services/three-layer-persona.js';
+import type { ThreeLayerPersona } from '../src/services/three-layer-persona.js';
 import { __llmClientTesting } from '../src/services/llm-client.js';
 import type { RoleCardValue } from '../src/models/entities.js';
 
@@ -181,6 +182,140 @@ describe('three-layer persona: renderThreeLayerPersonaSegment', () => {
     expect(scoreLabel(0.74)).toBe('mid');
     expect(scoreLabel(0.75)).toBe('high');
     expect(scoreLabel(1)).toBe('high');
+  });
+});
+
+// G2 (TASK-M3-002): style_hints parse + render query 检索.
+// backward-compat: style_hints/query optional, 缺失 byte-for-byte.
+describe('three-layer persona: G2 style_hints parse + render query retrieval', () => {
+  const { sanitizeSpeakingStyle } = __threeLayerPersonaTesting;
+
+  it('parseThreeLayerPersona parses style_hints array (C-007 reuse tone column)', () => {
+    const tone = makeToneValue({
+      speaking_style: {
+        tone: 'warm',
+        style_hints: [
+          { tone: 'warm', sentence_length: 'short' },
+          { tone: 'professional', formality: 0.9 },
+        ],
+      },
+    });
+    const persona = parseThreeLayerPersona(tone);
+    expect(persona.speaking_style?.style_hints).toHaveLength(2);
+    expect(persona.speaking_style?.style_hints?.[0]).toEqual({ tone: 'warm', sentence_length: 'short' });
+    expect(persona.speaking_style?.style_hints?.[1]).toEqual({ tone: 'professional', formality: 0.9 });
+  });
+
+  it('style_hints missing → undefined (byte-for-byte single-style fallback)', () => {
+    const tone = makeToneValue({ speaking_style: { tone: 'warm' } });
+    const persona = parseThreeLayerPersona(tone);
+    expect(persona.speaking_style?.style_hints).toBeUndefined();
+  });
+
+  it('style_hints non-array → undefined (sanitize drops invalid, fix-dont-hide)', () => {
+    const tone = makeToneValue({
+      speaking_style: { tone: 'warm', style_hints: 'not-an-array' as unknown },
+    });
+    const persona = parseThreeLayerPersona(tone);
+    expect(persona.speaking_style?.style_hints).toBeUndefined();
+    expect(persona.speaking_style?.tone).toBe('warm');
+  });
+
+  it('style_hints with invalid items → only valid ones kept', () => {
+    const tone = makeToneValue({
+      speaking_style: {
+        style_hints: [
+          { tone: 'warm' },
+          'not-an-object',
+          { formality: 0.5 },
+          null,
+        ] as unknown[],
+      },
+    });
+    const persona = parseThreeLayerPersona(tone);
+    expect(persona.speaking_style?.style_hints).toHaveLength(2);
+    expect(persona.speaking_style?.style_hints?.[0]?.tone).toBe('warm');
+    expect(persona.speaking_style?.style_hints?.[1]?.formality).toBe(0.5);
+  });
+
+  it('sanitizeSpeakingStyle recursion: nested style_hints sanitized independently', () => {
+    const result = sanitizeSpeakingStyle({
+      tone: 'warm',
+      style_hints: [{ formality: 1.5, emoji_usage: -0.3 }],
+    });
+    expect(result.style_hints?.[0]?.formality).toBe(1);
+    expect(result.style_hints?.[0]?.emoji_usage).toBe(0);
+  });
+
+  it('render: no query → byte-for-byte single SpeakingStyle (backward-compat)', () => {
+    const persona: ThreeLayerPersona = {
+      speaking_style: { tone: 'warm', sentence_length: 'short' },
+    };
+    const noQuery = renderThreeLayerPersonaSegment(persona);
+    const undefinedQuery = renderThreeLayerPersonaSegment(persona, undefined);
+    const emptyQuery = renderThreeLayerPersonaSegment(persona, '');
+    expect(noQuery).toBe('说话风格 (Speaking Style): tone=warm, sentence_length=short');
+    expect(undefinedQuery).toBe(noQuery);
+    expect(emptyQuery).toBe(noQuery);
+  });
+
+  it('render: query + style_hints → retrieves top-K, renders style_hint[n] lines', () => {
+    const persona: ThreeLayerPersona = {
+      speaking_style: {
+        tone: 'default',
+        style_hints: [
+          { tone: 'warm', sentence_length: 'short' },
+          { tone: 'professional', formality: 0.9 },
+          { tone: 'playful', emoji_usage: 0.9 },
+        ],
+      },
+    };
+    const segment = renderThreeLayerPersonaSegment(persona, 'playful short');
+    expect(segment).toContain('说话风格 (Speaking Style)');
+    expect(segment).toContain('style_hint[0]');
+    // playful + short hint matches query best → index 0
+    expect(segment).toContain('tone=playful');
+    expect(segment).toContain('emoji=high');
+    // should NOT contain the default single-style tone= (retrieved branch wins)
+    expect(segment).not.toContain('tone=default');
+  });
+
+  it('render: query + style_hints but no match → fallback to single byte-for-byte (fail-open)', () => {
+    const persona: ThreeLayerPersona = {
+      speaking_style: {
+        tone: 'warm',
+        style_hints: [{ tone: 'professional', formality: 0.9 }],
+      },
+    };
+    const segment = renderThreeLayerPersonaSegment(persona, 'zzzznomatch');
+    // BM25 returns empty (no overlap) → fallback to single style
+    expect(segment).toContain('tone=warm');
+    expect(segment).not.toContain('style_hint[');
+  });
+
+  it('render: query but no style_hints → byte-for-byte single', () => {
+    const persona: ThreeLayerPersona = {
+      speaking_style: { tone: 'warm', sentence_length: 'short' },
+    };
+    const segment = renderThreeLayerPersonaSegment(persona, 'anything');
+    expect(segment).toBe('说话风格 (Speaking Style): tone=warm, sentence_length=short');
+  });
+
+  it('render: Core Traits + Dynamic State unaffected by query (query only affects style)', () => {
+    const persona: ThreeLayerPersona = {
+      core_traits: { openness: 0.8 },
+      speaking_style: {
+        tone: 'warm',
+        style_hints: [{ tone: 'playful', emoji_usage: 0.9 }],
+      },
+      dynamic_state: { mood: 0.5 },
+    };
+    const segment = renderThreeLayerPersonaSegment(persona, 'playful');
+    const lines = segment.split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toContain('Core Traits');
+    expect(lines[1]).toContain('style_hint[0]');
+    expect(lines[2]).toContain('Dynamic State');
   });
 });
 
