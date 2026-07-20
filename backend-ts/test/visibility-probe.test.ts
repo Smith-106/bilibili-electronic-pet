@@ -95,15 +95,16 @@ describe('verifyReplyVisible (TASK-002/D1)', () => {
   });
 
   it('returns shadowbanned when both sender_cookie AND seek_rpid views succeed but the rpid is absent (fail-closed, C-004)', async () => {
-    // sender_cookie view: rpid absent (other replies present, probe succeeded).
-    fetchMock.mockResolvedValueOnce(
-      replyListResponse([
-        { rpid: 1001, mid: 999 },
-        { rpid: 1002, mid: 888 },
-      ]),
-    );
-    // seek_rpid anonymous fallback: rpid STILL absent → confirmed shadowban.
-    fetchMock.mockResolvedValueOnce(emptyReplyListResponse());
+    // sender_cookie view: rpid absent across all MAX_PROBE_PAGES pages (probe succeeded).
+    for (let page = 1; page <= 5; page++) {
+      fetchMock.mockResolvedValueOnce(
+        replyListResponse([{ rpid: 1000 + page, mid: 900 + page }]),
+      );
+    }
+    // seek_rpid anonymous fallback: rpid STILL absent across all pages → confirmed shadowban.
+    for (let page = 1; page <= 5; page++) {
+      fetchMock.mockResolvedValueOnce(emptyReplyListResponse());
+    }
 
     const result = await verifyReplyVisible(9999, '12345', probeConfig);
 
@@ -111,21 +112,21 @@ describe('verifyReplyVisible (TASK-002/D1)', () => {
     expect(result.status).toBe('shadowbanned');
     expect(result.probe_method).toBe('seek_rpid');
     expect(result.reason).toBe('rpid_absent_dual_view');
-    // Both views fired (sender_cookie then seek_rpid).
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Both views fired across all MAX_PROBE_PAGES pages (sender_cookie 5 + seek_rpid 5).
+    expect(fetchMock).toHaveBeenCalledTimes(10);
     // seek_rpid fallback passes an empty auth cookie (anonymous view).
-    const seekCall = fetchMock.mock.calls[1];
+    const seekCall = fetchMock.mock.calls[5];
     const seekHeaders = (seekCall[1] as { headers: Record<string, string> }).headers;
     expect(seekHeaders.Cookie).toBe('SESSDATA=; bili_jct=; BUVID3=;');
   });
 
   it('falls back to seek_rpid and returns visible when the anonymous view surfaces the rpid (sender-self-filter, not a shadowban)', async () => {
-    // sender_cookie view: rpid absent (Bilibili sometimes filters the author's own reply from
-    // their own authenticated view).
-    fetchMock.mockResolvedValueOnce(
-      replyListResponse([{ rpid: 1001, mid: 999 }]),
-    );
-    // seek_rpid anonymous view: rpid PRESENT → reply is publicly visible.
+    // sender_cookie view: rpid absent across all MAX_PROBE_PAGES pages (Bilibili sometimes
+    // filters the author's own reply from their own authenticated view).
+    for (let page = 1; page <= 5; page++) {
+      fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1000 + page, mid: 999 }]));
+    }
+    // seek_rpid anonymous view page 1: rpid PRESENT → reply is publicly visible.
     fetchMock.mockResolvedValueOnce(
       replyListResponse([{ rpid: 5555, mid: 777 }]),
     );
@@ -137,7 +138,8 @@ describe('verifyReplyVisible (TASK-002/D1)', () => {
       status: 'visible',
       probe_method: 'seek_rpid',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 5 sender_cookie pages + 1 seek_rpid page (short-circuits on the hit).
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
   it('returns probe_failed (fail-open) when the sender_cookie fetch rejects (C-004 network/5xx)', async () => {
@@ -169,8 +171,10 @@ describe('verifyReplyVisible (TASK-002/D1)', () => {
   });
 
   it('returns probe_failed when seek_rpid fallback faults after sender_cookie rpid-absent (still fail-open, C-004)', async () => {
-    // sender_cookie view: rpid absent (probe succeeded).
-    fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1001, mid: 999 }]));
+    // sender_cookie view: rpid absent across all MAX_PROBE_PAGES pages (probe succeeded).
+    for (let page = 1; page <= 5; page++) {
+      fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1000 + page, mid: 999 }]));
+    }
     // seek_rpid fallback faults → probe_failed (NOT shadowbanned).
     fetchMock.mockRejectedValueOnce(new Error('seek timeout'));
 
@@ -179,7 +183,82 @@ describe('verifyReplyVisible (TASK-002/D1)', () => {
     expect(result.status).toBe('probe_failed');
     expect(result.probe_method).toBe('seek_rpid');
     expect(result.reason).toBe('seek_fetch_failed');
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('returns visible when rpid is on sender_cookie page 2 (WARN-1 pagination fix)', async () => {
+    // page 1: rpid absent (other replies present, top-20-by-heat).
+    fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1001, mid: 999 }]));
+    // page 2: rpid PRESENT → visible (a fresh reply that has not bubbled to page 1).
+    fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 2002, mid: 888 }]));
+
+    const result = await verifyReplyVisible(2002, '12345', probeConfig);
+
+    expect(result).toEqual({
+      visible: true,
+      status: 'visible',
+      probe_method: 'sender_cookie',
+    });
+    // Short-circuits on the page-2 hit — seek_rpid fallback NOT attempted.
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    const urlPage1 = String(fetchMock.mock.calls[0][0]);
+    const urlPage2 = String(fetchMock.mock.calls[1][0]);
+    expect(urlPage1).toContain('pn=1&ps=20&sort=1');
+    expect(urlPage2).toContain('pn=2&ps=20&sort=1');
+  });
+
+  it('returns visible when rpid is on seek_rpid page 3 (WARN-1: dual-view pagination)', async () => {
+    // sender_cookie view: rpid absent across all 5 pages.
+    for (let page = 1; page <= 5; page++) {
+      fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1000 + page, mid: 999 }]));
+    }
+    // seek_rpid: page 1 + 2 absent, page 3 PRESENT → visible.
+    fetchMock.mockResolvedValueOnce(emptyReplyListResponse());
+    fetchMock.mockResolvedValueOnce(emptyReplyListResponse());
+    fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 3333, mid: 444 }]));
+
+    const result = await verifyReplyVisible(3333, '12345', probeConfig);
+
+    expect(result).toEqual({
+      visible: true,
+      status: 'visible',
+      probe_method: 'seek_rpid',
+    });
+    // 5 sender_cookie pages + 3 seek_rpid pages (short-circuit on page 3 hit).
+    expect(fetchMock).toHaveBeenCalledTimes(8);
+  });
+
+  it('returns probe_failed (fail-open) when a mid-scan sender_cookie page faults (WARN-1: pagination fault ≠ shadowbanned)', async () => {
+    // page 1: rpid absent (fetch succeeded).
+    fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1001, mid: 999 }]));
+    // page 2: network fault → probe_failed (NOT shadowbanned, even though page 1 succeeded).
+    fetchMock.mockRejectedValueOnce(new Error('page 2 network down'));
+
+    const result = await verifyReplyVisible(9999, '12345', probeConfig);
+
+    expect(result.status).toBe('probe_failed');
+    expect(result.probe_method).toBe('sender_cookie');
+    expect(result.reason).toBe('fetch_failed');
+    // Did NOT proceed to view 2 — fail-open collapses immediately on the mid-scan fault.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns probe_failed (fail-open) when a mid-scan seek_rpid page faults (WARN-1: anon-view pagination fault ≠ shadowbanned)', async () => {
+    // sender_cookie view: rpid absent across all 5 pages.
+    for (let page = 1; page <= 5; page++) {
+      fetchMock.mockResolvedValueOnce(replyListResponse([{ rpid: 1000 + page, mid: 999 }]));
+    }
+    // seek_rpid page 1: absent (succeeded).
+    fetchMock.mockResolvedValueOnce(emptyReplyListResponse());
+    // seek_rpid page 2: network fault → probe_failed (NOT shadowbanned).
+    fetchMock.mockRejectedValueOnce(new Error('seek page 2 timeout'));
+
+    const result = await verifyReplyVisible(9999, '12345', probeConfig);
+
+    expect(result.status).toBe('probe_failed');
+    expect(result.probe_method).toBe('seek_rpid');
+    expect(result.reason).toBe('seek_fetch_failed');
+    expect(fetchMock).toHaveBeenCalledTimes(7);
   });
 
   it('returns probe_failed for an invalid rpid (non-finite / non-positive) — fail-open, no fetch', async () => {

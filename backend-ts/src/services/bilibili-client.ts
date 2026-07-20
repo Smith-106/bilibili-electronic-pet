@@ -282,6 +282,20 @@ export interface VisibilityProbeConfig {
   timeout: number;
 }
 
+// WARN-1 fix: the /x/v2/reply list returns the top-N replies by heat (pn=${page}&ps=20&sort=1).
+// A single page (pn=1, top 20 by heat) misses replies on high-volume videos (>20 replies) or
+// replies that have not yet bubbled to page 1. Probing only page 1 caused both views to report
+// rpid-absent and the dual-view logic collapsed to 'shadowbanned' — a false positive that
+// triggers the 600s shadowban backoff (reused behavior_anomaly cap) and withholds legitimate
+// publishing. Mirror the poller's MAX_PAGES=5 pagination: scan pages 1..MAX_PROBE_PAGES, rpid
+// present on ANY page → visible; all pages fetched successfully with rpid absent → shadowban.
+// Override via VISIBILITY_PROBE_MAX_PAGES (same env-flag pattern as backoff-decision.ts).
+const MAX_PROBE_PAGES = (() => {
+  const raw = process.env.VISIBILITY_PROBE_MAX_PAGES ?? '';
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+})();
+
 /**
  * Verify a freshly-posted reply is actually visible on the Bilibili comment list
  * (D1 platform-side semantic closure). Returns a fail-closed/fail-open-classified
@@ -297,6 +311,14 @@ export interface VisibilityProbeConfig {
  *     If the rpid is still absent, the reply is genuinely not publicly visible →
  *     'shadowbanned' (fail-closed). If the anonymous view surfaces it, the reply is
  *     visible to the public (the sender's own view was just filtered) → 'visible'.
+ *
+ * WARN-1: each view paginates pages 1..MAX_PROBE_PAGES (default 5, mirrors poller
+ * MAX_PAGES) rather than sampling only page 1. The /x/v2/reply list is sorted by heat
+ * (sort=1, ps=20); a fresh reply or one on a high-volume video (>20 replies) lands on
+ * a later page, so a single-page probe would see rpid-absent in BOTH views and falsely
+ * return 'shadowbanned'. rpid present on ANY page → visible; all pages fetched
+ * successfully with rpid absent across both views → shadowbanned. A mid-scan page
+ * fetch fault → probe_failed (fail-open, C-004) — never shadowbanned on a fault.
  *
  * `commentId` is the oid (video aid) the reply was posted under — /x/v2/reply lists
  * by oid, so we need it to scope the page fetch. Mirrors postReply's oid semantics.
@@ -340,15 +362,20 @@ export async function verifyReplyVisible(
 
   // View 1: sender_cookie (publisher's own auth). fetchCommentsPage throws on
   // network / non-2xx / abort — catch collapses to probe_failed (fail-open, C-004).
+  // WARN-1: paginate pages 1..MAX_PROBE_PAGES; rpid on any page → visible. A mid-scan
+  // fault (page 2+ network failure) is still probe_failed, never shadowbanned.
   try {
-    const replies = await fetchCommentsPage(aid, 1, config);
-    if (replies.some((r) => r.rpid === targetRpid)) {
-      return { visible: true, status: 'visible', probe_method: 'sender_cookie' };
+    for (let page = 1; page <= MAX_PROBE_PAGES; page++) {
+      const replies = await fetchCommentsPage(aid, page, config);
+      if (replies.some((r) => r.rpid === targetRpid)) {
+        return { visible: true, status: 'visible', probe_method: 'sender_cookie' };
+      }
     }
   } catch {
-    // Fail-open: a probe infrastructure fault is NOT a shadowban. Persist the safe
-    // enum upstream (publisher stores 'probe_failed' in failure_reason), never the
-    // raw error.message (can carry URL fragments / upstream bodies — BUG-006 pattern).
+    // Fail-open: a probe infrastructure fault (incl. mid-pagination network fault) is
+    // NOT a shadowban. Persist the safe enum upstream (publisher stores 'probe_failed'
+    // in failure_reason), never the raw error.message (can carry URL fragments / upstream
+    // bodies — BUG-006 pattern).
     return {
       visible: false,
       status: 'probe_failed',
@@ -368,14 +395,17 @@ export async function verifyReplyVisible(
     buvid: '',
   };
   try {
-    const replies = await fetchCommentsPage(aid, 1, anonymousConfig);
-    if (replies.some((r) => r.rpid === targetRpid)) {
-      // Anonymous view sees the reply → it is publicly visible (sender's own view was
-      // just filtered, e.g. by author-self-hide). Not a shadowban.
-      return { visible: true, status: 'visible', probe_method: 'seek_rpid' };
+    for (let page = 1; page <= MAX_PROBE_PAGES; page++) {
+      const replies = await fetchCommentsPage(aid, page, anonymousConfig);
+      if (replies.some((r) => r.rpid === targetRpid)) {
+        // Anonymous view sees the reply → it is publicly visible (sender's own view was
+        // just filtered, e.g. by author-self-hide). Not a shadowban.
+        return { visible: true, status: 'visible', probe_method: 'seek_rpid' };
+      }
     }
   } catch {
-    // seek_rpid fetch faulted — still fail-open (probe_failed), never shadowbanned.
+    // seek_rpid fetch faulted (incl. mid-pagination fault) — still fail-open
+    // (probe_failed), never shadowbanned.
     return {
       visible: false,
       status: 'probe_failed',
@@ -384,7 +414,8 @@ export async function verifyReplyVisible(
     };
   }
 
-  // Both views succeeded and neither surfaced the rpid — fail-closed: shadowbanned.
+  // Both views succeeded across all MAX_PROBE_PAGES pages and neither surfaced the
+  // rpid — fail-closed: shadowbanned.
   return {
     visible: false,
     status: 'shadowbanned',
