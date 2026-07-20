@@ -66,3 +66,22 @@ tests:
         value: '广告'
       - type: icontains
         value: '跳过'
+
+# ============================================================
+# Wave2 D5 一致性度量挂载说明 (TASK-006 G6)
+# ============================================================
+# 三度量 (Prompt-to-Line / Line-to-Line / Q&A Consistency) 参考
+# Consistent-LLMs (arXiv 2511.00222), MVP 纯 TS 实现于:
+#   src/services/consistency-metrics.ts
+# 测试: test/consistency-metrics.test.ts
+#
+# 挂载决策: promptfoo 不原生提供 custom metric provider 接口
+# (assert 仅支持 declarative 匹配类型, 无法注入 TS 函数). 为避免
+# 引入额外 provider 插件/外部进程的 MVP 复杂度, 三度量作为独立
+# vitest 跑 (npx vitest run consistency-metrics), 不挂 promptfoo.
+# promptfoo 仅保留上面的 prompt eval baseline (TASK-001).
+#
+# CI 集成: 见 .github/workflows/cloud-validate.yml (vitest run 全量).
+# 评估数据集 (qaPairs / persona turns) 由测试 fixture 内联提供,
+# 后续 D6+ 若需 LLM 真实输出评估, 可在此扩展为 assert: javascript
+# 类型调用 consistency-metrics (待 MVP 验证后决定).
