@@ -9,6 +9,30 @@ import type { MemoryContext } from '../app/memory/types.js';
 // Configuration
 // ============================================================
 
+/**
+ * D2 callLLM tool-call (TASK-M3-003 G3): tool 定义. provider-agnostic 输入格式
+ * (与 Claude input_schema 对齐; OpenAI 的 parameters 同形, callLLM 内做 provider 格式适配).
+ * 不传 config.tools → byte-for-byte 无 tool 行为 (backward-compat).
+ */
+interface LLMTool {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+/**
+ * tool_choice 语义: 'auto' (LLM 自决) | 'none' (禁用 tool) | 'required' (必调 tool) |
+ * {type:'function', name} (指定调某 tool). 不传 → 由 provider 默认 (通常 auto).
+ */
+type LLMToolChoice = 'auto' | 'none' | 'required' | { type: 'function'; name: string };
+
+/** 解析后的 tool 调用结果 (provider-agnostic). 仅当 LLM 响应含 tool_use 时填充, 否则 undefined. */
+interface LLMToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
 interface LLMConfig {
   provider: 'openai' | 'claude' | 'ollama';
   apiKey: string;
@@ -18,6 +42,13 @@ interface LLMConfig {
   maxTokens: number;
   timeoutMs: number;
   retries: number;
+  /**
+   * D2 tool-call (TASK-M3-003 G3): optional. 调用方传才启用 tool-call 主路径,
+   * 不传 → body 不含 tools/tool_choice (byte-for-byte 现有 text-only 行为).
+   * opt-in 即足够, 不加全局 flag (最小改动, 调用方不传 = byte-for-byte).
+   */
+  tools?: LLMTool[];
+  toolChoice?: LLMToolChoice;
 }
 
 function loadLLMConfig(): LLMConfig {
@@ -94,6 +125,11 @@ interface LLMResponse {
   content: string;
   provider: string;
   model: string;
+  /**
+   * D2 tool-call (TASK-M3-003 G3): optional. 仅当 LLM 响应含 tool_use/tool_calls 时填充,
+   * text-only 响应 → undefined (byte-for-byte, 调用方判 undefined 即旧路径).
+   */
+  toolCalls?: LLMToolCall[];
 }
 
 async function callLLM(messages: LLMMessage[], config: LLMConfig): Promise<LLMResponse> {
@@ -111,12 +147,32 @@ async function callLLM(messages: LLMMessage[], config: LLMConfig): Promise<LLMRe
         'Content-Type': 'application/json',
         Authorization: `Bearer ${config.apiKey}`,
       };
-      body = JSON.stringify({
+      // D2 tool-call (TASK-M3-003 G3): config.tools 存在时才加 tools/tool_choice (OpenAI function format).
+      // 不存在 → body 与原 text-only byte-for-byte.
+      const bodyObj: Record<string, unknown> = {
         model: config.model,
         messages,
         temperature: config.temperature,
         max_tokens: config.maxTokens,
-      });
+      };
+      if (config.tools && config.tools.length > 0) {
+        bodyObj.tools = config.tools.map((t) => ({
+          type: 'function',
+          function: { name: t.name, description: t.description, parameters: t.input_schema },
+        }));
+        if (config.toolChoice !== undefined) {
+          // OpenAI tool_choice: 'auto'|'none'|'required' | {type:'function',function:{name}}
+          if (typeof config.toolChoice === 'string') {
+            bodyObj.tool_choice = config.toolChoice;
+          } else {
+            bodyObj.tool_choice = {
+              type: 'function',
+              function: { name: config.toolChoice.name },
+            };
+          }
+        }
+      }
+      body = JSON.stringify(bodyObj);
     } else if (config.provider === 'claude') {
       url = `${config.baseUrl}/v1/messages`;
       headers = {
@@ -124,7 +180,7 @@ async function callLLM(messages: LLMMessage[], config: LLMConfig): Promise<LLMRe
         'x-api-key': config.apiKey,
         'anthropic-version': '2023-06-01',
       };
-      body = JSON.stringify({
+      const bodyObj: Record<string, unknown> = {
         model: config.model,
         messages: messages.map((m) => ({
           role: (m.role === 'system' ? 'user' : m.role) as 'user' | 'assistant',
@@ -132,7 +188,32 @@ async function callLLM(messages: LLMMessage[], config: LLMConfig): Promise<LLMRe
         })),
         max_tokens: config.maxTokens,
         temperature: config.temperature,
-      });
+      };
+      if (config.tools && config.tools.length > 0) {
+        // Claude tools format: {name, description, input_schema} (与 LLMTool 同形, 直接传).
+        bodyObj.tools = config.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema,
+        }));
+        if (config.toolChoice !== undefined) {
+          // Claude tool_choice (docs: platform_claude_en_api):
+          //   {type:'auto'} (LLM 自决) | {type:'any'} (必调任一 tool) |
+          //   {type:'tool', name} (指定 tool) | {type:'none'} (禁用 tool).
+          // 我们 LLMToolChoice 'required' 语义 = "必调 tool" → Claude 'any'.
+          if (typeof config.toolChoice === 'string') {
+            bodyObj.tool_choice =
+              config.toolChoice === 'auto'
+                ? { type: 'auto' }
+                : config.toolChoice === 'none'
+                  ? { type: 'none' }
+                  : { type: 'any' }; // 'required' → 'any'
+          } else {
+            bodyObj.tool_choice = { type: 'tool', name: config.toolChoice.name };
+          }
+        }
+      }
+      body = JSON.stringify(bodyObj);
     } else {
       throw new Error(`Unknown provider: ${config.provider}`);
     }
@@ -166,33 +247,47 @@ function parseLLMResponse(data: Record<string, unknown>, config: LLMConfig): LLM
   if (choices && choices.length > 0) {
     const choice = choices[0];
     const msg = choice.message as Record<string, unknown> | undefined;
+    // D2 tool-call (TASK-M3-003 G3): OpenAI tool_calls (数组) → LLMToolCall[].
+    // content 与 tool_calls 可共存 (text content 仍解析). 无 tool_calls → undefined (byte-for-byte).
+    const rawToolCalls = msg?.tool_calls as Array<Record<string, unknown>> | undefined;
+    const toolCalls = parseOpenAIToolCalls(rawToolCalls);
     return {
       content: (msg?.content as string) || '',
       provider: config.provider,
       model: config.model,
+      ...(toolCalls ? { toolCalls } : {}),
     };
   }
 
   // Claude format
   if (data.content && Array.isArray(data.content)) {
-    const textBlocks = data.content
+    const contentBlocks = data.content as Array<Record<string, unknown>>;
+    const textBlocks = contentBlocks
       .filter((b: Record<string, unknown>) => b.type === 'text')
       .map((b: Record<string, unknown>) => b.text)
       .join('');
+    // D2 tool-call (TASK-M3-003 G3): Claude content 数组中 type==='tool_use' block (含 id/name/input)
+    // → LLMToolCall[]. text blocks 仍走原 filter (非替换). 无 tool_use → undefined (byte-for-byte).
+    const toolCalls = parseClaudeToolUses(contentBlocks);
     return {
       content: textBlocks,
       provider: config.provider,
       model: config.model,
+      ...(toolCalls ? { toolCalls } : {}),
     };
   }
 
   // Ollama format
   const msg = data.message as Record<string, unknown> | undefined;
   if (msg?.content) {
+    // D2 tool-call (TASK-M3-003 G3): Ollama message.tool_calls (OpenAI-compatible 格式, /api/chat).
+    const rawToolCalls = msg.tool_calls as Array<Record<string, unknown>> | undefined;
+    const toolCalls = parseOpenAIToolCalls(rawToolCalls);
     return {
       content: msg.content as string,
       provider: config.provider,
       model: config.model,
+      ...(toolCalls ? { toolCalls } : {}),
     };
   }
 
@@ -202,6 +297,62 @@ function parseLLMResponse(data: Record<string, unknown>, config: LLMConfig): LLM
     provider: config.provider,
     model: config.model,
   };
+}
+
+// ============================================================
+// D2 tool-call parsing helpers (TASK-M3-003 G3)
+// ============================================================
+
+/**
+ * OpenAI/Ollama tool_calls 数组 → LLMToolCall[]. 数组项形如:
+ *   {id, type:'function', function:{name, arguments(JSON string)}}
+ * 无 tool_calls 或解析失败 → undefined (caller 不挂 toolCalls → byte-for-byte).
+ */
+function parseOpenAIToolCalls(raw: Array<Record<string, unknown>> | undefined): LLMToolCall[] | undefined {
+  if (!raw || !Array.isArray(raw) || raw.length === 0) return undefined;
+  const calls: LLMToolCall[] = [];
+  for (const tc of raw) {
+    const fn = tc.function as Record<string, unknown> | undefined;
+    if (!fn) continue;
+    const name = fn.name as string | undefined;
+    if (!name) continue;
+    // OpenAI arguments 是 JSON 字符串, 需 parse. 解析失败 → 空 object (不 throw, fail-soft).
+    const argsRaw = fn.arguments;
+    let input: Record<string, unknown> = {};
+    if (typeof argsRaw === 'string') {
+      try {
+        const parsed = JSON.parse(argsRaw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          input = parsed as Record<string, unknown>;
+        }
+      } catch {
+        // malformed JSON arguments → 空 input (不阻断, 调用方可据 name 判定)
+      }
+    } else if (argsRaw && typeof argsRaw === 'object' && !Array.isArray(argsRaw)) {
+      // Ollama 可能传 object (非 string)
+      input = argsRaw as Record<string, unknown>;
+    }
+    calls.push({ id: (tc.id as string) || '', name, input });
+  }
+  return calls.length > 0 ? calls : undefined;
+}
+
+/**
+ * Claude content 数组中 type==='tool_use' block → LLMToolCall[].
+ * block 形如: {type:'tool_use', id, name, input(object)}.
+ * 无 tool_use block → undefined.
+ */
+function parseClaudeToolUses(blocks: Array<Record<string, unknown>>): LLMToolCall[] | undefined {
+  const toolUseBlocks = blocks.filter((b) => b.type === 'tool_use');
+  if (toolUseBlocks.length === 0) return undefined;
+  const calls: LLMToolCall[] = [];
+  for (const b of toolUseBlocks) {
+    const name = b.name as string | undefined;
+    if (!name) continue;
+    const input = (b.input as Record<string, unknown> | undefined) ?? {};
+    calls.push({ id: (b.id as string) || '', name, input });
+  }
+  return calls.length > 0 ? calls : undefined;
 }
 
 // ============================================================
