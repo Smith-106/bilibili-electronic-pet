@@ -9,6 +9,7 @@
 import type { GenerateReplyService } from './interfaces.js';
 import type { MemoryContext } from '../app/memory/types.js';
 import { generateWithLLM } from './llm-client.js';
+import { classifyReplyIntent, shouldSkipByRuleAndIntent } from './intent-agent.js';
 import {
   parseThreeLayerPersona,
   renderThreeLayerPersonaSegment,
@@ -197,8 +198,15 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
   const { content, style_mode, length_mode, role_profile, role_card, knowledge_context, search_context, memory_context } = params;
 
   try {
-    // Skip by keywords from config
-    if (shouldSkipByKeywords(content)) {
+    // Skip by keywords from config (硬规则先跑, C-005 规则优先).
+    const ruleSkip = shouldSkipByKeywords(content);
+
+    // D2 LLM-led 意图代理 (TASK-007 G7): LLM_REVIEW_GATE_ENABLED=true 时调 callLLM
+    // 判 ReplyIntent. C-005: 规则 skip → 必跳 (LLM 无权覆盖); 规则回 + LLM skip/reject
+    // → 跳 (LLM 加严); 规则回 + LLM 回性质/null → 回. gate=false 时 classifyReplyIntent
+    // 短路 null, shouldSkipByRuleAndIntent 退化为 ruleSkip (byte-for-byte 现有行为).
+    const llmIntent = await classifyReplyIntent(content);
+    if (shouldSkipByRuleAndIntent(ruleSkip, llmIntent)) {
       return {
         reply_text: '',
         provider: 'skip',

@@ -14,6 +14,7 @@
  */
 
 import type { SafetyCheckService } from './interfaces.js';
+import { classifyReplyIntent } from './intent-agent.js';
 
 // ── PII Patterns (migrated from Python settings) ──────────────
 
@@ -342,6 +343,25 @@ export const safetyCheck: SafetyCheckService = async (text) => {
   if (decision !== 'ok') {
     riskFlags.decision = decision;
     riskFlags.reason = decision === 'blocked' ? 'high_risk_content' : 'medium_risk_content';
+  }
+
+  // D2 LLM-led 意图代理 sibling (TASK-007 G7, 非 replacement): LLM_REVIEW_GATE_ENABLED=true
+  // 且规则未 hard-block 时, 加第二遍 LLM pass. C-005 规则优先: 规则 blocked/manual_queue
+  // 已 hard-return (LLM 无权放行); 本 sibling 只在规则 ok 时加严 — LLM 判 skip/reject 时
+  // 升级为 manual_review. gate=false 时 classifyReplyIntent 短路 null (byte-for-byte 现有行为).
+  // fail-open: LLM 调用失败不阻断 (规则 ok 决策生效).
+  if (decision === 'ok') {
+    const llmIntent = await classifyReplyIntent(text);
+    if (llmIntent === 'skip' || llmIntent === 'reject') {
+      riskFlags.triggered_rules.push('llm_intent_agent');
+      riskFlags.decision = 'manual_review';
+      riskFlags.reason = 'llm_intent_' + (llmIntent as string);
+      riskFlags.llm_intent = llmIntent;
+      return [false, riskFlags];
+    }
+    if (llmIntent !== null) {
+      riskFlags.llm_intent = llmIntent;
+    }
   }
 
   return [decision === 'ok', riskFlags];
