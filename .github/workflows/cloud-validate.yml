@@ -56,15 +56,15 @@ jobs:
         run: npm --prefix backend-ts run build
 
       # promptfoo eval baseline (D6, TASK-001). MVP non-blocking: continue-on-error true
-      # so missing/invalid LLM creds or provider mismatch never block CI. Becomes blocking
-      # once the env consistently provides working creds. Uses promptfooconfig.yaml at
-      # backend-ts root (Doro persona 3 baseline assertions).
-      - name: promptfoo eval (prompt regression baseline)
+      # so missing LLM creds (secrets unset) never block CI. When secrets.LLM_* are
+      # populated (pre-release / prod) this runs a real regression against the Doro persona
+      # baseline. Uses promptfooconfig.yaml at backend-ts root (3 baseline assertions).
+      - name: promptfoo eval (prompt baseline)
         continue-on-error: true
         env:
-          LLM_PROVIDER: openai
-          LLM_API_KEY: ci-promptfoo-placeholder
-          LLM_BASE_URL: https://api.openai.com/v1
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
         run: cd backend-ts && npx promptfoo@latest eval --config promptfooconfig.yaml
 
       - name: Run QQ OneBot smoke
