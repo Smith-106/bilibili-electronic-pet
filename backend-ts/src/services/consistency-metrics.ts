@@ -1,7 +1,7 @@
 /**
- * D5 三一致性度量 (TASK-006 G6)
+ * D5 三一致性度量 (TASK-006 G6) + LLM-as-judge 升级 (TASK-M3-001 G1)
  *
- * 参考 Consistent-LLMs (arXiv 2511.00222) 三层一致性框架, MVP 纯 TS 实现:
+ * 参考 Consistent-LLMs (arXiv 2511.00222) 三层一致性框架:
  *   1. Prompt-to-Line Consistency — 同一 prompt 多次输出一致性
  *   2. Line-to-Line Consistency   — 多轮对话 persona 一致性
  *   3. Q&A Consistency            — 同义不同表述答案一致性
@@ -13,9 +13,18 @@
  * 挂载策略: 三度量作为独立 vitest 跑 (test/consistency-metrics.test.ts),
  * 不强行接入 promptfoo custom provider (避免 MVP 复杂度). promptfoo 仅保留
  * TASK-001 的 prompt eval baseline.
+ *
+ * TASK-M3-001 G1 LLM-as-judge 升级: 加 llmJudgeConsistency (语义一致性, 非词重叠).
+ *   - LLM_JUDGE_ENABLED flag (默认 false, backward-compat): 关时三度量 byte-for-byte
+ *     keyword overlap; 开时可选调 llmJudgeConsistency 作为语义 sibling (非替换).
+ *   - 现有三度量保 sync 不动 (最小改动, 不破坏现有测试); llmJudgeConsistency 独立 async.
+ *   - Fail-open: LLM 失败返 score 0 (度量非安全门, 不阻断, 复用 intent-agent pattern).
+ *   - callLLM 通过 __llmClientTesting 解构引用 (非模块作用域), 便于测试 spy 拦截.
+ *   - 非 OpenRLHF 32GPU 反模式: 纯 TS + callLLM 判语义, 项目适配轻量真实升级.
  */
 
 import type { CoreTraits } from './three-layer-persona.js';
+import { __llmClientTesting } from './llm-client.js';
 
 // ============================================================
 // 公共类型
@@ -278,6 +287,123 @@ export function qaConsistency(qaPairs: QaPair[]): ConsistencyMetric {
 }
 
 // ============================================================
+// 度量 4: LLM-as-judge Consistency (TASK-M3-001 G1 升级)
+// ============================================================
+
+/**
+ * LLM_JUDGE_ENABLED flag (默认 false, backward-compat).
+ * 关: 三度量 byte-for-byte keyword overlap, 不调 callLLM.
+ * 开: 可选调 llmJudgeConsistency 作语义 sibling (非替换现有三度量).
+ */
+export function isLlmJudgeEnabled(): boolean {
+  return process.env.LLM_JUDGE_ENABLED === 'true';
+}
+
+/**
+ * 构建一致性判定 system prompt. LLM 判两段文本语义是否一致 (非词重叠),
+ * 输出 JSON: {"consistent": true|false, "score": 0.0-1.0, "reason": "..."}.
+ */
+function buildLlmJudgeSystemPrompt(): string {
+  return [
+    '你是B站评论一致性判定器. 判定两段文本语义是否一致 (非词重叠, 关注含义).',
+    '语义一致指两段文本表达的核心含义/情感/意图相同, 即使用词/句式不同.',
+    '只输出一行 JSON, 不要解释:',
+    '{"consistent": true|false, "score": 0.0-1.0, "reason": "简短中文理由"}',
+    '- score 1.0: 语义完全一致',
+    '- score 0.5: 部分一致 (如情感同但内容有差异)',
+    '- score 0.0: 语义完全不一致或矛盾',
+  ].join('\n');
+}
+
+interface LlmJudgeVerdict {
+  consistent: boolean;
+  score: number;
+  reason: string;
+}
+
+/**
+ * 解析 LLM 返回的 JSON 判定. 容错: 非合法 JSON → null (fail-open).
+ */
+function parseLlmJudgeVerdict(raw: string): LlmJudgeVerdict | null {
+  const trimmed = raw.trim();
+  // 取首个 {...} 块 (LLM 偶尔前后带说明文字).
+  const match = trimmed.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const obj = JSON.parse(match[0]) as Record<string, unknown>;
+    const consistent = obj.consistent === true;
+    const scoreRaw = obj.score;
+    const score =
+      typeof scoreRaw === 'number' && Number.isFinite(scoreRaw) && scoreRaw >= 0 && scoreRaw <= 1
+        ? scoreRaw
+        : consistent
+          ? 1
+          : 0;
+    const reason =
+      typeof obj.reason === 'string' && obj.reason.length > 0 ? obj.reason : 'no reason';
+    return { consistent, score, reason };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * LLM-as-judge 语义一致性度量.
+ *
+ * 用 callLLM 判两段文本语义是否一致 (非词重叠), 返回 ConsistencyMetric
+ * {name, score 0-1, details}. gate 关时不调 LLM (返 score 0 + details
+ * 'llm judge disabled' — 非度量场景, 由调用方先查 isLlmJudgeEnabled).
+ *
+ * 注: callLLM/loadLLMConfig 通过 __llmClientTesting 在调用时解构 (非模块加载时),
+ * 以便测试用 vi.spyOn(__llmClientTesting, 'callLLM') 注入固定判定 (TASK-007 pattern).
+ *
+ * Fail-open: LLM 失败 / 解析失败 → 返 score 0 + details (度量非安全门, 不阻断,
+ * 复用 intent-agent.ts classifyReplyIntent fail-open pattern).
+ *
+ * @param a 第一段文本
+ * @param b 第二段文本
+ */
+export async function llmJudgeConsistency(
+  a: string,
+  b: string,
+): Promise<ConsistencyMetric> {
+  const name = 'llm-judge';
+  try {
+    if (typeof a !== 'string' || typeof b !== 'string') {
+      return { name, score: 0, details: 'malformed input: non-string' };
+    }
+    if (a.length === 0 || b.length === 0) {
+      return { name, score: 0, details: 'empty input' };
+    }
+    const { callLLM, loadLLMConfig } = __llmClientTesting;
+    const config = loadLLMConfig();
+    const messages = [
+      { role: 'system' as const, content: buildLlmJudgeSystemPrompt() },
+      {
+        role: 'user' as const,
+        content: `文本A: ${a}\n\n文本B: ${b}\n\n判定这两段文本语义是否一致, 输出一行 JSON.`,
+      },
+    ];
+    const response = await callLLM(messages, config);
+    const verdict = parseLlmJudgeVerdict(response.content);
+    if (verdict === null) {
+      // 解析失败 fail-open: 不崩, 返 score 0 + raw content 截断.
+      const raw = response.content.length > 80 ? response.content.slice(0, 80) + '...' : response.content;
+      return { name, score: 0, details: `parse failed, raw: ${raw}` };
+    }
+    return {
+      name,
+      score: verdict.score,
+      details: `consistent=${verdict.consistent}, reason: ${verdict.reason}`,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[consistency-metrics] llmJudgeConsistency error: ${msg}`);
+    return { name, score: 0, details: `error: ${msg}` };
+  }
+}
+
+// ============================================================
 // Testing export — 暴露内部供测试访问
 // ============================================================
 
@@ -289,4 +415,8 @@ export const __ConsistencyMetricsTesting = {
   activeTraits,
   matchesTraits,
   PERSONA_TRAIT_KEYWORDS,
+  isLlmJudgeEnabled,
+  llmJudgeConsistency,
+  buildLlmJudgeSystemPrompt,
+  parseLlmJudgeVerdict,
 };
