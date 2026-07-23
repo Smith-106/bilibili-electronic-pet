@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { getPrisma } from '../lib/prisma.js';
+import { timingSafeStringCompare } from '../lib/timing-safe-compare.js';
 import { listPublishingPlatforms } from '../platforms/registry.js';
 import type {
   AdminGatewayLogsResponse,
@@ -80,7 +81,8 @@ export function registerGatewayPublishRoutes(app: FastifyInstance, deps: Gateway
 
     if (expectedApiKey) {
       const providedApiKey = deps.getHeaderValue(headers['x-api-key']).trim();
-      if (providedApiKey !== expectedApiKey) {
+      // security fix: timing-safe compare 防 apiKey timing attack (原 !== 非 constant-time).
+      if (!timingSafeStringCompare(providedApiKey, expectedApiKey)) {
         return { statusCode: 401, body: { detail: 'unauthorized' } };
       }
     }
@@ -90,7 +92,8 @@ export function registerGatewayPublishRoutes(app: FastifyInstance, deps: Gateway
     if (expectedToken) {
       const authorization = deps.getHeaderValue(headers.authorization);
       const expectedAuthorization = `Bearer ${expectedToken}`;
-      if (authorization !== expectedAuthorization) {
+      // security fix: timing-safe compare 防 Bearer token timing attack (原 !== 非 constant-time).
+      if (!timingSafeStringCompare(authorization, expectedAuthorization)) {
         return { statusCode: 401, body: { detail: 'unauthorized' } };
       }
     }

@@ -26,7 +26,14 @@ vi.mock('../src/services/db-queries.js', () => ({
 
 const { shouldReply, shouldReplyForInteraction, decideSafetyAction, __deciderTesting } =
   await import('../src/services/decider.js');
-const { buildLogContext, ensureTraceId, recordObservabilityEvent, flushObservabilityBuffer, getObservabilityDropCount, __resetObservabilityBufferForTest } = await import('../src/services/observability.js');
+const {
+  buildLogContext,
+  ensureTraceId,
+  recordObservabilityEvent,
+  flushObservabilityBuffer,
+  getObservabilityDropCount,
+  __resetObservabilityBufferForTest,
+} = await import('../src/services/observability.js');
 
 const trackedEnvKeys = [
   'SAFETY_KEYWORD_BLACKLIST',
@@ -434,9 +441,7 @@ describe('observability coverage branches', () => {
     });
 
     // No bare console.error catch remains — failures surface via drop_count
-    expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('observability_flush_failed'),
-    );
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('observability_flush_failed'));
   });
 
   it('builds log context with optional fields and passthrough extras', () => {
@@ -908,7 +913,9 @@ describe('generateWithLLM coverage branches', () => {
       provider: 'openai',
       used_fallback: false,
     });
-    expect(retryLogSpy).toHaveBeenCalledWith('[LLM] Retry 1/2 after 1000ms');
+    // reliability fix: callLLMWithRetry 加 jitter (full jitter [0, baseDelay]) 防雷同退避尖峰,
+    // 日志格式变 "Retry N/M after <jitter>ms (jittered)", delay 随机不再固定 1000ms.
+    expect(retryLogSpy).toHaveBeenCalledWith(expect.stringMatching(/\[LLM\] Retry 1\/2 after \d+ms \(jittered\)/));
   });
 
   it('wraps non-Error provider failures before using the fallback reply', async () => {

@@ -451,9 +451,22 @@ async function callLLMWithRetry(messages: LLMMessage[], config: LLMConfig): Prom
       return await callLLM(messages, config);
     } catch (error) {
       lastError = error as Error;
+      // reliability fix: 4xx (400/401/403/404...) 是不可恢复的请求级错误 (鉴权失败/格式错误/
+      // 模型不存在), 重试无意义只浪费配额 — 仅对 5xx/网络错误/超时重试. callLLM 抛的 error
+      // message 格式 "LLM API error: <status> ...", 解析 status 判断.
+      const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
+      const statusMatch = errMsg.match(/LLM API error: (\d{3})/);
+      const is4xx = statusMatch !== null && Number(statusMatch[1]) >= 400 && Number(statusMatch[1]) < 500;
+      if (is4xx) {
+        throw lastError;
+      }
       if (attempt < config.retries - 1) {
-        const delay = Math.pow(2, attempt) * 1000;
-        console.log(`[LLM] Retry ${attempt + 1}/${config.retries} after ${delay}ms`);
+        // reliability low fix: 加 jitter (full jitter 策略 — 随机 [0, delay]) 防雷同退避
+        // 导致重试同步尖峰 (Thundering Herd). 原固定 2^attempt*1000 ms 无随机化.
+        const baseDelay = Math.pow(2, attempt) * 1000;
+        const jitter = Math.floor(Math.random() * baseDelay);
+        const delay = jitter;
+        console.log(`[LLM] Retry ${attempt + 1}/${config.retries} after ${delay}ms (jittered)`);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -488,8 +501,17 @@ export async function generateWithLLM(params: {
   used_fallback: boolean;
 }> {
   const config = loadLLMConfig();
-  const { systemPrompt, userComment, knowledgeContext, searchContext, memoryContext, roleProfile, roleCardPrompt, lengthMode, threeLayerSegment } =
-    params;
+  const {
+    systemPrompt,
+    userComment,
+    knowledgeContext,
+    searchContext,
+    memoryContext,
+    roleProfile,
+    roleCardPrompt,
+    lengthMode,
+    threeLayerSegment,
+  } = params;
   const messages = buildMessages(
     systemPrompt,
     userComment,

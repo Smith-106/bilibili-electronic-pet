@@ -77,6 +77,7 @@ import { isAuthProbeHealthy } from './services/probe-scheduler.js';
 import { isCompliancePassive } from './services/compliance-mode.js';
 import { isEncryptionAvailable } from './services/credential-crypto.js';
 import { checkRedisConnection } from './lib/redis.js';
+import { timingSafeStringCompare } from './lib/timing-safe-compare.js';
 
 type DeliveryCapabilityName =
   | 'llm_generation'
@@ -2822,7 +2823,8 @@ function checkApiKey(request: FastifyRequest, reply: FastifyReply, settings: Run
   }
 
   const provided = getHeaderValue(request.headers['x-api-key']).trim();
-  if (provided !== expected) {
+  // security fix: timing-safe compare 防 apiKey timing attack (原 !== 非 constant-time).
+  if (!timingSafeStringCompare(provided, expected)) {
     void reply.code(401).send({ detail: 'unauthorized' });
     return false;
   }
@@ -2841,7 +2843,11 @@ function checkCommentIngressAuth(request: FastifyRequest, reply: FastifyReply, s
 
   const providedToken = getHeaderValue(request.headers['x-comment-ingress-token']).trim();
   const authorization = getHeaderValue(request.headers.authorization).trim();
-  if (providedToken === expected || authorization === `Bearer ${expected}`) {
+  // security fix: timing-safe compare 防 ingress token timing attack (原 === 非 constant-time).
+  // 两路都算再 OR (避免 || 短路泄露哪路匹配).
+  const tokenMatch = timingSafeStringCompare(providedToken, expected);
+  const bearerMatch = timingSafeStringCompare(authorization, `Bearer ${expected}`);
+  if (tokenMatch || bearerMatch) {
     return true;
   }
 
