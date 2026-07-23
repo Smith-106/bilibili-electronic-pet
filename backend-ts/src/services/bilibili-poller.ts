@@ -10,6 +10,7 @@ import { Prisma } from '@prisma/client';
 
 import { getPrisma } from '../lib/prisma.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibili-runtime-config.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
@@ -127,6 +128,29 @@ async function fetchCommentsWithRetry(
     }
   }
 
+  // reliability/observability fix: retry exhausted 仅 console.error 静默丢该页评论,
+  // 加 fire-and-forget ObservabilityEvent 使 poll 失败可追溯 (非 antirisk 信号, 走 observation buffer).
+  const traceId = ensureTraceId();
+  void recordObservabilityEvent({
+    event_type: 'poll_retry_exhausted',
+    trace_id: traceId,
+    status: 'failed',
+    metadata: {
+      aid,
+      page,
+      error: lastError?.message ?? 'unknown',
+    },
+  }).catch((error: unknown) => {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'poll_retry_exhausted_event_record_failed',
+        aid,
+        page,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
   console.error(`[bilibili-poller] Retry exhausted for aid=${aid} page=${page}: ${lastError?.message}`);
   return null;
 }

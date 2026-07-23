@@ -1,5 +1,9 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { recordObservabilityEventMock } = vi.hoisted(() => ({
+  recordObservabilityEventMock: vi.fn().mockResolvedValue(undefined),
+}));
+
 const loadBilibiliRuntimeConfig = vi.fn();
 const fetchMock = vi.fn();
 const mockPrisma = {
@@ -24,6 +28,13 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
 vi.mock('../src/lib/prisma.js', () => ({
   createPrismaClient,
   getPrisma: createPrismaClient,
+}));
+
+vi.mock('../src/services/observability.js', () => ({
+  // H1/reliability fix: poller 新增 recordObservabilityEvent fire-and-forget 调用 (retry exhausted
+  // event) — 测试 mock 须声明, 默认 resolved 避免 .catch TypeError + 防 background flush timer.
+  recordObservabilityEvent: recordObservabilityEventMock,
+  ensureTraceId: () => 'test-trace-id',
 }));
 
 vi.stubGlobal('fetch', fetchMock);
@@ -320,9 +331,7 @@ describe('pollVideoById', () => {
     // H1 fix: poller 改 findMany 预查重 + createMany 批量 (不再逐条 create + P2002 catch).
     // rpid 11 模拟已存在 (findMany 返回), filter 跳过, createMany 只注入 rpid 12.
     // rpid 9 < last_rpid=10 watermark 已被 poller 自身过滤, 不进 createMany.
-    mockPrisma.comment.findMany.mockResolvedValueOnce([
-      { canonical_comment_id: 'bilibili:11' },
-    ]);
+    mockPrisma.comment.findMany.mockResolvedValueOnce([{ canonical_comment_id: 'bilibili:11' }]);
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
