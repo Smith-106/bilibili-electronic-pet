@@ -788,7 +788,6 @@ describe('comment event task worker', () => {
       const services = buildServices();
       const processor = buildProcessor(services);
       for (let i = 0; i < 20; i++) {
-        // eslint-disable-next-line no-await-in-loop
         const r = await processor(buildJob());
         expect(r).toMatchObject({ ok: true, status: 'published' });
       }
@@ -822,7 +821,6 @@ describe('comment event task worker', () => {
 
       // Exhaust the bucket 20x, then prove the 21st still publishes (flag off → no limit).
       for (let i = 0; i < 25; i++) {
-        // eslint-disable-next-line no-await-in-loop
         const r = await processor(buildJob());
         expect(r).toMatchObject({ ok: true, status: 'published' });
       }

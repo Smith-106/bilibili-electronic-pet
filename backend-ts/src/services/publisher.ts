@@ -11,7 +11,12 @@ import type { PublishIntent } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply, verifyReplyVisible } from './bilibili-client.js';
 import { getActivePersonaName, loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
-import { recordAntiriskSignal, recordObservabilityEvent, getObservabilityDropCount } from './observability.js';
+import {
+  recordAntiriskSignal,
+  recordObservabilityEvent,
+  getObservabilityDropCount,
+  ensureTraceId,
+} from './observability.js';
 import { isPersonaInBackoff, applyBackoff } from './backoff-decision.js';
 import { checkPersonaRateLimit } from './persona-token-bucket.js';
 import { createHash } from 'node:crypto';
@@ -130,6 +135,27 @@ function recordFailure(platform: string): void {
     const openSecondsRaw = parseInt(process.env.PUBLISHER_CIRCUIT_OPEN_SECONDS || '30', 10);
     const openSeconds = Number.isFinite(openSecondsRaw) && openSecondsRaw > 0 ? openSecondsRaw : 30;
     breaker.openUntil = Date.now() + openSeconds * 1000;
+    // H7 fix: circuit-breaker OPEN stdout-only 无 ObservabilityEvent 无 gate — 加 fire-and-forget
+    // event 使 breaker 翻红可追溯 (平台级非 job 级, trace_id 用 ensureTraceId 占位, 非绑定单 comment).
+    void recordObservabilityEvent({
+      event_type: 'circuit_breaker_open',
+      trace_id: ensureTraceId(),
+      status: 'open',
+      metadata: {
+        platform,
+        open_seconds: openSeconds,
+        failure_count: breaker.failureCount,
+      },
+    }).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'circuit_breaker_open_event_record_failed',
+          platform,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
     console.warn(
       `[publisher] Circuit breaker OPEN for platform=${platform} for ${openSeconds}s after ${breaker.failureCount} failures`,
     );
@@ -189,7 +215,11 @@ function normalizeFailureReason(error: unknown): string {
   // (host/network unreachable + broken pipe + DNS EAI_AGAIN 临时失败 + ENETRESET 网络重置同属 fetch 层
   // 网络失败, 误分类 publish_failed 会污染 real_publish throw 路径的 publish_log.failure_reason enum,
   // 隐藏 network_error 语义)。eai 前缀覆盖 eai_again/eai_nodata 等 getaddrinfo 族。
-  if (error.name === 'AbortError' || error.name === 'TypeError' || /fetch failed|network|econn|enotfound|etimedout|eaddr|ehostunreach|enetunreach|epipe|eai|enetreset/i.test(message)) {
+  if (
+    error.name === 'AbortError' ||
+    error.name === 'TypeError' ||
+    /fetch failed|network|econn|enotfound|etimedout|eaddr|ehostunreach|enetunreach|epipe|eai|enetreset/i.test(message)
+  ) {
     return 'network_error';
   }
   return 'publish_failed';
@@ -314,6 +344,34 @@ async function safeCreatePublishLog(data: {
   try {
     await prisma.publishLog.create({ data });
   } catch (error) {
+    // H5 F1 fix: P2002 = unique([canonical_comment_id, reply_hash]) 违反 = 同 reply 已记录过
+    // (redelivery race 兜底 — L855 findFirst dedupe 与本 create 之间的 TOCTOU window 被 unique
+    // index 作 true row lock 兜住). catch-as-duplicate-success: 不 rethrow (audit 已记录, 幂等),
+    // 加 fire-and-forget ObservabilityEvent 使 race 可见 (default 30s lockDuration redelivery 场景).
+    const code = (error as { code?: unknown })?.code;
+    if (code === 'P2002') {
+      void recordObservabilityEvent({
+        event_type: 'publish_log_duplicate_detected',
+        trace_id: ensureTraceId(),
+        comment_id: data.comment_id,
+        status: 'duplicate',
+        metadata: {
+          canonical_comment_id: data.canonical_comment_id,
+          source: data.source,
+          intended_status: data.status,
+        },
+      }).catch((recordError: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            message: 'publish_log_duplicate_event_record_failed',
+            comment_id: data.comment_id,
+            error: recordError instanceof Error ? recordError.message : String(recordError),
+          }),
+        );
+      });
+      return;
+    }
     if (!isPublishLogStorageError(error)) {
       throw error;
     }
@@ -508,12 +566,7 @@ async function publishWebhook(
       // 5xx → '5xx' (STANDARD enum, 可重试 channel failure), 4xx → 'publish_failed' (client 配置错)。
       // status 保留进 metadata 供 operator 诊断, 不进 reason enum。
       console.error(`[publisher] webhook HTTP ${response.status}`);
-      return [
-        false,
-        response.status >= 500 ? '5xx' : 'publish_failed',
-        now,
-        { webhook_http_status: response.status },
-      ];
+      return [false, response.status >= 500 ? '5xx' : 'publish_failed', now, { webhook_http_status: response.status }];
     }
 
     const data = await response.json();
@@ -679,21 +732,27 @@ async function publishReal(
   if (visibilityStatus === 'shadowbanned') {
     // applyBackoff writes its own ObservabilityEvent {event_type:'backoff_applied'} with
     // error_subclass='shadowban' (fail-closed, never throws) — TASK-004 A-layer seam.
-    await applyBackoff(probePersonaId, 'shadowban', traceId ?? context.canonicalCommentId);
-    await recordAntiriskSignal({
-      event_type: 'reply_visibility_check',
-      trace_id: traceId ?? context.canonicalCommentId,
-      comment_id: context.commentId,
-      status: 'shadowbanned',
-      error_subclass: 'shadowban',
-      persona_id: probePersonaId,
-      metadata: {
-        visibility_status: 'shadowbanned',
-        probe_method: visibilityProbeMethod ?? 'unknown',
-        rpid: result.rpid,
-        reason: visibilityReason ?? 'rpid_absent',
-      },
-    });
+    // H2 fix: applyBackoff (内部含 recordAntiriskSignal 写 backoff_applied) 与本处
+    // recordAntiriskSignal (写 reply_visibility_check) 是两条独立 antirisk signal, 各自
+    // fail-closed (recordAntiriskSignal 内部 catch 不抛). Promise.all 并行省 1 个串行 DB
+    // round-trip, 仍同步 await 完成 — 守 LD-04 (antirisk signal MUST 同步持久化, 非移 fire-and-forget).
+    await Promise.all([
+      applyBackoff(probePersonaId, 'shadowban', traceId ?? context.canonicalCommentId),
+      recordAntiriskSignal({
+        event_type: 'reply_visibility_check',
+        trace_id: traceId ?? context.canonicalCommentId,
+        comment_id: context.commentId,
+        status: 'shadowbanned',
+        error_subclass: 'shadowban',
+        persona_id: probePersonaId,
+        metadata: {
+          visibility_status: 'shadowbanned',
+          probe_method: visibilityProbeMethod ?? 'unknown',
+          rpid: result.rpid,
+          reason: visibilityReason ?? 'rpid_absent',
+        },
+      }),
+    ]);
     // Fail-closed tuple: the publish is not actually visible, so surface failure (not
     // 'published') so the catch path / circuit breaker / readiness all reflect the truth.
     // Does NOT throw (L7 tuple contract) — publishIntentWithResult returns this tuple and
@@ -788,6 +847,27 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
   // any error). A null persona_id never enters backoff (isPersonaInBackoff returns false).
   const backoffPersonaId = await resolveActivePersonaId();
   if (isPersonaInBackoff(backoffPersonaId)) {
+    // H9 fix: publish 被 A 层退避拦截 (readiness red via backoff), stdout-only 无 event —
+    // 加 fire-and-forget ObservabilityEvent 使 block 可追溯 (与 applyBackoff 的 backoff_applied
+    // event 语义不同: 那是退避应用时, 这是退避生效拦截 publish 时).
+    void recordObservabilityEvent({
+      event_type: 'publish_blocked_by_backoff',
+      trace_id: intent.traceId ?? canonicalCommentId,
+      comment_id: commentId,
+      status: 'backoff_active',
+      metadata: {
+        persona_id: backoffPersonaId,
+      },
+    }).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'publish_blocked_by_backoff_event_record_failed',
+          comment_id: commentId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -811,6 +891,26 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     return [true, 'dry_run_skipped', new Date(), null];
   }
   if (stageMode === 'real_publish' && isStageGateEnabled() && !isStageRealPublishReady()) {
+    // H9 fix: publish 被 stage gate 拦截 (readiness 未绿), stdout-only 无 event — 加
+    // fire-and-forget ObservabilityEvent 使 block 可追溯 (operator 可见哪条 readiness 未绿).
+    void recordObservabilityEvent({
+      event_type: 'publish_blocked_by_stage_gate',
+      trace_id: intent.traceId ?? canonicalCommentId,
+      comment_id: commentId,
+      status: 'stage_gate_blocked',
+      metadata: {
+        drop_count: getObservabilityDropCount(),
+      },
+    }).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'publish_blocked_by_stage_gate_event_record_failed',
+          comment_id: commentId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -916,6 +1016,28 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
         published_at: publishedAt,
       });
     } catch (dbError) {
+      // H5 F5 / H8 fix: bare catch 吞所有 publishLog 写失败 (SQLITE_BUSY/P2028/connection loss,
+      // P2002 已在 safeCreatePublishLog 内 catch-as-duplicate). 加 fire-and-forget ObservabilityEvent
+      // 使 silent swallow 可见 — 非 antirisk 信号 (publish_log 写失败非账号风控), 走 observation buffer.
+      void recordObservabilityEvent({
+        event_type: 'publish_log_record_failed',
+        trace_id: intent.traceId ?? canonicalCommentId,
+        comment_id: commentId,
+        status: 'failed',
+        metadata: {
+          failure_reason: failureReason,
+          db_error: dbError instanceof Error ? dbError.message : String(dbError),
+        },
+      }).catch((recordError: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            message: 'publish_log_record_failed_event_record_failed',
+            comment_id: commentId,
+            error: recordError instanceof Error ? recordError.message : String(recordError),
+          }),
+        );
+      });
       console.error('[publisher] Failed to record publish log:', dbError);
     }
 

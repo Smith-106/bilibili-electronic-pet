@@ -9,7 +9,9 @@ const mockPrisma = {
     update: vi.fn(),
   },
   comment: {
+    findMany: vi.fn(),
     create: vi.fn(),
+    createMany: vi.fn(),
   },
   $disconnect: vi.fn(),
 };
@@ -51,6 +53,14 @@ beforeEach(() => {
   mockPrisma.bilibiliVideo.findUnique.mockReset();
   mockPrisma.bilibiliVideo.update.mockReset();
   mockPrisma.comment.create.mockReset();
+  mockPrisma.comment.findMany.mockReset();
+  mockPrisma.comment.createMany.mockReset();
+  // H1 fix: poller 改 createMany 批量 — findMany 预查重默认空集 (无已存在),
+  // createMany implementation 返回传入 data 数组长度作 count (匹配实际注入数, 各 test 无需单独设).
+  mockPrisma.comment.findMany.mockResolvedValue([]);
+  mockPrisma.comment.createMany.mockImplementation(async (args: { data: unknown[] }) => ({
+    count: Array.isArray(args?.data) ? args.data.length : 0,
+  }));
   mockPrisma.$disconnect.mockReset();
   createPrismaClient.mockClear();
 });
@@ -244,16 +254,18 @@ describe('pollAllVideos runtime config integration', () => {
         },
       ],
     });
-    expect(mockPrisma.comment.create).toHaveBeenCalledWith({
-      data: {
-        platform: 'bilibili',
-        canonical_comment_id: 'bilibili:6001',
-        comment_id: '6001',
-        video_id: 'BV-success',
-        user_id: '43',
-        content: 'fresh',
-        parent_id: null,
-      },
+    expect(mockPrisma.comment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          platform: 'bilibili',
+          canonical_comment_id: 'bilibili:6001',
+          comment_id: '6001',
+          video_id: 'BV-success',
+          user_id: '43',
+          content: 'fresh',
+          parent_id: null,
+        },
+      ],
     });
     // Poller now uses getPrisma() singleton — no longer disconnects after each poll
     infoSpy.mockRestore();
@@ -305,11 +317,12 @@ describe('pollVideoById', () => {
       last_rpid: 10,
     });
     mockPrisma.bilibiliVideo.update.mockResolvedValue(undefined);
-    mockPrisma.comment.create.mockResolvedValueOnce(undefined).mockRejectedValueOnce(
-      Object.assign(new Error('Unique constraint failed on the fields: (canonical_comment_id)'), {
-        code: 'P2002',
-      }),
-    );
+    // H1 fix: poller 改 findMany 预查重 + createMany 批量 (不再逐条 create + P2002 catch).
+    // rpid 11 模拟已存在 (findMany 返回), filter 跳过, createMany 只注入 rpid 12.
+    // rpid 9 < last_rpid=10 watermark 已被 poller 自身过滤, 不进 createMany.
+    mockPrisma.comment.findMany.mockResolvedValueOnce([
+      { canonical_comment_id: 'bilibili:11' },
+    ]);
     fetchMock
       .mockResolvedValueOnce({
         ok: true,
@@ -384,27 +397,18 @@ describe('pollVideoById', () => {
         last_poll_error: null,
       },
     });
-    expect(mockPrisma.comment.create).toHaveBeenNthCalledWith(1, {
-      data: {
-        platform: 'bilibili',
-        canonical_comment_id: 'bilibili:12',
-        comment_id: '12',
-        video_id: 'BV1GJ411x7fD',
-        user_id: '2001',
-        content: 'first',
-        parent_id: null,
-      },
-    });
-    expect(mockPrisma.comment.create).toHaveBeenNthCalledWith(2, {
-      data: {
-        platform: 'bilibili',
-        canonical_comment_id: 'bilibili:11',
-        comment_id: '11',
-        video_id: 'BV1GJ411x7fD',
-        user_id: '2002',
-        content: 'second',
-        parent_id: '9',
-      },
+    expect(mockPrisma.comment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          platform: 'bilibili',
+          canonical_comment_id: 'bilibili:12',
+          comment_id: '12',
+          video_id: 'BV1GJ411x7fD',
+          user_id: '2001',
+          content: 'first',
+          parent_id: null,
+        },
+      ],
     });
     expect(result).toEqual({
       status: 'completed',
@@ -533,7 +537,7 @@ describe('pollVideoById', () => {
 
     const result = await pollVideoById(45);
 
-    expect(mockPrisma.comment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.comment.createMany).not.toHaveBeenCalled();
     expect(mockPrisma.bilibiliVideo.update).toHaveBeenCalledWith({
       where: { id: 45 },
       data: {
@@ -585,7 +589,7 @@ describe('pollVideoById', () => {
 
     const result = await pollVideoById(47);
 
-    expect(mockPrisma.comment.create).not.toHaveBeenCalled();
+    expect(mockPrisma.comment.createMany).not.toHaveBeenCalled();
     expect(mockPrisma.bilibiliVideo.update).toHaveBeenCalledWith({
       where: { id: 47 },
       data: {
@@ -660,27 +664,27 @@ describe('pollVideoById', () => {
         last_poll_error: null,
       },
     });
-    expect(mockPrisma.comment.create).toHaveBeenNthCalledWith(1, {
-      data: {
-        platform: 'bilibili',
-        canonical_comment_id: 'bilibili:12',
-        comment_id: '12',
-        video_id: 'BV-new-page',
-        user_id: '3001',
-        content: '',
-        parent_id: null,
-      },
-    });
-    expect(mockPrisma.comment.create).toHaveBeenNthCalledWith(2, {
-      data: {
-        platform: 'bilibili',
-        canonical_comment_id: 'bilibili:11',
-        comment_id: '11',
-        video_id: 'BV-new-page',
-        user_id: '3002',
-        content: '',
-        parent_id: null,
-      },
+    expect(mockPrisma.comment.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          platform: 'bilibili',
+          canonical_comment_id: 'bilibili:12',
+          comment_id: '12',
+          video_id: 'BV-new-page',
+          user_id: '3001',
+          content: '',
+          parent_id: null,
+        },
+        {
+          platform: 'bilibili',
+          canonical_comment_id: 'bilibili:11',
+          comment_id: '11',
+          video_id: 'BV-new-page',
+          user_id: '3002',
+          content: '',
+          parent_id: null,
+        },
+      ],
     });
     expect(result).toEqual({
       status: 'completed',

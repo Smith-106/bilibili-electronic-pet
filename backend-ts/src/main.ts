@@ -2,7 +2,6 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto
 
 import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
-import { Redis } from 'ioredis';
 import { createMemoryService } from './app/memory/index.js';
 import { createPetCoreService } from './app/pet-core/index.js';
 import { COMPANION_SYSTEM_SPACE_KEY, upsertCompanionFeedItem } from './app/memory/companion-feed.js';
@@ -11,7 +10,7 @@ import {
   buildPlatformPublishIntent,
   resolveCommentReplyIntentParts,
 } from './domain/publish/comment-reply-intent.js';
-import { getPrisma, DEFAULT_DATABASE_URL } from './lib/prisma.js';
+import { getPrisma, DEFAULT_DATABASE_URL, checkDatabaseConnection } from './lib/prisma.js';
 import { getPlatformControlState, setPlatformControlState } from './platforms/control-state.js';
 import { publishViaSidecarWebhook } from './platforms/sidecar-webhook.js';
 import { listPlatformAdapters, listPlatformIngressRoutes, resolvePlatformAdapter } from './platforms/registry.js';
@@ -77,7 +76,7 @@ import { getObservabilityDropCount, isDropCountThresholdExceeded } from './servi
 import { isAuthProbeHealthy } from './services/probe-scheduler.js';
 import { isCompliancePassive } from './services/compliance-mode.js';
 import { isEncryptionAvailable } from './services/credential-crypto.js';
-import { buildRedisConnectionConfig } from './workers/config.js';
+import { checkRedisConnection } from './lib/redis.js';
 
 type DeliveryCapabilityName =
   | 'llm_generation'
@@ -931,36 +930,13 @@ async function defaultBilibiliDiagnostics(
 }
 
 async function defaultCheckDatabaseConnection(): Promise<ConnectionStatus> {
-  try {
-    await getPrisma().$queryRawUnsafe('SELECT 1');
-    return { connected: true };
-  } catch (error) {
-    return {
-      connected: false,
-      error: error instanceof Error ? error.message : 'database_unavailable',
-    };
-  }
+  // H4 fix: 委派给 lib/prisma.ts 的 checkDatabaseConnection — entry 不再越层直接 $queryRawUnsafe.
+  return checkDatabaseConnection();
 }
 
 async function defaultCheckRedisConnection(): Promise<ConnectionStatus> {
-  const redis = new Redis({
-    ...buildRedisConnectionConfig(),
-    lazyConnect: true,
-    connectTimeout: 1000,
-  });
-
-  try {
-    await redis.connect();
-    const result = await redis.ping();
-    return { connected: result === 'PONG' };
-  } catch (error) {
-    return {
-      connected: false,
-      error: error instanceof Error ? error.message : 'redis_unavailable',
-    };
-  } finally {
-    redis.disconnect();
-  }
+  // H4 fix: 委派给 lib/redis.ts 的 checkRedisConnection — entry 不再越层直接 new Redis().
+  return checkRedisConnection();
 }
 
 function defaultNormalizePublishFailureReason(reason: string | undefined): string {
@@ -2182,10 +2158,7 @@ async function defaultIsBehaviorAnomalyCountZero(): Promise<boolean> {
 // window OR on DB error): mirrors isBehaviorAnomalyCountZero — a DB blip must NOT be assumed
 // safe. probe_failed verdicts are NOT counted here (they record no antirisk signal, C-004
 // fail-open), so a transient probe glitch cannot flip this red.
-const REPLY_VISIBILITY_WINDOW_SECONDS = Number.parseInt(
-  process.env.REPLY_VISIBILITY_WINDOW_SECONDS ?? '',
-  10,
-) || 86400;
+const REPLY_VISIBILITY_WINDOW_SECONDS = Number.parseInt(process.env.REPLY_VISIBILITY_WINDOW_SECONDS ?? '', 10) || 86400;
 
 async function defaultIsReplyVisibilityHealthy(): Promise<boolean> {
   const prisma = getPrisma();
@@ -2463,9 +2436,13 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
         recentCompanionSummaries.length > 0
           ? `Recent companion feed: ${recentCompanionSummaries.join(' | ')}`
           : 'No companion feed items yet.',
-        recentItemCount > 0 ? `${recentItemCount} persisted memory item${recentItemCount === 1 ? '' : 's'}.` : 'No recent items.',
+        recentItemCount > 0
+          ? `${recentItemCount} persisted memory item${recentItemCount === 1 ? '' : 's'}.`
+          : 'No recent items.',
         recentSpaceTitles.length > 0 ? `Recent spaces: ${recentSpaceTitles.join(', ')}` : 'No recent spaces.',
-        identityLinkCount > 0 ? `${identityLinkCount} linked identit${identityLinkCount === 1 ? 'y' : 'ies'}.` : 'No linked identities.',
+        identityLinkCount > 0
+          ? `${identityLinkCount} linked identit${identityLinkCount === 1 ? 'y' : 'ies'}.`
+          : 'No linked identities.',
       ],
       recentInteractions,
     };

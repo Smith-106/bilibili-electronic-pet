@@ -24,8 +24,7 @@
 
 import { probeBilibiliAuth } from './bilibili-client.js';
 import { loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
-import { recordAntiriskSignal } from './observability.js';
-import { ensureTraceId } from './observability.js';
+import { recordAntiriskSignal, recordObservabilityEvent, ensureTraceId } from './observability.js';
 import { isCompliancePassive } from './compliance-mode.js';
 
 // 14 天观察期上限 (L6)：固定作上限 + 信号作提前退出条件。阈值 DD-03 待 SME+运营。
@@ -36,7 +35,8 @@ export const WARMUP_WINDOW_DAYS = Number.isFinite(rawWarmupDays) && rawWarmupDay
 // 保守占位：14 天内最小连续健康 probe 次数才断言存活。DD-03 可调。
 // SEC-003 fix: 下界校验 — 非法值 (<1) 退回默认 4.
 const rawMinHealthyProbes = Number.parseInt(process.env.MIN_HEALTHY_PROBES_FOR_WARMUP ?? '4', 10);
-const MIN_HEALTHY_PROBES_FOR_WARMUP = Number.isFinite(rawMinHealthyProbes) && rawMinHealthyProbes >= 1 ? rawMinHealthyProbes : 4;
+const MIN_HEALTHY_PROBES_FOR_WARMUP =
+  Number.isFinite(rawMinHealthyProbes) && rawMinHealthyProbes >= 1 ? rawMinHealthyProbes : 4;
 
 const WARMUP_WINDOW_MS = WARMUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
@@ -112,6 +112,21 @@ export async function probeBilibiliAuthScheduler(): Promise<void> {
   const config = await loadBilibiliRuntimeConfig();
   if (!config) {
     setAuthProbeUnhealthy(true);
+    // H6 fix: readiness-red-without-event — no_credential 仅 console 不持久化, 加 fire-and-forget
+    // ObservabilityEvent 使 readiness red 有 event trail 可追溯 (非 antirisk 信号, 走 observation buffer).
+    void recordObservabilityEvent({
+      event_type: 'probe_scheduler_no_credential',
+      trace_id: ensureTraceId(),
+      status: 'no_credential',
+    }).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'probe_scheduler_no_credential_event_record_failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
     console.error(
       JSON.stringify({
         level: 'error',
@@ -184,6 +199,27 @@ export async function probeBilibiliAuthScheduler(): Promise<void> {
     (typeof rawReason === 'string' && rawReason.startsWith('http_'))
       ? rawReason
       : 'api_error';
+  // H6 fix: readiness-red-without-event — probe_scheduler_failed 仅 console 不持久化, 加
+  // fire-and-forget ObservabilityEvent 使 readiness red 有 event trail (非 antirisk 信号,
+  // 探针失败 fail-open C-004, 走 observation buffer 非 recordAntiriskSignal 同步持久化路径).
+  void recordObservabilityEvent({
+    event_type: 'probe_scheduler_failed',
+    trace_id: ensureTraceId(),
+    status: safeReason,
+    metadata: {
+      persona_id: personaId,
+      reason: safeReason,
+    },
+  }).catch((error: unknown) => {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'probe_scheduler_failed_event_record_failed',
+        persona_id: personaId,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
   console.error(
     JSON.stringify({
       level: 'error',

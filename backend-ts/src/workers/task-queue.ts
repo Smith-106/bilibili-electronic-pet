@@ -68,6 +68,13 @@ export function createTaskWorker<P extends BaseTaskPayload>(
       max: 100,
       duration: 60000, // 100 jobs per minute
     },
+    // H5 F2 fix: BullMQ default lockDuration=30s < publish+probe duration 触发 stall redelivery
+    // → 双 worker race TOCTOU. 加长 lock 到 120s + maxStalledCount=2 (允 1 次重试 stall 后才判死)
+    // + stalledInterval=60s (降低 stall 检查频率避免 30s 误判). 与 F1 (safeCreatePublishLog catch
+    // P2002 as duplicate-success 用 unique index 兜 TOCTOU window) 成 minimal pair: F2 防触发, F1 兜底.
+    lockDuration: 120000,
+    maxStalledCount: 2,
+    stalledInterval: 60000,
   };
 
   const worker = new Worker<P>(

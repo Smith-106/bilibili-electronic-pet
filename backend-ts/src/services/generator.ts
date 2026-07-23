@@ -7,7 +7,6 @@
  */
 
 import type { GenerateReplyService } from './interfaces.js';
-import type { MemoryContext } from '../app/memory/types.js';
 import { generateWithLLM } from './llm-client.js';
 import { classifyReplyIntent, shouldSkipByRuleAndIntent } from './intent-agent.js';
 import {
@@ -195,7 +194,16 @@ function buildMessages(
 // ── Public API ──────────────────────────────────────────────
 
 export const generateReplyWithMeta: GenerateReplyService = async (params) => {
-  const { content, style_mode, length_mode, role_profile, role_card, knowledge_context, search_context, memory_context } = params;
+  const {
+    content,
+    style_mode,
+    length_mode,
+    role_profile,
+    role_card,
+    knowledge_context,
+    search_context,
+    memory_context,
+  } = params;
 
   try {
     // Skip by keywords from config (硬规则先跑, C-005 规则优先).

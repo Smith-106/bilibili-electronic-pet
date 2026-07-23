@@ -6,6 +6,7 @@
  */
 
 import type { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { getPrisma } from '../lib/prisma.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './bilibili-runtime-config.js';
@@ -245,39 +246,38 @@ async function pollVideoComments(
   }
 
   // Inject new comments into the pipeline
+  // H1 fix: 原 per-comment serial prisma.comment.create (N INSERT+fsync/poll) 改批量 createMany.
+  // 注意: libsql/SQLite Prisma adapter 的 createMany 不支持 skipDuplicates (CommentCreateManyArgs
+  // 仅含 data 字段), 故先 findMany 已存在的 canonical_comment_id 预过滤, 再对纯新 comment 批量
+  // createMany — canonical_comment_id @unique 保证去重, 预过滤消除 TOCTOU (单进程 poller 串行).
   let injected = 0;
-  for (const c of allComments) {
-    const platform = 'bilibili';
-    const canonicalCommentId = `${platform}:${c.rpid}`;
-
-    try {
-      await prisma.comment.create({
-        data: {
-          platform,
-          canonical_comment_id: canonicalCommentId,
-          comment_id: String(c.rpid),
-          video_id: video.bvid,
-          user_id: String(c.mid),
-          content: c.content,
-          parent_id: c.parent_rpid ? String(c.parent_rpid) : null,
-        },
-      });
-      injected++;
-      console.info(`[bilibili-poller] Injected comment rpid=${c.rpid} bvid=${video.bvid}`);
-    } catch (err) {
-      // L8: Classified catch — P2002 unique violation means the comment was already
-      // injected (duplicate), so skip silently. Other errors MUST NOT be swallowed:
-      // surface via console.error so antirisk signals / DB issues reach the operator.
-      const code = (err as { code?: unknown })?.code;
-      if (code === 'P2002') {
-        // duplicate comment — skip
-        continue;
-      }
-      console.error('[bilibili-poller] inject failed:', err);
+  if (allComments.length > 0) {
+    const candidateIds = allComments.map((c) => `bilibili:${c.rpid}`);
+    const existing = await prisma.comment.findMany({
+      where: { canonical_comment_id: { in: candidateIds } },
+      select: { canonical_comment_id: true },
+    });
+    const existingSet = new Set(existing.map((e) => e.canonical_comment_id));
+    const newComments: Prisma.CommentCreateManyInput[] = allComments
+      .filter((c) => !existingSet.has(`bilibili:${c.rpid}`))
+      .map((c) => ({
+        platform: 'bilibili',
+        canonical_comment_id: `bilibili:${c.rpid}`,
+        comment_id: String(c.rpid),
+        video_id: video.bvid,
+        user_id: String(c.mid),
+        content: c.content,
+        parent_id: c.parent_rpid ? String(c.parent_rpid) : null,
+      }));
+    if (newComments.length > 0) {
+      const result = await prisma.comment.createMany({ data: newComments });
+      injected = result.count;
     }
+    const skipped = allComments.length - newComments.length;
+    console.info(
+      `[bilibili-poller] bvid=${video.bvid} total=${allComments.length} injected=${injected} duplicates_skipped=${skipped}`,
+    );
   }
-
-  console.info(`[bilibili-poller] bvid=${video.bvid} total=${allComments.length} injected=${injected}`);
 
   return { status: 'success', new_comments: injected };
 }

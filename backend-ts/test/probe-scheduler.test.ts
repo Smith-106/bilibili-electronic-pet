@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { probeBilibiliAuthMock, recordAntiriskSignalMock, configMock } = vi.hoisted(() => ({
+const { probeBilibiliAuthMock, recordAntiriskSignalMock, recordObservabilityEventMock, configMock } = vi.hoisted(() => ({
   probeBilibiliAuthMock: vi.fn(),
   recordAntiriskSignalMock: vi.fn(),
+  recordObservabilityEventMock: vi.fn(),
   configMock: vi.fn(),
 }));
 
@@ -16,6 +17,8 @@ vi.mock('../src/services/bilibili-runtime-config.js', () => ({
 
 vi.mock('../src/services/observability.js', () => ({
   recordAntiriskSignal: recordAntiriskSignalMock,
+  // H6 fix: probe-scheduler 新增 recordObservabilityEvent fire-and-forget 调用 — 测试 mock 须声明.
+  recordObservabilityEvent: recordObservabilityEventMock,
   ensureTraceId: () => 'test-trace-id',
 }));
 
@@ -41,6 +44,9 @@ beforeEach(() => {
   __resetProbeSchedulerForTest();
   probeBilibiliAuthMock.mockReset();
   recordAntiriskSignalMock.mockReset();
+  recordObservabilityEventMock.mockReset();
+  // H6 fix: recordObservabilityEvent 返回 Promise (caller .catch()) — mock 默认 resolved 避免 TypeError.
+  recordObservabilityEventMock.mockResolvedValue(undefined);
   configMock.mockReset();
   configMock.mockResolvedValue(baseConfig);
   // probe-scheduler gates on BILIBILI_ENABLED: probe only runs when collection is on.

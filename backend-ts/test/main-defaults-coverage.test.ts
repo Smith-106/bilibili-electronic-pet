@@ -180,6 +180,18 @@ vi.mock('../src/server/dependencies.js', () => ({
 vi.mock('../src/lib/prisma.js', () => ({
   DEFAULT_DATABASE_URL: 'file:./default-test.db',
   getPrisma: () => prismaMock,
+  // H4 fix: checkDatabaseConnection 委派到 lib/prisma.ts — mock 工厂须暴露, 复刻原 $queryRawUnsafe('SELECT 1') 逻辑使测试断言成立.
+  checkDatabaseConnection: async () => {
+    try {
+      await prismaMock.$queryRawUnsafe('SELECT 1');
+      return { connected: true };
+    } catch (error) {
+      return {
+        connected: false,
+        error: error instanceof Error ? error.message : 'database_unavailable',
+      };
+    }
+  },
 }));
 
 vi.mock('ioredis', () => ({
