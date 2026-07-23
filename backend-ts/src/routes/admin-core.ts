@@ -8,6 +8,7 @@ import type {
 } from '../server/contracts.js';
 import { isPetActionName, type PetActionName } from '../server/pet-contracts.js';
 import { isPlatformName } from '../server/platform-contracts.js';
+import { timingSafeStringCompare } from '../lib/timing-safe-compare.js';
 
 export type AdminCoreRouteDependencies = {
   settings: RuntimeSettings;
@@ -48,7 +49,11 @@ export function registerAdminCoreRoutes(app: FastifyInstance, deps: AdminCoreRou
 
     const body = request.body as Record<string, unknown>;
     const providedApiKey = String(body.api_key ?? body.apiKey ?? '').trim();
-    if (providedApiKey !== expectedApiKey) {
+    // security fix: admin login 端点用 !== 直接比对 request body api_key 与 settings.apiKey (admin
+    // 主密钥), 是独立 timing-attack 入口 (不经 checkApiKey — checkApiKey 已修为 timingSafeStringCompare,
+    // 但 login 路径在 issueAdminSession 之前直接明文比对). 改 timing-safe 与 main.ts checkApiKey /
+    // gateway-publish.ts 保持一致 (security pattern P2). expected 已在 line 44 守非空 (空则 503 早返).
+    if (!timingSafeStringCompare(providedApiKey, expectedApiKey)) {
       return reply.code(401).send({ detail: 'unauthorized' });
     }
 

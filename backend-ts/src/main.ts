@@ -72,7 +72,12 @@ import {
   type BilibiliAuthProbeResult,
 } from './services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from './services/bilibili-runtime-config.js';
-import { getObservabilityDropCount, isDropCountThresholdExceeded } from './services/observability.js';
+import {
+  getObservabilityDropCount,
+  isDropCountThresholdExceeded,
+  recordObservabilityEvent,
+  ensureTraceId,
+} from './services/observability.js';
 import { isAuthProbeHealthy } from './services/probe-scheduler.js';
 import { isCompliancePassive } from './services/compliance-mode.js';
 import { isEncryptionAvailable } from './services/credential-crypto.js';
@@ -2080,6 +2085,27 @@ async function defaultIsBackoffActiveRateExceeded(): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     );
+    // observability fix: readiness-gate DB 查询失败翻红 (fail-closed true) 但仅 console.warn 镜像,
+    // 无 ObservabilityEvent — 运营无法从统一 observability 流追踪门控翻红原因. 补 fire-and-forget
+    // event (readiness-red-without-event 反模式, H9 pattern). 非阻塞, 不影响 fail-closed 返回值.
+    void recordObservabilityEvent({
+      event_type: 'readiness_gate_error',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        gate: 'backoff_active_rate',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'readiness_gate_error_event_record_failed',
+          gate: 'backoff_active_rate',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return true;
   }
 }
@@ -2112,6 +2138,24 @@ async function defaultIsPassiveResponseViolationExceeded(): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     );
+    void recordObservabilityEvent({
+      event_type: 'readiness_gate_error',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        gate: 'passive_response_violation',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'readiness_gate_error_event_record_failed',
+          gate: 'passive_response_violation',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return true;
   }
 }
@@ -2148,6 +2192,27 @@ async function defaultIsBehaviorAnomalyCountZero(): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     );
+    // observability fix: SC4 硬门 (real_publish barrier) DB 查询失败翻红 (fail-closed false) 但无
+    // ObservabilityEvent — 最严重遗漏: DB blip 翻红阻止 real_publish 但运营无法从 observability 流
+    // 追踪原因. 补 fire-and-forget event (readiness-red-without-event 反模式, H9 pattern).
+    void recordObservabilityEvent({
+      event_type: 'readiness_gate_error',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        gate: 'behavior_anomaly_count',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'readiness_gate_error_event_record_failed',
+          gate: 'behavior_anomaly_count',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return false;
   }
 }
@@ -2182,6 +2247,28 @@ async function defaultIsReplyVisibilityHealthy(): Promise<boolean> {
         timestamp: new Date().toISOString(),
       }),
     );
+    // observability fix: reply_visibility gate DB 查询失败翻红 (fail-closed false) 但无 ObservabilityEvent
+    // (readiness-red-without-event 反模式, H9 pattern). 注意: 此处 message 名与 publisher.ts 已修的
+    // 'reply_visibility_check' record_failed 不同 — 此处是 isReplyVisibilityHealthy 门控 DB 查询 catch
+    // (翻红 reply_visibility gate), publisher.ts:783 是发布侧探针记录失败. 补 fire-and-forget event.
+    void recordObservabilityEvent({
+      event_type: 'readiness_gate_error',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        gate: 'reply_visibility_count',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'readiness_gate_error_event_record_failed',
+          gate: 'reply_visibility_count',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return false;
   }
 }
