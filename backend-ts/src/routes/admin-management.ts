@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
+import { DuplicateKeyError } from '../lib/duplicate-key-error.js';
 import type {
   IdentityLink,
   MemoryGrant,
@@ -247,13 +248,21 @@ export function registerAdminManagementRoutes(app: FastifyInstance, deps: AdminM
       return reply.code(400).send({ detail: 'title_required' });
     }
 
-    const response = await deps.createMemorySpace({
-      space_key: spaceKey,
-      space_type: spaceType,
-      title,
-      summary,
-    });
-    return reply.send(response);
+    try {
+      const response = await deps.createMemorySpace({
+        space_key: spaceKey,
+        space_type: spaceType,
+        title,
+        summary,
+      });
+      return reply.send(response);
+    } catch (error) {
+      // ISS-002: @unique space_key P2002 surfaced as DuplicateKeyError → 409 conflict.
+      if (error instanceof DuplicateKeyError) {
+        return reply.code(409).send({ detail: 'duplicate' });
+      }
+      throw error;
+    }
   });
 
   app.get('/api/admin/memory/items', async (request, reply) => {
@@ -502,16 +511,24 @@ export function registerAdminManagementRoutes(app: FastifyInstance, deps: AdminM
       return reply.code(400).send({ detail: 'role_card_name_required' });
     }
 
-    const response = await deps.createRoleCard({
-      key,
-      name,
-      description,
-      system_prompt: systemPrompt,
-      tone,
-      constraints,
-      enabled,
-    });
-    return reply.send(response);
+    try {
+      const response = await deps.createRoleCard({
+        key,
+        name,
+        description,
+        system_prompt: systemPrompt,
+        tone,
+        constraints,
+        enabled,
+      });
+      return reply.send(response);
+    } catch (error) {
+      // ISS-002: @unique roleCard.key P2002 surfaced as DuplicateKeyError → 409 conflict.
+      if (error instanceof DuplicateKeyError) {
+        return reply.code(409).send({ detail: 'duplicate' });
+      }
+      throw error;
+    }
   });
 
   app.post('/api/admin/role-cards/:card_key', async (request, reply) => {

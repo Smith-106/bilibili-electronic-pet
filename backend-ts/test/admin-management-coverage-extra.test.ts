@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import { describe, expect, it, vi } from 'vitest';
 
+import { DuplicateKeyError } from '../src/lib/duplicate-key-error.js';
 import {
   registerAdminManagementRoutes,
   type AdminManagementRouteDependencies,
@@ -867,6 +868,48 @@ describe('admin management route coverage extra', () => {
     expect(activated.json()).toEqual({ ok: true, active_role_card_key: 'test-card' });
     expect(normalizeRoleCardInputValue).toHaveBeenCalledWith({ mode: 'warm' });
     expect(normalizeRoleCardInputValue).toHaveBeenCalledWith(' playful ');
+
+    await app.close();
+  });
+
+  it('returns 409 conflict when createMemorySpace hits a P2002 unique-key violation', async () => {
+    const createMemorySpace = vi.fn(() => {
+      throw new DuplicateKeyError('memory_space_duplicate');
+    });
+    const { app } = createApp({ createMemorySpace });
+    const headers = { 'x-api-key': 'admin-key' };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/memory/spaces',
+      headers,
+      payload: { space_key: 'dupe', title: 'Dupe' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ detail: 'duplicate' });
+    expect(createMemorySpace).toHaveBeenCalledTimes(1);
+
+    await app.close();
+  });
+
+  it('returns 409 conflict when createRoleCard hits a P2002 unique-key violation', async () => {
+    const createRoleCard = vi.fn(() => {
+      throw new DuplicateKeyError('role_card_duplicate');
+    });
+    const { app } = createApp({ createRoleCard });
+    const headers = { 'x-api-key': 'admin-key' };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/role-cards',
+      headers,
+      payload: { key: 'dupe', name: 'Dupe' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ detail: 'duplicate' });
+    expect(createRoleCard).toHaveBeenCalledTimes(1);
 
     await app.close();
   });

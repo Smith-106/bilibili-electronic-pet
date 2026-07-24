@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { RuntimeSettings } from '../src/server/contracts.js';
+import { DuplicateKeyError } from '../src/lib/duplicate-key-error.js';
 import { resetPlatformControlState, setPlatformControlState } from '../src/platforms/control-state.js';
 
 const {
@@ -2953,5 +2954,72 @@ describe('main default dependency coverage', () => {
 
     expect(t.defaultCreateTraceId(' trace-id ')).toBe('trace-id');
     expect(t.defaultCreateTraceId()).toMatch(/^[0-9a-f-]{36}$/);
+  });
+});
+
+describe('main default create P2002 catch-as-conflict (ISS-002)', () => {
+  beforeEach(() => {
+    process.env.LLM_PROVIDER = 'mock';
+    process.env.LLM_FALLBACK_TO_MOCK = 'true';
+    process.env.SEARCH_PROVIDER = 'serpapi';
+  });
+
+  it('defaultCreateMemorySpace rethrows P2002 as DuplicateKeyError', async () => {
+    const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`space_key`)'), {
+      code: 'P2002',
+    });
+    createMemoryServiceMock.mockReturnValue({
+      createSpace: vi.fn().mockRejectedValue(p2002),
+      listSpaces: vi.fn(),
+      listItems: vi.fn(),
+      upsertItem: vi.fn(),
+    });
+    const defaults = await captureDefaults();
+
+    await expect(defaults.createMemorySpace({ space_key: 'dupe', title: 'Dupe' })).rejects.toBeInstanceOf(
+      DuplicateKeyError,
+    );
+  });
+
+  it('defaultCreateMemorySpace rethrows non-P2002 errors unchanged', async () => {
+    createMemoryServiceMock.mockReturnValue({
+      createSpace: vi.fn().mockRejectedValue(new Error('connection_refused')),
+      listSpaces: vi.fn(),
+      listItems: vi.fn(),
+      upsertItem: vi.fn(),
+    });
+    const defaults = await captureDefaults();
+
+    await expect(defaults.createMemorySpace({ space_key: 'x', title: 'X' })).rejects.toThrow('connection_refused');
+  });
+
+  it('defaultCreateRoleCard rethrows P2002 as DuplicateKeyError', async () => {
+    const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`key`)'), {
+      code: 'P2002',
+    });
+    prismaMock.roleCard.create.mockRejectedValueOnce(p2002);
+    const defaults = await captureDefaults();
+
+    await expect(
+      defaults.createRoleCard({
+        key: 'dupe',
+        name: 'Dupe',
+        description: '',
+        system_prompt: '',
+        tone: 'playful',
+        constraints: { max: 1 },
+        enabled: true,
+      }),
+    ).rejects.toBeInstanceOf(DuplicateKeyError);
+  });
+
+  it('defaultAddBilibiliVideo rethrows P2002 as DuplicateKeyError', async () => {
+    const p2002 = Object.assign(new Error('Unique constraint failed on the fields: (`bvid`)'), {
+      code: 'P2002',
+    });
+    prismaMock.bilibiliVideo.create.mockRejectedValueOnce(p2002);
+    const defaults = await captureDefaults();
+
+    await expect(defaults.addBilibiliVideo({ bvid: 'BV1234567890' })).rejects.toBeInstanceOf(DuplicateKeyError);
   });
 });

@@ -1,13 +1,13 @@
 import Fastify from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { DuplicateKeyError } from '../src/lib/duplicate-key-error.js';
 import { registerBilibiliAdminRoutes, type BilibiliAdminRouteDependencies } from '../src/routes/bilibili-admin.js';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 
 // Fail-closed credential encryption requires a key for any encrypt() call
 // exercised by the admin credential create route.
-process.env.CREDENTIAL_ENCRYPTION_KEY =
-  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+process.env.CREDENTIAL_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
 const prisma = vi.hoisted(() => ({
   bilibiliVideo: {
@@ -667,6 +667,26 @@ describe('bilibili admin route coverage', () => {
         expires_at: new Date('2026-06-10T00:00:00.000Z'),
       }),
     });
+
+    await app.close();
+  });
+
+  it('returns 409 conflict when addBilibiliVideo hits a P2002 unique-bvid violation', async () => {
+    const addBilibiliVideo = vi.fn(() => {
+      throw new DuplicateKeyError('bilibili_video_duplicate');
+    });
+    const { app } = createApp({ addBilibiliVideo });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/admin/bilibili/videos',
+      headers: { 'x-api-key': 'admin-key' },
+      payload: { bvid: 'BV1234567890' },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ detail: 'duplicate' });
+    expect(addBilibiliVideo).toHaveBeenCalledTimes(1);
 
     await app.close();
   });

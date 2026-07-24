@@ -11,6 +11,7 @@ import {
   resolveCommentReplyIntentParts,
 } from './domain/publish/comment-reply-intent.js';
 import { getPrisma, DEFAULT_DATABASE_URL, checkDatabaseConnection } from './lib/prisma.js';
+import { DuplicateKeyError, isPrismaP2002 } from './lib/duplicate-key-error.js';
 import { getPlatformControlState, setPlatformControlState } from './platforms/control-state.js';
 import { publishViaSidecarWebhook } from './platforms/sidecar-webhook.js';
 import { listPlatformAdapters, listPlatformIngressRoutes, resolvePlatformAdapter } from './platforms/registry.js';
@@ -1704,7 +1705,18 @@ async function defaultCreateMemorySpace(input: {
   summary?: string;
 }): Promise<{ ok: boolean; item: MemorySpace }> {
   const service = createMemoryService();
-  const item = await service.createSpace(input);
+  let item;
+  try {
+    item = await service.createSpace(input);
+  } catch (error) {
+    // ISS-002: admin create of @unique space_key — P2002 means operator resubmitted an
+    // existing space_key. catch-as-conflict (NOT duplicate-success like publisher P3):
+    // admin must be told "duplicate" via 409, not a silent idempotent ok.
+    if (isPrismaP2002(error)) {
+      throw new DuplicateKeyError('memory_space_duplicate');
+    }
+    throw error;
+  }
   return {
     ok: true,
     item: normalizeMemorySpaceRecord(item),
@@ -1885,18 +1897,28 @@ async function defaultCreateRoleCard(input: {
   enabled: boolean;
 }): Promise<{ ok: boolean; item: RoleCard }> {
   const prisma = getPrisma();
-  const item = await prisma.roleCard.create({
-    data: {
-      key: input.key,
-      name: input.name,
-      description: input.description,
-      system_prompt: input.system_prompt,
-      tone: serializeRoleCardValue(input.tone),
-      constraints: serializeRoleCardValue(input.constraints),
-      enabled: input.enabled,
-      is_active: false,
-    },
-  });
+  let item;
+  try {
+    item = await prisma.roleCard.create({
+      data: {
+        key: input.key,
+        name: input.name,
+        description: input.description,
+        system_prompt: input.system_prompt,
+        tone: serializeRoleCardValue(input.tone),
+        constraints: serializeRoleCardValue(input.constraints),
+        enabled: input.enabled,
+        is_active: false,
+      },
+    });
+  } catch (error) {
+    // ISS-002: admin create of @unique roleCard.key — P2002 = duplicate key resubmit.
+    // catch-as-conflict → 409 (admin path, not publisher's duplicate-success).
+    if (isPrismaP2002(error)) {
+      throw new DuplicateKeyError('role_card_duplicate');
+    }
+    throw error;
+  }
 
   return {
     ok: true,
@@ -2372,12 +2394,22 @@ async function defaultAddBilibiliVideo(input: {
   pollEnabled?: boolean;
 }): Promise<{ ok: boolean; item: BilibiliVideo }> {
   const prisma = getPrisma();
-  const item = await prisma.bilibiliVideo.create({
-    data: {
-      bvid: input.bvid,
-      poll_enabled: input.pollEnabled ?? true,
-    },
-  });
+  let item;
+  try {
+    item = await prisma.bilibiliVideo.create({
+      data: {
+        bvid: input.bvid,
+        poll_enabled: input.pollEnabled ?? true,
+      },
+    });
+  } catch (error) {
+    // ISS-002: admin create of @unique bilibiliVideo.bvid — P2002 = duplicate bvid resubmit.
+    // catch-as-conflict → 409 (admin path, not publisher's duplicate-success).
+    if (isPrismaP2002(error)) {
+      throw new DuplicateKeyError('bilibili_video_duplicate');
+    }
+    throw error;
+  }
 
   return {
     ok: true,

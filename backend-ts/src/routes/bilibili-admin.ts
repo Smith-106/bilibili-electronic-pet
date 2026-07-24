@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
+import { DuplicateKeyError } from '../lib/duplicate-key-error.js';
 import { getPrisma } from '../lib/prisma.js';
 import type { RuntimeSettings } from '../server/contracts.js';
 import { encrypt } from '../services/credential-crypto.js';
@@ -92,8 +93,16 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
       return reply.code(400).send({ detail: 'invalid_bvid_format' });
     }
 
-    const response = await deps.addBilibiliVideo({ bvid, pollEnabled: pollEnabled ?? true });
-    return reply.send(response);
+    try {
+      const response = await deps.addBilibiliVideo({ bvid, pollEnabled: pollEnabled ?? true });
+      return reply.send(response);
+    } catch (error) {
+      // ISS-002: @unique bilibiliVideo.bvid P2002 surfaced as DuplicateKeyError → 409 conflict.
+      if (error instanceof DuplicateKeyError) {
+        return reply.code(409).send({ detail: 'duplicate' });
+      }
+      throw error;
+    }
   });
 
   app.post('/api/admin/bilibili/videos/:videoId/toggle-poll', async (request, reply) => {
