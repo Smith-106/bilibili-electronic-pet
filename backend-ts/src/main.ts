@@ -1,6 +1,5 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 
-import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import { createMemoryService } from './app/memory/index.js';
 import { createPetCoreService } from './app/pet-core/index.js';
@@ -93,6 +92,7 @@ import {
   stableStringify,
   startCase,
 } from './server/normalizers.js';
+import { csvEscape, getAuditLogDetail, writeAuditLog } from './server/audit-log.js';
 import type { PetActionName } from './server/pet-contracts.js';
 import {
   defaultGetPlatformPublishSource,
@@ -193,18 +193,6 @@ const STANDARD_PUBLISH_FAILURE_REASONS = new Set([
 ]);
 const TIMEOUT_HINTS = ['timeout', 'timedout', 'readtimeout', 'connecttimeout'];
 const AUTH_HINTS = ['401', '403', 'unauthorized', 'forbidden', 'token', 'signature', 'auth'];
-
-function getAuditLogDetail(payload: Record<string, unknown>): string | null {
-  const candidateKeys = ['detail', 'error', 'reason', 'publish_reason', 'reply_text_preview', 'message'];
-  for (const key of candidateKeys) {
-    const value = String(payload[key] ?? '').trim();
-    if (value) {
-      return value;
-    }
-  }
-  const status = String(payload.status ?? '').trim();
-  return status || null;
-}
 
 function defaultVerifyPayloadSignature(payload: Record<string, unknown>, secret: string, signature: string): boolean {
   const canonical = stableStringify(payload);
@@ -2441,40 +2429,6 @@ function getHeaderValue(value: string | string[] | undefined): string {
   return String(value ?? '');
 }
 
-/** Write an operation audit log entry (mirrors Python's _write_audit_log) */
-async function writeAuditLog(
-  prisma: PrismaClient,
-  input: {
-    action: string;
-    targetId: number | null;
-    ok: boolean;
-    traceId: string;
-    commentId?: string;
-    status?: string;
-    payload?: Record<string, unknown>;
-  },
-): Promise<void> {
-  const enrichedPayload = {
-    ...input.payload,
-    trace_id: input.traceId,
-    ...(input.commentId ? { comment_id: input.commentId } : {}),
-    ...(input.status ? { status: input.status } : {}),
-  };
-  try {
-    await prisma.operationAuditLog.create({
-      data: {
-        action: input.action,
-        target_type: 'reply_job',
-        target_id: input.targetId,
-        ok: input.ok,
-        payload: JSON.stringify(enrichedPayload),
-      },
-    });
-  } catch {
-    // Audit log write failure is non-critical
-  }
-}
-
 const { enqueueCommentEventJob, ingestCommentEvent: defaultIngestCommentEvent } = createCommentIngestHelpers({
   getPrisma,
   createTraceId: defaultCreateTraceId,
@@ -2550,15 +2504,6 @@ function checkCommentIngressAuth(request: FastifyRequest, reply: FastifyReply, s
 
   void reply.code(401).send({ detail: 'unauthorized' });
   return false;
-}
-
-/** CSV-safe string escaping */
-function csvEscape(value: string): string {
-  if (!value) return '';
-  if (/[,"\n\r]/.test(value)) {
-    return '"' + value.replace(/"/g, '""') + '"';
-  }
-  return value;
 }
 
 function parsePublishPayload(body: unknown): GatewayPublishPayload | null {
