@@ -1,6 +1,6 @@
 import './styles.css';
 
-const releaseUrl = 'https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.1';
+const releaseUrl = 'https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.0';
 const pagesUrl = 'https://smith-106.github.io/bilibili-electronic-pet/';
 
 const heroPanels = [
@@ -56,8 +56,8 @@ const readerPaths = [
 ];
 
 const baseline = [
-  ['Shipped baseline', 'v1.2.0', 'Current Bilibili-first release baseline with the TypeScript backend and operator control plane.'],
-  ['Docs release', 'v1.2.1', 'GitHub Pages documentation layer and docs deployment workflow.'],
+  ['Shipped baseline', 'v1.3.0', 'Current Bilibili-first release baseline with the TypeScript backend and operator control plane.'],
+  ['Docs release', 'v1.3.0', 'GitHub Pages documentation layer and docs deployment workflow.'],
   ['Pages path', '/bilibili-electronic-pet/', 'Project site base path used by the Vite docs build.'],
   ['Scope', 'Docs only', 'This documentation surface explains the runtime and release shape without changing business logic.'],
 ];
@@ -300,7 +300,7 @@ function createAppMarkup() {
     <main id="top">
       <section class="hero" id="overview">
         <div class="hero-copy">
-          <p class="eyebrow">Documentation · v1.2.1 docs release</p>
+          <p class="eyebrow">Documentation · v1.3.0 docs release</p>
           <h1>One docs surface for product shape, runtime boundaries, and release truth.</h1>
           <p class="hero-text">
             This site explains what the repository actually ships today: the Bilibili-first automation flow,
@@ -482,7 +482,7 @@ function createAppMarkup() {
     </main>
 
     <footer>
-      <p>Bilibili Electronic Pet documentation site · Repository baseline v1.2.0 · Docs release v1.2.1</p>
+      <p>Bilibili Electronic Pet documentation site · Repository baseline v1.3.0 · Docs release v1.3.0</p>
     </footer>
   `;
 }

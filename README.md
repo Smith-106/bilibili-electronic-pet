@@ -8,7 +8,7 @@
 
 ## 最新版本状态
 
-当前 release tag：**v1.2.0**
+当前 release tag：**v1.3.0**
 
 按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend/companion MVP 候选**。QQ / Douyin 等外部平台仍作为 gated trial，不纳入已签收产品面，也不能用 placeholder endpoint 代替真实验收。
 
@@ -36,7 +36,7 @@
 | QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_QQ_*` 配置 |
 | 微信 | 暂不支持 |
 
-Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.2.0
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.0
 
 ---
 
