@@ -3129,6 +3129,22 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
 
   const app = Fastify();
 
+  // security (review-odyssey ISS-002 F1, CWE-209): 默认 Fastify error handler 会把原始
+  // error.message 序列化进 HTTP body — 对非 P2002 rethrow 的 Prisma error (SQLITE_BUSY/P2003/
+  // 连接丢失) 会泄露表名/约束名/字段名/schema 信息给客户端. 全局 setErrorHandler:
+  // 4xx (Fastify schema 验证错误 / 显式 throw 带 statusCode) 保留 statusCode + message;
+  // 5xx / 无 statusCode 的未分类 error log 到服务端日志, 客户端只收 500 {detail:'internal_error'}.
+  // 显式 reply.code(N).send({...}) 不经此 handler, 已有 400/409 等显式响应不受影响.
+  app.setErrorHandler((error, request, reply) => {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode !== undefined && statusCode >= 400 && statusCode < 500) {
+      const message = error instanceof Error ? error.message : String(error);
+      return reply.code(statusCode).send({ detail: message });
+    }
+    request.log.error({ err: error }, 'unhandled_error');
+    return reply.code(500).send({ detail: 'internal_error' });
+  });
+
   app.get('/health', async () => ({ ok: true }));
 
   registerReadinessRoute(app, {

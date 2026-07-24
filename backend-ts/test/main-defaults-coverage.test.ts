@@ -3022,4 +3022,45 @@ describe('main default create P2002 catch-as-conflict (ISS-002)', () => {
 
     await expect(defaults.addBilibiliVideo({ bvid: 'BV1234567890' })).rejects.toBeInstanceOf(DuplicateKeyError);
   });
+
+  // review-odyssey ISS-002 F2: 非 P2002 透传 + isPrismaP2002 boundary 覆盖 (代码行为已正确, 补测锁定)
+  it('defaultCreateRoleCard rethrows non-P2002 errors unchanged', async () => {
+    prismaMock.roleCard.create.mockRejectedValueOnce(new Error('connection_refused'));
+    const defaults = await captureDefaults();
+
+    await expect(
+      defaults.createRoleCard({
+        key: 'x',
+        name: 'X',
+        description: '',
+        system_prompt: '',
+        tone: 'playful',
+        constraints: { max: 1 },
+        enabled: true,
+      }),
+    ).rejects.toThrow('connection_refused');
+  });
+
+  it('defaultAddBilibiliVideo rethrows non-P2002 errors unchanged', async () => {
+    prismaMock.bilibiliVideo.create.mockRejectedValueOnce(new Error('connection_refused'));
+    const defaults = await captureDefaults();
+
+    await expect(defaults.addBilibiliVideo({ bvid: 'BV1234567890' })).rejects.toThrow('connection_refused');
+  });
+
+  it('isPrismaP2002 returns false for boundary inputs (null/undefined/non-P2002 code/numeric)', async () => {
+    const { isPrismaP2002 } = await import('../src/lib/duplicate-key-error.js');
+    // null/undefined/非对象 — 可选链短路返回 false, 不 throw
+    expect(isPrismaP2002(null)).toBe(false);
+    expect(isPrismaP2002(undefined)).toBe(false);
+    expect(isPrismaP2002('P2002')).toBe(false);
+    // 数字 2002 (严格 === 不误判)
+    expect(isPrismaP2002({ code: 2002 })).toBe(false);
+    // 小写 'p2002' (严格 === 不误判)
+    expect(isPrismaP2002({ code: 'p2002' })).toBe(false);
+    // 其他 Prisma error code (如 P2003 foreign key) 不误判
+    expect(isPrismaP2002({ code: 'P2003' })).toBe(false);
+    // 正确 P2002
+    expect(isPrismaP2002({ code: 'P2002' })).toBe(true);
+  });
 });
