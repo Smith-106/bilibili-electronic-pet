@@ -181,7 +181,7 @@ describe('qq sidecar server', () => {
 
     const networkResponse = await app.inject({ method: 'POST', url: '/publish', payload });
     expect(networkResponse.statusCode).toBe(502);
-    expect(networkResponse.json()).toEqual({ published: false, reason: 'network_down' });
+    expect(networkResponse.json()).toEqual({ published: false, reason: 'upstream_error' });
     await app.close();
   });
 
@@ -543,7 +543,7 @@ describe('qq sidecar server', () => {
 
     const networkResponse = await app.inject({ method: 'POST', url: '/publish', payload });
     expect(networkResponse.statusCode).toBe(502);
-    expect(networkResponse.json()).toEqual({ published: false, reason: 'onebot_down' });
+    expect(networkResponse.json()).toEqual({ published: false, reason: 'onebot_http_error' });
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://127.0.0.1:3000/send_group_msg',

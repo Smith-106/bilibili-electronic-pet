@@ -111,10 +111,13 @@ export async function publishViaSidecarWebhook(input: {
       reason: typeof payload.reason === 'string' && payload.reason ? payload.reason : 'sidecar_webhook_ok',
       publishedAt,
     };
-  } catch (error) {
+  } catch {
+    // CWE-209: 不透传原始 error.message (如 'connection refused'/'fetch failed') 进 reason
+    // — reason 经 gateway-publish normalizePublishFailureReason 归一化后写入 PublishLog.failure_reason
+    // 与 HTTP body reason, 会泄露内部网络/上游细节给客户端. 收敛为固定 enum.
     return {
       published: false,
-      reason: error instanceof Error ? error.message : 'sidecar_webhook_failed',
+      reason: 'sidecar_webhook_failed',
     };
   }
 }

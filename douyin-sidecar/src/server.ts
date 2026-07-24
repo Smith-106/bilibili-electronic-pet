@@ -75,16 +75,31 @@ async function publishViaWebhookProxy(payload: PublishPayload, env: NodeJS.Proce
           ? parsed.published_at
           : new Date().toISOString(),
     };
-  } catch (error) {
+  } catch {
+    // CWE-209: 不透传原始 error.message 进 HTTP body (reason 经 route reply.code(502).send
+    // 序列化, 显式 send 绕过 setErrorHandler). 收敛为固定 enum, error 仅服务端 logger 可见.
     return {
       published: false,
-      reason: error instanceof Error ? error.message : 'upstream_error',
+      reason: 'upstream_error',
     };
   }
 }
 
 export function createServer(env: NodeJS.ProcessEnv = process.env): FastifyInstance {
   const app = Fastify({ logger: true });
+
+  // CWE-209 纵深防御: 未显式 reply.code().send() 的 throw (运行时异常/JSON 序列化错) 兜底为
+  // 500 {detail:'internal_error'}, 不透传原始 error.message 给客户端. 显式 send 路径不受影响.
+  app.setErrorHandler((error, request, reply) => {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode !== undefined && statusCode >= 400 && statusCode < 500) {
+      const message = error instanceof Error ? error.message : String(error);
+      return reply.code(statusCode).send({ detail: message });
+    }
+    request.log.error({ err: error }, 'unhandled_error');
+    return reply.code(500).send({ detail: 'internal_error' });
+  });
+
   const mode = normalizeMode(env.DOUYIN_DRIVER_MODE);
   const expectedToken = env.DOUYIN_SIDECAR_TOKEN;
 

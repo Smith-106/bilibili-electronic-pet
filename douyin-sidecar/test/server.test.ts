@@ -301,7 +301,7 @@ describe('douyin sidecar server', () => {
     });
 
     expect(response.statusCode).toBe(502);
-    expect(response.json()).toEqual({ published: false, reason: 'network_down' });
+    expect(response.json()).toEqual({ published: false, reason: 'upstream_error' });
     await app.close();
   });
 

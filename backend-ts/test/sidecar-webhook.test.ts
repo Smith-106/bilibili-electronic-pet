@@ -194,7 +194,7 @@ describe('sidecar-webhook helpers', () => {
       }),
     ).resolves.toEqual({
       published: false,
-      reason: 'connection refused',
+      reason: 'sidecar_webhook_failed',
     });
     await expect(
       publishViaSidecarWebhook({
