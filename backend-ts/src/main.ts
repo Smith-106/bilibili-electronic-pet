@@ -81,13 +81,11 @@ export type {
 export type { ServerDependencies } from './server/dependencies.js';
 
 import {
-  addBlocker,
   buildCompanionStateV2FromLegacy,
   buildDefaultReadinessSummary,
   buildDefaultSettings,
   buildDegradedCompanionState,
   buildDeliveryCapabilityMatrix,
-  buildReplyHash,
   createDeliveryCapability,
   defaultBilibiliDiagnostics,
   defaultCreateTraceId,
@@ -103,10 +101,14 @@ import {
   defaultPublishPlatformReply,
   defaultUpdatePlatformConnectionControl,
   defaultVerifyPayloadSignature,
-  gatewaySignaturePayload,
   isMissingReservationKeyColumnError,
-  parsePublishPayload,
 } from './server/default-dependencies.js';
+import {
+  addBlocker,
+  buildReplyHash,
+  gatewaySignaturePayload,
+  parsePublishPayload,
+} from './server/defaults/gateway-payload-helpers.js';
 export { buildDegradedCompanionState };
 
 export function createServer(overrides: Partial<ServerDependencies> = {}): FastifyInstance {
