@@ -123,11 +123,18 @@ const STANDARD_PUBLISH_FAILURE_REASONS = new Set([
   'platform_disabled',
   'bilibili_reference_adapter_only',
   'bilibili_not_configured',
+  'bilibili_api_error',
   'publish_failed',
   'runtime_credentials_required',
 ]);
 const TIMEOUT_HINTS = ['timeout', 'timedout', 'readtimeout', 'connecttimeout'];
 const AUTH_HINTS = ['401', '403', 'unauthorized', 'forbidden', 'token', 'signature', 'auth'];
+// 与 publisher.ts normalizeFailureReason (L204/210) 对齐 — Bilibili API reject (非 2xx HTTP
+// 或 -352 behavior_anomaly 风控) 是最高严重度 antirisk code, MUST 先于 5xx/auth 识别, 否则
+// "Bilibili reply API error: 500" 会被 5xx 吞, "-352 behavior_anomaly" 会落 invalid_response,
+// 丢失风控语义. gateway-publish HTTP 路径 defaultPublishGatewayReply real_publish catch 产出
+// error.message 原文 (default-dependencies.ts L586), 经此归一化写入 publish_log.failure_reason.
+const BILIBILI_API_ERROR_HINTS = ['bilibili reply api error', '-352', 'behavior_anomaly', 'v_voucher'];
 
 export function defaultVerifyPayloadSignature(
   payload: Record<string, unknown>,
@@ -462,6 +469,9 @@ export function defaultNormalizePublishFailureReason(reason: string | undefined)
   }
   if (TIMEOUT_HINTS.some((hint) => normalized.includes(hint))) {
     return 'timeout';
+  }
+  if (BILIBILI_API_ERROR_HINTS.some((hint) => normalized.includes(hint))) {
+    return 'bilibili_api_error';
   }
   if (/(^|\D)5\d\d(\D|$)/.test(normalized)) {
     return '5xx';

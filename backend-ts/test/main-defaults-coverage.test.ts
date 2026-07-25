@@ -2514,6 +2514,14 @@ describe('main default dependency coverage', () => {
     expect(t.defaultNormalizePublishFailureReason('native publish_failed upstream')).toBe('publish_failed');
     expect(t.defaultNormalizePublishFailureReason('unexpected')).toBe('invalid_response');
     expect(t.defaultNormalizePublishFailureReason('auth')).toBe('auth');
+    // bilibili_api_error (与 publisher.ts normalizeFailureReason 对齐): gateway-publish HTTP
+    // 路径 defaultPublishGatewayReply real_publish catch 产出 error.message 原文, 经此归一化.
+    // -352 behavior_anomaly 是最高严重度风控码, MUST 识别为 bilibili_api_error 不落 invalid_response.
+    expect(t.defaultNormalizePublishFailureReason('bilibili_api_error')).toBe('bilibili_api_error');
+    expect(t.defaultNormalizePublishFailureReason('Bilibili reply API error: 500: upstream body')).toBe(
+      'bilibili_api_error',
+    );
+    expect(t.defaultNormalizePublishFailureReason('-352 behavior_anomaly v_voucher=xxx')).toBe('bilibili_api_error');
     expect(t.isMissingReservationKeyColumnError('plain')).toBe(false);
     expect(t.isMissingReservationKeyColumnError(new Error('no such column: reservation_key'))).toBe(true);
 
