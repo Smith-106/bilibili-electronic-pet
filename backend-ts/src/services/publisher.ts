@@ -7,7 +7,7 @@
  */
 
 import type { PublishIntentService, PublishReplyService } from './interfaces.js';
-import type { PublishIntent } from '../domain/publish/types.js';
+import type { PublishIntent, PublishReason, NormalizedFailureReason } from '../domain/publish/types.js';
 import { prisma as getPrisma } from './db-queries.js';
 import { postReply, verifyReplyVisible } from './bilibili-client.js';
 import { getActivePersonaName, loadBilibiliRuntimeConfig } from './bilibili-runtime-config.js';
@@ -195,7 +195,7 @@ function isPublishLogStorageError(error: unknown): boolean {
  * bilibili_api_error (non-2xx HTTP or Bilibili API reject), network_error (fetch-level),
  * publish_failed (anything else).
  */
-function normalizeFailureReason(error: unknown): string {
+function normalizeFailureReason(error: unknown): NormalizedFailureReason {
   // BUG-003: duck-type NotConfiguredError by name (not instanceof) so the check still works
   // when the caller's module mock of bilibili-client does not re-export the class.
   if (error instanceof Error && error.name === 'NotConfiguredError') return 'not_configured';
@@ -449,7 +449,7 @@ type PublishLogContext = {
 async function publishManualQueue(
   context: PublishLogContext,
   replyText: string,
-): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
+): Promise<[boolean, PublishReason, Date | null, Record<string, unknown> | null]> {
   const replyHash = createReplyHash(context.commentId, replyText);
   const now = new Date();
 
@@ -481,7 +481,7 @@ async function publishManualQueue(
 async function publishSimulated(
   context: PublishLogContext,
   replyText: string,
-): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
+): Promise<[boolean, PublishReason, Date | null, Record<string, unknown> | null]> {
   const mock = parseMockFromEnv();
   if (mock) {
     // Mock injection: postReply short-circuits on config.mockPostReplyResult (no fetch).
@@ -526,7 +526,7 @@ async function publishSimulated(
 async function publishWebhook(
   commentId: string,
   replyText: string,
-): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
+): Promise<[boolean, PublishReason, Date | null, Record<string, unknown> | null]> {
   const webhookUrl = process.env.PUBLISHER_WEBHOOK_URL;
   const webhookToken = process.env.PUBLISHER_WEBHOOK_TOKEN;
   // Fix-Don't-Hide: parseInt('abc') === NaN, so the `|| '15'` fallback does not apply to a
@@ -593,7 +593,7 @@ async function publishReal(
   context: PublishLogContext,
   replyText: string,
   traceId?: string,
-): Promise<[boolean, string, Date | null, Record<string, unknown> | null]> {
+): Promise<[boolean, PublishReason, Date | null, Record<string, unknown> | null]> {
   // STAGE_DAILY_QUOTA (P3 warmup): limited real_publish 配额 env, 区分 limited/full.
   // 当日 publishLog status='published' count >= STAGE_DAILY_QUOTA → stage_quota_exceeded.
   // fail-closed, 不盲飞 (L1 配额 env). 默认 10 (保守值, 运营调参).
@@ -962,7 +962,7 @@ export const publishIntentWithResult: PublishIntentService = async (intent) => {
     // COMPLIANCE_MODE='passive' (TASK-003): resolveEffectivePublisherMode 已把 real_publish
     // 覆盖成 webhook, dispatch 走 publishWebhook, 永不达 publishReal (合规红线).
     const mode = resolveEffectivePublisherMode();
-    let result: [boolean, string, Date | null, Record<string, unknown> | null];
+    let result: [boolean, PublishReason, Date | null, Record<string, unknown> | null];
 
     switch (mode) {
       case 'dry_run':

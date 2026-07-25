@@ -5,7 +5,7 @@
 
 import type { Comment, ReplyJob, KnowledgeEntry, RoleCard, RoleCardValue } from '../models/entities.js';
 import type { InteractionEvent } from '../domain/interaction/types.js';
-import type { PublishIntent } from '../domain/publish/types.js';
+import type { PublishIntent, PublishReason } from '../domain/publish/types.js';
 import type { MemoryContext } from '../app/memory/types.js';
 
 /**
@@ -116,7 +116,7 @@ export type PublishReplyService = (
 
 export type PublishIntentService = (
   intent: PublishIntent,
-) => Promise<[boolean, string, Date | null, Record<string, unknown> | null]>;
+) => Promise<[boolean, PublishReason, Date | null, Record<string, unknown> | null]>;
 
 /**
  * Knowledge service: search_knowledge
