@@ -37,4 +37,20 @@ describe('frontend basic components', () => {
     expect(html).toContain('&lt;script&gt;');
     expect(html).toContain('data-id="7"');
   });
+
+  it('injects title on cell-id/cell-truncate columns but skips object values', () => {
+    const html = renderTable({
+      columns: [
+        { key: 'id', label: 'ID', class: 'cell-id' },
+        { key: 'desc', label: 'Desc', class: 'cell-truncate' },
+        { key: 'ctx', label: 'Ctx', class: 'cell-id' },
+      ],
+      rows: [{ id: 'BV1abc9defg', desc: 'a long description that gets truncated', ctx: { foo: 1 } }],
+    });
+
+    expect(html).toContain('title="BV1abc9defg"');
+    expect(html).toContain('title="a long description that gets truncated"');
+    const ctxTd = html.match(/<td class="cell-id"[^>]*>[\s\S]*?<\/td>/g)[1];
+    expect(ctxTd).not.toContain('title=');
+  });
 });

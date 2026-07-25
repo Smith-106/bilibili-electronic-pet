@@ -25,6 +25,7 @@ import {
   parseBilibiliPollFilter,
   getBilibiliVideoEmptyMessage,
   renderBilibiliVideoIdentity,
+  renderBilibiliVideoIdentityTitle,
   renderBilibiliVideoTitle,
   renderBilibiliVideoPollState,
   renderBilibiliVideoCommentCount,
@@ -37,6 +38,7 @@ import {
 import {
   renderBilibiliCredentialName,
   renderBilibiliCredentialFingerprint,
+  renderBilibiliCredentialFingerprintTitle,
   renderBilibiliCredentialActiveState,
   renderBilibiliCredentialExpiry,
   renderBilibiliCredentialUsageCell,
@@ -563,7 +565,7 @@ export async function render(container) {
           <thead><tr><th>BVID</th><th>标题</th><th>轮询</th><th>评论数</th><th>最后轮询</th><th>轮询结果</th><th>操作</th></tr></thead>
           <tbody>
             ${items.map(v => `<tr data-id="${escapeHtml(v.id || v.video_id)}">
-              <td class="cell-id">${renderBilibiliVideoIdentity(v)}</td>
+              <td class="cell-id" title="${escapeHtml(renderBilibiliVideoIdentityTitle(v))}">${renderBilibiliVideoIdentity(v)}</td>
               <td class="cell-truncate">${renderBilibiliVideoTitle(v)}</td>
               <td>${renderBilibiliVideoPollState(v)}</td>
               <td>${renderBilibiliVideoCommentCount(v)}</td>
@@ -666,7 +668,7 @@ export async function render(container) {
           <tbody>
             ${filteredItems.map(c => `<tr data-id="${escapeHtml(c.id || c.credential_id)}">
               <td>${renderBilibiliCredentialName(c)}</td>
-              <td class="cell-id">${renderBilibiliCredentialFingerprint(c)}</td>
+              <td class="cell-id" title="${escapeHtml(renderBilibiliCredentialFingerprintTitle(c))}">${renderBilibiliCredentialFingerprint(c)}</td>
               <td>${renderBilibiliCredentialActiveState(c)}</td>
               <td>${renderBilibiliCredentialExpiry(c.expires_at)}</td>
               <td class="cell-time">${renderBilibiliCredentialUsageCell(c)}</td>

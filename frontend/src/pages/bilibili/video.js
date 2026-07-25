@@ -210,6 +210,16 @@ function sumBilibiliVideoCommentCount(items) {
   }, 0);
 }
 
+// title 属性用的纯文本标识 — cell-id (max-width 100px) 截断时供 hover 查看完整 BVID + aid/recordId.
+// ISS-20260712-003: 与抽象层 renderTable 自动 title 行为对齐, 此处手写 td 需补 title.
+function renderBilibiliVideoIdentityTitle(video) {
+  const bvid = String(video?.bvid ?? '').trim();
+  const recordId = String(video?.id ?? video?.video_id ?? '').trim();
+  const aid = hasBilibiliVideoAid(video) ? video.aid : '';
+  const parts = [bvid, aid ? `aid:${aid}` : '', recordId ? `记录:${recordId}` : ''].filter(Boolean);
+  return parts.join(' ') || '未同步 BVID';
+}
+
 function renderBilibiliVideoIdentity(video) {
   const hasAid = hasBilibiliVideoAid(video);
   const bvid = String(video?.bvid ?? '').trim();
@@ -382,6 +392,7 @@ function formatBilibiliVideoSummary(total, renderedCount, filterValue, offset = 
 
 export {
   renderBilibiliVideoIdentity,
+  renderBilibiliVideoIdentityTitle,
   renderBilibiliVideoTitle,
   renderBilibiliSyncButton,
   renderBilibiliVideoPollState,

@@ -209,12 +209,24 @@ function maskBilibiliIdentifier(value, visibleSuffix = 4) {
   return `...${text.slice(-visibleSuffix)}`;
 }
 
-export function renderBilibiliCredentialFingerprint(item) {
-  const summary = [
+// 纯文本脱敏指纹摘要 (SESSDATA/bili_jct 仅布尔标记, buvid3 经 maskBilibiliIdentifier 脱敏).
+// renderBilibiliCredentialFingerprint (展示) 与 title 属性 (hover 完整值) 共享, 避免重复组装.
+export function formatBilibiliCredentialFingerprintSummary(item) {
+  return [
     item?.has_sessdata ? 'SESSDATA' : '',
     item?.has_bili_jct ? 'bili_jct' : '',
     item?.buvid3 ? `buvid3:${maskBilibiliIdentifier(item.buvid3)}` : '',
   ].filter(Boolean).join(' / ') || '未配置指纹';
+}
+
+// title 属性用的纯文本摘要 — 与 cell 展示同源脱敏, 供 cell-id 截断时 hover 查看完整值.
+// ISS-20260712-003: 确认非敏感 (无明文 cookie, 仅布尔标记 + 脱敏 buvid3) 后决定注入 title.
+export function renderBilibiliCredentialFingerprintTitle(item) {
+  return formatBilibiliCredentialFingerprintSummary(item);
+}
+
+export function renderBilibiliCredentialFingerprint(item) {
+  const summary = formatBilibiliCredentialFingerprintSummary(item);
   const hints = [
     isBilibiliCredentialConfigured(item)
       ? '字段完整，可用于鉴权'
