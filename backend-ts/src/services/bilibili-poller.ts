@@ -173,7 +173,11 @@ async function pollVideoComments(
   // Ensure we have an aid
   let aid = video.aid;
   if (!aid) {
-    // Try to fetch video info to get aid
+    // Try to fetch video info to get aid. semantic P2: 原此 fetch 无 timeout, 与同文件 sibling
+    // fetchCommentsPage (L72 AbortController + setTimeout) 不对称 — Bilibili /x/web-interface/view
+    // 挂起 (DNS/conn stall) 会无界阻塞 poller 循环, 卡死整个 comment-poll 周期. 对齐 sibling 模式.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), config.timeout);
     try {
       const infoUrl = `${config.baseUrl}/x/web-interface/view?bvid=${video.bvid}`;
       const resp = await fetch(infoUrl, {
@@ -181,7 +185,9 @@ async function pollVideoComments(
           'User-Agent': config.userAgent,
           Referer: 'https://www.bilibili.com',
         },
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       if (resp.ok) {
         const info = (await resp.json()) as Record<string, unknown>;
         const data = info.data as Record<string, unknown> | undefined;
@@ -194,7 +200,9 @@ async function pollVideoComments(
         }
       }
     } catch {
-      // ignore
+      // ignore — aid fetch is best-effort; missing aid surfaces as 'no_aid' below.
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (!aid) {
@@ -347,6 +355,23 @@ export async function pollAllVideos(): Promise<PollResult> {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.error(`[bilibili-poller] Error polling bvid=${video.bvid}: ${msg}`);
+      // syntax P1 sibling: 单视频轮询失败原仅 console + 进 details 响应数组, 非 observability 流
+      // (与已修 :134 retry-exhausted 同族). 补 fire-and-forget event 使运营可从统一流追踪.
+      void recordObservabilityEvent({
+        event_type: 'poll_video_failed',
+        trace_id: ensureTraceId(),
+        status: 'failed',
+        metadata: { bvid: video.bvid, error: msg },
+      }).catch((err: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            message: 'poll_video_failed_event_record_failed',
+            bvid: video.bvid,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      });
       details.push({ bvid: video.bvid, comments: 0, status: 'error', error: msg });
     }
   }
@@ -398,6 +423,23 @@ export async function pollVideoById(videoId: number): Promise<PollResult> {
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error(`[bilibili-poller] Error polling bvid=${video.bvid}: ${msg}`);
+    // syntax P1 sibling: pollSingleVideo 失败原仅 console + 进返回值, 非 observability 流
+    // (与已修 :134 retry-exhausted + :355 pollAllVideos 循环 catch 同族). 补 fire-and-forget event.
+    void recordObservabilityEvent({
+      event_type: 'poll_video_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { bvid: video.bvid, scope: 'poll_single', error: msg },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'poll_video_failed_event_record_failed',
+          bvid: video.bvid,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return {
       status: 'error',
       videos: 1,
