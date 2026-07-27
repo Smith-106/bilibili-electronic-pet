@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { ensureTraceId, recordObservabilityEvent } from '../services/observability.js';
+
 /** Write an operation audit log entry (mirrors Python's _write_audit_log) */
 export async function writeAuditLog(
   prisma: PrismaClient,
@@ -29,8 +31,38 @@ export async function writeAuditLog(
         payload: JSON.stringify(enrichedPayload),
       },
     });
-  } catch {
-    // Audit log write failure is non-critical
+  } catch (error) {
+    // Audit log write failure is non-critical (不阻断业务流), but MUST 可观测 — 对照
+    // publisher.ts:1022 publish_log 写失败 catch 已配 recordObservabilityEvent, audit-log
+    // 写失败原裸吞致审计系统失声 (observability F5). console.warn 镜像 + fire-and-forget event.
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'audit_log_write_failed',
+        action: input.action,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: new Date().toISOString(),
+      }),
+    );
+    void recordObservabilityEvent({
+      event_type: 'audit_log_write_failed',
+      trace_id: ensureTraceId(input.traceId),
+      comment_id: input.commentId,
+      status: 'failed',
+      metadata: {
+        action: input.action,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'audit_log_write_failed_event_record_failed',
+          action: input.action,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
   }
 }
 

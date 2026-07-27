@@ -1,6 +1,7 @@
 import { createMemoryService } from '../../app/memory/index.js';
 import { COMPANION_SYSTEM_SPACE_KEY, upsertCompanionFeedItem } from '../../app/memory/companion-feed.js';
 import { createPetCoreService } from '../../app/pet-core/index.js';
+import { ensureTraceId, recordObservabilityEvent } from '../../services/observability.js';
 import type { CompanionInteraction, CompanionState, CompanionStateV2 } from '../contracts.js';
 import { buildCompanionInteraction, normalizeIsoTimestamp } from '../normalizers.js';
 import type { PetActionName } from '../pet-contracts.js';
@@ -155,6 +156,26 @@ async function defaultGetCompanionState(): Promise<CompanionState> {
       recentInteractions,
     };
   } catch (error) {
+    // observability F4: legacy memory 失败降级原 silent, 运营无法从 observability 流知道
+    // companion surface 在 degraded 模式 (会向 frontend 用户展示 "Companion runtime is degraded").
+    // fire-and-forget event 使降级可追溯 (H9 pattern, 非阻塞不影响降级返回值).
+    void recordObservabilityEvent({
+      event_type: 'companion_state_degraded',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        path: 'legacy_memory',
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'companion_state_degraded_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return buildDegradedCompanionState(error instanceof Error ? error.message : 'unknown_backend_error');
   }
 }
@@ -259,6 +280,8 @@ async function defaultRecordCompanionAction(input: {
     const petCoreService = createPetCoreService();
     await petCoreService.recordAction(input);
   } catch (error) {
+    // observability F4: 用户触发的 pat/feed/wake 动作 pet-core 持久化失败原仅 console.warn,
+    // 无 observability event — 动作持久化失败但无持久化观测记录. 补 fire-and-forget event.
     console.warn(
       JSON.stringify({
         level: 'warn',
@@ -267,6 +290,24 @@ async function defaultRecordCompanionAction(input: {
         error: error instanceof Error ? error.message : String(error),
       }),
     );
+    void recordObservabilityEvent({
+      event_type: 'pet_core_action_persist_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        action: input.action,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'pet_core_action_persist_failed_event_record_failed',
+          action: input.action,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
   }
 
   return {

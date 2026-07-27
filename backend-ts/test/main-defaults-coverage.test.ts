@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RuntimeSettings } from '../src/server/contracts.js';
 import { DuplicateKeyError } from '../src/lib/duplicate-key-error.js';
 import { resetPlatformControlState, setPlatformControlState } from '../src/platforms/control-state.js';
+import { __resetObservabilityBufferForTest } from '../src/services/observability.js';
 
 const {
   buildDefaultServerDependenciesMock,
@@ -81,6 +82,8 @@ const {
     },
     observabilityEvent: {
       groupBy: vi.fn(),
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      create: vi.fn().mockResolvedValue({}),
     },
     roleCard: {
       findMany: vi.fn(),
@@ -388,6 +391,11 @@ function resetMocks(): void {
   prismaMock.replyJob.groupBy.mockReset();
   prismaMock.replyJob.findMany.mockReset();
   prismaMock.observabilityEvent.groupBy.mockReset();
+  prismaMock.observabilityEvent.createMany.mockReset();
+  prismaMock.observabilityEvent.create.mockReset();
+  // gateway-publish 失败分支 (odyssey-improve A1) 现在 fire-and-forget recordObservabilityEvent,
+  // event 进 buffer; reset 防跨测试 dropCount 累积污染 getObservabilitySummary 断言.
+  __resetObservabilityBufferForTest();
   prismaMock.roleCard.findMany.mockReset();
   prismaMock.roleCard.create.mockReset();
   prismaMock.roleCard.update.mockReset();
@@ -1597,6 +1605,8 @@ describe('main default dependency coverage', () => {
         action: 'approve',
         ok: false,
       },
+      orderBy: { created_at: 'desc' },
+      take: 500,
     });
   });
 
@@ -2522,6 +2532,15 @@ describe('main default dependency coverage', () => {
       'bilibili_api_error',
     );
     expect(t.defaultNormalizePublishFailureReason('-352 behavior_anomaly v_voucher=xxx')).toBe('bilibili_api_error');
+    // network_error (与 publisher.ts normalizeFailureReason L218-224 对齐): gateway HTTP 路径
+    // webhook fetch 失败 (主机宕/DNS/AbortError) 的 error.message 含 fetch failed/econn 等,
+    // MUST 命中 network_error 而非 fallback invalid_response, 否则与 worker 路径 enum 漂移.
+    expect(t.defaultNormalizePublishFailureReason('network_error')).toBe('network_error');
+    expect(t.defaultNormalizePublishFailureReason('fetch failed: ECONNREFUSED')).toBe('network_error');
+    expect(t.defaultNormalizePublishFailureReason('AbortError: The operation was aborted')).toBe('network_error');
+    expect(t.defaultNormalizePublishFailureReason('getaddrinfo ENOTFOUND webhook.host')).toBe('network_error');
+    expect(t.defaultNormalizePublishFailureReason('stage_quota_exceeded')).toBe('stage_quota_exceeded');
+    expect(t.defaultNormalizePublishFailureReason('stage_quota_misconfigured')).toBe('stage_quota_misconfigured');
     expect(t.isMissingReservationKeyColumnError('plain')).toBe(false);
     expect(t.isMissingReservationKeyColumnError(new Error('no such column: reservation_key'))).toBe(true);
 

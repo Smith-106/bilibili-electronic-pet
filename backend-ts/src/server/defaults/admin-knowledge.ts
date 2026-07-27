@@ -1,4 +1,5 @@
 import { getPrisma } from '../../lib/prisma.js';
+import { getObservabilityDropCount } from '../../services/observability.js';
 import type {
   AdminAuditSummaryResponse,
   AdminGatewayLogsResponse,
@@ -36,6 +37,10 @@ export async function defaultAdminOverview(): Promise<Record<string, unknown>> {
   const totalPublished = byStatus.published ?? 0;
   const pendingReview = REVIEWABLE_JOB_STATUSES.reduce((sum, status) => sum + (byStatus[status] ?? 0), 0);
   const totalFailed = byStatus.failed ?? 0;
+  // observability L11: admin Overview 原只返计数, 不含 observability drop_count — 运营需另访问 /readiness
+  // 才知观测事件丢失. 加 readiness_summary.drop_count (同步轻量, getObservabilityDropCount 不查 DB),
+  // gate 健康仍由 /readiness route 专责 (避免 Overview 重复 4 gate DB 查询, 与 A5 并行化目标一致).
+  const observabilityDropCount = getObservabilityDropCount();
 
   return {
     generated_at: new Date().toISOString(),
@@ -52,6 +57,10 @@ export async function defaultAdminOverview(): Promise<Record<string, unknown>> {
     total_published: totalPublished,
     pending_review: pendingReview,
     total_failed: totalFailed,
+    readiness_summary: {
+      observability_drop_count: observabilityDropCount,
+      drop_count_threshold_exceeded: observabilityDropCount > 0,
+    },
   };
 }
 
@@ -204,8 +213,17 @@ export async function defaultAdminAuditSummary(input: {
   if (input.ok !== undefined) {
     where.ok = input.ok;
   }
+  // performance F4 / reliability F2: 原全量 findMany 无 take/order, 表增长后 OOM + 响应延迟.
+  // 加 env 守护 limit (默认 500, 上界 10000, NaN/越界回退默认) + order by created_at DESC
+  // 取最近 N 条 (与 publisher.ts timeoutSeconds 同守护模式, Fix-Don't-Hide).
+  const limitRaw = Number.parseInt(process.env.ADMIN_AUDIT_SUMMARY_LIMIT ?? '500', 10);
+  const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 10_000 ? limitRaw : 500;
 
-  const items = await prisma.operationAuditLog.findMany({ where });
+  const items = await prisma.operationAuditLog.findMany({
+    where,
+    orderBy: { created_at: 'desc' },
+    take: limit,
+  });
   const byAction: Record<string, number> = {};
   const byStatus: Record<string, number> = {};
   const byResult = { ok: 0, failed: 0 };

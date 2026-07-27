@@ -1,14 +1,13 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { ReplyJob } from './contracts.js';
+import { REVIEWABLE_JOB_STATUSES } from './normalizers.js';
 
 type CommentJobQueryDeps = {
   getPrisma: () => PrismaClient;
   normalizeNullableIsoTimestamp: (value: Date | string | null | undefined) => string | null;
   csvEscape: (value: string) => string;
 };
-
-const REVIEWABLE_JOB_STATUSES = ['manual_queue', 'blocked', 'dedupe_skipped'] as const;
 
 function buildAdminJobStatusWhere(status?: string): Record<string, unknown> {
   const normalized = String(status ?? '').trim();

@@ -5,6 +5,7 @@ import {
   type BilibiliAuthProbeResult,
 } from '../../services/bilibili-client.js';
 import { loadBilibiliRuntimeConfig, type BilibiliRuntimeConfig } from '../../services/bilibili-runtime-config.js';
+import { ensureTraceId, recordObservabilityEvent } from '../../services/observability.js';
 import type { BilibiliDiagnostics, ConnectionStatus, RuntimeSettings } from '../contracts.js';
 import { hasText, parseBoolean, parseInteger } from '../normalizers.js';
 import { normalizePublishMode } from '../runtime-platform.js';
@@ -123,6 +124,12 @@ export function buildDefaultReadinessSummary(settings: RuntimeSettings): {
   };
 }
 
+/**
+ * Construct a single delivery-capability descriptor. @internal — re-exported via
+ * the default-dependencies barrel solely to keep `__mainTesting`'s 53-symbol
+ * surface byte-identical across the ISS-001 split; no external caller depends on
+ * it directly (architecture audit A9: barrel-invariant retention decision).
+ */
 export function createDeliveryCapability(
   capability: DeliveryCapabilityName,
   active: boolean,
@@ -288,6 +295,29 @@ export async function defaultBilibiliDiagnostics(
     authRequired && !realAuthReady
       ? [credentialComplete ? 'credential_validation_failed' : 'no active credential']
       : [];
+  // observability L10: auth probe 失败 (credential_validation_failed / no_active_credential) 原只塞
+  // 返回值的 blocking_reasons, 模块内 0 event — credential 失效 (cookie 过期) 是高严重度信号,
+  // 应同步进 observability 流供在线 eval 与告警, 非只等 readiness route pull. fire-and-forget 非阻塞.
+  if (authErrors.length > 0) {
+    void recordObservabilityEvent({
+      event_type: 'bilibili_auth_probe_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        reason: authProbe.ok ? null : authProbe.reason,
+        credential_complete: credentialComplete,
+        auth_required: authRequired,
+      },
+    }).catch((error: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'bilibili_auth_probe_failed_event_record_failed',
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+  }
   const configErrors =
     webhookPublishEnabled && !webhookConfigured && !workerPathReady ? ['webhook_not_configured'] : [];
   const diagnosticsReady = authRequired ? realAuthReady : publishPathReady;

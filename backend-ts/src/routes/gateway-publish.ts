@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { getPrisma } from '../lib/prisma.js';
 import { timingSafeStringCompare } from '../lib/timing-safe-compare.js';
 import { listPublishingPlatforms } from '../platforms/registry.js';
+import { ensureTraceId, recordObservabilityEvent } from '../services/observability.js';
 import type {
   AdminGatewayLogsResponse,
   GatewayPublishPayload,
@@ -157,6 +158,31 @@ export function registerGatewayPublishRoutes(app: FastifyInstance, deps: Gateway
 
     if (!publishResult.published) {
       const normalizedReason = deps.normalizePublishFailureReason(publishResult.reason);
+      // observability F1: gateway HTTP 路径 publish 失败 (webhook fetch 异常/native postReply 异常/
+      // webhook non-2xx) 原仅返回 tuple, 失败瞬时证据 (error.message/reason) 在此函数内丢失, 运营无法
+      // 从 observability 流追踪单次发布为何失败. 对照 publisher.ts worker 路径每 catch 配 event.
+      // defaultPublishGatewayReply 纯函数无 deps 注入, event emit 在此调用方完成 (H9 pattern, 非阻塞).
+      void recordObservabilityEvent({
+        event_type: 'gateway_publish_failed',
+        trace_id: ensureTraceId(traceId),
+        comment_id: payload.comment_id,
+        status: 'failed',
+        metadata: {
+          reason: normalizedReason,
+          raw_reason: publishResult.reason,
+          mode: platform ? 'platform' : 'gateway',
+          ...(platform ? { platform } : {}),
+        },
+      }).catch((error: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            message: 'gateway_publish_failed_event_record_failed',
+            trace_id: traceId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      });
       await deps.finalizePublishLog({
         reservationKey: reservation.reservationKey,
         status: 'failed',
