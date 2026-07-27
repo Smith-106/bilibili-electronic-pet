@@ -3,6 +3,28 @@
 本文件记录 bilibili-electronic-pet 的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.3.1] - 2026-07-27
+
+patch 版本：v1.3.0 之后 19 个提交的收口。核心是 ISS-001 god-file 两阶段拆分（main.ts 3390→454 LOC -87% + default-dependencies 2449→190 LOC -92%，14 新模块纯提取，`__mainTesting` 53-symbol barrel 逐字节 IDENTICAL，数据流零变更），配套收口 ISS-002 sidecar CWE-209 安全修复与 4 项 review-odyssey/ISS bugfix。无 breaking change（纯重构 + fix，公共 API `publishIntentWithResult` 签名不变，barrel 逐字节保持向后兼容）。生产已部署验证（甲骨文 217.142.224.178，3 容器 healthy，readiness 全绿）。vitest 938/938 passed，eslint 0 error，prettier clean，tsc 0。
+
+### Changed
+
+- **refactor(arch): ISS-001 god-file 两阶段拆分** (`901bb86`…`d51d036`, G1-G14, 14 commits)
+  - **phase1 (G1-G4)**：main.ts 3390→454 LOC 装配壳。提取 `server/normalizers.ts` (466 LOC, ~40 pure helpers) / `server/audit-log.ts` (56 LOC, csvEscape+writeAuditLog) / `server/auth-prehandler.ts` (64 LOC, checkApiKey+checkCommentIngressAuth 用 timingSafeStringCompare) / `server/default-dependencies.ts` (装配壳, `defaultDependencies()` 聚合)。
+  - **phase2 (G5-G14)**：default-dependencies.ts 2449→190 LOC。提取 `server/defaults/` 10 按领域分组子模块：gateway-payload-helpers / admin-knowledge / memory-repository / role-card-and-profile / bilibili-admin / publish-execution (414 LOC, 含 STANDARD_PUBLISH_FAILURE_REASONS enum + BILIBILI_API_ERROR_HINTS + durable log store) / observability-gates (284 LOC, 5 readiness gate default impls, H9 pattern 保留) / companion-state (PII 过滤 BUG-002 保留) / publish-diagnostics-capability / platform-connections。
+  - **不变量**：拆分是纯提取（函数体逐字节不变），`default-dependencies.ts:83-104` 19 symbol barrel re-export 保 main.ts `__mainTesting` 53-symbol barrel 逐字节 IDENTICAL（验证：buildCompanionInteraction 函数体仅 `export` 前缀差异）。9 个 module-private `default*`（createCommentIngestHelpers/Action/Query 析构产物）留装配壳内（assembly core 下限 ~190 LOC）。无循环依赖，数据流零变更。
+- **refactor(publish): STANDARD_PUBLISH_FAILURE_REASONS 补 bilibili_api_error + keyword 识别** (`88b0c64`, ISS-20260712-001)
+  - `normalizePublishFailureReason` 产 `bilibili_api_error`（-352/behavior_anomaly/v_voucher 最高严重度 antirisk reason）但 enum 白名单漏项致回退 `invalid_response` 丢失风控语义。补 enum 项 + `BILIBILI_API_ERROR_HINTS` keyword 识别（`Bilibili reply API error:` 前缀 + 正则 `/-352|behavior_anomaly|v_voucher/i`）。测试 `main-defaults-coverage.test.ts:2517` 锁定。
+
+### Fixed
+
+- **fix(security): review-odyssey ISS-002 F1 sibling — sidecar CWE-209 catch 收敛 + setErrorHandler 兜底** (`a32bc3c`, `b8637ad`)
+  - qq-sidecar / douyin-sidecar `server.ts` 加 `setErrorHandler` 防 CWE-209（错误详情收敛 reason 不泄露内部），catch 分支收敛 `sidecar_webhook_failed` reason。主 backend `main.ts:202` setErrorHandler 已落地（v1.3.0），本补 sidecar 双侧对称防御。
+- **fix(types): ISS-20260713-001 — publishIntentWithResult tuple[1] reason 收窄 PublishReason 联合** (`8a4e235`)
+  - `domain/publish/types.ts` PublishReason 联合收窄，`publishIntentWithResult` tuple[1] reason 类型对齐（命名 rate_limit/rate_limited 区隔）。
+- **fix(ui): ISS-20260712-003 — bilibili 手写 cell-id td 补 title + 抽象层 title 测试断言** (`58ebff7`)
+  - `frontend/src/pages/bilibili.js` 568/671 手写 cell-id td 补 `title=escapeHtml(...)` 与 renderTable 抽象层自动 title 行为对齐（cell-id title 截断 MUST 设 title 禁令）。抽象层 title 测试断言同步。
+
 ## [1.3.0] - 2026-07-24
 
 minor 版本：v1.2.4 之后 30 个提交的集中交付。D1–D5 深度研究 feat 线（eval 框架、发布可见性自检、合规模式、memory/persona/intent/llm 能力演进）落地，同时收口 odyssey reliability/security/observability high+medium 审计修复与一批 CI/infra 稳定性修复。无 breaking change（合规模式默认 off，所有新能力 opt-in，byte-for-byte backward-compat）。
@@ -40,7 +62,7 @@ minor 版本：v1.2.4 之后 30 个提交的集中交付。D1–D5 深度研究 
   - `test/setup-memory-db.ts` 用 node:sqlite `DatabaseSync`（Node 22+ stable，Node 20 需 `--experimental-sqlite`）。升级 `engines>=22` + 5 CI workflow node-version 20→22 + 3 Dockerfile（8 stage）`node:20-alpine`→`node:22-alpine`。根因：GitHub Actions billing 失败致 ISS-004 修复从未被 CI 验证，billing 修复 + Node 22 后 CI 方能真正覆盖。
 - **ci(cloud-validate): 移除 strict smoke step，strict 留预发布环境** (`9ceb936`, `961ccfd`)
   - strict_product check 要求 product_ready（含 auth_probe gate），CI 占位 bilibili 凭据无法探活真实 auth probe 必然 false。此张力自 `61545f9` 加 auth_probe productBlocker 起存在，被 billing 失败长期遮蔽。strict smoke 移到 `build-and-push-ghcr` pre-release-smoke job（甲骨文 `PRE_RELEASE_SMOKE_BASE_URL` + 真实 native 凭据，auth_probe 可探活），CI 保留 preflight（构建+foundation+delivery 契约），e2e strict 改 preflight `--strict` 对齐。
-- **ci(promptfoo): CI LLM 凭据改用 secrets.LLM_\*** (`b6bd4b7`, TASK-001 收尾)
+- **ci(promptfoo): CI LLM 凭据改用 secrets.LLM\_\*** (`b6bd4b7`, TASK-001 收尾)
   - promptfoo eval step 从 placeholder creds 改为 `secrets.LLM_PROVIDER/LLM_API_KEY/LLM_BASE_URL`。
 - **fix(deploy): api 端口绑 127.0.0.1 避免公网直曝** (`3676c4c`)
   - `deploy.yml` api ports 从 `18000:3000`（绑所有接口）改 `127.0.0.1:18000:3000`（仅 localhost），api 只经 OpenResty 反代公网可达。
