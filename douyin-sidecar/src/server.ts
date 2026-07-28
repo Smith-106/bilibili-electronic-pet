@@ -1,7 +1,7 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyInstance } from "fastify";
 
 export interface PublishPayload {
-  platform: 'douyin';
+  platform: "douyin";
   comment_id: string;
   reply_text: string;
   force_publish: boolean;
@@ -14,37 +14,51 @@ export interface SidecarEnv {
   DOUYIN_DRIVER_MODE?: string;
   DOUYIN_UPSTREAM_URL?: string;
   DOUYIN_UPSTREAM_TOKEN?: string;
+  DOUYIN_UPSTREAM_TIMEOUT_SECONDS?: string;
 }
 
 function hasText(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
+  return typeof value === "string" && value.trim().length > 0;
 }
 
-function normalizeMode(value: string | undefined): 'mock' | 'webhook_proxy' {
-  return value === 'webhook_proxy' ? 'webhook_proxy' : 'mock';
+// fetch timeout 防御 (对齐 backend sibling publisher.ts:538-539 / sidecar-webhook.ts):
+// isFinite + 上界守护, 非 numeric env 回退 15s 默认, 防 AbortSignal.timeout(NaN) RangeError.
+function resolveUpstreamTimeoutSeconds(
+  env: NodeJS.ProcessEnv,
+  envKey: string,
+): number {
+  const raw = Number.parseInt(env[envKey] || "15", 10);
+  return Number.isFinite(raw) && raw > 0 && raw <= 300 ? raw : 15;
+}
+
+function normalizeMode(value: string | undefined): "mock" | "webhook_proxy" {
+  return value === "webhook_proxy" ? "webhook_proxy" : "mock";
 }
 
 function isPublishPayload(value: unknown): value is PublishPayload {
-  if (!value || typeof value !== 'object') return false;
+  if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   return (
-    candidate.platform === 'douyin' &&
+    candidate.platform === "douyin" &&
     hasText(candidate.comment_id) &&
     hasText(candidate.reply_text) &&
-    typeof candidate.force_publish === 'boolean' &&
+    typeof candidate.force_publish === "boolean" &&
     hasText(candidate.trace_id)
   );
 }
 
-async function publishViaWebhookProxy(payload: PublishPayload, env: NodeJS.ProcessEnv) {
+async function publishViaWebhookProxy(
+  payload: PublishPayload,
+  env: NodeJS.ProcessEnv,
+) {
   const upstreamUrl = env.DOUYIN_UPSTREAM_URL;
   if (!hasText(upstreamUrl)) {
-    return { published: false, reason: 'not_configured' };
+    return { published: false, reason: "not_configured" };
   }
 
   const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'Content-Type': 'application/json',
+    Accept: "application/json",
+    "Content-Type": "application/json",
   };
   if (hasText(env.DOUYIN_UPSTREAM_TOKEN)) {
     headers.Authorization = `Bearer ${env.DOUYIN_UPSTREAM_TOKEN}`;
@@ -52,16 +66,23 @@ async function publishViaWebhookProxy(payload: PublishPayload, env: NodeJS.Proce
 
   try {
     const response = await fetch(upstreamUrl, {
-      method: 'POST',
+      method: "POST",
       headers,
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(
+        resolveUpstreamTimeoutSeconds(env, "DOUYIN_UPSTREAM_TIMEOUT_SECONDS") *
+          1000,
+      ),
     });
-    const parsed = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const parsed = (await response.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     if (!response.ok) {
       return {
         published: false,
         reason:
-          typeof parsed.reason === 'string' && parsed.reason
+          typeof parsed.reason === "string" && parsed.reason
             ? parsed.reason
             : `upstream_${response.status}`,
       };
@@ -69,9 +90,11 @@ async function publishViaWebhookProxy(payload: PublishPayload, env: NodeJS.Proce
     return {
       published: parsed.published !== false,
       reason:
-        typeof parsed.reason === 'string' && parsed.reason ? parsed.reason : 'sidecar_publish_ok',
+        typeof parsed.reason === "string" && parsed.reason
+          ? parsed.reason
+          : "sidecar_publish_ok",
       published_at:
-        typeof parsed.published_at === 'string' && parsed.published_at
+        typeof parsed.published_at === "string" && parsed.published_at
           ? parsed.published_at
           : new Date().toISOString(),
     };
@@ -80,12 +103,14 @@ async function publishViaWebhookProxy(payload: PublishPayload, env: NodeJS.Proce
     // 序列化, 显式 send 绕过 setErrorHandler). 收敛为固定 enum, error 仅服务端 logger 可见.
     return {
       published: false,
-      reason: 'upstream_error',
+      reason: "upstream_error",
     };
   }
 }
 
-export function createServer(env: NodeJS.ProcessEnv = process.env): FastifyInstance {
+export function createServer(
+  env: NodeJS.ProcessEnv = process.env,
+): FastifyInstance {
   const app = Fastify({ logger: true });
 
   // CWE-209 纵深防御: 未显式 reply.code().send() 的 throw (运行时异常/JSON 序列化错) 兜底为
@@ -96,42 +121,48 @@ export function createServer(env: NodeJS.ProcessEnv = process.env): FastifyInsta
       const message = error instanceof Error ? error.message : String(error);
       return reply.code(statusCode).send({ detail: message });
     }
-    request.log.error({ err: error }, 'unhandled_error');
-    return reply.code(500).send({ detail: 'internal_error' });
+    request.log.error({ err: error }, "unhandled_error");
+    return reply.code(500).send({ detail: "internal_error" });
   });
 
   const mode = normalizeMode(env.DOUYIN_DRIVER_MODE);
   const expectedToken = env.DOUYIN_SIDECAR_TOKEN;
 
-  app.get('/health', async () => ({
+  app.get("/health", async () => ({
     ok: true,
-    service: 'douyin-sidecar',
+    service: "douyin-sidecar",
     mode,
     upstream_configured: hasText(env.DOUYIN_UPSTREAM_URL),
   }));
 
-  app.post('/publish', async (request, reply) => {
+  app.post("/publish", async (request, reply) => {
     if (hasText(expectedToken)) {
       const authHeader = request.headers.authorization;
       if (authHeader !== `Bearer ${expectedToken}`) {
-        return reply.code(401).send({ published: false, reason: 'auth' });
+        return reply.code(401).send({ published: false, reason: "auth" });
       }
     }
 
     if (!isPublishPayload(request.body)) {
-      return reply.code(400).send({ published: false, reason: 'invalid_payload' });
+      return reply
+        .code(400)
+        .send({ published: false, reason: "invalid_payload" });
     }
 
-    if (mode === 'mock') {
+    if (mode === "mock") {
       return reply.send({
         published: true,
-        reason: 'sidecar_publish_ok',
+        reason: "sidecar_publish_ok",
         published_at: new Date().toISOString(),
       });
     }
 
     const result = await publishViaWebhookProxy(request.body, env);
-    const statusCode = result.published ? 200 : result.reason === 'auth' ? 401 : 502;
+    const statusCode = result.published
+      ? 200
+      : result.reason === "auth"
+        ? 401
+        : 502;
     return reply.code(statusCode).send(result);
   });
 

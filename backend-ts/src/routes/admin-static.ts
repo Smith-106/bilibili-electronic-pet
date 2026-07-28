@@ -3,7 +3,12 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 async function serveStaticAsset(reply: FastifyReply, surface: 'admin' | 'companion', relativePath: string) {
   const fs = await import('fs/promises');
   const path = await import('path');
-  const assetPath = path.join(process.cwd(), 'public', surface, ...relativePath.split('/').filter(Boolean));
+  const root = path.resolve(process.cwd(), 'public', surface);
+  const assetPath = path.resolve(root, ...relativePath.split('/').filter(Boolean));
+  // path containment guard: reject any traversal that escapes the public/<surface> root (CWE-22)
+  if (assetPath !== root && !assetPath.startsWith(root + path.sep)) {
+    return reply.code(404).send({ error: 'Asset not found' });
+  }
   try {
     const content = await fs.readFile(assetPath);
     if (assetPath.endsWith('.js')) {

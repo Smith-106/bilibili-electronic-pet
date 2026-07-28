@@ -85,7 +85,12 @@ export async function publishViaSidecarWebhook(input: {
   }
 
   try {
-    const timeout = Number.parseInt(process.env.SIDECAR_WEBHOOK_TIMEOUT_SECONDS || '15', 10) * 1000;
+    // isFinite + 上界守护 (对齐 sibling publisher.ts:538-539 / publish-execution.ts:177):
+    // 非 numeric env (如 'abc'/'30s') → parseInt NaN → AbortSignal.timeout(NaN) RangeError 同步抛,
+    // 会被下方 catch 收敛为 sidecar_webhook_failed 误导. 无效配置回退 15s 默认.
+    const timeoutRaw = Number.parseInt(process.env.SIDECAR_WEBHOOK_TIMEOUT_SECONDS || '15', 10);
+    const timeoutSeconds = Number.isFinite(timeoutRaw) && timeoutRaw > 0 && timeoutRaw <= 300 ? timeoutRaw : 15;
+    const timeout = timeoutSeconds * 1000;
     const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {

@@ -11,6 +11,7 @@ import type {
   ShouldReplyService,
 } from './interfaces.js';
 import { prisma as getPrisma } from './db-queries.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 
 /**
  * Decision rules configuration
@@ -309,6 +310,24 @@ async function checkUserCooldown(
     return { inCooldown: false, remainingMinutes: 0 };
   } catch (error) {
     console.error('[shouldReply] Error checking user cooldown:', error);
+    // OBS-003: DB 失败时 fail-open 放行 (设计正确, 不硬阻瞬时 blip), 但原仅 console 使
+    // 风控 cooldown gate-bypass 不可见. 补 fire-and-forget event 使运营可追踪风控回归.
+    // (spec coding-conventions-014: 风控 safety gate fail-open 须可见)
+    void recordObservabilityEvent({
+      event_type: 'cooldown_check_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { user_id: userId, error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'cooldown_check_failed_event_record_failed',
+          user_id: userId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     // On error, allow reply (fail open)
     return { inCooldown: false, remainingMinutes: 0 };
   }

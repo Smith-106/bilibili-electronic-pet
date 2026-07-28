@@ -5,6 +5,7 @@
 import { Queue, Worker, Job, QueueOptions, WorkerOptions } from 'bullmq';
 import { RedisConnectionConfig, buildRedisConnectionConfig } from './config.js';
 import { NonRetryableWorkerError, RetryableWorkerError } from './errors.js';
+import { recordObservabilityEvent, ensureTraceId } from '../services/observability.js';
 import { WorkerConfig, buildDefaultWorkerConfig } from './worker-config.js';
 
 /**
@@ -110,6 +111,29 @@ export function createTaskWorker<P extends BaseTaskPayload>(
   });
 
   worker.on('failed', (job: Job<P> | undefined, error: Error) => {
+    // OBS-001: BullMQ 移入 failed-set 的 job 绕过 processor 的 job_finished 路径,
+    // worker 生命周期失败原仅 console, 不可从统一 observability 流追踪.
+    // 补 fire-and-forget event 使终态 job 失败可见 (对齐 bilibili-poller:360 pattern).
+    void recordObservabilityEvent({
+      event_type: 'worker_job_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        job_id: job?.id,
+        error_class: error.constructor.name,
+        message: error.message,
+        retryable: error instanceof RetryableWorkerError,
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'worker_job_failed_event_record_failed',
+          job_id: job?.id,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     if (error instanceof NonRetryableWorkerError) {
       console.error(`[Worker] Job ${job?.id} failed (non-retryable):`, error.message);
     } else if (error instanceof RetryableWorkerError) {
@@ -120,6 +144,25 @@ export function createTaskWorker<P extends BaseTaskPayload>(
   });
 
   worker.on('error', (error: Error) => {
+    // OBS-001: worker 级致命错 (Redis 断连/stall redeliver) 原仅 console.
+    // 补 fire-and-forget event 使 worker 致命错可见.
+    void recordObservabilityEvent({
+      event_type: 'worker_fatal',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        error_class: error.constructor.name,
+        message: error.message,
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'worker_fatal_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     console.error('[Worker] Worker error:', error);
   });
 
