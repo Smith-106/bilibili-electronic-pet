@@ -130,6 +130,27 @@ async function enqueueCommentEventJob(payload: Record<string, unknown>): Promise
       await queue.close().catch(() => undefined);
     }
   } catch (error) {
+    // OBS-009: enqueue 失败 (Redis down/queue.add 拒绝) 原仅返回 error 给 caller,
+    // 纯 enqueue 失败 (backlog 路径前) 无流级信号. 补 fire-and-forget event 使入口失败可见.
+    void recordObservabilityEvent({
+      event_type: 'comment_enqueue_failed',
+      trace_id: String(payload.trace_id ?? ''),
+      status: 'failed',
+      metadata: {
+        comment_id: String(payload.comment_id ?? ''),
+        platform: String(payload.platform ?? 'bilibili'),
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'comment_enqueue_failed_event_record_failed',
+          comment_id: String(payload.comment_id ?? ''),
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return {
       queued: false,
       error: error instanceof Error ? error.message : 'queue_unavailable',

@@ -1,22 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { companionFeedMock, dbPrismaMock, publishIntentWithResultMock } = vi.hoisted(() => ({
+const { companionFeedMock, publishIntentWithResultMock } = vi.hoisted(() => ({
   companionFeedMock: vi.fn(),
-  dbPrismaMock: {
-    userState: {
-      findUnique: vi.fn(),
-      upsert: vi.fn(),
-    },
-  },
   publishIntentWithResultMock: vi.fn(),
 }));
 
 vi.mock('../src/app/memory/companion-feed.js', () => ({
   upsertCompanionFeedItem: companionFeedMock,
-}));
-
-vi.mock('../src/services/db-queries.js', () => ({
-  prisma: () => dbPrismaMock,
 }));
 
 vi.mock('../src/services/publisher.js', () => ({
@@ -68,6 +58,11 @@ function buildPrisma() {
     comment: {
       findUnique: vi.fn(),
     },
+    // ARCH-004: userState 现走 deps.getPrisma() (in-scope prisma), 不再经 db-queries 越层.
+    userState: {
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+    },
   };
 }
 
@@ -90,13 +85,6 @@ describe('comment job action helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     companionFeedMock.mockResolvedValue(undefined);
-    dbPrismaMock.userState.findUnique.mockResolvedValue({
-      user_id: 'user-1',
-      recent_phrases: JSON.stringify({
-        phrases: Array.from({ length: 20 }, (_, index) => `old-${index}`),
-      }),
-    });
-    dbPrismaMock.userState.upsert.mockResolvedValue({});
     publishIntentWithResultMock.mockResolvedValue([
       true,
       'webhook_published',
@@ -255,6 +243,14 @@ describe('comment job action helpers', () => {
       id: 1,
       published_at: input.data.published_at,
     }));
+    // ARCH-004: userState 现走 in-scope prisma (deps.getPrisma()), 故在此 mock existing state.
+    prisma.userState.findUnique.mockResolvedValue({
+      user_id: 'user-1',
+      recent_phrases: JSON.stringify({
+        phrases: Array.from({ length: 20 }, (_, index) => `old-${index}`),
+      }),
+    });
+    prisma.userState.upsert.mockResolvedValue({});
     publishIntentWithResultMock.mockResolvedValue([true, 'webhook_published', publishedAt, { new_rpid: 'remote-1' }]);
     const helpers = createCommentJobActionHelpers(deps);
 
@@ -304,7 +300,7 @@ describe('comment job action helpers', () => {
       publish_reason: 'webhook_published',
       new_rpid: 'remote-1',
     });
-    expect(dbPrismaMock.userState.upsert).toHaveBeenCalledWith(
+    expect(prisma.userState.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { user_id: 'user-1' },
         update: expect.objectContaining({
@@ -351,7 +347,7 @@ describe('comment job action helpers', () => {
       requestedPublishedAt: input.data.published_at,
     }));
     publishIntentWithResultMock.mockResolvedValue([true, 'local_only', null, {}]);
-    dbPrismaMock.userState.findUnique.mockResolvedValueOnce(null);
+    prisma.userState.findUnique.mockResolvedValueOnce(null);
     const helpers = createCommentJobActionHelpers(deps);
 
     const result = await helpers.approveJob({ jobId: 1 });
@@ -391,7 +387,7 @@ describe('comment job action helpers', () => {
       approved: true,
       publish_reason: 'local_only',
     });
-    expect(dbPrismaMock.userState.upsert).toHaveBeenCalledWith(
+    expect(prisma.userState.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         create: {
           user_id: 'user-1',
@@ -436,7 +432,7 @@ describe('comment job action helpers', () => {
         }),
       }),
     );
-    expect(dbPrismaMock.userState.findUnique).not.toHaveBeenCalled();
+    expect(prisma.userState.findUnique).not.toHaveBeenCalled();
     expect(companionFeedMock).toHaveBeenCalledTimes(1);
   });
 
@@ -450,7 +446,7 @@ describe('comment job action helpers', () => {
       id: 1,
       published_at: new Date('2026-03-07T01:00:00.000Z'),
     });
-    dbPrismaMock.userState.findUnique
+    prisma.userState.findUnique
       .mockResolvedValueOnce({
         user_id: 'user-1',
         recent_phrases: { phrases: 'not-an-array' },
@@ -462,7 +458,7 @@ describe('comment job action helpers', () => {
       ok: true,
       status: 'published',
     });
-    expect(dbPrismaMock.userState.upsert).toHaveBeenCalledWith(
+    expect(prisma.userState.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         update: { recent_phrases: JSON.stringify({ phrases: ['first reply'] }) },
       }),
@@ -472,7 +468,7 @@ describe('comment job action helpers', () => {
       ok: true,
       status: 'published',
     });
-    expect(dbPrismaMock.userState.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.userState.upsert).toHaveBeenCalledTimes(1);
     expect(deps.writeAuditLog).toHaveBeenLastCalledWith(
       prisma,
       expect.objectContaining({

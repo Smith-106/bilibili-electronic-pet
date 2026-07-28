@@ -825,6 +825,7 @@ describe('memory repository and service', () => {
     expect(mockPrisma.memorySpace.findMany).toHaveBeenCalledWith({
       where: { space_type: 'operator' },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
   });
 
@@ -923,12 +924,14 @@ describe('memory repository and service', () => {
         subject_id: 'alice',
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
     expect(mockPrisma.memorySpace.findMany).toHaveBeenCalledWith({
       where: {
         id: { in: [7] },
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
   });
 
@@ -1024,6 +1027,7 @@ describe('memory repository and service', () => {
         content_type: 'summary',
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
   });
 
@@ -1069,6 +1073,7 @@ describe('memory repository and service', () => {
         source: 'operator',
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
   });
 
@@ -1334,6 +1339,7 @@ describe('memory repository and service', () => {
         subject_id: 'alice',
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
     expect(mockPrisma.identityLink.findMany).toHaveBeenCalledWith({
       where: {
@@ -1343,6 +1349,7 @@ describe('memory repository and service', () => {
         external_id: 'qq-openid-1',
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
   });
 
@@ -1360,10 +1367,12 @@ describe('memory repository and service', () => {
         space_id: 41,
       },
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
     expect(mockPrisma.identityLink.findMany).toHaveBeenCalledWith({
       where: {},
       orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+      take: expect.any(Number),
     });
   });
 

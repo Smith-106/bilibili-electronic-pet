@@ -205,9 +205,9 @@ async function approveJob(deps: CommentJobActionDeps, input: ApproveJobInput): P
 
   try {
     if (comment.user_id) {
-      const { prisma: prismaFromDb } = await import('../services/db-queries.js');
-      const p = prismaFromDb();
-      const existingState = await p.userState.findUnique({ where: { user_id: comment.user_id } });
+      // ARCH-004: 原冗余 dynamic import db-queries 取已 in-scope 的 prisma (line 67 deps.getPrisma),
+      // server→services 运行时层泄漏 + 隐藏静态分析. 直接用 in-scope prisma.
+      const existingState = await prisma.userState.findUnique({ where: { user_id: comment.user_id } });
       const recentPhrases = existingState
         ? typeof existingState.recent_phrases === 'string'
           ? JSON.parse(existingState.recent_phrases)
@@ -216,7 +216,7 @@ async function approveJob(deps: CommentJobActionDeps, input: ApproveJobInput): P
       const phrases = Array.isArray(recentPhrases.phrases) ? recentPhrases.phrases : [];
       phrases.push(replyText.substring(0, 60));
       if (phrases.length > 20) phrases.shift();
-      await p.userState.upsert({
+      await prisma.userState.upsert({
         where: { user_id: comment.user_id },
         update: { recent_phrases: JSON.stringify({ phrases }) },
         create: { user_id: comment.user_id, recent_phrases: JSON.stringify({ phrases: [replyText.substring(0, 60)] }) },

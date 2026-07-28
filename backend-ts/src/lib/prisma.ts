@@ -62,9 +62,9 @@ export async function checkDatabaseConnection(): Promise<ConnectionStatus> {
     await getPrisma().$queryRawUnsafe('SELECT 1');
     return { connected: true };
   } catch (error) {
-    return {
-      connected: false,
-      error: error instanceof Error ? error.message : 'database_unavailable',
-    };
+    // SEC-003: /readiness 未认证, raw error.message (可含路径/schema/连接串片段) 经 readiness
+    // blocker 进入 HTTP body (CWE-209). 服务端 console 保留原始诊断, 返回安全固定 enum.
+    console.error('[checkDatabaseConnection] DB probe failed:', error instanceof Error ? error.message : String(error));
+    return { connected: false, error: 'down' };
   }
 }

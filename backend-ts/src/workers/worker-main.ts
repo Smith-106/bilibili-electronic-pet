@@ -15,6 +15,7 @@ import { buildWorkerServices } from '../services/index.js';
 import { isEncryptionAvailable } from '../services/credential-crypto.js';
 import { rebuildBackoffFromDb } from '../services/backoff-decision.js';
 import { probeBilibiliAuthScheduler } from '../services/probe-scheduler.js';
+import { recordObservabilityEvent, ensureTraceId } from '../services/observability.js';
 import { setStageReadyResolver } from '../services/publisher.js';
 import { threeLayerFlagsAllOn } from '../routes/readiness.js';
 import { createCommentEventWorker } from './tasks/comment-event.task.js';
@@ -61,6 +62,22 @@ export async function main(): Promise<void> {
   // asynchronously; a brief window of no-backoff is acceptable because antirisk
   // signals will re-trigger applyBackoff at runtime (L1 risk mitigation).
   void rebuildBackoffFromDb().catch((error) => {
+    // OBS-002: boot-path backoff rebuild 失败原仅 console, drop_count 不增, 运营无流级信号.
+    // 补 fire-and-forget event 使 boot DB 失败可追踪 (对齐 probe-scheduler pattern).
+    void recordObservabilityEvent({
+      event_type: 'worker_boot_backoff_rebuild_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'worker_boot_backoff_rebuild_failed_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     console.error(
       JSON.stringify({
         level: 'error',
@@ -79,6 +96,22 @@ export async function main(): Promise<void> {
   const probeIntervalSeconds = Number.parseInt(process.env.PROBE_AUTH_INTERVAL_SECONDS || '3600', 10);
   const probeTimer = setInterval(() => {
     void probeBilibiliAuthScheduler().catch((error) => {
+      // OBS-002: probe scheduler wrapper catch 原仅 console (probe-scheduler 内部已发 event,
+      // 但 worker 级调度 wrapper 失败无流级信号). 补 fire-and-forget event.
+      void recordObservabilityEvent({
+        event_type: 'worker_probe_scheduler_failed',
+        trace_id: ensureTraceId(),
+        status: 'failed',
+        metadata: { error: error instanceof Error ? error.message : String(error) },
+      }).catch((err: unknown) => {
+        console.warn(
+          JSON.stringify({
+            level: 'warn',
+            message: 'worker_probe_scheduler_failed_event_record_failed',
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      });
       console.error(
         JSON.stringify({
           level: 'error',
@@ -106,9 +139,7 @@ export async function main(): Promise<void> {
   // stale ACK cannot blind-fly past a readiness flip — even if the operator forgets to
   // clear the env, any antirisk flag dropping blocks real_publish. publisher still
   // independently requires drop_count=0 (SC4 hard barrier, kept in publisher.ts).
-  setStageReadyResolver(
-    () => process.env.STAGE_REAL_PUBLISH_READY === 'true' && threeLayerFlagsAllOn(),
-  );
+  setStageReadyResolver(() => process.env.STAGE_REAL_PUBLISH_READY === 'true' && threeLayerFlagsAllOn());
 
   // Start the comment-event worker (Redis config handled internally)
   const worker = createCommentEventWorker(QUEUE_NAME, services);

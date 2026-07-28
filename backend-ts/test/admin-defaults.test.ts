@@ -478,11 +478,13 @@ describe('default admin data providers', () => {
       where: { created_at: { gte: expect.any(Date) } },
       select: { created_at: true },
       orderBy: { created_at: 'asc' },
+      take: expect.any(Number),
     });
     expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
       where: { created_at: { gte: expect.any(Date) } },
       select: { created_at: true, status: true },
       orderBy: { created_at: 'asc' },
+      take: expect.any(Number),
     });
     expect(response.json()).toEqual({
       ok: true,
@@ -1247,6 +1249,7 @@ describe('default admin data providers', () => {
     expect(response.statusCode).toBe(200);
     expect(mockPrisma.bilibiliCredential.findMany).toHaveBeenCalledWith({
       orderBy: { updated_at: 'desc' },
+      take: expect.any(Number),
     });
     expect(response.json()).toEqual({
       ok: true,

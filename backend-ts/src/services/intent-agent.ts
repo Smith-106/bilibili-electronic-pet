@@ -11,12 +11,9 @@
  *
  * Fail-open: LLM 调用失败返回 null (规则决策生效, 不阻断).
  */
-import {
-  buildReplyIntentSystemPrompt,
-  parseReplyIntent,
-  type ReplyIntent,
-} from '../domain/reply-intent.js';
+import { buildReplyIntentSystemPrompt, parseReplyIntent, type ReplyIntent } from '../domain/reply-intent.js';
 import { __llmClientTesting } from './llm-client.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 
 export function isLlmReviewGateEnabled(): boolean {
   return process.env.LLM_REVIEW_GATE_ENABLED === 'true';
@@ -41,6 +38,22 @@ export async function classifyReplyIntent(userComment: string): Promise<ReplyInt
     const response = await callLLM(messages, config);
     return parseReplyIntent(response.content);
   } catch (error) {
+    // OBS-006: LLM intent 失败 fail-open 返回 null (规则决策生效), 原仅 console.warn.
+    // 补 fire-and-forget event 使 LLM intent 降级 (rule-only 决策) 可追踪, 让 eval 区分.
+    void recordObservabilityEvent({
+      event_type: 'intent_classification_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'intent_classification_failed_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     // fail-open: LLM 失败不阻断, 规则决策生效 (意图是加严非安全门).
     console.warn('[intent-agent] LLM intent classification failed, fail-open to rule:', error);
     return null;

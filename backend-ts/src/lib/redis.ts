@@ -21,10 +21,10 @@ export async function checkRedisConnection(): Promise<ConnectionStatus> {
     const result = await redis.ping();
     return { connected: result === 'PONG' };
   } catch (error) {
-    return {
-      connected: false,
-      error: error instanceof Error ? error.message : 'redis_unavailable',
-    };
+    // SEC-003: 同 checkDatabaseConnection — raw error.message 经 readiness blocker 进 HTTP body (CWE-209).
+    // 服务端 console 保留原始诊断, 返回安全固定 enum. finally disconnect 释放临时连接.
+    console.error('[checkRedisConnection] Redis probe failed:', error instanceof Error ? error.message : String(error));
+    return { connected: false, error: 'unavailable' };
   } finally {
     redis.disconnect();
   }

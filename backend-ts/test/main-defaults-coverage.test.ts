@@ -483,12 +483,12 @@ describe('main default dependency coverage', () => {
     redisClientMock.connect.mockRejectedValueOnce('redis_offline');
     await expect(defaults.checkRedisConnection()).resolves.toEqual({
       connected: false,
-      error: 'redis_unavailable',
+      error: 'unavailable',
     });
     redisClientMock.connect.mockRejectedValueOnce(new Error('redis_down'));
     await expect(defaults.checkRedisConnection()).resolves.toEqual({
       connected: false,
-      error: 'redis_down',
+      error: 'unavailable',
     });
     expect(redisConfigs.at(0)).toMatchObject({
       host: 'redis.local',

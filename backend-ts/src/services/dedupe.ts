@@ -5,6 +5,7 @@
 
 import type { IsRecentDuplicateService, RememberReplyPhraseService } from './interfaces.js';
 import { getUserState, updateUserState } from './db-queries.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 
 /**
  * Check if phrase is recent duplicate
@@ -41,6 +42,23 @@ export const isRecentDuplicate: IsRecentDuplicateService = async (userId, replyT
 
     return false;
   } catch (error) {
+    // OBS-004: fail-open 返回 false (不阻 reply), 但原仅 console 使 dedupe 降级不可见.
+    // 补 fire-and-forget event 使重复回复检测失效可追踪 (robot-detection signal).
+    void recordObservabilityEvent({
+      event_type: 'dedupe_check_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { user_id: userId, error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'dedupe_check_failed_event_record_failed',
+          user_id: userId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     console.error('Error checking recent duplicate:', error);
     return false;
   }
@@ -74,6 +92,22 @@ export const rememberReplyPhrase: RememberReplyPhraseService = async (userId, re
     // Update user state
     await updateUserState(userId, { recent_phrases: recentPhrases });
   } catch (error) {
+    // OBS-004: 短语记忆更新失败原静默吞 (dedupe 有效性渐进降级). 补 fire-and-forget event.
+    void recordObservabilityEvent({
+      event_type: 'dedupe_phrase_remember_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { user_id: userId, error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'dedupe_phrase_remember_failed_event_record_failed',
+          user_id: userId,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     console.error('Error remembering reply phrase:', error);
   }
 };

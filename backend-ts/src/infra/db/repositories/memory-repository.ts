@@ -35,6 +35,17 @@ const DEFAULT_ACCESS_LEVEL = 'read';
 const DEFAULT_PLATFORM = 'bilibili';
 const DEFAULT_SOURCE = 'operator';
 
+// PERF-001: 无界 findMany 防护 (spec coding-conventions-012): list* 方法加 take 上界,
+// env 守护 (Number.isFinite + bounds, NaN 回退默认), 防 memory 表增长后 OOM/放大.
+// orderBy 已存在 (updated_at desc + id desc).
+const DEFAULT_MEMORY_LIST_LIMIT = 1000;
+const MAX_MEMORY_LIST_LIMIT = 10000;
+
+function resolveMemoryListLimit(): number {
+  const raw = Number.parseInt(process.env.MEMORY_LIST_LIMIT || String(DEFAULT_MEMORY_LIST_LIMIT), 10);
+  return Number.isFinite(raw) && raw > 0 && raw <= MAX_MEMORY_LIST_LIMIT ? raw : DEFAULT_MEMORY_LIST_LIMIT;
+}
+
 function mapMemorySpace(record: MemorySpace): MemorySpaceRecord {
   return {
     id: record.id,
@@ -110,6 +121,7 @@ export function createMemoryRepository(
       const results = await prisma.memorySpace.findMany({
         where,
         orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        take: resolveMemoryListLimit(),
       });
 
       return results.map(mapMemorySpace);
@@ -152,6 +164,7 @@ export function createMemoryRepository(
       const results = await prisma.memoryItem.findMany({
         where,
         orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        take: resolveMemoryListLimit(),
       });
 
       return results.map(mapMemoryItem);
@@ -205,6 +218,7 @@ export function createMemoryRepository(
       const results = await prisma.memoryGrant.findMany({
         where,
         orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        take: resolveMemoryListLimit(),
       });
 
       return results.map(mapMemoryGrant);
@@ -258,6 +272,7 @@ export function createMemoryRepository(
       const results = await prisma.identityLink.findMany({
         where,
         orderBy: [{ updated_at: 'desc' }, { id: 'desc' }],
+        take: resolveMemoryListLimit(),
       });
 
       return results.map(mapIdentityLink);

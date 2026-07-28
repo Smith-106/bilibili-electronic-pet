@@ -202,8 +202,15 @@ export function createServer(overrides: Partial<ServerDependencies> = {}): Fasti
   app.setErrorHandler((error, request, reply) => {
     const statusCode = (error as { statusCode?: number }).statusCode;
     if (statusCode !== undefined && statusCode >= 400 && statusCode < 500) {
-      const message = error instanceof Error ? error.message : String(error);
-      return reply.code(statusCode).send({ detail: message });
+      // SEC-007: 仅 Fastify schema 验证错 (error.validation) 回显 message (安全, 框架生成).
+      // 其他 throw 带 statusCode 的 4xx (reply.reject / 自定义 throw) message 可能含内部上下文
+      // (DB 列名/路径/部分凭据), 收敛为固定 detail, raw 仅服务端 log (CWE-209).
+      if ((error as { validation?: unknown }).validation) {
+        const message = error instanceof Error ? error.message : String(error);
+        return reply.code(statusCode).send({ detail: message });
+      }
+      request.log.error({ err: error }, 'client_error');
+      return reply.code(statusCode).send({ detail: 'client_error' });
     }
     request.log.error({ err: error }, 'unhandled_error');
     return reply.code(500).send({ detail: 'internal_error' });

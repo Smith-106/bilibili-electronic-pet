@@ -186,7 +186,13 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
   app.get('/api/admin/bilibili/credentials', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const prisma = getPrisma();
-    const items = await prisma.bilibiliCredential.findMany({ orderBy: { updated_at: 'desc' } });
+    // PERF-006: 加 take env 守护上界 (spec coding-conventions-012), 与 sibling admin list 一致.
+    const credLimitRaw = Number.parseInt(process.env.BILIBILI_CREDENTIAL_LIST_LIMIT || '100', 10);
+    const credLimit = Number.isFinite(credLimitRaw) && credLimitRaw > 0 && credLimitRaw <= 1000 ? credLimitRaw : 100;
+    const items = await prisma.bilibiliCredential.findMany({
+      orderBy: { updated_at: 'desc' },
+      take: credLimit,
+    });
 
     return reply.send({
       ok: true,
@@ -211,7 +217,9 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const name = String(body.name ?? '')
       .trim()
       .slice(0, 64);
-    const sessdata = String(body.sessdata ?? '').trim();
+    const sessdata = String(body.sessdata ?? '')
+      .trim()
+      .slice(0, 512);
     const biliJct = String(body.bili_jct ?? '')
       .trim()
       .slice(0, 128);

@@ -423,6 +423,23 @@ async function resolveActivePersonaId(): Promise<string | null> {
     return await getActivePersonaName();
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    // OBS-010: persona 归因失败 (null persona_id → C 层 @self 检测 gate 失配 +
+    // antirisk signal persona_id=null 无 per-persona 退避归因) 原仅 console.warn.
+    // 补 fire-and-forget event 使归因失败可追踪, 让 antirisk signal persona_id=null 可关联.
+    void recordObservabilityEvent({
+      event_type: 'persona_id_resolution_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { error: msg },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'persona_id_resolution_failed_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     console.warn(
       JSON.stringify({
         level: 'warn',

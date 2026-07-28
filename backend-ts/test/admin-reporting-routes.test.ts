@@ -477,11 +477,13 @@ describe('admin reporting route registration', () => {
       where: { created_at: { gte: expect.any(Date) } },
       select: { created_at: true },
       orderBy: { created_at: 'asc' },
+      take: expect.any(Number),
     });
     expect(mockPrisma.replyJob.findMany).toHaveBeenCalledWith({
       where: { created_at: { gte: expect.any(Date) } },
       select: { created_at: true, status: true },
       orderBy: { created_at: 'asc' },
+      take: expect.any(Number),
     });
     const body = response.json();
     expect(body.ok).toBe(true);

@@ -5,6 +5,7 @@
 
 import type { SearchKnowledgeService, BuildKnowledgeContextService } from './interfaces.js';
 import { searchKnowledge as dbSearchKnowledge } from './db-queries.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 
 /**
  * Search knowledge base
@@ -15,6 +16,22 @@ export const searchKnowledge: SearchKnowledgeService = async (query) => {
     const results = await dbSearchKnowledge(query);
     return results;
   } catch (error) {
+    // OBS-005: KB 不可用 fail-open 返回 [] (非 task 路径无 durable 捕获), 原仅 console.
+    // 补 fire-and-forget event 使 KB 降级可追踪 (task 路径已捕获 knowledge_error, 此处补流级信号).
+    void recordObservabilityEvent({
+      event_type: 'knowledge_search_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { query, error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'knowledge_search_failed_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     console.error('Error searching knowledge:', error);
     return [];
   }

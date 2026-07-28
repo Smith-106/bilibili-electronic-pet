@@ -202,16 +202,25 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     const prisma = getPrisma();
 
     const startUtc = new Date(Date.now() - days * 24 * 3600 * 1000);
-    const comments = await prisma.comment.findMany({
-      where: { created_at: { gte: startUtc } },
-      select: { created_at: true },
-      orderBy: { created_at: 'asc' },
-    });
-    const jobs = await prisma.replyJob.findMany({
-      where: { created_at: { gte: startUtc } },
-      select: { created_at: true, status: true },
-      orderBy: { created_at: 'asc' },
-    });
+    // PERF-003: 双 findMany 无数据依赖, Promise.all 并行化; 加 take env 守护上界防 OOM
+    // (spec coding-conventions-012). 完整 SQL GROUP BY date 重构见 issue (复杂, 需 libsql 验证).
+    const metricsLimitRaw = Number.parseInt(process.env.DAILY_METRICS_LIMIT || '50000', 10);
+    const metricsLimit =
+      Number.isFinite(metricsLimitRaw) && metricsLimitRaw > 0 && metricsLimitRaw <= 200000 ? metricsLimitRaw : 50000;
+    const [comments, jobs] = await Promise.all([
+      prisma.comment.findMany({
+        where: { created_at: { gte: startUtc } },
+        select: { created_at: true },
+        orderBy: { created_at: 'asc' },
+        take: metricsLimit,
+      }),
+      prisma.replyJob.findMany({
+        where: { created_at: { gte: startUtc } },
+        select: { created_at: true, status: true },
+        orderBy: { created_at: 'asc' },
+        take: metricsLimit,
+      }),
+    ]);
 
     const commentsByDay: Record<string, number> = {};
     const grouped: Record<string, Record<string, number>> = {};
