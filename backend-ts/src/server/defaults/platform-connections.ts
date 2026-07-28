@@ -1,5 +1,6 @@
 import { getPlatformControlState, setPlatformControlState } from '../../platforms/control-state.js';
 import { listPlatformAdapters, resolvePlatformAdapter } from '../../platforms/registry.js';
+import { ensureTraceId, recordObservabilityEvent } from '../../services/observability.js';
 import type { PlatformName, PlatformConnectionSnapshot, RuntimeSettings } from '../contracts.js';
 import { hasText } from '../normalizers.js';
 import { defaultIsPlatformEnabled } from '../runtime-platform.js';
@@ -102,6 +103,24 @@ export function defaultUpdatePlatformConnectionControl(
   }
 
   setPlatformControlState(input.platform, { enabled: input.enabled });
+  // observability L9: operator-facing 控制面变更 (启用/禁用平台连接 rollout) 原无审计轨迹,
+  // 对比 comment-job-actions/comment-ingest 都配 writeAuditLog. 补 fire-and-forget event 使
+  // 平台 trial/paused 切换可追溯 (H9 pattern, 非阻塞).
+  void recordObservabilityEvent({
+    event_type: 'platform_connection_control_changed',
+    trace_id: ensureTraceId(),
+    status: input.enabled ? 'enabled' : 'disabled',
+    metadata: { platform: input.platform, enabled: input.enabled },
+  }).catch((error: unknown) => {
+    console.warn(
+      JSON.stringify({
+        level: 'warn',
+        message: 'platform_connection_control_changed_event_record_failed',
+        platform: input.platform,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+  });
   const item = defaultListPlatformConnections(settings).items.find(
     (entry) => entry.platform === input.platform,
   ) as PlatformConnectionSnapshot;

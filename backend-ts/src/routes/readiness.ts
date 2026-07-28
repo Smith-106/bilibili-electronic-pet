@@ -328,15 +328,28 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     if (deps.isDropCountThresholdExceeded()) {
       deps.addBlocker(productBlockers, 'antirisk:drop_count_threshold_exceeded');
     }
+    // performance A5: 4 个 async readiness gate (backoff_active_rate / passive_response_violation /
+    // behavior_anomaly_count / reply_visibility) 原顺序 await 各跑独立 count 查询, 4 DB 往返串行.
+    // 各 gate 无数据依赖 (不同 event_type/where), Promise.all 并行降为单次往返窗口. 中间夹的
+    // 同步 gate (threeLayerFlagsAllOn/isAuthProbeHealthy) 在并行结果解构后顺序判定, 行为不变.
+    const [
+      backoffActiveRateExceeded,
+      passiveResponseViolationExceeded,
+      behaviorAnomalyCountZero,
+      replyVisibilityHealthy,
+    ] = await Promise.all([
+      deps.isBackoffActiveRateExceeded(),
+      deps.isPassiveResponseViolationExceeded(),
+      deps.isBehaviorAnomalyCountZero(),
+      deps.isReplyVisibilityHealthy(),
+    ]);
     // TASK-007: backoff_active_rate over budget (0.3) — share of publish attempts
     // hitting -352/-429 too high. Surface as a product blocker.
-    const backoffActiveRateExceeded = await deps.isBackoffActiveRateExceeded();
     if (backoffActiveRateExceeded) {
       deps.addBlocker(productBlockers, 'antirisk:backoff_active_rate_exceeded');
     }
     // TASK-007: passive_response_gate reject count over budget (10) — the C-layer
     // is rejecting too many comments, signaling over-block or passive-response drift.
-    const passiveResponseViolationExceeded = await deps.isPassiveResponseViolationExceeded();
     if (passiveResponseViolationExceeded) {
       deps.addBlocker(productBlockers, 'antirisk:passive_response_violation_count_exceeded');
     }
@@ -352,7 +365,6 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     // zero. -352 behavior_anomaly is the high-severity subclass (cap 600s backoff);
     // any occurrence in the window blocks full real_publish. Fail-closed (false on DB
     // error): SC4 is the hard barrier, a DB blip must NOT be assumed safe.
-    const behaviorAnomalyCountZero = await deps.isBehaviorAnomalyCountZero();
     if (!behaviorAnomalyCountZero) {
       deps.addBlocker(productBlockers, 'antirisk:behavior_anomaly_count_zero');
     }
@@ -366,7 +378,6 @@ export function registerReadinessRoute(app: FastifyInstance, deps: ReadinessRout
     // shadowbanned publish (postReply ok but rpid absent in both views) means the platform
     // is silently swallowing replies — fail-closed readiness blocker. probe_failed does NOT
     // block (C-004 fail-open).
-    const replyVisibilityHealthy = await deps.isReplyVisibilityHealthy();
     if (!replyVisibilityHealthy) {
       deps.addBlocker(productBlockers, 'antirisk:reply_visibility_verified');
     }
