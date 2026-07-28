@@ -156,6 +156,17 @@ export function createCommentEventWorker(queueName: string, services: WorkerServ
             },
           });
         } catch (error) {
+          // OBS sibling: L131/221/607 已发 event, 此处遗漏. 保留 console + 发 event (spec coding-conventions-014).
+          void services
+            .recordObservabilityEvent({
+              event_type: 'worker_companion_signal_failed',
+              trace_id: traceId,
+              comment_id: job.data.comment_id,
+              metadata: {
+                error: error instanceof Error ? error.message : String(error),
+              },
+            })
+            .catch((err) => console.warn('[recordObservabilityEvent] failed:', err));
           console.warn(
             JSON.stringify({
               level: 'warn',

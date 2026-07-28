@@ -169,7 +169,14 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     if (action) where.action = action;
     if (okFilter !== undefined) where.ok = okFilter;
 
-    const items = await prisma.operationAuditLog.findMany({ where });
+    // PERF-003 sibling: audit-log summary 聚合遍历完整结果集, 加 take 上界防 OOM (spec coding-conventions-012).
+    // 完整 GROUP BY 重构见 issue. 同 handleDailyMetricsRoute metricsLimit env 守护.
+    const auditSummaryLimitRaw = Number.parseInt(process.env.DAILY_METRICS_LIMIT || '50000', 10);
+    const auditSummaryLimit =
+      Number.isFinite(auditSummaryLimitRaw) && auditSummaryLimitRaw > 0 && auditSummaryLimitRaw <= 200000
+        ? auditSummaryLimitRaw
+        : 50000;
+    const items = await prisma.operationAuditLog.findMany({ where, take: auditSummaryLimit });
 
     const byAction: Record<string, number> = {};
     const byStatus: Record<string, number> = {};

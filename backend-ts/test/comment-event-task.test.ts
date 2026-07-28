@@ -100,7 +100,7 @@ function buildServices(overrides: Partial<WorkerServices> = {}): WorkerServices 
     getRoleCardByKey: vi.fn(async () => null),
     getActiveRoleCard: vi.fn(async () => null),
     ensureTraceId: vi.fn((traceId?: string) => traceId ?? 'trace-worker-1'),
-    recordObservabilityEvent: vi.fn(),
+    recordObservabilityEvent: vi.fn(async () => undefined),
     buildLogContext: vi.fn(() => 'log context'),
     killSwitch: false,
     roleProfileDefault: 'doro',

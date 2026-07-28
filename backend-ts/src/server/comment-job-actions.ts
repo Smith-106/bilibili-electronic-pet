@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 
 import { upsertCompanionFeedItem } from '../app/memory/companion-feed.js';
 import { buildCommentReplyPublishIntent } from '../domain/publish/comment-reply-intent.js';
+import { recordObservabilityEvent } from '../services/observability.js';
 
 type AuditLogInput = {
   action: string;
@@ -222,8 +223,16 @@ async function approveJob(deps: CommentJobActionDeps, input: ApproveJobInput): P
         create: { user_id: comment.user_id, recent_phrases: JSON.stringify({ phrases: [replyText.substring(0, 60)] }) },
       });
     }
-  } catch {
-    /* non-critical */
+  } catch (error) {
+    // OBS-004 sibling: userState 反重复短语 upsert 失败非关键路径, 但须可观测 (spec coding-conventions-014).
+    void recordObservabilityEvent({
+      event_type: 'user_state_phrase_update_failed',
+      trace_id: traceId,
+      metadata: {
+        error_class: error instanceof Error ? error.constructor.name : 'unknown',
+        user_id: comment.user_id ?? null,
+      },
+    }).catch((err) => console.warn('[recordObservabilityEvent] failed:', err));
   }
 
   await deps.writeAuditLog(prisma, {
@@ -248,8 +257,16 @@ async function approveJob(deps: CommentJobActionDeps, input: ApproveJobInput): P
         publish_reason: publishReason,
       },
     });
-  } catch {
-    /* non-critical */
+  } catch (error) {
+    // OBS sibling: companion feed signal 写失败非关键路径, 但须可观测 (spec coding-conventions-014).
+    void recordObservabilityEvent({
+      event_type: 'companion_feed_signal_failed',
+      trace_id: traceId,
+      job_id: input.jobId,
+      metadata: {
+        error_class: error instanceof Error ? error.constructor.name : 'unknown',
+      },
+    }).catch((err) => console.warn('[recordObservabilityEvent] failed:', err));
   }
 
   return {

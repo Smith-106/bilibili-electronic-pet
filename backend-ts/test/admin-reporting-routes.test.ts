@@ -396,6 +396,7 @@ describe('admin reporting route registration', () => {
         action: 'a_action',
         ok: true,
       },
+      take: expect.any(Number),
     });
     expect(response.json()).toEqual({
       ok: true,
@@ -438,6 +439,7 @@ describe('admin reporting route registration', () => {
       where: {
         created_at: { gte: expect.any(Date) },
       },
+      take: expect.any(Number),
     });
     expect(response.json()).toEqual({
       ok: true,
