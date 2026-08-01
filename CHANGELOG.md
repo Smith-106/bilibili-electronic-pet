@@ -3,9 +3,9 @@
 本文件记录 bilibili-electronic-pet 的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [1.3.1] - 2026-07-27
+## [1.3.1] - 2026-08-01
 
-patch 版本：v1.3.0 之后 19 个提交的收口。核心是 ISS-001 god-file 两阶段拆分（main.ts 3390→454 LOC -87% + default-dependencies 2449→190 LOC -92%，14 新模块纯提取，`__mainTesting` 53-symbol barrel 逐字节 IDENTICAL，数据流零变更），配套收口 ISS-002 sidecar CWE-209 安全修复与 4 项 review-odyssey/ISS bugfix。无 breaking change（纯重构 + fix，公共 API `publishIntentWithResult` 签名不变，barrel 逐字节保持向后兼容）。生产已部署验证（甲骨文 217.142.224.178，3 容器 healthy，readiness 全绿）。vitest 938/938 passed，eslint 0 error，prettier clean，tsc 0。
+patch 版本：v1.3.0 之后 19 个提交的收口。核心是 ISS-001 god-file 两阶段拆分（main.ts 3390→454 LOC -87% + default-dependencies 2449→190 LOC -92%，14 新模块纯提取，`__mainTesting` 53-symbol barrel 逐字节 IDENTICAL，数据流零变更），配套收口 ISS-002 sidecar CWE-209 安全修复与 4 项 review-odyssey/ISS bugfix。**新增前端全面升级**：Vanilla JS → React 19 + TypeScript + shadcn/ui + Tailwind CSS v4，13 个页面迁移完成，40+ 组件库集成，三主题支持 (light/dark/sepia)，构建输出优化 (~55KB CSS, ~505KB JS gzip:154KB)。无 breaking change（纯重构 + fix，公共 API `publishIntentWithResult` 签名不变，barrel 逐字节保持向后兼容）。生产已部署验证（甲骨文 217.142.224.178，3 容器 healthy，readiness 全绿）。vitest 938/938 passed，eslint 0 error，prettier clean，tsc 0。
 
 ### Changed
 

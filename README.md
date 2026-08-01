@@ -8,7 +8,7 @@
 
 ## 最新版本状态
 
-当前 release tag：**v1.3.0**
+当前 release tag：**v1.3.1**
 
 按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend/companion MVP 候选**。QQ / Douyin 等外部平台仍作为 gated trial，不纳入已签收产品面，也不能用 placeholder endpoint 代替真实验收。
 
@@ -36,14 +36,14 @@
 | QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_QQ_*` 配置 |
 | 微信 | 暂不支持 |
 
-Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.0
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.1
 
 ---
 
 ## 1. 当前状态
 
 - 后端：TypeScript + Fastify + Prisma + BullMQ
-- 前端：Vite 原生管理后台
+- 前端：React 19 + TypeScript + shadcn/ui + Tailwind CSS v4
 - 数据库：当前默认路径已统一为 SQLite / libSQL，Prisma schema 使用 SQLite provider，主服务通过 `@prisma/adapter-libsql` 连接 `file:` 数据库
 - 队列：BullMQ + Redis
 - 部署：Docker 多阶段构建；根目录 `docker-compose.yml` 默认编排 migrate / API / Worker / Redis，并通过共享 volume 挂载 SQLite 数据文件
