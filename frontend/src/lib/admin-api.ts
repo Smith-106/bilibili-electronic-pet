@@ -38,6 +38,29 @@ export interface MemoryItem {
   updated_at: string | null
 }
 
+export interface BilibiliVideo {
+  id: number
+  bvid: string
+  title: string
+  enabled: boolean
+  last_polled_at: string | null
+}
+
+export interface BilibiliCredential {
+  id: number
+  name: string
+  active: boolean
+  created_at: string | null
+}
+
+export interface RoleCard {
+  id: number
+  name: string
+  description: string
+  tone: string
+  active: boolean
+}
+
 export function createAdminApi() {
   return {
     getOverview() {
@@ -144,6 +167,102 @@ export function createAdminApi() {
       return requestJson(`/api/admin/memory/items/${encodeURIComponent(itemId)}`, {
         method: 'DELETE',
       })
+    },
+    // Bilibili APIs
+    getBilibiliStatus() {
+      return requestJson('/api/admin/bilibili/status')
+    },
+    getBilibiliVideos() {
+      return requestJson<{ items: BilibiliVideo[] }>('/api/admin/bilibili/videos')
+    },
+    getBilibiliCredentials() {
+      return requestJson<{ items: BilibiliCredential[] }>('/api/admin/bilibili/credentials')
+    },
+    addBilibiliVideo(data: { bvid: string; title?: string }) {
+      return requestJson('/api/admin/bilibili/videos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    },
+    toggleBilibiliVideoPoll(videoId: number, enabled: boolean) {
+      return requestJson(`/api/admin/bilibili/videos/${videoId}/poll`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      })
+    },
+    syncBilibiliVideo(videoId: number) {
+      return requestJson(`/api/admin/bilibili/videos/${videoId}/sync`, { method: 'POST' })
+    },
+    deleteBilibiliVideo(videoId: number) {
+      return requestJson(`/api/admin/bilibili/videos/${videoId}`, { method: 'DELETE' })
+    },
+    triggerBilibiliPoll() {
+      return requestJson('/api/admin/bilibili/poll', { method: 'POST' })
+    },
+    addBilibiliCredential(data: { name: string; cookie: string }) {
+      return requestJson('/api/admin/bilibili/credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    },
+    activateBilibiliCredential(credentialId: number) {
+      return requestJson(`/api/admin/bilibili/credentials/${credentialId}/activate`, { method: 'POST' })
+    },
+    deleteBilibiliCredential(credentialId: number) {
+      return requestJson(`/api/admin/bilibili/credentials/${credentialId}`, { method: 'DELETE' })
+    },
+    // Role Cards APIs
+    getRoleCards() {
+      return requestJson<{ items: RoleCard[] }>('/api/admin/role-cards')
+    },
+    createRoleCard(data: { name: string; description: string; tone: string }) {
+      return requestJson('/api/admin/role-cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    },
+    updateRoleCard(cardId: number, data: { name?: string; description?: string; tone?: string }) {
+      return requestJson(`/api/admin/role-cards/${cardId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+    },
+    activateRoleCard(cardId: number) {
+      return requestJson(`/api/admin/role-cards/${cardId}/activate`, { method: 'POST' })
+    },
+    disableRoleCard(cardId: number) {
+      return requestJson(`/api/admin/role-cards/${cardId}/disable`, { method: 'POST' })
+    },
+    // Jobs batch operations
+    batchApprove(jobIds: string[]) {
+      return requestJson('/api/admin/jobs/batch-approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_ids: jobIds }),
+      })
+    },
+    batchRetry(jobIds: string[]) {
+      return requestJson('/api/admin/jobs/batch-retry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_ids: jobIds }),
+      })
+    },
+    exportJobsCsv(filters = {}) {
+      return requestJson<Blob>('/api/admin/jobs/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters),
+      })
+    },
+    // Readiness
+    getReadinessStatus() {
+      return requestJson('/readiness')
     },
   }
 }

@@ -1,6 +1,6 @@
 ﻿import { Skeleton } from '@/components/ui/skeleton'
 
-export function SkeletonPage() {
+export function AuditPage() {
   return (
     <div className="space-y-6">
       <Skeleton className="h-[40px] w-[200px]" />
