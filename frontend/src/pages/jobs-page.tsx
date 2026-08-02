@@ -4,7 +4,10 @@ import { createAdminApi, type Job } from '@/lib/admin-api'
 import { formatRouteContextLabel } from '@/lib/utils'
 import { StatusBadge } from '@/components/status-badge'
 import { Timestamp } from '@/components/timestamp'
+import { EmptyState } from '@/components/empty-state'
+import { TableSkeleton } from '@/components/table-skeleton'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -13,7 +16,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, Download, CheckSquare, RotateCcw, Loader2 } from 'lucide-react'
+import { RefreshCw, Download, CheckSquare, RotateCcw, Loader2, ListTodo } from 'lucide-react'
 import { toast } from 'sonner'
 import { toastMutationError } from '@/lib/feedback'
 
@@ -27,7 +30,11 @@ export function JobsPage() {
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['jobs', { status, limit }],
-    queryFn: () => api.getJobs({ status: status || undefined, limit }),
+    // H-02: 查询边界哨兵值归一化 — "__all__"/空串 → undefined，禁止泄漏到 API 参数
+    queryFn: () => api.getJobs({
+      status: !status || status === '__all__' ? undefined : status,
+      limit,
+    }),
   })
 
   const approveMutation = useMutation({
@@ -91,17 +98,13 @@ export function JobsPage() {
     })
   }
 
-  function toggleSelectAll() {
-    if (selectedIds.size === items.length) {
-      setSelectedIds(new Set())
-    } else {
-      setSelectedIds(new Set(items.map(j => j.id)))
-    }
-  }
-
   async function handleExport() {
     try {
-      await api.exportJobsCsv({ status: status || undefined, limit })
+      // H-02: 导出与 queryFn 同一归一化约定，防止哨兵值泄漏到导出请求
+      await api.exportJobsCsv({
+        status: !status || status === '__all__' ? undefined : status,
+        limit,
+      })
       toast.success('导出成功')
     } catch (err) {
       toastMutationError(`导出失败：${(err as Error).message}。请检查筛选条件后重试`, {
@@ -145,7 +148,7 @@ export function JobsPage() {
           <Label htmlFor="job-limit">数量</Label>
           <Input id="job-limit" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="w-20" min={1} max={200} />
         </div>
-        <Button onClick={() => refetch()}>查询任务</Button>
+        {/* L-12: 移除冗余"查询任务"按钮 — Select/Input 变更已自动更新 queryKey 触发 refetch */}
       </div>
 
       {/* Batch bar */}
@@ -164,34 +167,45 @@ export function JobsPage() {
               : <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" />}
             {batchRetryMutation.isPending ? '重试中...' : '批量重试'}
           </Button>
+          {/* M-05: 清除选择出口 */}
+          <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+            清除选择
+          </Button>
         </div>
       )}
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">加载任务列表...</div>
+        <TableSkeleton rows={5} columns={8} />
       ) : items.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
-          <p>暂无任务。调整筛选条件，或等待新评论进入流水线。</p>
-          <Button variant="outline" size="sm" onClick={() => { setStatus(''); setLimit(20) }}>
-            重置筛选条件
-          </Button>
-        </div>
+        <EmptyState
+          icon={ListTodo}
+          title="暂无任务"
+          description="任务由评论流水线自动生成。确认 B 站视频已启用轮询，新评论进入后将自动创建任务。"
+          action={
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => { setStatus(''); setLimit(20) }}>
+                重置筛选条件
+              </Button>
+            </div>
+          }
+        />
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-12">
-                {/* 44px hit area via wrapping label (Round-2 RC-2) */}
-                <label className="flex size-11 cursor-pointer items-center justify-center">
-                  <input
-                    type="checkbox"
-                    className="size-5 accent-primary"
+                {/* 44px hit area via wrapping div (Round-2 RC-2); L-03: Radix Checkbox + indeterminate */}
+                <div className="flex size-11 items-center justify-center">
+                  <Checkbox
                     aria-label="全选当前页任务"
-                    checked={selectedIds.size === items.length && items.length > 0}
-                    onChange={toggleSelectAll}
+                    checked={selectedIds.size === items.length && items.length > 0 ? true : selectedIds.size > 0 ? 'indeterminate' : false}
+                    onCheckedChange={(checked) => {
+                      if (checked === false) setSelectedIds(new Set())
+                      else setSelectedIds(new Set(items.map(j => j.id)))
+                    }}
                   />
-                </label>
+                </div>
               </TableHead>
               <TableHead>ID</TableHead>
               <TableHead>状态</TableHead>
@@ -207,15 +221,13 @@ export function JobsPage() {
             {items.map((j: Job) => (
               <TableRow key={j.id}>
                 <TableCell>
-                  <label className="flex size-11 cursor-pointer items-center justify-center">
-                    <input
-                      type="checkbox"
-                      className="size-5 accent-primary"
+                  <div className="flex size-11 items-center justify-center">
+                    <Checkbox
                       aria-label={`选择任务 ${String(j.id).substring(0, 8)}`}
                       checked={selectedIds.has(j.id)}
-                      onChange={() => toggleSelect(j.id)}
+                      onCheckedChange={() => toggleSelect(j.id)}
                     />
-                  </label>
+                  </div>
                 </TableCell>
                 <TableCell className="font-mono text-sm md:text-xs" title={j.id}>
                   {String(j.id).substring(0, 8)}

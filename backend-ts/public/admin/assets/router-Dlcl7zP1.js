@@ -1,4 +1,4 @@
-import{r as Ke,a as s,g as Ge}from"./query-DuJL-pTh.js";var Z={exports:{}},x={};/**
+import{r as Ke,a as s,g as Ge}from"./query-D8JI28Vy.js";var Z={exports:{}},x={};/**
  * @license React
  * react-dom.production.js
  *

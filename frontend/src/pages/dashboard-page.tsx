@@ -1,11 +1,13 @@
 ﻿import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { createAdminApi } from '@/lib/admin-api'
 import { safeCount, formatIsoDateTime, cn } from '@/lib/utils'
-import { Badge } from '@/components/ui/badge'
+import { StatusBadge } from '@/components/status-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
 
 const api = createAdminApi()
 
@@ -150,6 +152,7 @@ interface JobItem {
 
 export function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false)
+  const queryClient = useQueryClient()
 
   const { data: overview, isLoading: loadingOverview } = useQuery({
     queryKey: ['overview'],
@@ -195,17 +198,10 @@ export function DashboardPage() {
     setRefreshing(true)
     // INT-001: refresh 期间 disabled 防重复点击
     try {
-      // Invalidate queries and refetch
-      await Promise.all([
-        api.getOverview(),
-        api.getJobs({ limit: 5 }),
-        api.getAuditSummary({ days: 7 }),
-        api.getMetricsOverview(),
-        api.getObservabilitySummary({ windowMinutes: 120 }),
-        api.getReadinessStatus(),
-      ])
+      // H-01: 全站缓存失效 → 6 个 useQuery 自动 refetch（替代 6 个裸 api.* 假刷新）
+      await queryClient.invalidateQueries()
     } finally {
-      setTimeout(() => setRefreshing(false), 300) // brief delay for UX
+      setRefreshing(false)
     }
   }
 
@@ -242,7 +238,8 @@ export function DashboardPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">系统概览</h1>
-        <Button onClick={handleRefresh} disabled={refreshing}>
+        <Button onClick={handleRefresh} disabled={refreshing} aria-busy={refreshing}>
+          {refreshing && <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />}
           {refreshing ? '刷新中...' : '刷新数据'}
         </Button>
       </div>
@@ -280,7 +277,12 @@ export function DashboardPage() {
 
         <TabsContent value="jobs">
           <div className="rounded-xl border bg-card shadow-none">
-            <div className="border-b px-6 py-4 font-semibold">最近任务</div>
+            <div className="border-b px-6 py-4 flex items-center justify-between">
+              <span className="font-semibold">最近任务</span>
+              <Link to="/jobs" className="text-sm text-primary hover:underline">
+                查看全部
+              </Link>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-border">
                 <thead className="bg-muted/50">
@@ -305,9 +307,7 @@ export function DashboardPage() {
                           {String(j.id).substring(0, 8)}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge variant={j.status === 'approved' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'}>
-                            {j.status}
-                          </Badge>
+                          <StatusBadge status={j.status} />
                         </td>
                         <td className="px-4 py-3 text-sm max-w-xs truncate" title={j.comment_text}>
                           {j.comment_text?.substring(0, 60)}

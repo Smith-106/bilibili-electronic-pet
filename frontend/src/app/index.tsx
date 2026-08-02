@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Toaster } from 'sonner'
+// M-08: 使用项目 Toaster wrapper（主题跟随 useTheme，sepia→light），而非 sonner 原生实例
+import { Toaster } from '@/components/ui/sonner'
 import { useAuth } from '@/components/providers/auth-provider'
 import { AppShell } from '@/components/layout/app-shell'
 import { LoginPage } from '@/pages/login-page'

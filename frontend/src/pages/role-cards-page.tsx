@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useCallback } from 'react'
+﻿import { useState, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createAdminApi, type RoleCard } from '@/lib/admin-api'
 import { Button } from '@/components/ui/button'
@@ -39,7 +39,8 @@ export function RoleCardsPage() {
   const [originalData, setOriginalData] = useState<RoleCard | null>(null)
   const [pendingNav, setPendingNav] = useState<PendingNav>(null)
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
-  const dirtyRef = useRef(false)
+  // L-09: dirty 从 ref 提升为 state — 驱动"未保存"指示器渲染（组件规模小，重渲染开销可忽）
+  const [dirty, setDirty] = useState(false)
 
   const { data } = useQuery({
     queryKey: ['role-cards'],
@@ -58,7 +59,7 @@ export function RoleCardsPage() {
       tone: card?.tone || '',
       constraints: typeof card?.constraints === 'string' ? card.constraints : JSON.stringify(card?.constraints || '', null, 2),
     })
-    dirtyRef.current = false
+    setDirty(false)
   }
 
   function proceedNav(nav: PendingNav) {
@@ -74,7 +75,7 @@ export function RoleCardsPage() {
 
   /** Dirty guard: clean → proceed immediately; dirty → confirm via AlertDialog */
   function guardedNav(nav: Exclude<PendingNav, null>) {
-    if (!dirtyRef.current) {
+    if (!dirty) {
       proceedNav(nav)
       return
     }
@@ -90,7 +91,7 @@ export function RoleCardsPage() {
   }
 
   function updateField(field: keyof CardFormData, value: string) {
-    dirtyRef.current = true
+    setDirty(true)
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
@@ -120,7 +121,7 @@ export function RoleCardsPage() {
         await api.createRoleCard(payload)
         toast.success('创建成功')
       }
-      dirtyRef.current = false
+      setDirty(false)
       await queryClient.invalidateQueries({ queryKey: ['role-cards'] })
       setSelectedKey(form.key)
     } catch (err) {
@@ -192,6 +193,10 @@ export function RoleCardsPage() {
       <div className="rounded-xl border bg-card p-6 shadow-none space-y-4">
         <h3 className="text-lg font-medium">
           {originalData ? `编辑: ${originalData.name || originalData.key}` : '新建角色卡'}
+          {/* L-09: 未保存指示器 — dirty state 驱动 */}
+          {dirty && (
+            <span className="text-sm font-normal text-warning" role="status">· 未保存</span>
+          )}
         </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
@@ -250,7 +255,10 @@ export function RoleCardsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>继续编辑</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { proceedNav(pendingNav); setPendingNav(null) }}>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { proceedNav(pendingNav); setPendingNav(null) }}
+            >
               放弃修改
             </AlertDialogAction>
           </AlertDialogFooter>

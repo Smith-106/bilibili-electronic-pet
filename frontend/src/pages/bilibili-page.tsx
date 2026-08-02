@@ -2,8 +2,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createAdminApi, type BilibiliVideo, type BilibiliCredential } from '@/lib/admin-api'
 import { StatCard } from '@/components/stat-card'
-import { StatusBadge } from '@/components/status-badge'
+import { BoolBadge } from '@/components/status-badge'
 import { Timestamp } from '@/components/timestamp'
+import { TableSkeleton } from '@/components/table-skeleton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,7 +37,6 @@ function fmtDuration(sec: unknown): string {
   if (n < 3600) return `${Math.floor(n / 60)}分钟`
   return `${(n / 3600).toFixed(1)}小时`
 }
-function fmtBool(val: unknown): string { return val ? '✅' : '❌' }
 
 /* Semantic colors come from theme tokens (all 3 themes), not hardcoded palette */
 function resolveCredentialExpiry(expiresAt?: string): { label: string; color: string } {
@@ -91,7 +91,8 @@ export function BilibiliPage() {
     queryFn: () => api.getBilibiliVideos({
       limit: PAGE_SIZE,
       offset: videoOffset,
-      poll_enabled: pollFilter === '' ? undefined : pollFilter === 'true',
+      // H-02: 查询边界哨兵值归一化 — 修复选"全部状态"时错误下发 poll_enabled=false
+      poll_enabled: !pollFilter || pollFilter === '__all__' ? undefined : pollFilter === 'true',
     }),
   })
   const { data: credsData, isLoading: credsLoading } = useQuery({
@@ -172,14 +173,17 @@ export function BilibiliPage() {
 
   // Filter credentials client-side
   const filteredCreds = allCreds.filter(c => {
-    if (credActiveFilter === 'active' && !(c.is_active || c.active)) return false
-    if (credActiveFilter === 'inactive' && (c.is_active || c.active)) return false
-    if (credExpiryFilter) {
+    // H-02: 显式归一化 — 哨兵值 __all__ 视为不过滤（原为偶然正确的 fall-through，防回归）
+    const activeFilter = !credActiveFilter || credActiveFilter === '__all__' ? undefined : credActiveFilter
+    const expiryFilter = !credExpiryFilter || credExpiryFilter === '__all__' ? undefined : credExpiryFilter
+    if (activeFilter === 'active' && !(c.is_active || c.active)) return false
+    if (activeFilter === 'inactive' && (c.is_active || c.active)) return false
+    if (expiryFilter) {
       const exp = resolveCredentialExpiry(c.expires_at)
-      if (credExpiryFilter === 'expired' && exp.label !== '已过期') return false
-      if (credExpiryFilter === 'expiring' && exp.label !== '即将过期') return false
-      if (credExpiryFilter === 'valid' && exp.label !== '有效期内') return false
-      if (credExpiryFilter === 'unset' && exp.label !== '未设置') return false
+      if (expiryFilter === 'expired' && exp.label !== '已过期') return false
+      if (expiryFilter === 'expiring' && exp.label !== '即将过期') return false
+      if (expiryFilter === 'valid' && exp.label !== '有效期内') return false
+      if (expiryFilter === 'unset' && exp.label !== '未设置') return false
     }
     return true
   })
@@ -210,12 +214,13 @@ export function BilibiliPage() {
 
       {/* Status cards — 视频数 featured (larger, spans 2) to break equal weight */}
       {statusLoading ? (
-        <div className="text-center py-8 text-muted-foreground">加载 B 站状态...</div>
+        <TableSkeleton rows={2} columns={6} />
       ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4 lg:grid-cols-6">
-          <StatCard label="启用" value={fmtBool(sd.enabled)} hint={fmtToggle(sd.enabled, '已启用', '已停用')} />
-          <StatCard label="轮询" value={fmtBool(sd.polling_enabled)} hint={fmtToggle(sd.polling_enabled, '自动抓取', '仅手动')} />
-          <StatCard label="发布" value={fmtBool(sd.publish_enabled)} hint={fmtToggle(sd.publish_enabled, '已启用', '已停用')} />
+          {/* L-08: 文字"是/否" + 语义色替代 emoji，读屏器不再朗读 emoji 名称 */}
+          <StatCard label="启用" value={sd.enabled ? '是' : '否'} color={sd.enabled ? 'text-success' : 'text-muted-foreground'} hint={fmtToggle(sd.enabled, '已启用', '已停用')} />
+          <StatCard label="轮询" value={sd.polling_enabled ? '是' : '否'} color={sd.polling_enabled ? 'text-success' : 'text-muted-foreground'} hint={fmtToggle(sd.polling_enabled, '自动抓取', '仅手动')} />
+          <StatCard label="发布" value={sd.publish_enabled ? '是' : '否'} color={sd.publish_enabled ? 'text-success' : 'text-muted-foreground'} hint={fmtToggle(sd.publish_enabled, '已启用', '已停用')} />
           <StatCard
             label="视频数"
             value={String(totalVideos)}
@@ -276,12 +281,14 @@ export function BilibiliPage() {
           </div>
           <Button size="sm" variant="outline" disabled={videoOffset <= 0} onClick={() => setVideoOffset(Math.max(0, videoOffset - PAGE_SIZE))}>上一页</Button>
           <Button size="sm" variant="outline" disabled={videoOffset + videos.length >= videosTotal} onClick={() => setVideoOffset(videoOffset + PAGE_SIZE)}>下一页</Button>
-          <span className="text-sm text-muted-foreground">共 {videosTotal} 条，当前偏移 {videoOffset}</span>
+          <span className="text-sm text-muted-foreground">
+            第 {videosTotal === 0 ? 0 : videoOffset + 1}–{Math.min(videoOffset + PAGE_SIZE, videosTotal)} 条，共 {videosTotal} 条
+          </span>
         </div>
 
         <div className="p-6">
           {videosLoading ? (
-            <div className="text-center py-4 text-muted-foreground">加载视频列表...</div>
+            <TableSkeleton rows={5} columns={6} />
           ) : videos.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-4 text-muted-foreground">
               <p>暂无视频。输入 BVID 添加第一个监控视频，系统将自动轮询其评论。</p>
@@ -312,7 +319,7 @@ export function BilibiliPage() {
                       <TableCell className="font-mono text-sm md:text-xs" title={v.bvid}>{v.bvid || '-'}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{v.title || '-'}</TableCell>
                       <TableCell>
-                        <StatusBadge status={v.poll_enabled ? 'published' : 'skipped'} />
+                        <BoolBadge value={!!v.poll_enabled} trueLabel="轮询中" falseLabel="已停用" />
                       </TableCell>
                       <TableCell>{v.comment_count ?? 0}</TableCell>
                       <TableCell><Timestamp value={v.last_polled_at} /></TableCell>
@@ -426,7 +433,7 @@ export function BilibiliPage() {
 
         <div className="p-6">
           {credsLoading ? (
-            <div className="text-center py-4 text-muted-foreground">加载凭证列表...</div>
+            <TableSkeleton rows={3} columns={5} />
           ) : filteredCreds.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-4 text-muted-foreground">
               <p>暂无凭证。添加一组 B 站凭证（SESSDATA 等）后即可启用发布。</p>
@@ -456,7 +463,7 @@ export function BilibiliPage() {
                       <TableCell>{c.name || '-'}</TableCell>
                       <TableCell className="font-mono text-sm md:text-xs">{fingerprint(c)}</TableCell>
                       <TableCell>
-                        <StatusBadge status={(c.is_active || c.active) ? 'published' : 'skipped'} />
+                        <BoolBadge value={!!(c.is_active || c.active)} trueLabel="已激活" falseLabel="未激活" />
                       </TableCell>
                       <TableCell className={exp.color}>{exp.label}</TableCell>
                       <TableCell>
@@ -503,7 +510,12 @@ export function BilibiliPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete}>确认删除</AlertDialogAction>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDelete}
+            >
+              确认删除
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,7 +1,9 @@
 ﻿import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createAdminApi } from '@/lib/admin-api'
+import { cn } from '@/lib/utils'
 import { StatCard } from '@/components/stat-card'
+import { TableSkeleton } from '@/components/table-skeleton'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,10 +13,11 @@ import { toastMutationError } from '@/lib/feedback'
 
 const api = createAdminApi()
 
+/* L-07: 动作标签中文化 — toast 文案经 onSuccess 的 label 查找自动跟随 */
 const PET_ACTIONS: Array<{ key: string; label: string; variant: 'default' | 'secondary' | 'outline' }> = [
-  { key: 'pat', label: 'Pat', variant: 'default' },
-  { key: 'feed', label: 'Feed', variant: 'secondary' },
-  { key: 'wake', label: 'Wake', variant: 'outline' },
+  { key: 'pat', label: '摸摸', variant: 'default' },
+  { key: 'feed', label: '喂食', variant: 'secondary' },
+  { key: 'wake', label: '唤醒', variant: 'outline' },
 ]
 
 export function PetCorePage() {
@@ -33,6 +36,7 @@ export function PetCorePage() {
     onSuccess: (_, vars) => {
       const label = PET_ACTIONS.find(a => a.key === vars.action)?.label || vars.action
       toast.success(`${label} 已记录`)
+      setNote('') // M-09: 仅在成功后清空备注 — 失败时保留用户输入以便修改重试
       queryClient.invalidateQueries({ queryKey: ['pet-overview'] })
     },
     onError: (err: Error, vars) => {
@@ -58,11 +62,11 @@ export function PetCorePage() {
     setActionPending(actionKey)
     const trimmedNote = note.trim().slice(0, 160)
     actionMutation.mutate({ action: actionKey, note: trimmedNote })
-    setNote('')
+    // M-09: setNote('') 移至 onSuccess — 失败时保留用户输入
   }
 
   if (isLoading) {
-    return <div className="text-center py-8 text-muted-foreground">加载宠物状态...</div>
+    return <div className="p-6"><TableSkeleton rows={3} columns={3} /></div>
   }
 
   return (
@@ -129,8 +133,8 @@ export function PetCorePage() {
 
         {/* Loop Actions */}
         <div className="rounded-xl border p-6 space-y-4">
-          <h3 className="font-semibold">循环动作 (Loop)</h3>
-          <p className="text-sm text-muted-foreground">直接记录 Pat / Feed / Wake，验证宠物循环是否仍能持续推进。</p>
+          <h3 className="font-semibold">循环动作</h3>
+          <p className="text-sm text-muted-foreground">直接记录摸摸 / 喂食 / 唤醒，验证宠物循环是否仍能持续推进。</p>
           <div className="space-y-1">
             <Label htmlFor="pet-action-note">动作备注</Label>
             <Textarea
@@ -140,7 +144,18 @@ export function PetCorePage() {
               placeholder="可选备注，会写入 pet-core 交互历史。"
               value={note}
               onChange={(e) => setNote(e.target.value)}
+              aria-describedby="note-counter"
             />
+            {/* L-05: 字数计数 — ≥140（87.5%）变 warning 色给用户缓冲预期 */}
+            <p
+              id="note-counter"
+              className={cn(
+                'text-xs text-muted-foreground text-right',
+                note.length >= 140 && 'text-warning font-medium',
+              )}
+            >
+              {note.length}/160
+            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
             {PET_ACTIONS.map(a => (

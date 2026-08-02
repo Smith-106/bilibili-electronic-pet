@@ -1,8 +1,14 @@
-﻿import { createAdminApi } from '@/lib/admin-api'
+﻿import { useState } from 'react'
+import { createAdminApi } from '@/lib/admin-api'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { BoolBadge } from '@/components/status-badge'
+import { TableSkeleton } from '@/components/table-skeleton'
 import { toast } from 'sonner'
 import { toastMutationError } from '@/lib/feedback'
 import { Loader2 } from 'lucide-react'
@@ -17,6 +23,8 @@ interface PlatformConnection {
 
 export function ConnectionsPage() {
   const queryClient = useQueryClient()
+  // L-12: 关闭连接确认目标 — 破坏性操作防护标准（约定 2 / RC-B）
+  const [disableTarget, setDisableTarget] = useState<PlatformConnection | null>(null)
 
   const { data: platforms, isLoading } = useQuery({
     queryKey: ['platforms'],
@@ -36,7 +44,7 @@ export function ConnectionsPage() {
       }),
   })
 
-  if (isLoading) return <div className="p-6 text-muted-foreground">加载平台连接...</div>
+  if (isLoading) return <div className="p-6"><TableSkeleton rows={2} columns={3} /></div>
 
   return (
     <div className="space-y-6">
@@ -72,7 +80,14 @@ export function ConnectionsPage() {
                           variant={p.enabled ? 'outline' : 'default'}
                           disabled={toggleMutation.isPending}
                           aria-busy={rowPending}
-                          onClick={() => toggleMutation.mutate({ platform: p.platform, enabled: !p.enabled })}
+                          onClick={() => {
+                            // L-12: 关闭 = 断开连接（可恢复但中断流水线）→ 需确认；开启 = 直接执行
+                            if (p.enabled) {
+                              setDisableTarget(p)
+                            } else {
+                              toggleMutation.mutate({ platform: p.platform, enabled: true })
+                            }
+                          }}
                         >
                           {rowPending && <Loader2 className="animate-spin" aria-hidden="true" />}
                           {rowPending ? '处理中...' : p.enabled ? '关闭' : '开启'}
@@ -86,6 +101,30 @@ export function ConnectionsPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* L-12: 关闭连接确认弹窗 — 文案说明后果 + 可恢复性（与硬删除的"无法撤销"措辞区分） */}
+      <AlertDialog open={!!disableTarget} onOpenChange={(open) => { if (!open) setDisableTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>关闭平台连接？</AlertDialogTitle>
+            <AlertDialogDescription>
+              关闭后「{disableTarget?.platform}」相关的采集与发布将暂停，可随时重新开启。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                if (disableTarget) toggleMutation.mutate({ platform: disableTarget.platform, enabled: false })
+                setDisableTarget(null)
+              }}
+            >
+              确认关闭
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

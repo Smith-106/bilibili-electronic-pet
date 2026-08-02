@@ -92,6 +92,13 @@ export function AppShell() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      {/* M-06: skip-link — 默认 sr-only，聚焦时可见，跳过顶栏+侧栏直达主内容 */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-foreground"
+      >
+        跳到主要内容
+      </a>
       {/* Top Bar */}
       <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-border/60 bg-background/70 px-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
@@ -189,6 +196,7 @@ export function AppShell() {
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    'focus-visible:bg-sidebar-accent focus-visible:ring-[3px] focus-visible:ring-ring',
                     collapsed && 'md:justify-center md:px-2',
                     isActive
                       ? 'bg-sidebar-accent text-sidebar-primary'
@@ -201,7 +209,8 @@ export function AppShell() {
                 <span
                   className={cn(
                     'animate-in fade-in slide-in-from-left-2 duration-(--duration-fast)',
-                    collapsed && 'md:hidden',
+                    // H-03: md:sr-only — 视觉隐藏但可访问性树保留（md:hidden 会使 13 个链接失去可访问名）
+                    collapsed && 'md:sr-only',
                   )}
                 >
                   {label}
@@ -212,7 +221,7 @@ export function AppShell() {
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-6xl p-4 sm:p-6">
             <Outlet />
           </div>
