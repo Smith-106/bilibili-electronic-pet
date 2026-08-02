@@ -254,6 +254,8 @@ export function DashboardPage() {
           {stats.map((stat, i) => (
             <div
               key={stat.label}
+              role="group"
+              aria-label={`${stat.label}: ${stat.value}`}
               className={cn(
                 'rounded-xl border bg-card p-4 shadow-none',
                 i === 0 && 'col-span-2',

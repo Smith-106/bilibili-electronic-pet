@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, isValidElement, cloneElement, type ReactElement, type ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -16,14 +16,21 @@ interface EmptyStateProps {
  * Replaces the "eternal skeleton" stub pattern (RC-STUBS).
  */
 export function EmptyState({ icon: Icon, title, description, action, className }: EmptyStateProps) {
+  const descId = useId()
   return (
     <div className={cn('flex flex-col items-start gap-3 py-16 pl-2', className)}>
       <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
         <Icon className="size-6 text-muted-foreground" aria-hidden="true" />
       </div>
       <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="max-w-[52ch] text-sm leading-relaxed text-muted-foreground">{description}</p>
-      {action && <div className="mt-2">{action}</div>}
+      <p id={descId} className="max-w-[52ch] text-sm leading-relaxed text-muted-foreground">{description}</p>
+      {action && (
+        <div className="mt-2">
+          {isValidElement(action)
+            ? cloneElement(action as ReactElement<Record<string, unknown>>, { 'aria-describedby': descId })
+            : action}
+        </div>
+      )}
     </div>
   )
 }

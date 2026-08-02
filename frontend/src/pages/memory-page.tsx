@@ -9,6 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
+import { toastMutationError } from '@/lib/feedback'
+import { Loader2 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const api = createAdminApi()
@@ -56,7 +58,7 @@ export function MemoryPage() {
       setSpaceSummary('')
     },
     onError: (err) => {
-      toast.error(`创建失败：${err.message}。请检查 Space Key 是否已被占用或格式是否正确`)
+      toastMutationError(`创建失败：${err.message}。请检查 Space Key 是否已被占用或格式是否正确`)
     },
   })
 
@@ -75,7 +77,7 @@ export function MemoryPage() {
       setItemContent('')
     },
     onError: (err) => {
-      toast.error(`保存失败：${err.message}。请确认所属空间与 Item Key 填写正确后重试`)
+      toastMutationError(`保存失败：${err.message}。请确认所属空间与 Item Key 填写正确后重试`)
     },
   })
 
@@ -88,7 +90,7 @@ export function MemoryPage() {
       }
     },
     onError: (err) => {
-      toast.error(`删除失败：${err.message}。请稍后重试`)
+      toastMutationError(`删除失败：${err.message}。请稍后重试`)
     },
   })
 
@@ -146,7 +148,8 @@ export function MemoryPage() {
               <Input id="space-summary" placeholder="简短描述" value={spaceSummary} onChange={(e) => setSpaceSummary(e.target.value)} />
             </div>
             <div className="md:col-span-2">
-              <Button type="submit" disabled={createSpaceMutation.isPending}>
+              <Button type="submit" disabled={createSpaceMutation.isPending} aria-busy={createSpaceMutation.isPending}>
+                {createSpaceMutation.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
                 {createSpaceMutation.isPending ? '创建中...' : '创建记忆空间'}
               </Button>
             </div>
@@ -194,7 +197,8 @@ export function MemoryPage() {
               <Textarea id="item-content" rows={3} placeholder="记忆内容" value={itemContent} onChange={(e) => setItemContent(e.target.value)} />
             </div>
             <div className="md:col-span-3">
-              <Button type="submit" disabled={upsertItemMutation.isPending || !selectedSpaceId || !itemKey}>
+              <Button type="submit" disabled={upsertItemMutation.isPending || !selectedSpaceId || !itemKey} aria-busy={upsertItemMutation.isPending}>
+                {upsertItemMutation.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
                 {upsertItemMutation.isPending ? '保存中...' : '保存条目'}
               </Button>
             </div>
@@ -291,6 +295,7 @@ export function MemoryPage() {
                         const rowPending = deleteItemMutation.isPending && deleteItemMutation.variables?.itemId === Number(item.id)
                         return (
                           <Button size="sm" variant="destructive" onClick={() => deleteItemMutation.mutate({ spaceId: Number(item.space_id), itemId: Number(item.id) })} disabled={deleteItemMutation.isPending} aria-busy={rowPending}>
+                            {rowPending && <Loader2 className="animate-spin" aria-hidden="true" />}
                             {rowPending ? '删除中...' : '删除'}
                           </Button>
                         )

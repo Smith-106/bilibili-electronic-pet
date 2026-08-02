@@ -12,8 +12,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import { RefreshCw, Plus } from 'lucide-react'
+import { RefreshCw, Plus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { toastMutationError } from '@/lib/feedback'
 
 const api = createAdminApi()
 
@@ -123,7 +124,7 @@ export function RoleCardsPage() {
       await queryClient.invalidateQueries({ queryKey: ['role-cards'] })
       setSelectedKey(form.key)
     } catch (err) {
-      toast.error(`操作失败: ${(err as Error).message}`)
+      toastMutationError(`操作失败: ${(err as Error).message}`)
     } finally {
       setPendingAction(null)
     }
@@ -136,7 +137,9 @@ export function RoleCardsPage() {
       await api.activateRoleCard(originalData.key)
       toast.success('已激活')
       await queryClient.invalidateQueries({ queryKey: ['role-cards'] })
-    } catch (err) { toast.error(`激活失败: ${(err as Error).message}`) }
+    } catch (err) {
+      toastMutationError(`激活失败: ${(err as Error).message}`, { retry: handleActivate })
+    }
     finally { setPendingAction(null) }
   }
 
@@ -147,7 +150,9 @@ export function RoleCardsPage() {
       await api.disableRoleCard(originalData.key)
       toast.success('已禁用')
       await queryClient.invalidateQueries({ queryKey: ['role-cards'] })
-    } catch (err) { toast.error(`禁用失败: ${(err as Error).message}`) }
+    } catch (err) {
+      toastMutationError(`禁用失败: ${(err as Error).message}`, { retry: handleDisable })
+    }
     finally { setPendingAction(null) }
   }
 
@@ -216,15 +221,18 @@ export function RoleCardsPage() {
         </div>
         <div className="flex gap-2">
           <Button onClick={handleSave} disabled={busy} aria-busy={pendingAction === 'save'}>
+            {pendingAction === 'save' && <Loader2 className="animate-spin" aria-hidden="true" />}
             {pendingAction === 'save' ? '保存中...' : '保存角色卡'}
           </Button>
           {originalData && originalData.enabled === false && (
             <Button variant="secondary" onClick={handleActivate} disabled={busy} aria-busy={pendingAction === 'activate'}>
+              {pendingAction === 'activate' && <Loader2 className="animate-spin" aria-hidden="true" />}
               {pendingAction === 'activate' ? '激活中...' : '激活'}
             </Button>
           )}
           {originalData && originalData.enabled !== false && (
             <Button variant="destructive" onClick={handleDisable} disabled={busy} aria-busy={pendingAction === 'disable'}>
+              {pendingAction === 'disable' && <Loader2 className="animate-spin" aria-hidden="true" />}
               {pendingAction === 'disable' ? '禁用中...' : '禁用'}
             </Button>
           )}

@@ -4,6 +4,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { BoolBadge } from '@/components/status-badge'
 import { toast } from 'sonner'
+import { toastMutationError } from '@/lib/feedback'
+import { Loader2 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 const api = createAdminApi()
@@ -28,9 +30,10 @@ export function ConnectionsPage() {
       toast.success('平台连接状态已更新')
       queryClient.invalidateQueries({ queryKey: ['platforms'] })
     },
-    onError: (err) => {
-      toast.error(`操作失败：${err.message}`)
-    },
+    onError: (err, vars) =>
+      toastMutationError(`操作失败：${err.message}`, {
+        retry: () => toggleMutation.mutate(vars),
+      }),
   })
 
   if (isLoading) return <div className="p-6 text-muted-foreground">加载平台连接...</div>
@@ -71,6 +74,7 @@ export function ConnectionsPage() {
                           aria-busy={rowPending}
                           onClick={() => toggleMutation.mutate({ platform: p.platform, enabled: !p.enabled })}
                         >
+                          {rowPending && <Loader2 className="animate-spin" aria-hidden="true" />}
                           {rowPending ? '处理中...' : p.enabled ? '关闭' : '开启'}
                         </Button>
                       </TableCell>

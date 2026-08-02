@@ -17,8 +17,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, Plus, Trash2, RotateCw } from 'lucide-react'
+import { RefreshCw, Plus, Trash2, RotateCw, Loader2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
+import { toastMutationError } from '@/lib/feedback'
 
 const api = createAdminApi()
 const PAGE_SIZE = 10
@@ -67,6 +68,8 @@ export function BilibiliPage() {
   const [buvid3, setBuvid3] = useState('')
   const [buvid4, setBuvid4] = useState('')
   const [credExpires, setCredExpires] = useState('')
+  const [showCredValues, setShowCredValues] = useState(false)
+  const credInputType = showCredValues ? 'text' : 'password'
   // Credential filters
   const [credActiveFilter, setCredActiveFilter] = useState('')
   const [credExpiryFilter, setCredExpiryFilter] = useState('')
@@ -100,27 +103,36 @@ export function BilibiliPage() {
   const addVideoMutation = useMutation({
     mutationFn: () => api.addBilibiliVideo(bvid),
     onSuccess: () => { toast.success('添加成功'); setBvid(''); invalidateAll() },
-    onError: (err: Error) => toast.error(`添加失败：${err.message}。请检查 BVID 格式是否正确（例：BV1xx411c7mD）后重试`),
+    onError: (err: Error) => toastMutationError(`添加失败：${err.message}。请检查 BVID 格式是否正确（例：BV1xx411c7mD）后重试`),
   })
   const togglePollMutation = useMutation({
     mutationFn: (videoId: string) => api.toggleBilibiliVideoPoll(videoId),
     onSuccess: () => { toast.success('操作成功'); invalidateAll() },
-    onError: (err: Error) => toast.error(`失败: ${err.message}`),
+    onError: (err: Error, videoId: string) =>
+      toastMutationError(`失败: ${err.message}`, {
+        retry: () => togglePollMutation.mutate(videoId),
+      }),
   })
   const syncVideoMutation = useMutation({
     mutationFn: (videoId: string) => api.syncBilibiliVideo(videoId),
     onSuccess: () => { toast.success('同步成功'); invalidateAll() },
-    onError: (err: Error) => toast.error(`同步失败: ${err.message}`),
+    onError: (err: Error, videoId: string) =>
+      toastMutationError(`同步失败: ${err.message}`, {
+        retry: () => syncVideoMutation.mutate(videoId),
+      }),
   })
   const deleteVideoMutation = useMutation({
     mutationFn: (videoId: string) => api.deleteBilibiliVideo(videoId),
     onSuccess: () => { toast.success('已删除'); invalidateAll() },
-    onError: (err: Error) => toast.error(`删除失败: ${err.message}`),
+    onError: (err: Error) => toastMutationError(`删除失败: ${err.message}`),
   })
   const triggerPollMutation = useMutation({
     mutationFn: () => api.triggerBilibiliPoll(),
     onSuccess: () => { toast.success('轮询已触发'); invalidateAll() },
-    onError: (err: Error) => toast.error(`轮询失败: ${err.message}`),
+    onError: (err: Error) =>
+      toastMutationError(`轮询失败: ${err.message}`, {
+        retry: () => triggerPollMutation.mutate(),
+      }),
   })
   const addCredMutation = useMutation({
     mutationFn: () => api.addBilibiliCredential({
@@ -132,17 +144,20 @@ export function BilibiliPage() {
       setCredName(''); setSessdata(''); setBiliJct(''); setBuvid3(''); setBuvid4(''); setCredExpires('')
       invalidateAll()
     },
-    onError: (err: Error) => toast.error(`凭证添加失败：${err.message}。请检查 SESSDATA 等字段是否完整、未过期`),
+    onError: (err: Error) => toastMutationError(`凭证添加失败：${err.message}。请检查 SESSDATA 等字段是否完整、未过期`),
   })
   const activateCredMutation = useMutation({
     mutationFn: (id: string) => api.activateBilibiliCredential(id),
     onSuccess: () => { toast.success('已激活'); invalidateAll() },
-    onError: (err: Error) => toast.error(`激活失败: ${err.message}`),
+    onError: (err: Error, id: string) =>
+      toastMutationError(`激活失败: ${err.message}`, {
+        retry: () => activateCredMutation.mutate(id),
+      }),
   })
   const deleteCredMutation = useMutation({
     mutationFn: (id: string) => api.deleteBilibiliCredential(id),
     onSuccess: () => { toast.success('已删除'); invalidateAll() },
-    onError: (err: Error) => toast.error(`删除失败: ${err.message}`),
+    onError: (err: Error) => toastMutationError(`删除失败: ${err.message}`),
   })
 
   // --- Data ---
@@ -217,6 +232,7 @@ export function BilibiliPage() {
       <div className="rounded-xl border p-4">
         <h3 className="font-semibold mb-2">手动操作</h3>
         <Button onClick={() => triggerPollMutation.mutate()} disabled={triggerPollMutation.isPending} aria-busy={triggerPollMutation.isPending}>
+          {triggerPollMutation.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
           {triggerPollMutation.isPending ? '轮询中...' : '触发轮询'}
         </Button>
       </div>
@@ -239,7 +255,10 @@ export function BilibiliPage() {
               />
             </div>
             <Button size="sm" onClick={handleAddVideo} disabled={addVideoMutation.isPending} aria-busy={addVideoMutation.isPending}>
-              <Plus className="mr-1 h-3 w-3" aria-hidden="true" /> {addVideoMutation.isPending ? '添加中...' : '添加'}
+              {addVideoMutation.isPending
+                ? <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden="true" />
+                : <Plus className="mr-1 h-3 w-3" aria-hidden="true" />}
+              {addVideoMutation.isPending ? '添加中...' : '添加'}
             </Button>
           </div>
         </div>
@@ -306,6 +325,7 @@ export function BilibiliPage() {
                             disabled={togglePending}
                             aria-busy={togglePending}
                           >
+                            {togglePending && <Loader2 className="animate-spin" aria-hidden="true" />}
                             {togglePending ? '处理中...' : v.poll_enabled ? '禁用轮询' : '启用轮询'}
                           </Button>
                           <Button
@@ -316,7 +336,9 @@ export function BilibiliPage() {
                             aria-label={`同步视频 ${v.bvid || vid}`}
                             aria-busy={syncPending}
                           >
-                            <RotateCw className="h-3 w-3" aria-hidden="true" />
+                            {syncPending
+                              ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              : <RotateCw className="h-3 w-3" aria-hidden="true" />}
                           </Button>
                           <Button
                             size="sm"
@@ -326,7 +348,9 @@ export function BilibiliPage() {
                             aria-label={`删除视频 ${v.bvid || vid}`}
                             aria-busy={deletePending}
                           >
-                            <Trash2 className="h-3 w-3" aria-hidden="true" />
+                            {deletePending
+                              ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              : <Trash2 className="h-3 w-3" aria-hidden="true" />}
                           </Button>
                         </div>
                       </TableCell>
@@ -341,20 +365,33 @@ export function BilibiliPage() {
 
       {/* Credentials section */}
       <div className="rounded-xl border space-y-4">
-        <div className="border-b px-6 py-4 font-semibold">凭证管理</div>
+        <div className="border-b px-6 py-4 flex items-center justify-between">
+          <span className="font-semibold">凭证管理</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => setShowCredValues(v => !v)}
+            aria-label={showCredValues ? '隐藏凭证值' : '显示凭证值'}
+            aria-pressed={showCredValues}
+          >
+            {showCredValues ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+          </Button>
+        </div>
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1"><Label htmlFor="cred-name">名称</Label><Input id="cred-name" ref={credNameInputRef} value={credName} onChange={(e) => setCredName(e.target.value)} /></div>
-            <div className="space-y-1"><Label htmlFor="cred-sessdata">SESSDATA</Label><Input id="cred-sessdata" value={sessdata} onChange={(e) => setSessdata(e.target.value)} /></div>
+            <div className="space-y-1"><Label htmlFor="cred-sessdata">SESSDATA</Label><Input id="cred-sessdata" type={credInputType} autoComplete="off" value={sessdata} onChange={(e) => setSessdata(e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="space-y-1"><Label htmlFor="cred-bili-jct">bili_jct</Label><Input id="cred-bili-jct" value={biliJct} onChange={(e) => setBiliJct(e.target.value)} /></div>
-            <div className="space-y-1"><Label htmlFor="cred-buvid3">buvid3</Label><Input id="cred-buvid3" value={buvid3} onChange={(e) => setBuvid3(e.target.value)} /></div>
-            <div className="space-y-1"><Label htmlFor="cred-buvid4">buvid4</Label><Input id="cred-buvid4" value={buvid4} onChange={(e) => setBuvid4(e.target.value)} /></div>
+            <div className="space-y-1"><Label htmlFor="cred-bili-jct">bili_jct</Label><Input id="cred-bili-jct" type={credInputType} autoComplete="off" value={biliJct} onChange={(e) => setBiliJct(e.target.value)} /></div>
+            <div className="space-y-1"><Label htmlFor="cred-buvid3">buvid3</Label><Input id="cred-buvid3" type={credInputType} autoComplete="off" value={buvid3} onChange={(e) => setBuvid3(e.target.value)} /></div>
+            <div className="space-y-1"><Label htmlFor="cred-buvid4">buvid4</Label><Input id="cred-buvid4" type={credInputType} autoComplete="off" value={buvid4} onChange={(e) => setBuvid4(e.target.value)} /></div>
           </div>
           <div className="flex flex-wrap items-end gap-4">
             <div className="space-y-1"><Label htmlFor="cred-expires">过期时间</Label><Input id="cred-expires" type="datetime-local" value={credExpires} onChange={(e) => setCredExpires(e.target.value)} /></div>
             <Button variant="secondary" onClick={handleAddCred} disabled={addCredMutation.isPending} aria-busy={addCredMutation.isPending}>
+              {addCredMutation.isPending && <Loader2 className="animate-spin" aria-hidden="true" />}
               {addCredMutation.isPending ? '添加中...' : '添加凭证'}
             </Button>
           </div>
@@ -426,6 +463,7 @@ export function BilibiliPage() {
                         <div className="flex gap-1">
                           {!(c.is_active || c.active) && (
                             <Button size="sm" variant="outline" onClick={() => activateCredMutation.mutate(cid)} disabled={activatePending} aria-busy={activatePending}>
+                              {activatePending && <Loader2 className="animate-spin" aria-hidden="true" />}
                               {activatePending ? '激活中...' : '激活'}
                             </Button>
                           )}
@@ -437,7 +475,9 @@ export function BilibiliPage() {
                             aria-label={`删除凭证 ${c.name || cid}`}
                             aria-busy={credDeletePending}
                           >
-                            <Trash2 className="h-3 w-3" aria-hidden="true" />
+                            {credDeletePending
+                              ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                              : <Trash2 className="h-3 w-3" aria-hidden="true" />}
                           </Button>
                         </div>
                       </TableCell>

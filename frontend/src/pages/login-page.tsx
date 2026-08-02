@@ -3,6 +3,7 @@ import { useAuth } from '@/components/providers/auth-provider'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Loader2 } from 'lucide-react'
 import {
   Card,
   CardContent,
@@ -53,7 +54,8 @@ export function LoginPage() {
                 autoFocus
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading || !apiKey.trim()}>
+            <Button type="submit" className="w-full" disabled={loading || !apiKey.trim()} aria-busy={loading}>
+              {loading && <Loader2 className="animate-spin" aria-hidden="true" />}
               {loading ? '登录中...' : '登录'}
             </Button>
             {error && (

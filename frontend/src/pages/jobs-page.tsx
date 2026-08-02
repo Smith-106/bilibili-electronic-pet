@@ -13,8 +13,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table'
-import { RefreshCw, Download, CheckSquare, RotateCcw } from 'lucide-react'
+import { RefreshCw, Download, CheckSquare, RotateCcw, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { toastMutationError } from '@/lib/feedback'
 
 const api = createAdminApi()
 
@@ -35,7 +36,10 @@ export function JobsPage() {
       toast.success('审批成功')
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`审批失败：${err.message}。请确认任务仍处于待审核状态后重试`),
+    onError: (err: Error, jobId: string) =>
+      toastMutationError(`审批失败：${err.message}。请确认任务仍处于待审核状态后重试`, {
+        retry: () => approveMutation.mutate(jobId),
+      }),
   })
 
   const retryMutation = useMutation({
@@ -44,7 +48,10 @@ export function JobsPage() {
       toast.success('重试已提交')
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`重试失败：${err.message}。请稍后再次重试，或检查上游服务状态`),
+    onError: (err: Error, jobId: string) =>
+      toastMutationError(`重试失败：${err.message}。请稍后再次重试，或检查上游服务状态`, {
+        retry: () => retryMutation.mutate(jobId),
+      }),
   })
 
   const batchApproveMutation = useMutation({
@@ -54,7 +61,10 @@ export function JobsPage() {
       setSelectedIds(new Set())
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`批量审批失败：${err.message}。请刷新列表确认任务状态后重试`),
+    onError: (err: Error, ids: string[]) =>
+      toastMutationError(`批量审批失败：${err.message}。请刷新列表确认任务状态后重试`, {
+        retry: () => batchApproveMutation.mutate(ids),
+      }),
   })
 
   const batchRetryMutation = useMutation({
@@ -64,7 +74,10 @@ export function JobsPage() {
       setSelectedIds(new Set())
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`批量重试失败：${err.message}。请稍后再次重试`),
+    onError: (err: Error, ids: string[]) =>
+      toastMutationError(`批量重试失败：${err.message}。请稍后再次重试`, {
+        retry: () => batchRetryMutation.mutate(ids),
+      }),
   })
 
   const items = (data?.items ?? []) as Job[]
@@ -91,7 +104,9 @@ export function JobsPage() {
       await api.exportJobsCsv({ status: status || undefined, limit })
       toast.success('导出成功')
     } catch (err) {
-      toast.error(`导出失败：${(err as Error).message}。请检查筛选条件后重试`)
+      toastMutationError(`导出失败：${(err as Error).message}。请检查筛选条件后重试`, {
+        retry: handleExport,
+      })
     }
   }
 
@@ -137,11 +152,17 @@ export function JobsPage() {
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-4 rounded-lg border bg-muted/50 px-4 py-2">
           <span className="text-sm">已选 {selectedIds.size} 项</span>
-          <Button size="sm" variant="secondary" onClick={() => batchApproveMutation.mutate([...selectedIds])} disabled={batchApproveMutation.isPending}>
-            <CheckSquare className="mr-1 h-3 w-3" aria-hidden="true" /> {batchApproveMutation.isPending ? '审批中...' : '批量审批'}
+          <Button size="sm" variant="secondary" onClick={() => batchApproveMutation.mutate([...selectedIds])} disabled={batchApproveMutation.isPending} aria-busy={batchApproveMutation.isPending}>
+            {batchApproveMutation.isPending
+              ? <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden="true" />
+              : <CheckSquare className="mr-1 h-3 w-3" aria-hidden="true" />}
+            {batchApproveMutation.isPending ? '审批中...' : '批量审批'}
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => batchRetryMutation.mutate([...selectedIds])} disabled={batchRetryMutation.isPending}>
-            <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" /> {batchRetryMutation.isPending ? '重试中...' : '批量重试'}
+          <Button size="sm" variant="secondary" onClick={() => batchRetryMutation.mutate([...selectedIds])} disabled={batchRetryMutation.isPending} aria-busy={batchRetryMutation.isPending}>
+            {batchRetryMutation.isPending
+              ? <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden="true" />
+              : <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" />}
+            {batchRetryMutation.isPending ? '重试中...' : '批量重试'}
           </Button>
         </div>
       )}
@@ -228,6 +249,7 @@ export function JobsPage() {
                         disabled={approveMutation.isPending}
                         aria-busy={approveMutation.isPending && approveMutation.variables === j.id}
                       >
+                        {approveMutation.isPending && approveMutation.variables === j.id && <Loader2 className="animate-spin" aria-hidden="true" />}
                         {approveMutation.isPending && approveMutation.variables === j.id ? '审批中...' : '审批任务'}
                       </Button>
                     )}
@@ -238,6 +260,7 @@ export function JobsPage() {
                       disabled={retryMutation.isPending}
                       aria-busy={retryMutation.isPending && retryMutation.variables === j.id}
                     >
+                      {retryMutation.isPending && retryMutation.variables === j.id && <Loader2 className="animate-spin" aria-hidden="true" />}
                       {retryMutation.isPending && retryMutation.variables === j.id ? '重试中...' : '重试任务'}
                     </Button>
                   </div>

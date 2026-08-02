@@ -5,8 +5,9 @@ import { StatCard } from '@/components/stat-card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { toastMutationError } from '@/lib/feedback'
 
 const api = createAdminApi()
 
@@ -34,8 +35,10 @@ export function PetCorePage() {
       toast.success(`${label} 已记录`)
       queryClient.invalidateQueries({ queryKey: ['pet-overview'] })
     },
-    onError: (err: Error) => {
-      toast.error(`宠物动作失败: ${err.message}`)
+    onError: (err: Error, vars) => {
+      toastMutationError(`宠物动作失败: ${err.message}`, {
+        retry: () => actionMutation.mutate(vars),
+      })
     },
     onSettled: () => {
       setActionPending('')
@@ -149,6 +152,7 @@ export function PetCorePage() {
                 disabled={!!actionPending}
                 aria-busy={actionPending === a.key}
               >
+                {actionPending === a.key && <Loader2 className="animate-spin" aria-hidden="true" />}
                 {actionPending === a.key ? `${a.label}...` : a.label}
               </Button>
             ))}

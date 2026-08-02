@@ -12,7 +12,7 @@ interface StatCardProps {
 
 export function StatCard({ label, value, hint, color, className, valueClassName }: StatCardProps) {
   return (
-    <Card className={cn('shadow-none', className)}>
+    <Card role="group" aria-label={`${label}: ${value}`} className={cn('shadow-none', className)}>
       <CardContent className="pt-4 pb-3 px-4">
         <div className="text-sm text-muted-foreground">{label}</div>
         <div className={cn('text-xl font-bold mt-1', color, valueClassName)}>{value}</div>
