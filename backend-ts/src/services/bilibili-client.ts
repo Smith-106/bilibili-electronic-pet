@@ -159,8 +159,15 @@ export async function postReply(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Bilibili reply API error: ${response.status}: ${errorText}`);
+      // Try JSON parse first, fallback to text - handles both API error responses (JSON)
+      // and HTML error pages (non-JSON) gracefully (COR-001 fix)
+      let errorBody;
+      try {
+        errorBody = await response.json();
+      } catch {
+        errorBody = await response.text();
+      }
+      throw new Error(`Bilibili reply API error: ${response.status}: ${typeof errorBody === 'object' ? JSON.stringify(errorBody) : errorBody}`);
     }
 
     const data = await response.json();
