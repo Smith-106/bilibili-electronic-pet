@@ -8,7 +8,7 @@
 
 ## 最新版本状态
 
-当前 release tag：**v1.3.1**
+当前 release tag：**v1.4.0**
 
 按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend/companion MVP 候选**。QQ / Douyin 等外部平台仍作为 gated trial，不纳入已签收产品面，也不能用 placeholder endpoint 代替真实验收。
 
@@ -36,7 +36,7 @@
 | QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_QQ_*` 配置 |
 | 微信 | 暂不支持 |
 
-Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.1
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.4.0
 
 ---
 
@@ -120,10 +120,11 @@ Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.
 
 ### 前端
 
+- React 19 + TypeScript
 - Vite 6
-- 原生 ES Module
-- 原生 CSS
-- 无 React / Vue 依赖
+- shadcn/ui + Tailwind CSS v4
+- TanStack Query (数据请求)
+- 三主题支持 (light / dark / sepia)
 
 ### 基础设施
 
@@ -150,15 +151,15 @@ Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.3.
 │  ├─ config/                  # 配置文件
 │  ├─ Dockerfile               # 后端镜像构建（也会打包前端）
 │  └─ package.json
-├─ frontend/                    # 管理后台
+├─ frontend/                    # 管理后台 (React 19 + shadcn/ui)
 │  ├─ index.html
 │  ├─ src/
-│  │  ├─ main.js               # 前端入口
-│  │  ├─ api/                  # API 请求封装
-│  │  ├─ components/           # 页面组件
-│  │  ├─ pages/                # 各页面渲染逻辑
-│  │  ├─ utils/                # 工具函数
-│  │  └─ style.css             # 全局样式
+│  │  ├─ main.tsx              # React 入口
+│  │  ├─ app/                  # App shell + 路由
+│  │  ├─ components/           # 共享组件 + UI 库
+│  │  ├─ pages/                # 各页面 (TSX)
+│  │  ├─ lib/                  # API client + 工具函数
+│  │  └─ index.css             # Tailwind 全局样式
 │  └─ package.json
 ├─ pet-companion-web/           # 独立 companion web（已接入 backend 托管与 pet-core 适配，产品范围仍属 partial）
 │  ├─ src/                      # companion UI + backend/local adapter
@@ -260,38 +261,40 @@ Prisma 模型定义：`backend-ts/prisma/schema.prisma:1`
 
 ## 6. 前端架构说明
 
-前端入口：`frontend/src/main.js:1`
-页面骨架：`frontend/index.html:1`
+前端入口：`frontend/src/main.tsx`
+页面骨架：`frontend/index.html`
 
-当前管理后台基于 Vite 原生前端实现，不依赖 UI 框架。
+管理后台基于 **React 19 + TypeScript + shadcn/ui + Tailwind CSS v4** 实现，使用 TanStack Query 管理服务端状态。
 
 ### 页面模块
 
-从 `frontend/src/main.js:15` 可见，当前页面包括：
+当前页面（`frontend/src/pages/`）包括：
 
-- `dashboard`：仪表盘
-- `jobs`：任务管理
-- `daily-metrics`：每日指标
-- `knowledge`：知识库
-- `memory`：memory spaces / grants / identity links 管理
-- `role-cards`：角色卡
-- `profiles`：风格配置
-- `gateway`：网关
-- `audit`：审计日志
-- `bilibili`：B 站集成
-- `query`：查询
+- `dashboard-page`：仪表盘
+- `jobs-page`：任务管理
+- `daily-metrics-page`：每日指标
+- `knowledge-page`：知识库
+- `memory-page`：memory spaces / grants / identity links 管理
+- `role-cards-page`：角色卡
+- `profiles-page`：风格配置
+- `gateway-page`：网关
+- `audit-page`：审计日志
+- `bilibili-page`：B 站集成
+- `query-page`：查询
+- `connections-page`：平台连接
+- `pet-core-page`：宠物核心状态
 
 ### 登录方式
 
-- 管理后台通过 API Key 登录
+- 管理后台通过 API Key 登录（`login-page`）
 - API Key 保存在 `sessionStorage`
-- 前端通过请求 `/api/admin/overview` 验证 API Key 是否可用
+- 前端通过 `AuthProvider` 统一管理认证状态
 
 ### 主题能力
 
-前端内置主题切换：
+前端内置三主题切换（`ThemeProvider`）：
 
-- 默认主题
+- light（默认）
 - dark
 - sepia
 
@@ -1935,9 +1938,10 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 
 ### 前端
 
-- `frontend/index.html:1`
-- `frontend/src/main.js:1`
+- `frontend/index.html`
+- `frontend/src/main.tsx`
 - `frontend/src/pages/`
+- `frontend/src/components/`
 
 ### 部署
 
@@ -1953,9 +1957,9 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 
 1. `backend-ts/` 提供 Fastify API、管理接口、事件接入、发布网关与审计导出能力
 2. `worker-main.ts` 负责消费 `comment-event` 队列，并在启用时承载 B 站轮询调度
-3. `frontend/` 提供原生模块化管理后台，构建后会打包进后端镜像的 `public/admin`
+3. `frontend/` 提供 React 19 + shadcn/ui 管理后台，构建后会打包进后端镜像的 `public/admin`
 4. `docker-compose.yml` 已把 `migrate`、`api`、`worker`、`redis` 串成一套可启动的最小部署拓扑
-5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/api/admin.js` 与 `backend-ts/src/main.ts` 的现行契约对齐
+5. 当前后端同时保留了顶层 legacy 路由和管理后台前端依赖的 `/api/*` 兼容别名；继续开发时应优先按 `frontend/src/lib/admin-api.ts` 与 `backend-ts/src/routes/` 的现行契约对齐
 
 当前权威交付基线已不是早期的 `rollout blocked` 结论，而是 `WFS-bilibili-delivery-readiness-20260408` 中记录的原生 B 站 public-domain `GO`。也就是说，主运行链路已经有一条已签收的客户交付基线。
 
@@ -1973,4 +1977,4 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 4. 管理后台、Bilibili automation 面与 companion 运行时闭环已经纳入 repo-controlled signed-off MVP；完整多平台产品能力仍需真实外部 endpoint 与远端 smoke 后才能签收
 5. 生产环境必须配置 `API_KEY`、`COMMENT_INGRESS_TOKEN`、`GATEWAY_TOKEN`、`GATEWAY_HMAC_SECRET`、`LLM_FALLBACK_TO_MOCK=false` 与 `NODE_ENV=production`；缺少这些门禁时不能声明为可上线环境
 
-这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/`、`WFS-bilibili-delivery-readiness-20260408`、`CURRENT_STATUS_2026-04-13.md` 以及当前 workflow 工件，而非旧的 Python 历史描述。
+这份 README 可作为当前实现的代码导览与运行入口；阅读、排障或继续开发时，优先查看 `backend-ts/`、`frontend/`、`pet-companion-web/` 以及当前 workflow 工件，而非旧的 Python 历史描述。

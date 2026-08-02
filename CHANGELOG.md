@@ -3,6 +3,27 @@
 本文件记录 bilibili-electronic-pet 的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-08-02
+
+minor 版本：v1.3.1 之后 3 个提交的收口 + 仓库清理。核心是前端 React 迁移后的最终收口：66 个 TypeScript 错误修复、代码分割优化、旧 Vanilla JS 测试归档为 React 冒烟测试，以及全仓库清理（删除过期文档、遗留测试、冗余配置）。无 breaking change。
+
+### Changed
+
+- **fix(frontend): 修复 66 个 TypeScript 错误 + 代码分割优化** (`7eb9034`)
+  - 前端 React 迁移后的类型安全收口，优化构建产物分割。
+- **test(frontend): 归档旧 Vanilla JS 测试 + 新建 React 冒烟测试** (`1528433`)
+  - 24 个旧 Vanilla JS 测试归档至 `.legacy/`，新建 React 19 冒烟测试 (7/7 passed)。
+
+### Removed
+
+- **chore: 仓库清理** (`2b39943` + 本次)
+  - 删除根目录过期文档：`CURRENT_STATUS_2026-04-13.md`、`CUSTOMER_HANDOFF_v0.2.1.md`、`DEVELOPMENT_PROGRESS_2026-04-07.md`、`PRE_PUSH_RELEASE_NOTES_2026-04-07.md`、`WORKFLOW_ARCHIVAL_GOVERNANCE.md`
+  - 删除后端过期文档：`EXPANDED_SCOPE_STAGING_TEMPLATE.md`、`STAGING_VALIDATION.md`、`WORKER_MIGRATION.md`、`staging-report.expanded-scope.template.json`
+  - 删除前端遗留：`test/.legacy/`（24 个旧测试）、`reference/sudowrite/`、`vitest.config.js`、`test/setup.js`
+  - 删除杂项：`.jules/`、`pytest.ini`、`bilibili-comment-deleter.user.js`
+  - 更新 README.md 反映 React 19 + shadcn/ui 技术栈
+  - 更新 docs-site 版本引用至 v1.4.0
+
 ## [1.3.1] - 2026-08-01
 
 patch 版本：v1.3.0 之后 19 个提交的收口。核心是 ISS-001 god-file 两阶段拆分（main.ts 3390→454 LOC -87% + default-dependencies 2449→190 LOC -92%，14 新模块纯提取，`__mainTesting` 53-symbol barrel 逐字节 IDENTICAL，数据流零变更），配套收口 ISS-002 sidecar CWE-209 安全修复与 4 项 review-odyssey/ISS bugfix。**新增前端全面升级**：Vanilla JS → React 19 + TypeScript + shadcn/ui + Tailwind CSS v4，13 个页面迁移完成，40+ 组件库集成，三主题支持 (light/dark/sepia)，构建输出优化 (~55KB CSS, ~505KB JS gzip:154KB)。无 breaking change（纯重构 + fix，公共 API `publishIntentWithResult` 签名不变，barrel 逐字节保持向后兼容）。生产已部署验证（甲骨文 217.142.224.178，3 容器 healthy，readiness 全绿）。vitest 938/938 passed，eslint 0 error，prettier clean，tsc 0。
