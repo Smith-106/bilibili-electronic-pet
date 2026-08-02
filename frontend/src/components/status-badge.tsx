@@ -12,22 +12,27 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
   pending: { label: '待处理', variant: 'secondary' },
 }
 
+/* Colors come from the --badge-* token layer in index.css (all 3 themes
+   redefine them, AA-compliant). No hardcoded palette, no dark: variants —
+   the token layer handles light/dark/sepia. */
 const STATUS_COLORS: Record<string, string> = {
-  published: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400',
-  queued: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  pending_review: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
-  approved: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
-  retrying: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  skipped: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  processing: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
-  pending: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+  published: 'bg-badge-success-bg text-badge-success-fg',
+  failed: 'bg-badge-danger-bg text-badge-danger-fg',
+  queued: 'bg-badge-warning-bg text-badge-warning-fg',
+  pending_review: 'bg-badge-warning-bg text-badge-warning-fg',
+  approved: 'bg-badge-success-bg text-badge-success-fg',
+  retrying: 'bg-badge-info-bg text-badge-info-fg',
+  skipped: 'bg-badge-muted-bg text-badge-muted-fg',
+  processing: 'bg-badge-info-bg text-badge-info-fg',
+  pending: 'bg-badge-warning-bg text-badge-warning-fg',
 }
+
+const MUTED_COLORS = 'bg-badge-muted-bg text-badge-muted-fg'
 
 export function StatusBadge({ status }: { status: string | null | undefined }) {
   if (!status) return null
   const info = STATUS_MAP[status] || { label: status, variant: 'secondary' as const }
-  const colorCls = STATUS_COLORS[status] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+  const colorCls = STATUS_COLORS[status] || MUTED_COLORS
 
   return (
     <Badge variant={info.variant} className={colorCls}>
@@ -38,9 +43,10 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
 
 export function BoolBadge({ value, trueLabel = '是', falseLabel = '否' }: { value: boolean; trueLabel?: string; falseLabel?: string }) {
   const label = value ? trueLabel : falseLabel
+  // On/off are visually distinct: success tint vs muted tint (was identical grays)
   const colorCls = value
-    ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-    : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+    ? 'bg-badge-success-bg text-badge-success-fg'
+    : MUTED_COLORS
 
   return (
     <Badge variant={value ? 'default' : 'secondary'} className={colorCls}>

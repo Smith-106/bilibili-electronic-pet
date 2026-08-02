@@ -19,6 +19,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeft,
+  Menu,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/providers/theme-provider'
@@ -48,21 +49,33 @@ export function AppShell() {
   const { theme, cycleTheme } = useTheme()
   const { logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
   const ThemeIcon = THEME_ICONS[theme]
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* Top Bar */}
-      <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-border/60 bg-background/40 px-4 backdrop-blur-xl">
+      <header className="flex h-[52px] shrink-0 items-center justify-between border-b border-border/60 bg-background/70 px-4 backdrop-blur-md">
         <div className="flex items-center gap-3">
+          {/* Mobile: open drawer */}
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-10 w-10 md:hidden"
+            onClick={() => setMobileOpen(true)}
+            aria-label="打开导航菜单"
+          >
+            <Menu className="h-4 w-4" aria-hidden="true" />
+          </Button>
+          {/* Desktop: collapse rail */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden h-10 w-10 md:inline-flex"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? '展开侧栏' : '收起侧栏'}
           >
-            {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            {collapsed ? <PanelLeft className="h-4 w-4" aria-hidden="true" /> : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />}
           </Button>
           <span className="text-base font-semibold text-primary">Bili Pet</span>
         </div>
@@ -70,48 +83,68 @@ export function AppShell() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-10 w-10"
             onClick={cycleTheme}
             aria-label="切换主题"
             title={`当前: ${theme}`}
           >
-            <ThemeIcon className="h-4 w-4" />
+            <ThemeIcon className="h-4 w-4" aria-hidden="true" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
+            className="h-10 w-10"
             onClick={logout}
             aria-label="退出登录"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
+        {/* Mobile drawer backdrop (transform/opacity only) */}
+        {mobileOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/40 animate-in fade-in duration-200 md:hidden"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Sidebar:
+            - mobile: fixed drawer, slides via transform (no layout animation)
+            - desktop: static rail; width switches instantly (single reflow, no
+              per-frame layout thrash), labels enter via transform+opacity */}
         <aside
+          aria-label="侧边导航"
           className={cn(
-            'flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200',
-            collapsed ? 'w-[52px]' : 'w-[220px]',
+            'flex flex-col border-r border-sidebar-border bg-sidebar',
+            'fixed inset-y-0 left-0 z-40 w-[220px] transition-transform duration-300 ease-[var(--ease-out-quart)]',
+            mobileOpen ? 'translate-x-0' : '-translate-x-full',
+            'md:static md:inset-auto md:z-auto md:translate-x-0 md:transition-none',
+            collapsed ? 'md:w-[52px]' : 'md:w-[220px]',
           )}
         >
-          {!collapsed && (
-            <div className="flex h-10 items-center px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              管理面板
-            </div>
-          )}
+          <div
+            className={cn(
+              'flex h-10 items-center px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground',
+              collapsed && 'md:hidden',
+            )}
+          >
+            管理面板
+          </div>
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-2 py-1">
             {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 end={to === '/'}
+                onClick={() => setMobileOpen(false)}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                    collapsed && 'justify-center px-2',
+                    collapsed && 'md:justify-center md:px-2',
                     isActive
                       ? 'bg-sidebar-accent text-sidebar-primary'
                       : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground',
@@ -120,7 +153,14 @@ export function AppShell() {
                 title={collapsed ? label : undefined}
               >
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                {!collapsed && <span>{label}</span>}
+                <span
+                  className={cn(
+                    'animate-in fade-in slide-in-from-left-2 duration-200',
+                    collapsed && 'md:hidden',
+                  )}
+                >
+                  {label}
+                </span>
               </NavLink>
             ))}
           </nav>
@@ -128,7 +168,7 @@ export function AppShell() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl p-6">
+          <div className="mx-auto max-w-6xl p-4 sm:p-6">
             <Outlet />
           </div>
         </main>

@@ -1,6 +1,6 @@
 ﻿import { useState } from 'react'
 import { createAdminApi } from '@/lib/admin-api'
-import { escapeHtml, safeCount, formatIsoDateTime } from '@/lib/utils'
+import { safeCount, formatIsoDateTime, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -244,18 +244,24 @@ export function DashboardPage() {
         </Button>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="rounded-lg border bg-card p-4 shadow-sm">
+      {/* Stats Grid — featured first tile breaks the equal-weight grid */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-6">
+        {stats.map((stat, i) => (
+          <div
+            key={stat.label}
+            className={cn(
+              'rounded-lg border bg-card p-4 shadow-xs',
+              i === 0 && 'col-span-2',
+            )}
+          >
             <div className="text-sm font-medium text-muted-foreground">{stat.label}</div>
-            <div className="mt-2 text-2xl font-semibold">{stat.value}</div>
+            <div className={cn('mt-2 font-semibold', i === 0 ? 'text-3xl' : 'text-2xl')}>{stat.value}</div>
           </div>
         ))}
       </div>
 
       {/* Section Grid */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         {/* Recent Jobs */}
         <div className="rounded-lg border bg-card shadow-sm">
           <div className="border-b px-6 py-4 font-semibold">最近任务</div>
@@ -273,13 +279,13 @@ export function DashboardPage() {
                 {jobItems.length === 0 ? (
                   <tr>
                     <td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      暂无任务
+                      暂无任务。新评论进入流水线后会显示在这里。
                     </td>
                   </tr>
                 ) : (
                   jobItems.map((j) => (
                     <tr key={j.id} className="hover:bg-accent/50">
-                      <td className="px-4 py-3 text-sm" title={escapeHtml(String(j.id))}>
+                      <td className="px-4 py-3 text-sm" title={String(j.id)}>
                         {String(j.id).substring(0, 8)}
                       </td>
                       <td className="px-4 py-3">
@@ -287,8 +293,8 @@ export function DashboardPage() {
                           {j.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-sm max-w-xs truncate" title={escapeHtml(j.comment_text)}>
-                        {escapeHtml(j.comment_text?.substring(0, 60))}
+                      <td className="px-4 py-3 text-sm max-w-xs truncate" title={j.comment_text}>
+                        {j.comment_text?.substring(0, 60)}
                       </td>
                       <td className="px-4 py-3 text-sm text-muted-foreground">{formatIsoDateTime(j.created_at)}</td>
                     </tr>
@@ -303,16 +309,16 @@ export function DashboardPage() {
         <div className="rounded-lg border bg-card shadow-sm">
           <div className="border-b px-6 py-4 font-semibold">审计摘要 (7 天)</div>
           <div className="p-6">
-            <div className="grid grid-cols-3 gap-4">
-              <div className="text-center rounded-lg border bg-card p-4">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center rounded-md bg-muted/50 p-4">
                 <div className="text-sm text-muted-foreground">总操作</div>
                 <div className="mt-2 text-xl font-semibold">{safeCount(auditSummary?.total)}</div>
               </div>
-              <div className="text-center rounded-lg border bg-card p-4">
+              <div className="text-center rounded-md bg-muted/50 p-4">
                 <div className="text-sm text-muted-foreground">成功</div>
                 <div className="mt-2 text-xl font-semibold text-success">{safeCount(auditSummary?.ok_count)}</div>
               </div>
-              <div className="text-center rounded-lg border bg-card p-4">
+              <div className="text-center rounded-md bg-muted/50 p-4">
                 <div className="text-sm text-muted-foreground">失败</div>
                 <div className="mt-2 text-xl font-semibold text-destructive">{safeCount(auditSummary?.failed_count)}</div>
               </div>
@@ -327,9 +333,9 @@ export function DashboardPage() {
             {runtimeSignals.length === 0 ? (
               <div className="text-sm text-muted-foreground">未返回运行时配置摘要</div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {runtimeSignals.map((signal) => (
-                  <div key={signal.label} className="rounded-lg border bg-card p-4">
+                  <div key={signal.label} className="rounded-md bg-muted/50 p-4">
                     <div className="text-sm text-muted-foreground">{signal.label}</div>
                     <div className="mt-1 text-base font-medium">{signal.value}</div>
                   </div>
@@ -346,9 +352,9 @@ export function DashboardPage() {
             {observabilitySignals.length === 0 ? (
               <div className="text-sm text-muted-foreground">{observabilityEmptyText}</div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {observabilitySignals.map((signal, idx) => (
-                  <div key={idx} className="rounded-lg border bg-card p-4">
+                  <div key={idx} className="rounded-md bg-muted/50 p-4">
                     <div className="text-sm text-muted-foreground">{signal.label}</div>
                     <div className="mt-1 text-base font-medium">{signal.value}</div>
                   </div>

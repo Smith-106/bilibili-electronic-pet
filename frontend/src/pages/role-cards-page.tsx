@@ -8,6 +8,10 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { RefreshCw, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -24,11 +28,16 @@ interface CardFormData {
 
 const emptyForm: CardFormData = { key: '', name: '', description: '', system_prompt: '', tone: '', constraints: '' }
 
+type PendingNav = { kind: 'select'; key: string } | { kind: 'new' } | null
+type PendingAction = 'save' | 'activate' | 'disable' | null
+
 export function RoleCardsPage() {
   const queryClient = useQueryClient()
   const [selectedKey, setSelectedKey] = useState('')
   const [form, setForm] = useState<CardFormData>(emptyForm)
   const [originalData, setOriginalData] = useState<RoleCard | null>(null)
+  const [pendingNav, setPendingNav] = useState<PendingNav>(null)
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const dirtyRef = useRef(false)
 
   const { data } = useQuery({
@@ -37,11 +46,6 @@ export function RoleCardsPage() {
   })
 
   const cards = (data?.items ?? []) as Array<RoleCard & { key?: string; name?: string; description?: string; system_prompt?: string; tone?: string; constraints?: unknown; enabled?: boolean }>
-
-  function checkDirty(): boolean {
-    if (!dirtyRef.current) return true
-    return confirm('当前角色卡有未保存的修改，确定要切换吗？')
-  }
 
   function fillEditor(card: typeof cards[number] | null) {
     setOriginalData(card ?? null)
@@ -56,17 +60,32 @@ export function RoleCardsPage() {
     dirtyRef.current = false
   }
 
+  function proceedNav(nav: PendingNav) {
+    if (!nav) return
+    if (nav.kind === 'select') {
+      setSelectedKey(nav.key)
+      fillEditor(cards.find(c => c.key === nav.key) || null)
+    } else {
+      setSelectedKey('')
+      fillEditor(null)
+    }
+  }
+
+  /** Dirty guard: clean → proceed immediately; dirty → confirm via AlertDialog */
+  function guardedNav(nav: Exclude<PendingNav, null>) {
+    if (!dirtyRef.current) {
+      proceedNav(nav)
+      return
+    }
+    setPendingNav(nav)
+  }
+
   const handleSelectChange = useCallback((key: string) => {
-    if (!checkDirty()) return
-    setSelectedKey(key)
-    const card = cards.find(c => c.key === key)
-    fillEditor(card || null)
+    guardedNav({ kind: 'select', key })
   }, [cards])
 
   function handleNew() {
-    if (!checkDirty()) return
-    setSelectedKey('')
-    fillEditor(null)
+    guardedNav({ kind: 'new' })
   }
 
   function updateField(field: keyof CardFormData, value: string) {
@@ -91,6 +110,7 @@ export function RoleCardsPage() {
 
     if (!payload.key) { toast.warning('Key 不能为空'); return }
 
+    setPendingAction('save')
     try {
       if (originalData?.key) {
         await api.updateRoleCard(originalData.key, payload)
@@ -104,42 +124,50 @@ export function RoleCardsPage() {
       setSelectedKey(form.key)
     } catch (err) {
       toast.error(`操作失败: ${(err as Error).message}`)
+    } finally {
+      setPendingAction(null)
     }
   }
 
   async function handleActivate() {
     if (!originalData?.key) return
+    setPendingAction('activate')
     try {
       await api.activateRoleCard(originalData.key)
       toast.success('已激活')
       await queryClient.invalidateQueries({ queryKey: ['role-cards'] })
     } catch (err) { toast.error(`激活失败: ${(err as Error).message}`) }
+    finally { setPendingAction(null) }
   }
 
   async function handleDisable() {
     if (!originalData?.key) return
+    setPendingAction('disable')
     try {
       await api.disableRoleCard(originalData.key)
       toast.success('已禁用')
       await queryClient.invalidateQueries({ queryKey: ['role-cards'] })
     } catch (err) { toast.error(`禁用失败: ${(err as Error).message}`) }
+    finally { setPendingAction(null) }
   }
+
+  const busy = pendingAction !== null
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">角色卡管理</h1>
         <Button variant="outline" onClick={() => queryClient.invalidateQueries({ queryKey: ['role-cards'] })}>
-          <RefreshCw className="mr-2 h-4 w-4" /> 刷新
+          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" /> 刷新
         </Button>
       </div>
 
       {/* Selector */}
       <div className="flex items-end gap-4">
         <div className="space-y-1">
-          <Label>选择角色卡</Label>
+          <Label htmlFor="role-card-select">选择角色卡</Label>
           <Select value={selectedKey} onValueChange={handleSelectChange}>
-            <SelectTrigger className="w-64"><SelectValue placeholder="-- 新建 --" /></SelectTrigger>
+            <SelectTrigger id="role-card-select" className="w-64"><SelectValue placeholder="-- 新建 --" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__new__">-- 新建 --</SelectItem>
               {cards.map(c => (
@@ -151,51 +179,75 @@ export function RoleCardsPage() {
           </Select>
         </div>
         <Button variant="outline" onClick={handleNew}>
-          <Plus className="mr-2 h-4 w-4" /> 新建
+          <Plus className="mr-2 h-4 w-4" aria-hidden="true" /> 新建
         </Button>
       </div>
 
       {/* Editor */}
-      <div className="rounded-lg border p-6 space-y-4">
+      <div className="rounded-lg border bg-card p-6 shadow-xs space-y-4">
         <h3 className="text-lg font-medium">
           {originalData ? `编辑: ${originalData.name || originalData.key}` : '新建角色卡'}
         </h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
-            <Label>Key</Label>
-            <Input placeholder="唯一标识 (英文)" value={form.key} onChange={(e) => updateField('key', e.target.value)} disabled={!!originalData} />
+            <Label htmlFor="rc-key">Key</Label>
+            <Input id="rc-key" placeholder="唯一标识 (英文)" value={form.key} onChange={(e) => updateField('key', e.target.value)} disabled={!!originalData} />
           </div>
           <div className="space-y-1">
-            <Label>名称</Label>
-            <Input placeholder="角色名称" value={form.name} onChange={(e) => updateField('name', e.target.value)} />
+            <Label htmlFor="rc-name">名称</Label>
+            <Input id="rc-name" placeholder="角色名称" value={form.name} onChange={(e) => updateField('name', e.target.value)} />
           </div>
         </div>
         <div className="space-y-1">
-          <Label>描述</Label>
-          <Input placeholder="简短描述" value={form.description} onChange={(e) => updateField('description', e.target.value)} />
+          <Label htmlFor="rc-desc">描述</Label>
+          <Input id="rc-desc" placeholder="简短描述" value={form.description} onChange={(e) => updateField('description', e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label>System Prompt</Label>
-          <Textarea rows={4} placeholder="系统提示词" value={form.system_prompt} onChange={(e) => updateField('system_prompt', e.target.value)} />
+          <Label htmlFor="rc-prompt">System Prompt</Label>
+          <Textarea id="rc-prompt" rows={4} placeholder="系统提示词" value={form.system_prompt} onChange={(e) => updateField('system_prompt', e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label>语气 (Tone)</Label>
-          <Input placeholder="例: friendly, witty" value={form.tone} onChange={(e) => updateField('tone', e.target.value)} />
+          <Label htmlFor="rc-tone">语气 (Tone)</Label>
+          <Input id="rc-tone" placeholder="例: friendly, witty" value={form.tone} onChange={(e) => updateField('tone', e.target.value)} />
         </div>
         <div className="space-y-1">
-          <Label>约束 (Constraints)</Label>
-          <Textarea rows={2} placeholder="行为约束，JSON 或文本" value={form.constraints} onChange={(e) => updateField('constraints', e.target.value)} />
+          <Label htmlFor="rc-constraints">约束 (Constraints)</Label>
+          <Textarea id="rc-constraints" rows={2} placeholder="行为约束，JSON 或文本" value={form.constraints} onChange={(e) => updateField('constraints', e.target.value)} />
         </div>
         <div className="flex gap-2">
-          <Button onClick={handleSave}>保存</Button>
+          <Button onClick={handleSave} disabled={busy} aria-busy={pendingAction === 'save'}>
+            {pendingAction === 'save' ? '保存中...' : '保存'}
+          </Button>
           {originalData && originalData.enabled === false && (
-            <Button variant="secondary" onClick={handleActivate}>激活</Button>
+            <Button variant="secondary" onClick={handleActivate} disabled={busy} aria-busy={pendingAction === 'activate'}>
+              {pendingAction === 'activate' ? '激活中...' : '激活'}
+            </Button>
           )}
           {originalData && originalData.enabled !== false && (
-            <Button variant="destructive" onClick={handleDisable}>禁用</Button>
+            <Button variant="destructive" onClick={handleDisable} disabled={busy} aria-busy={pendingAction === 'disable'}>
+              {pendingAction === 'disable' ? '禁用中...' : '禁用'}
+            </Button>
           )}
         </div>
       </div>
+
+      {/* Dirty-form navigation guard (replaces native confirm()) */}
+      <AlertDialog open={pendingNav !== null} onOpenChange={(open) => { if (!open) setPendingNav(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>放弃未保存的修改？</AlertDialogTitle>
+            <AlertDialogDescription>
+              当前角色卡有未保存的修改，切换后这些修改将丢失。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>继续编辑</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { proceedNav(pendingNav); setPendingNav(null) }}>
+              放弃修改
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

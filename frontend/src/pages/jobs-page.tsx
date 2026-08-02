@@ -101,20 +101,20 @@ export function JobsPage() {
         <h1 className="text-2xl font-bold tracking-tight">任务管理</h1>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" /> 刷新
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" /> 刷新
           </Button>
           <Button variant="outline" onClick={handleExport}>
-            <Download className="mr-2 h-4 w-4" /> 导出 CSV
+            <Download className="mr-2 h-4 w-4" aria-hidden="true" /> 导出 CSV
           </Button>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex items-end gap-4">
+      <div className="flex flex-wrap items-end gap-4">
         <div className="space-y-1">
-          <Label>状态</Label>
+          <Label htmlFor="job-status-filter">状态</Label>
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="全部" /></SelectTrigger>
+            <SelectTrigger id="job-status-filter" className="w-40"><SelectValue placeholder="全部" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">全部</SelectItem>
               <SelectItem value="queued">排队中</SelectItem>
@@ -127,8 +127,8 @@ export function JobsPage() {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label>数量</Label>
-          <Input type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="w-20" min={1} max={200} />
+          <Label htmlFor="job-limit">数量</Label>
+          <Input id="job-limit" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="w-20" min={1} max={200} />
         </div>
         <Button onClick={() => refetch()}>查询</Button>
       </div>
@@ -137,26 +137,32 @@ export function JobsPage() {
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-4 rounded-lg border bg-muted/50 px-4 py-2">
           <span className="text-sm">已选 {selectedIds.size} 项</span>
-          <Button size="sm" variant="secondary" onClick={() => batchApproveMutation.mutate([...selectedIds])}>
-            <CheckSquare className="mr-1 h-3 w-3" /> 批量审批
+          <Button size="sm" variant="secondary" onClick={() => batchApproveMutation.mutate([...selectedIds])} disabled={batchApproveMutation.isPending}>
+            <CheckSquare className="mr-1 h-3 w-3" aria-hidden="true" /> {batchApproveMutation.isPending ? '审批中...' : '批量审批'}
           </Button>
-          <Button size="sm" variant="secondary" onClick={() => batchRetryMutation.mutate([...selectedIds])}>
-            <RotateCcw className="mr-1 h-3 w-3" /> 批量重试
+          <Button size="sm" variant="secondary" onClick={() => batchRetryMutation.mutate([...selectedIds])} disabled={batchRetryMutation.isPending}>
+            <RotateCcw className="mr-1 h-3 w-3" aria-hidden="true" /> {batchRetryMutation.isPending ? '重试中...' : '批量重试'}
           </Button>
         </div>
       )}
 
       {/* Table */}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">加载中...</div>
+        <div className="text-center py-8 text-muted-foreground">加载任务列表...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">暂无任务</div>
+        <div className="text-center py-8 text-muted-foreground">暂无任务。调整筛选条件，或等待新评论进入流水线。</div>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
-                <input type="checkbox" checked={selectedIds.size === items.length && items.length > 0} onChange={toggleSelectAll} />
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  aria-label="全选当前页任务"
+                  checked={selectedIds.size === items.length && items.length > 0}
+                  onChange={toggleSelectAll}
+                />
               </TableHead>
               <TableHead>ID</TableHead>
               <TableHead>状态</TableHead>
@@ -172,7 +178,13 @@ export function JobsPage() {
             {items.map((j: Job) => (
               <TableRow key={j.id}>
                 <TableCell>
-                  <input type="checkbox" checked={selectedIds.has(j.id)} onChange={() => toggleSelect(j.id)} />
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    aria-label={`选择任务 ${String(j.id).substring(0, 8)}`}
+                    checked={selectedIds.has(j.id)}
+                    onChange={() => toggleSelect(j.id)}
+                  />
                 </TableCell>
                 <TableCell className="font-mono text-xs" title={j.id}>
                   {String(j.id).substring(0, 8)}
@@ -191,7 +203,7 @@ export function JobsPage() {
                   {j.risk_flags?.length ? (
                     <div className="flex gap-1 flex-wrap">
                       {j.risk_flags.map((f, i) => (
-                        <span key={i} className="inline-block rounded bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 text-xs text-red-700 dark:text-red-400">{f}</span>
+                        <span key={i} className="inline-block rounded bg-risk-flag-bg px-1.5 py-0.5 text-xs text-risk-flag-fg">{f}</span>
                       ))}
                     </div>
                   ) : '-'}
@@ -200,9 +212,24 @@ export function JobsPage() {
                 <TableCell>
                   <div className="flex gap-1">
                     {j.status === 'pending_review' && (
-                      <Button size="sm" onClick={() => approveMutation.mutate(j.id)} disabled={approveMutation.isPending}>审批</Button>
+                      <Button
+                        size="sm"
+                        onClick={() => approveMutation.mutate(j.id)}
+                        disabled={approveMutation.isPending}
+                        aria-busy={approveMutation.isPending && approveMutation.variables === j.id}
+                      >
+                        {approveMutation.isPending && approveMutation.variables === j.id ? '审批中...' : '审批'}
+                      </Button>
                     )}
-                    <Button size="sm" variant="outline" onClick={() => retryMutation.mutate(j.id)} disabled={retryMutation.isPending}>重试</Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => retryMutation.mutate(j.id)}
+                      disabled={retryMutation.isPending}
+                      aria-busy={retryMutation.isPending && retryMutation.variables === j.id}
+                    >
+                      {retryMutation.isPending && retryMutation.variables === j.id ? '重试中...' : '重试'}
+                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
