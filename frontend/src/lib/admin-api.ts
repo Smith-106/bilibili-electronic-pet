@@ -40,31 +40,39 @@ export interface MemoryItem {
 
 export interface BilibiliVideo {
   id: number
+  video_id: number
   bvid: string
   title: string
   enabled: boolean
+  poll_enabled: boolean
+  comment_count: number
   last_polled_at: string | null
 }
 
 export interface BilibiliCredential {
   id: number
+  credential_id: number
   name: string
   active: boolean
+  is_active: boolean
+  expires_at: string | null
   created_at: string | null
 }
 
 export interface RoleCard {
   id: number
+  key: string
   name: string
   description: string
   tone: string
   active: boolean
+  enabled: boolean
 }
 
 export function createAdminApi() {
   return {
     getOverview() {
-      return requestJson('/api/admin/overview')
+      return requestJson<Record<string, unknown>>('/api/admin/overview')
     },
     getMetricsOverview() {
       return requestJson('/api/admin/metrics/overview')
@@ -90,7 +98,7 @@ export function createAdminApi() {
       })
     },
     getObservabilitySummary({ windowMinutes, window_minutes }: { windowMinutes?: number; window_minutes?: number } = {}) {
-      return requestJson(`/api/admin/observability/summary${qs({ window_minutes: windowMinutes ?? window_minutes })}`)
+      return requestJson<Record<string, unknown>>(`/api/admin/observability/summary${qs({ window_minutes: windowMinutes ?? window_minutes })}`)
     },
     getJobs({ status, limit }: { status?: string; limit?: number } = {}) {
       return requestJson<{ items: Job[] }>(`/api/admin/jobs${qs({ status, limit })}`)
@@ -125,7 +133,7 @@ export function createAdminApi() {
       return requestJson('/api/admin/gateway/reset', { method: 'POST' })
     },
     getAuditSummary({ days }: { days?: number } = {}) {
-      return requestJson(`/api/admin/audit/summary${qs({ days })}`)
+      return requestJson<Record<string, unknown>>(`/api/admin/audit/summary${qs({ days })}`)
     },
     listAuditLogs({ page, size }: { page?: number; size?: number } = {}) {
       return requestJson(`/api/admin/audit/logs${qs({ page, size })}`)
@@ -172,70 +180,71 @@ export function createAdminApi() {
     getBilibiliStatus() {
       return requestJson('/api/admin/bilibili/status')
     },
-    getBilibiliVideos() {
-      return requestJson<{ items: BilibiliVideo[] }>('/api/admin/bilibili/videos')
+    getBilibiliVideos(params?: { limit?: number; offset?: number; poll_enabled?: boolean }) {
+      return requestJson<{ items: BilibiliVideo[]; total: number }>(`/api/admin/bilibili/videos${qs(params ?? {})}`)
     },
     getBilibiliCredentials() {
       return requestJson<{ items: BilibiliCredential[] }>('/api/admin/bilibili/credentials')
     },
-    addBilibiliVideo(data: { bvid: string; title?: string }) {
+    addBilibiliVideo(data: { bvid: string; title?: string } | string) {
+      const body = typeof data === 'string' ? { bvid: data } : data
       return requestJson('/api/admin/bilibili/videos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(body),
       })
     },
-    toggleBilibiliVideoPoll(videoId: number, enabled: boolean) {
+    toggleBilibiliVideoPoll(videoId: number | string, enabled?: boolean) {
       return requestJson(`/api/admin/bilibili/videos/${videoId}/poll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled }),
+        body: JSON.stringify({ enabled: enabled ?? true }),
       })
     },
-    syncBilibiliVideo(videoId: number) {
+    syncBilibiliVideo(videoId: number | string) {
       return requestJson(`/api/admin/bilibili/videos/${videoId}/sync`, { method: 'POST' })
     },
-    deleteBilibiliVideo(videoId: number) {
+    deleteBilibiliVideo(videoId: number | string) {
       return requestJson(`/api/admin/bilibili/videos/${videoId}`, { method: 'DELETE' })
     },
     triggerBilibiliPoll() {
       return requestJson('/api/admin/bilibili/poll', { method: 'POST' })
     },
-    addBilibiliCredential(data: { name: string; cookie: string }) {
+    addBilibiliCredential(data: { name: string; cookie?: string; sessdata?: string; bili_jct?: string; buvid3?: string; buvid4?: string; expires_at?: string }) {
       return requestJson('/api/admin/bilibili/credentials', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
     },
-    activateBilibiliCredential(credentialId: number) {
+    activateBilibiliCredential(credentialId: number | string) {
       return requestJson(`/api/admin/bilibili/credentials/${credentialId}/activate`, { method: 'POST' })
     },
-    deleteBilibiliCredential(credentialId: number) {
+    deleteBilibiliCredential(credentialId: number | string) {
       return requestJson(`/api/admin/bilibili/credentials/${credentialId}`, { method: 'DELETE' })
     },
     // Role Cards APIs
-    getRoleCards() {
-      return requestJson<{ items: RoleCard[] }>('/api/admin/role-cards')
+    getRoleCards(params?: { limit?: number }) {
+      return requestJson<{ items: RoleCard[] }>(`/api/admin/role-cards${qs(params ?? {})}`)
     },
-    createRoleCard(data: { name: string; description: string; tone: string }) {
+    createRoleCard(data: Record<string, unknown>) {
       return requestJson('/api/admin/role-cards', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
     },
-    updateRoleCard(cardId: number, data: { name?: string; description?: string; tone?: string }) {
+    updateRoleCard(cardId: number | string, data: Record<string, unknown>) {
       return requestJson(`/api/admin/role-cards/${cardId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       })
     },
-    activateRoleCard(cardId: number) {
+    activateRoleCard(cardId: number | string) {
       return requestJson(`/api/admin/role-cards/${cardId}/activate`, { method: 'POST' })
     },
-    disableRoleCard(cardId: number) {
+    disableRoleCard(cardId: number | string) {
       return requestJson(`/api/admin/role-cards/${cardId}/disable`, { method: 'POST' })
     },
     // Jobs batch operations

@@ -283,7 +283,7 @@ export function DashboardPage() {
                         {String(j.id).substring(0, 8)}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant={j.status === 'approved' ? 'success' : j.status === 'failed' ? 'destructive' : 'secondary'}>
+                        <Badge variant={j.status === 'approved' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'}>
                           {j.status}
                         </Badge>
                       </td>

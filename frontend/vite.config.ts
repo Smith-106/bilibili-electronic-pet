@@ -16,6 +16,15 @@ export default defineConfig({
   build: {
     outDir: process.env.BUILD_OUT_DIR || '../backend-ts/public/admin',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          router: ['react-router-dom'],
+          query: ['@tanstack/react-query'],
+        },
+      },
+    },
   },
   server: {
     proxy: {

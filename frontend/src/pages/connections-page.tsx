@@ -19,9 +19,9 @@ export function ConnectionsPage() {
   const [selectedPlatform, setSelectedPlatform] = useState('')
   const [enabled, setEnabled] = useState(false)
 
-  const { data: platforms, isLoading, refetch } = useQuery<{ items: PlatformConnection[] }>({
+  const { data: platforms, isLoading } = useQuery({
     queryKey: ['platforms'],
-    queryFn: () => api.getPlatformConnections(),
+    queryFn: () => api.getPlatformConnections() as Promise<{ items: PlatformConnection[] }>,
   })
 
   const toggleMutation = useMutation({
@@ -73,10 +73,10 @@ export function ConnectionsPage() {
                 <TableRow key={p.platform}>
                   <TableCell>{p.platform}</TableCell>
                   <TableCell>
-                    <Badge variant={p.enabled ? 'success' : 'secondary'}>{p.enabled ? '开启' : '关闭'}</Badge>
+                    <Badge variant={p.enabled ? 'secondary' : 'secondary'}>{p.enabled ? '开启' : '关闭'}</Badge>
                   </TableCell>
                   <TableCell>
-                    <Button size="sm" variant={p.enabled ? 'outline' : 'primary'} onClick={() => toggleMutation.mutate({ platform: p.platform, enabled: !p.enabled })}>
+                    <Button size="sm" variant={p.enabled ? 'outline' : 'default'} onClick={() => toggleMutation.mutate({ platform: p.platform, enabled: !p.enabled })}>
                       {p.enabled ? '关闭' : '开启'}
                     </Button>
                   </TableCell>
