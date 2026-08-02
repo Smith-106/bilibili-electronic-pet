@@ -4,6 +4,7 @@ import { safeCount, formatIsoDateTime, cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useQuery } from '@tanstack/react-query'
 
 const api = createAdminApi()
@@ -223,11 +224,13 @@ export function DashboardPage() {
   if (loadingOverview || loadingJobs || loadingAudit || loadingMetrics || loadingObs || loadingReady) {
     return (
       <div className="space-y-6">
-        <Skeleton className="h-[40px] w-full" />
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-[100px]" />
-          ))}
+        <Skeleton className="h-[48px] w-full" />
+        <div className="@container/stat-grid">
+          <div className="grid grid-cols-2 gap-3 @3xl/stat-grid:grid-cols-3 @5xl/stat-grid:grid-cols-6">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-[100px]" />
+            ))}
+          </div>
         </div>
         <Skeleton className="h-[200px] w-full" />
       </div>
@@ -240,130 +243,141 @@ export function DashboardPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">系统概览</h1>
         <Button onClick={handleRefresh} disabled={refreshing}>
-          {refreshing ? '刷新中...' : '刷新'}
+          {refreshing ? '刷新中...' : '刷新数据'}
         </Button>
       </div>
 
-      {/* Stats Grid — featured first tile breaks the equal-weight grid */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4 lg:grid-cols-6">
-        {stats.map((stat, i) => (
-          <div
-            key={stat.label}
-            className={cn(
-              'rounded-lg border bg-card p-4 shadow-xs',
-              i === 0 && 'col-span-2',
-            )}
-          >
-            <div className="text-sm font-medium text-muted-foreground">{stat.label}</div>
-            <div className={cn('mt-2 font-semibold', i === 0 ? 'text-3xl' : 'text-2xl')}>{stat.value}</div>
-          </div>
-        ))}
+      {/* Stats Grid — featured first tile breaks the equal-weight grid.
+          Container-query columns: component-level responsive (Round-2 RC-8). */}
+      <div className="@container/stat-grid">
+        <div className="grid grid-cols-2 gap-3 @3xl/stat-grid:grid-cols-3 @5xl/stat-grid:grid-cols-6">
+          {stats.map((stat, i) => (
+            <div
+              key={stat.label}
+              className={cn(
+                'rounded-xl border bg-card p-4 shadow-none',
+                i === 0 && 'col-span-2',
+              )}
+            >
+              <div className="text-sm font-medium text-muted-foreground">{stat.label}</div>
+              <div className={cn('mt-2 font-semibold', i === 0 ? 'text-3xl' : 'text-xl')}>{stat.value}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Section Grid */}
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Recent Jobs */}
-        <div className="rounded-lg border bg-card shadow-sm">
-          <div className="border-b px-6 py-4 font-semibold">最近任务</div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-border">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">ID</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">状态</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">评论摘要</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium uppercase text-muted-foreground">时间</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-card">
-                {jobItems.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
-                      暂无任务。新评论进入流水线后会显示在这里。
-                    </td>
-                  </tr>
-                ) : (
-                  jobItems.map((j) => (
-                    <tr key={j.id} className="hover:bg-accent/50">
-                      <td className="px-4 py-3 text-sm" title={String(j.id)}>
-                        {String(j.id).substring(0, 8)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={j.status === 'approved' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'}>
-                          {j.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-sm max-w-xs truncate" title={j.comment_text}>
-                        {j.comment_text?.substring(0, 60)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">{formatIsoDateTime(j.created_at)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* Sections as tabs — progressive disclosure (Round-2 RC-4): the ~20
+          data points live behind 3 tabs instead of 4 equal-weight cards
+          competing for attention. Jobs (the primary workflow) is default. */}
+      <Tabs defaultValue="jobs">
+        <TabsList>
+          <TabsTrigger value="jobs">最近任务</TabsTrigger>
+          <TabsTrigger value="audit">审计摘要</TabsTrigger>
+          <TabsTrigger value="signals">系统信号</TabsTrigger>
+        </TabsList>
 
-        {/* Audit Summary */}
-        <div className="rounded-lg border bg-card shadow-sm">
-          <div className="border-b px-6 py-4 font-semibold">审计摘要 (7 天)</div>
-          <div className="p-6">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="text-center rounded-md bg-muted/50 p-4">
-                <div className="text-sm text-muted-foreground">总操作</div>
-                <div className="mt-2 text-xl font-semibold">{safeCount(auditSummary?.total)}</div>
-              </div>
-              <div className="text-center rounded-md bg-muted/50 p-4">
-                <div className="text-sm text-muted-foreground">成功</div>
-                <div className="mt-2 text-xl font-semibold text-success">{safeCount(auditSummary?.ok_count)}</div>
-              </div>
-              <div className="text-center rounded-md bg-muted/50 p-4">
-                <div className="text-sm text-muted-foreground">失败</div>
-                <div className="mt-2 text-xl font-semibold text-destructive">{safeCount(auditSummary?.failed_count)}</div>
+        <TabsContent value="jobs">
+          <div className="rounded-xl border bg-card shadow-none">
+            <div className="border-b px-6 py-4 font-semibold">最近任务</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-border">
+                <thead className="bg-muted/50">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-sm font-medium uppercase text-muted-foreground md:text-xs">ID</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium uppercase text-muted-foreground md:text-xs">状态</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium uppercase text-muted-foreground md:text-xs">评论摘要</th>
+                    <th className="px-4 py-2 text-left text-sm font-medium uppercase text-muted-foreground md:text-xs">时间</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border bg-card">
+                  {jobItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                        暂无任务。新评论进入流水线后会显示在这里。
+                      </td>
+                    </tr>
+                  ) : (
+                    jobItems.map((j) => (
+                      <tr key={j.id} className="hover:bg-accent/50">
+                        <td className="px-4 py-3 text-sm" title={String(j.id)}>
+                          {String(j.id).substring(0, 8)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={j.status === 'approved' ? 'default' : j.status === 'failed' ? 'destructive' : 'secondary'}>
+                            {j.status}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-sm max-w-xs truncate" title={j.comment_text}>
+                          {j.comment_text?.substring(0, 60)}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{formatIsoDateTime(j.created_at)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <div className="rounded-xl border bg-card shadow-none">
+            <div className="border-b px-6 py-4 font-semibold">审计摘要 (7 天)</div>
+            <div className="p-6">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center rounded-md bg-muted/50 p-4">
+                  <div className="text-sm text-muted-foreground">总操作</div>
+                  <div className="mt-2 text-xl font-semibold">{safeCount(auditSummary?.total)}</div>
+                </div>
+                <div className="text-center rounded-md bg-muted/50 p-4">
+                  <div className="text-sm text-muted-foreground">成功</div>
+                  <div className="mt-2 text-xl font-semibold text-success">{safeCount(auditSummary?.ok_count)}</div>
+                </div>
+                <div className="text-center rounded-md bg-muted/50 p-4">
+                  <div className="text-sm text-muted-foreground">失败</div>
+                  <div className="mt-2 text-xl font-semibold text-destructive">{safeCount(auditSummary?.failed_count)}</div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        {/* Runtime Signals */}
-        <div className="rounded-lg border bg-card shadow-sm">
-          <div className="border-b px-6 py-4 font-semibold">运行时能力</div>
-          <div className="p-6">
-            {runtimeSignals.length === 0 ? (
-              <div className="text-sm text-muted-foreground">未返回运行时配置摘要</div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {runtimeSignals.map((signal) => (
-                  <div key={signal.label} className="rounded-md bg-muted/50 p-4">
-                    <div className="text-sm text-muted-foreground">{signal.label}</div>
-                    <div className="mt-1 text-base font-medium">{signal.value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
+        <TabsContent value="signals">
+          {/* Runtime + observability signals merged into one disclosed panel */}
+          <div className="rounded-xl border bg-card shadow-none">
+            <div className="border-b px-6 py-4 font-semibold">运行时能力</div>
+            <div className="p-6">
+              {runtimeSignals.length === 0 ? (
+                <div className="text-sm text-muted-foreground">未返回运行时配置摘要</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {runtimeSignals.map((signal) => (
+                    <div key={signal.label} className="rounded-md bg-muted/50 p-4">
+                      <div className="text-sm text-muted-foreground">{signal.label}</div>
+                      <div className="mt-1 text-base font-medium">{signal.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="border-b px-6 py-4 font-semibold">可观测性摘要 (120 分钟)</div>
+            <div className="p-6">
+              {observabilitySignals.length === 0 ? (
+                <div className="text-sm text-muted-foreground">{observabilityEmptyText}</div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {observabilitySignals.map((signal, idx) => (
+                    <div key={idx} className="rounded-md bg-muted/50 p-4">
+                      <div className="text-sm text-muted-foreground">{signal.label}</div>
+                      <div className="mt-1 text-base font-medium">{signal.value}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-
-        {/* Observability Summary */}
-        <div className="rounded-lg border bg-card shadow-sm">
-          <div className="border-b px-6 py-4 font-semibold">可观测性摘要 (120 分钟)</div>
-          <div className="p-6">
-            {observabilitySignals.length === 0 ? (
-              <div className="text-sm text-muted-foreground">{observabilityEmptyText}</div>
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {observabilitySignals.map((signal, idx) => (
-                  <div key={idx} className="rounded-md bg-muted/50 p-4">
-                    <div className="text-sm text-muted-foreground">{signal.label}</div>
-                    <div className="mt-1 text-base font-medium">{signal.value}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

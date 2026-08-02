@@ -56,7 +56,7 @@ export function MemoryPage() {
       setSpaceSummary('')
     },
     onError: (err) => {
-      toast.error(`创建失败：${err.message}`)
+      toast.error(`创建失败：${err.message}。请检查 Space Key 是否已被占用或格式是否正确`)
     },
   })
 
@@ -75,7 +75,7 @@ export function MemoryPage() {
       setItemContent('')
     },
     onError: (err) => {
-      toast.error(`保存失败：${err.message}`)
+      toast.error(`保存失败：${err.message}。请确认所属空间与 Item Key 填写正确后重试`)
     },
   })
 
@@ -88,7 +88,7 @@ export function MemoryPage() {
       }
     },
     onError: (err) => {
-      toast.error(`删除失败：${err.message}`)
+      toast.error(`删除失败：${err.message}。请稍后重试`)
     },
   })
 
@@ -118,14 +118,14 @@ export function MemoryPage() {
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">Memory 管理</h1>
-        <Button onClick={handleRefresh} variant="outline">刷新</Button>
+        <Button onClick={handleRefresh} variant="outline">刷新列表</Button>
       </div>
 
       {/* Create Space Form */}
       <Card>
         <CardHeader>
           <CardTitle>新增记忆空间</CardTitle>
-          <CardDescription>创建一个新的记忆空间</CardDescription>
+          <CardDescription>Space Key 用于唯一标识空间，创建后不可修改</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreateSpace} className="grid gap-4 md:grid-cols-2">
@@ -206,7 +206,7 @@ export function MemoryPage() {
       <Card>
         <CardHeader>
           <CardTitle>记忆空间列表</CardTitle>
-          <CardDescription>所有已创建的记忆空间</CardDescription>
+          <CardDescription>共 {spaces?.items.length ?? 0} 个空间，创建成功后即时生效</CardDescription>
         </CardHeader>
         <CardContent>
           {!spaces?.items || spaces.items.length === 0 ? (
@@ -226,7 +226,7 @@ export function MemoryPage() {
               <TableBody>
                 {spaces.items.map((space) => (
                   <TableRow key={space.id}>
-                    <TableCell className="font-mono text-xs">{String(space.id).substring(0, 8)}</TableCell>
+                    <TableCell className="font-mono text-sm md:text-xs">{String(space.id).substring(0, 8)}</TableCell>
                     <TableCell>{String(space.space_key)}</TableCell>
                     <TableCell>{String(space.space_type)}</TableCell>
                     <TableCell>{String(space.title)}</TableCell>
@@ -248,7 +248,7 @@ export function MemoryPage() {
       <Card>
         <CardHeader>
           <CardTitle>记忆条目</CardTitle>
-          <CardDescription>当前选中空间的记忆列表</CardDescription>
+          <CardDescription>相同 Item Key 的条目会被覆盖更新（upsert）</CardDescription>
         </CardHeader>
         <CardContent>
           {!selectedSpaceId && items?.items.length !== 0 && (
@@ -275,8 +275,8 @@ export function MemoryPage() {
               <TableBody>
                 {items.items.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell className="font-mono text-xs">{String(item.id).substring(0, 8)}</TableCell>
-                    <TableCell className="font-mono text-xs">{String(item.space_id).substring(0, 8)}</TableCell>
+                    <TableCell className="font-mono text-sm md:text-xs">{String(item.id).substring(0, 8)}</TableCell>
+                    <TableCell className="font-mono text-sm md:text-xs">{String(item.space_id).substring(0, 8)}</TableCell>
                     <TableCell>{String(item.item_key)}</TableCell>
                     <TableCell>{String(item.content_type)}</TableCell>
                     <TableCell>{String(item.source)}</TableCell>

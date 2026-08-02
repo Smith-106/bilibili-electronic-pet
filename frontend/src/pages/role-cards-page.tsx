@@ -184,7 +184,7 @@ export function RoleCardsPage() {
       </div>
 
       {/* Editor */}
-      <div className="rounded-lg border bg-card p-6 shadow-xs space-y-4">
+      <div className="rounded-xl border bg-card p-6 shadow-none space-y-4">
         <h3 className="text-lg font-medium">
           {originalData ? `编辑: ${originalData.name || originalData.key}` : '新建角色卡'}
         </h3>
@@ -216,7 +216,7 @@ export function RoleCardsPage() {
         </div>
         <div className="flex gap-2">
           <Button onClick={handleSave} disabled={busy} aria-busy={pendingAction === 'save'}>
-            {pendingAction === 'save' ? '保存中...' : '保存'}
+            {pendingAction === 'save' ? '保存中...' : '保存角色卡'}
           </Button>
           {originalData && originalData.enabled === false && (
             <Button variant="secondary" onClick={handleActivate} disabled={busy} aria-busy={pendingAction === 'activate'}>

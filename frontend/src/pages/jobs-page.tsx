@@ -35,7 +35,7 @@ export function JobsPage() {
       toast.success('审批成功')
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`审批失败: ${err.message}`),
+    onError: (err: Error) => toast.error(`审批失败：${err.message}。请确认任务仍处于待审核状态后重试`),
   })
 
   const retryMutation = useMutation({
@@ -44,7 +44,7 @@ export function JobsPage() {
       toast.success('重试已提交')
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`重试失败: ${err.message}`),
+    onError: (err: Error) => toast.error(`重试失败：${err.message}。请稍后再次重试，或检查上游服务状态`),
   })
 
   const batchApproveMutation = useMutation({
@@ -54,7 +54,7 @@ export function JobsPage() {
       setSelectedIds(new Set())
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`批量审批失败: ${err.message}`),
+    onError: (err: Error) => toast.error(`批量审批失败：${err.message}。请刷新列表确认任务状态后重试`),
   })
 
   const batchRetryMutation = useMutation({
@@ -64,7 +64,7 @@ export function JobsPage() {
       setSelectedIds(new Set())
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
     },
-    onError: (err: Error) => toast.error(`批量重试失败: ${err.message}`),
+    onError: (err: Error) => toast.error(`批量重试失败：${err.message}。请稍后再次重试`),
   })
 
   const items = (data?.items ?? []) as Job[]
@@ -91,7 +91,7 @@ export function JobsPage() {
       await api.exportJobsCsv({ status: status || undefined, limit })
       toast.success('导出成功')
     } catch (err) {
-      toast.error(`导出失败: ${(err as Error).message}`)
+      toast.error(`导出失败：${(err as Error).message}。请检查筛选条件后重试`)
     }
   }
 
@@ -101,7 +101,7 @@ export function JobsPage() {
         <h1 className="text-2xl font-bold tracking-tight">任务管理</h1>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => refetch()}>
-            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" /> 刷新
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" /> 刷新列表
           </Button>
           <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" aria-hidden="true" /> 导出 CSV
@@ -130,7 +130,7 @@ export function JobsPage() {
           <Label htmlFor="job-limit">数量</Label>
           <Input id="job-limit" type="number" value={limit} onChange={(e) => setLimit(Number(e.target.value))} className="w-20" min={1} max={200} />
         </div>
-        <Button onClick={() => refetch()}>查询</Button>
+        <Button onClick={() => refetch()}>查询任务</Button>
       </div>
 
       {/* Batch bar */}
@@ -150,19 +150,27 @@ export function JobsPage() {
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">加载任务列表...</div>
       ) : items.length === 0 ? (
-        <div className="text-center py-8 text-muted-foreground">暂无任务。调整筛选条件，或等待新评论进入流水线。</div>
+        <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+          <p>暂无任务。调整筛选条件，或等待新评论进入流水线。</p>
+          <Button variant="outline" size="sm" onClick={() => { setStatus(''); setLimit(20) }}>
+            重置筛选条件
+          </Button>
+        </div>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-10">
-                <input
-                  type="checkbox"
-                  className="size-4 accent-primary"
-                  aria-label="全选当前页任务"
-                  checked={selectedIds.size === items.length && items.length > 0}
-                  onChange={toggleSelectAll}
-                />
+              <TableHead className="w-12">
+                {/* 44px hit area via wrapping label (Round-2 RC-2) */}
+                <label className="flex size-11 cursor-pointer items-center justify-center">
+                  <input
+                    type="checkbox"
+                    className="size-5 accent-primary"
+                    aria-label="全选当前页任务"
+                    checked={selectedIds.size === items.length && items.length > 0}
+                    onChange={toggleSelectAll}
+                  />
+                </label>
               </TableHead>
               <TableHead>ID</TableHead>
               <TableHead>状态</TableHead>
@@ -178,15 +186,17 @@ export function JobsPage() {
             {items.map((j: Job) => (
               <TableRow key={j.id}>
                 <TableCell>
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-primary"
-                    aria-label={`选择任务 ${String(j.id).substring(0, 8)}`}
-                    checked={selectedIds.has(j.id)}
-                    onChange={() => toggleSelect(j.id)}
-                  />
+                  <label className="flex size-11 cursor-pointer items-center justify-center">
+                    <input
+                      type="checkbox"
+                      className="size-5 accent-primary"
+                      aria-label={`选择任务 ${String(j.id).substring(0, 8)}`}
+                      checked={selectedIds.has(j.id)}
+                      onChange={() => toggleSelect(j.id)}
+                    />
+                  </label>
                 </TableCell>
-                <TableCell className="font-mono text-xs" title={j.id}>
+                <TableCell className="font-mono text-sm md:text-xs" title={j.id}>
                   {String(j.id).substring(0, 8)}
                 </TableCell>
                 <TableCell><StatusBadge status={j.status} /></TableCell>
@@ -203,7 +213,7 @@ export function JobsPage() {
                   {j.risk_flags?.length ? (
                     <div className="flex gap-1 flex-wrap">
                       {j.risk_flags.map((f, i) => (
-                        <span key={i} className="inline-block rounded bg-risk-flag-bg px-1.5 py-0.5 text-xs text-risk-flag-fg">{f}</span>
+                        <span key={i} className="inline-block rounded bg-risk-flag-bg px-1.5 py-0.5 text-sm text-risk-flag-fg md:text-xs">{f}</span>
                       ))}
                     </div>
                   ) : '-'}
@@ -218,7 +228,7 @@ export function JobsPage() {
                         disabled={approveMutation.isPending}
                         aria-busy={approveMutation.isPending && approveMutation.variables === j.id}
                       >
-                        {approveMutation.isPending && approveMutation.variables === j.id ? '审批中...' : '审批'}
+                        {approveMutation.isPending && approveMutation.variables === j.id ? '审批中...' : '审批任务'}
                       </Button>
                     )}
                     <Button
@@ -228,7 +238,7 @@ export function JobsPage() {
                       disabled={retryMutation.isPending}
                       aria-busy={retryMutation.isPending && retryMutation.variables === j.id}
                     >
-                      {retryMutation.isPending && retryMutation.variables === j.id ? '重试中...' : '重试'}
+                      {retryMutation.isPending && retryMutation.variables === j.id ? '重试中...' : '重试任务'}
                     </Button>
                   </div>
                 </TableCell>

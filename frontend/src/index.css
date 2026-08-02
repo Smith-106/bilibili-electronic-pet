@@ -24,8 +24,10 @@
   --accent-foreground: oklch(0.35 0.02 260);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0.005 293);
-  --border: oklch(0.91 0.005 260);
-  --input: oklch(0.91 0.005 260);
+  /* WCAG 1.4.11: component boundaries need >=3:1 against adjacent surfaces.
+     0.62 vs card 0.995 / bg 0.98 -> ~3.4-3.6:1 (was 0.91 -> ~1.2:1 fail) */
+  --border: oklch(0.62 0.01 260);
+  --input: oklch(0.62 0.01 260);
   --ring: oklch(0.42 0.24 293);
   --radius: 0.625rem;
 
@@ -58,7 +60,8 @@
   --sidebar-border: oklch(0.91 0.005 260);
   --sidebar-ring: oklch(0.42 0.24 293);
 
-  /* Motion tokens */
+  /* Motion tokens — consumed via @theme inline defaults below and
+     duration-(--duration-*) utilities in components (Round-2 token wiring) */
   --duration-instant: 100ms;
   --duration-fast: 150ms;
   --duration-normal: 250ms;
@@ -66,6 +69,14 @@
   --duration-entrance: 500ms;
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --ease-in-quart: cubic-bezier(0.5, 0, 0.75, 0);
+
+  /* Font-weight tokens — Tailwind v4 compiles font-medium/semibold/bold to
+     font-weight: var(--font-weight-*), so these are consumed by every weight
+     utility. The .dark block overrides them (light-on-dark renders heavier,
+     so weights drop one step). Keep the .dark block AFTER this definition. */
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
 }
 
 /* === Dark Theme === */
@@ -89,8 +100,9 @@
   --accent-foreground: oklch(0.93 0.005 260);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0.005 293);
-  --border: oklch(0.32 0.01 260);
-  --input: oklch(0.32 0.01 260);
+  /* WCAG 1.4.11: 0.55 vs card 0.22 / bg 0.18 -> ~3.6-3.9:1 (was 0.32 -> ~1.4:1 fail) */
+  --border: oklch(0.55 0.012 260);
+  --input: oklch(0.55 0.012 260);
   --ring: oklch(0.65 0.2 293);
 
   --success: oklch(0.75 0.14 155);
@@ -146,8 +158,9 @@
   --accent-foreground: oklch(0.35 0.03 60);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.98 0.005 80);
-  --border: oklch(0.88 0.015 80);
-  --input: oklch(0.88 0.015 80);
+  /* WCAG 1.4.11: 0.60 vs card 0.98 / bg 0.96 -> ~3.7-4.0:1 (was 0.88 -> ~1.3:1 fail) */
+  --border: oklch(0.60 0.015 80);
+  --input: oklch(0.60 0.015 80);
   --ring: oklch(0.45 0.15 35);
 
   --success: oklch(0.50 0.11 150);
@@ -180,17 +193,30 @@
 }
 
 @theme inline {
-  /* Typography: distinctive stacks (Plus Jakarta Sans body / Space Grotesk display) */
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
-    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
-  --font-display: 'Space Grotesk', 'Plus Jakarta Sans', 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
+  /* Typography: distinctive stacks (Plus Jakarta Sans body / Space Grotesk display).
+     *Fallback faces are metric-adjusted local fonts (see index.html) to limit CLS. */
+  --font-sans: 'Plus Jakarta Sans', 'Plus Jakarta Sans Fallback', -apple-system,
+    BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+  --font-display: 'Space Grotesk', 'Space Grotesk Fallback', 'Plus Jakarta Sans',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
 
-  /* Fluid display sizes (clamp) — h1 uses text-2xl across pages */
-  --text-2xl: clamp(1.75rem, 1.45rem + 1vw, 2.25rem);
+  /* Fluid display sizes (clamp) — h1 uses text-2xl across pages.
+     text-2xl max 3rem (48px) gives h1:body (16px) a 3:1 ratio at wide
+     viewports (was 28-36px, 1.75-2.25:1 — below major-level standard). */
+  --text-xl: clamp(1.25rem, 1.1rem + 0.5vw, 1.5rem);
+  --text-xl--line-height: 1.4;
+  --text-2xl: clamp(2rem, 1.4rem + 2vw, 3rem);
   --text-2xl--line-height: 1.2;
   --text-3xl: clamp(2rem, 1.6rem + 1.5vw, 2.75rem);
   --text-3xl--line-height: 1.15;
+
+  /* Motion token wiring: every bare transition-* utility (transition-colors,
+     transition-[...], etc.) now consumes the runtime duration/easing tokens
+     instead of Tailwind's static 150ms ease default. Components override with
+     duration-(--duration-*) where a different scale is needed. */
+  --default-transition-duration: var(--duration-fast);
+  --default-transition-timing-function: var(--ease-out-quart);
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);

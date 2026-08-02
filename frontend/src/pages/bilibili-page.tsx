@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+﻿import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { createAdminApi, type BilibiliVideo, type BilibiliCredential } from '@/lib/admin-api'
 import { StatCard } from '@/components/stat-card'
@@ -72,6 +72,9 @@ export function BilibiliPage() {
   const [credExpiryFilter, setCredExpiryFilter] = useState('')
   // Destructive confirm dialog (replaces native confirm())
   const [deleteTarget, setDeleteTarget] = useState<{ kind: 'video' | 'credential'; id: string } | null>(null)
+  // Refs for empty-state action buttons (focus the relevant form field)
+  const bvidInputRef = useRef<HTMLInputElement>(null)
+  const credNameInputRef = useRef<HTMLInputElement>(null)
 
   const invalidateAll = () => queryClient.invalidateQueries({ queryKey: ['bili-status', 'bili-videos', 'bili-creds'] })
 
@@ -97,7 +100,7 @@ export function BilibiliPage() {
   const addVideoMutation = useMutation({
     mutationFn: () => api.addBilibiliVideo(bvid),
     onSuccess: () => { toast.success('添加成功'); setBvid(''); invalidateAll() },
-    onError: (err: Error) => toast.error(`添加失败: ${err.message}`),
+    onError: (err: Error) => toast.error(`添加失败：${err.message}。请检查 BVID 格式是否正确（例：BV1xx411c7mD）后重试`),
   })
   const togglePollMutation = useMutation({
     mutationFn: (videoId: string) => api.toggleBilibiliVideoPoll(videoId),
@@ -129,7 +132,7 @@ export function BilibiliPage() {
       setCredName(''); setSessdata(''); setBiliJct(''); setBuvid3(''); setBuvid4(''); setCredExpires('')
       invalidateAll()
     },
-    onError: (err: Error) => toast.error(`添加失败: ${err.message}`),
+    onError: (err: Error) => toast.error(`凭证添加失败：${err.message}。请检查 SESSDATA 等字段是否完整、未过期`),
   })
   const activateCredMutation = useMutation({
     mutationFn: (id: string) => api.activateBilibiliCredential(id),
@@ -186,7 +189,7 @@ export function BilibiliPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">B站集成</h1>
         <Button variant="outline" onClick={() => invalidateAll()}>
-          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" /> 刷新
+          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" /> 刷新状态
         </Button>
       </div>
 
@@ -211,7 +214,7 @@ export function BilibiliPage() {
       )}
 
       {/* Manual poll */}
-      <div className="rounded-lg border p-4">
+      <div className="rounded-xl border p-4">
         <h3 className="font-semibold mb-2">手动操作</h3>
         <Button onClick={() => triggerPollMutation.mutate()} disabled={triggerPollMutation.isPending} aria-busy={triggerPollMutation.isPending}>
           {triggerPollMutation.isPending ? '轮询中...' : '触发轮询'}
@@ -219,7 +222,7 @@ export function BilibiliPage() {
       </div>
 
       {/* Videos section */}
-      <div className="rounded-lg border space-y-4">
+      <div className="rounded-xl border space-y-4">
         <div className="border-b px-6 py-4 flex flex-wrap items-end justify-between gap-3">
           <h3 className="font-semibold">视频监控</h3>
           <div className="flex items-end gap-2">
@@ -227,6 +230,7 @@ export function BilibiliPage() {
               <Label htmlFor="bvid-input" className="text-xs text-muted-foreground">BVID</Label>
               <Input
                 id="bvid-input"
+                ref={bvidInputRef}
                 placeholder="输入 BVID"
                 value={bvid}
                 onChange={(e) => setBvid(e.target.value)}
@@ -260,7 +264,12 @@ export function BilibiliPage() {
           {videosLoading ? (
             <div className="text-center py-4 text-muted-foreground">加载视频列表...</div>
           ) : videos.length === 0 ? (
-            <div className="text-center py-4 text-muted-foreground">暂无视频。在上方输入 BVID 添加第一个监控视频。</div>
+            <div className="flex flex-col items-center gap-3 py-4 text-muted-foreground">
+              <p>暂无视频。输入 BVID 添加第一个监控视频，系统将自动轮询其评论。</p>
+              <Button variant="outline" size="sm" onClick={() => bvidInputRef.current?.focus()}>
+                添加第一个视频
+              </Button>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -281,7 +290,7 @@ export function BilibiliPage() {
                   const deletePending = deleteVideoMutation.isPending && deleteVideoMutation.variables === vid
                   return (
                     <TableRow key={vid}>
-                      <TableCell className="font-mono text-xs" title={v.bvid}>{v.bvid || '-'}</TableCell>
+                      <TableCell className="font-mono text-sm md:text-xs" title={v.bvid}>{v.bvid || '-'}</TableCell>
                       <TableCell className="max-w-[200px] truncate">{v.title || '-'}</TableCell>
                       <TableCell>
                         <StatusBadge status={v.poll_enabled ? 'published' : 'skipped'} />
@@ -331,11 +340,11 @@ export function BilibiliPage() {
       </div>
 
       {/* Credentials section */}
-      <div className="rounded-lg border space-y-4">
+      <div className="rounded-xl border space-y-4">
         <div className="border-b px-6 py-4 font-semibold">凭证管理</div>
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1"><Label htmlFor="cred-name">名称</Label><Input id="cred-name" value={credName} onChange={(e) => setCredName(e.target.value)} /></div>
+            <div className="space-y-1"><Label htmlFor="cred-name">名称</Label><Input id="cred-name" ref={credNameInputRef} value={credName} onChange={(e) => setCredName(e.target.value)} /></div>
             <div className="space-y-1"><Label htmlFor="cred-sessdata">SESSDATA</Label><Input id="cred-sessdata" value={sessdata} onChange={(e) => setSessdata(e.target.value)} /></div>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -382,7 +391,12 @@ export function BilibiliPage() {
           {credsLoading ? (
             <div className="text-center py-4 text-muted-foreground">加载凭证列表...</div>
           ) : filteredCreds.length === 0 ? (
-            <div className="text-center py-4 text-muted-foreground">暂无凭证。在上方表单添加第一组 B 站凭证以启用发布。</div>
+            <div className="flex flex-col items-center gap-3 py-4 text-muted-foreground">
+              <p>暂无凭证。添加一组 B 站凭证（SESSDATA 等）后即可启用发布。</p>
+              <Button variant="outline" size="sm" onClick={() => credNameInputRef.current?.focus()}>
+                添加第一组凭证
+              </Button>
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -403,7 +417,7 @@ export function BilibiliPage() {
                   return (
                     <TableRow key={cid}>
                       <TableCell>{c.name || '-'}</TableCell>
-                      <TableCell className="font-mono text-xs">{fingerprint(c)}</TableCell>
+                      <TableCell className="font-mono text-sm md:text-xs">{fingerprint(c)}</TableCell>
                       <TableCell>
                         <StatusBadge status={(c.is_active || c.active) ? 'published' : 'skipped'} />
                       </TableCell>

@@ -7,7 +7,10 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card"
       className={cn(
-        "flex flex-col gap-6 rounded-lg border bg-card py-6 text-card-foreground shadow-xs",
+        /* Intentional radius language (Round-2): rounded-xl (var(--radius-xl))
+           + border-only containment, dropping the shadcn rounded-lg+shadow-xs
+           fingerprint. The WCAG 3:1 border token provides the separation. */
+        "flex flex-col gap-6 rounded-xl border bg-card py-6 text-card-foreground shadow-none",
         className
       )}
       {...props}

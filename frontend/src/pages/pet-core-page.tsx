@@ -73,7 +73,7 @@ export function PetCorePage() {
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Relationship */}
-        <div className="rounded-lg border p-6 space-y-4">
+        <div className="rounded-xl border p-6 space-y-4">
           <h3 className="font-semibold">关系与阶段</h3>
           <div className="grid grid-cols-2 gap-4">
             <StatCard label="关系等级" value={String(relationship.level || '-')} className="border-0 bg-muted/40" />
@@ -84,7 +84,7 @@ export function PetCorePage() {
         </div>
 
         {/* Needs */}
-        <div className="rounded-lg border p-6 space-y-4">
+        <div className="rounded-xl border p-6 space-y-4">
           <h3 className="font-semibold">需求状态</h3>
           {needs.length === 0 ? (
             <div className="text-sm text-muted-foreground">暂无需求数据</div>
@@ -98,7 +98,7 @@ export function PetCorePage() {
         </div>
 
         {/* Proactive Signals */}
-        <div className="rounded-lg border p-6 space-y-4">
+        <div className="rounded-xl border p-6 space-y-4">
           <h3 className="font-semibold">主动信号</h3>
           {signals.length === 0 ? (
             <div className="text-sm text-muted-foreground">暂无主动信号</div>
@@ -114,7 +114,7 @@ export function PetCorePage() {
         </div>
 
         {/* Companion Summary */}
-        <div className="rounded-lg border p-6 space-y-4">
+        <div className="rounded-xl border p-6 space-y-4">
           <h3 className="font-semibold">伙伴摘要</h3>
           <div className="grid grid-cols-3 gap-4">
             <StatCard label="宠物名" value={String(companion.petName || '-')} className="border-0 bg-muted/40" />
@@ -125,7 +125,7 @@ export function PetCorePage() {
         </div>
 
         {/* Loop Actions */}
-        <div className="rounded-lg border p-6 space-y-4">
+        <div className="rounded-xl border p-6 space-y-4">
           <h3 className="font-semibold">循环动作 (Loop)</h3>
           <p className="text-sm text-muted-foreground">直接记录 Pat / Feed / Wake，验证宠物循环是否仍能持续推进。</p>
           <div className="space-y-1">
@@ -159,7 +159,7 @@ export function PetCorePage() {
         </div>
 
         {/* Recent Interactions */}
-        <div className="rounded-lg border p-6 space-y-4">
+        <div className="rounded-xl border p-6 space-y-4">
           <h3 className="font-semibold">最近交互</h3>
           {recentInteractions.length === 0 ? (
             <div className="text-sm text-muted-foreground">暂无最近交互</div>
@@ -170,9 +170,9 @@ export function PetCorePage() {
                   <div className="flex justify-between gap-3">
                     <div>
                       <div className="text-sm font-medium">{String(item.title || item.kind || '互动')}</div>
-                      <div className="text-xs text-muted-foreground mt-1">{String(item.detail || '-')}</div>
+                      <div className="text-sm text-muted-foreground mt-1">{String(item.detail || '-')}</div>
                     </div>
-                    <div className="text-right text-xs">
+                    <div className="text-right text-sm md:text-xs">
                       <div className="text-muted-foreground">{String(item.source || 'pet-core')}</div>
                       <div className="text-muted-foreground mt-1">{String(item.timestamp || '-')}</div>
                     </div>

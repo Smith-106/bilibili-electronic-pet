@@ -24,7 +24,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/components/providers/theme-provider'
 import { useAuth } from '@/components/providers/auth-provider'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
@@ -51,6 +51,44 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const ThemeIcon = THEME_ICONS[theme]
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+
+  /* Drawer a11y (Round-2 RC-6): Escape closes, Tab is trapped inside while
+     open, and focus returns to the hamburger trigger on close. */
+  useEffect(() => {
+    if (!mobileOpen) return
+    const drawer = drawerRef.current
+    const trigger = menuButtonRef.current
+    drawer?.querySelector<HTMLElement>('a[href], button')?.focus()
+
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setMobileOpen(false)
+        trigger?.focus()
+        return
+      }
+      if (e.key !== 'Tab' || !drawer) return
+      const focusables = drawer.querySelectorAll<HTMLElement>('a[href], button:not([disabled])')
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault()
+        last.focus()
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      // Return focus to the trigger if it was inside the closing drawer
+      if (drawer?.contains(document.activeElement)) trigger?.focus()
+    }
+  }, [mobileOpen])
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -59,11 +97,14 @@ export function AppShell() {
         <div className="flex items-center gap-3">
           {/* Mobile: open drawer */}
           <Button
+            ref={menuButtonRef}
             variant="ghost"
             size="icon"
             className="h-10 w-10 md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="打开导航菜单"
+            aria-expanded={mobileOpen}
+            aria-controls="mobile-drawer"
           >
             <Menu className="h-4 w-4" aria-hidden="true" />
           </Button>
@@ -103,12 +144,14 @@ export function AppShell() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Mobile drawer backdrop (transform/opacity only) */}
+        {/* Mobile drawer backdrop (transform/opacity only).
+            role="presentation": click-dismiss layer with no semantics
+            (was aria-hidden while click-interactive — contradictory). */}
         {mobileOpen && (
           <div
-            className="fixed inset-0 z-30 bg-black/40 animate-in fade-in duration-200 md:hidden"
+            className="fixed inset-0 z-30 bg-black/40 animate-in fade-in duration-(--duration-fast) md:hidden"
             onClick={() => setMobileOpen(false)}
-            aria-hidden="true"
+            role="presentation"
           />
         )}
 
@@ -117,10 +160,12 @@ export function AppShell() {
             - desktop: static rail; width switches instantly (single reflow, no
               per-frame layout thrash), labels enter via transform+opacity */}
         <aside
+          ref={drawerRef}
+          id="mobile-drawer"
           aria-label="侧边导航"
           className={cn(
             'flex flex-col border-r border-sidebar-border bg-sidebar',
-            'fixed inset-y-0 left-0 z-40 w-[220px] transition-transform duration-300 ease-[var(--ease-out-quart)]',
+            'fixed inset-y-0 left-0 z-40 w-[220px] transition-transform duration-(--duration-slow) ease-[var(--ease-out-quart)]',
             mobileOpen ? 'translate-x-0' : '-translate-x-full',
             'md:static md:inset-auto md:z-auto md:translate-x-0 md:transition-none',
             collapsed ? 'md:w-[52px]' : 'md:w-[220px]',
@@ -128,7 +173,7 @@ export function AppShell() {
         >
           <div
             className={cn(
-              'flex h-10 items-center px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground',
+              'flex h-10 items-center px-4 text-sm font-medium uppercase tracking-wider text-muted-foreground md:text-xs',
               collapsed && 'md:hidden',
             )}
           >
@@ -155,7 +200,7 @@ export function AppShell() {
                 <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <span
                   className={cn(
-                    'animate-in fade-in slide-in-from-left-2 duration-200',
+                    'animate-in fade-in slide-in-from-left-2 duration-(--duration-fast)',
                     collapsed && 'md:hidden',
                   )}
                 >
