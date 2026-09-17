@@ -3,6 +3,29 @@
 本文件记录 bilibili-electronic-pet 的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.4.1] - 2026-09-18
+
+patch 版本：v1.4.0 之后的 bugfix 与仓库清理收口。核心是 COR-001 错误解析修复，以及把构建产物从版本库移出。
+
+**注意**：将 `backend-ts/public/admin/` 移出版本库，对「不经 Docker、直接消费仓库内预构建产物」的部署方式属潜在破坏性变更；Docker 部署不受影响（产物由镜像构建阶段重新生成）。
+
+### Fixed
+
+- **fix(odyssey): COR-001 bilibili-client HTTP 错误解析** (`51de4fe`)
+  - `bilibili-client` 的错误响应体改为 JSON/text 双路径回退解析，非 JSON 错误体不再导致解析失败。
+
+### Changed
+
+- **版本号统一至 1.4.1**
+  - 发布列车三个 `package.json`（根、`backend-ts`、`frontend`）由 1.4.0 升至 1.4.1。
+  - README 与 `docs-site` 版本引用同步更新至 v1.4.1。
+
+### Removed
+
+- **构建产物移出版本库**
+  - `backend-ts/public/admin/`（Vite 主 chunk + vendor/router/query 三个 `manualChunks` 分包 + CSS + `index.html`，共 6 个文件）经 `git rm --cached` 移出跟踪，并在 `.gitignore` 登记。
+  - 该目录由 `backend-ts/Dockerfile` Stage 0 在镜像构建时重新生成（`BUILD_OUT_DIR=/app/dist` → `COPY --from=frontend-builder /app/dist ./public/admin`），入库属冗余。
+
 ## [1.4.0] - 2026-08-02
 
 minor 版本：v1.3.1 之后 3 个提交的收口 + 仓库清理。核心是前端 React 迁移后的最终收口：66 个 TypeScript 错误修复、代码分割优化、旧 Vanilla JS 测试归档为 React 冒烟测试，以及全仓库清理（删除过期文档、遗留测试、冗余配置）。无 breaking change。
