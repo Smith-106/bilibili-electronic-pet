@@ -4,6 +4,7 @@
  */
 
 import type { MemoryContext } from '../app/memory/types.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 
 // ============================================================
 // Configuration
@@ -533,6 +534,27 @@ export async function generateWithLLM(params: {
     };
   } catch (error) {
     console.error('[LLM] Primary provider failed, using fallback:', error);
+    // OBS: 主 provider 失败降级到内置模板回复, 原仅 console.error 不可追踪. 补
+    // fire-and-forget event 使 provider 降级可从统一观测流统计 (不 await 不阻塞回复).
+    void recordObservabilityEvent({
+      event_type: 'llm_mock_fallback',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        scope: 'llm-client',
+        role_profile: roleProfile,
+        length_mode: lengthMode,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'llm_mock_fallback_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return {
       reply_text: generateFallbackReply(userComment, roleProfile, lengthMode),
       provider: 'fallback',

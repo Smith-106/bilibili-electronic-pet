@@ -1,6 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { getPrisma } from '../lib/prisma.js';
+import {
+  countAuditLogs,
+  countAuditLogsSince,
+  countComments,
+  countObservabilityEventsBySubclass,
+  countReplyJobs,
+  countReplyJobsByStatus,
+  listAuditLogs,
+  listCommentDatesSince,
+  listJobDatesStatusSince,
+} from '../services/db-queries.js';
 import type { RuntimeSettings } from '../server/contracts.js';
 
 export type AdminReportingRouteDependencies = {
@@ -62,7 +72,6 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
 
     const where: Record<string, unknown> = {};
     const action = deps.parseAdminString(query.action);
@@ -78,13 +87,8 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     const offset = deps.parseAdminOffset(query.offset, 0, 0, 100000);
 
     const [total, items] = await Promise.all([
-      prisma.operationAuditLog.count({ where }),
-      prisma.operationAuditLog.findMany({
-        where,
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-        skip: offset,
-        take: limit,
-      }),
+      countAuditLogs(where),
+      listAuditLogs(where, { offset, take: limit }),
     ]);
 
     return reply.send({
@@ -116,7 +120,6 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
 
     const where: Record<string, unknown> = {};
     const action = deps.parseAdminString(query.action);
@@ -127,11 +130,7 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     if (targetId >= 0) where.target_id = targetId;
 
     const limit = deps.parseAdminLimit(query.limit, 1000, 1, 5000);
-    const items = await prisma.operationAuditLog.findMany({
-      where,
-      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      take: limit,
-    });
+    const items = await listAuditLogs(where, { take: limit });
 
     const header = 'id,action,target_type,target_id,ok,status,trace_id,payload,created_at';
     const rows = items.map((item) => {
@@ -162,7 +161,6 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     const days = deps.parseAdminLimit(query.days, 7, 1, 90);
     const action = deps.parseAdminString(query.action);
     const okFilter = deps.parseAdminBoolean(query.ok);
-    const prisma = getPrisma();
 
     const startUtc = new Date(Date.now() - days * 24 * 3600 * 1000);
     const where: Record<string, unknown> = { created_at: { gte: startUtc } };
@@ -176,7 +174,7 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
       Number.isFinite(auditSummaryLimitRaw) && auditSummaryLimitRaw > 0 && auditSummaryLimitRaw <= 200000
         ? auditSummaryLimitRaw
         : 50000;
-    const items = await prisma.operationAuditLog.findMany({ where, take: auditSummaryLimit });
+    const items = await listAuditLogs(where, { take: auditSummaryLimit, orderBy: false });
 
     const byAction: Record<string, number> = {};
     const byStatus: Record<string, number> = {};
@@ -206,8 +204,6 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
 
     const query = request.query as Record<string, unknown>;
     const days = deps.parseAdminLimit(query.days, 7, 1, 60);
-    const prisma = getPrisma();
-
     const startUtc = new Date(Date.now() - days * 24 * 3600 * 1000);
     // PERF-003: 双 findMany 无数据依赖, Promise.all 并行化; 加 take env 守护上界防 OOM
     // (spec coding-conventions-012). 完整 SQL GROUP BY date 重构见 issue (复杂, 需 libsql 验证).
@@ -215,18 +211,8 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     const metricsLimit =
       Number.isFinite(metricsLimitRaw) && metricsLimitRaw > 0 && metricsLimitRaw <= 200000 ? metricsLimitRaw : 50000;
     const [comments, jobs] = await Promise.all([
-      prisma.comment.findMany({
-        where: { created_at: { gte: startUtc } },
-        select: { created_at: true },
-        orderBy: { created_at: 'asc' },
-        take: metricsLimit,
-      }),
-      prisma.replyJob.findMany({
-        where: { created_at: { gte: startUtc } },
-        select: { created_at: true, status: true },
-        orderBy: { created_at: 'asc' },
-        take: metricsLimit,
-      }),
+      listCommentDatesSince(startUtc, metricsLimit),
+      listJobDatesStatusSince(startUtc, metricsLimit),
     ]);
 
     const commentsByDay: Record<string, number> = {};
@@ -290,41 +276,15 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
   app.get('/api/metrics/overview', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
-    const prisma = getPrisma();
-    const totalJobs = await prisma.replyJob.count();
-    const totalComments = await prisma.comment.count();
-    const byStatusRows = await prisma.replyJob.groupBy({ by: ['status'], _count: true });
-    const byStatus: Record<string, number> = {};
-    for (const row of byStatusRows) {
-      const count = row._count as unknown;
-      byStatus[row.status] =
-        typeof count === 'number' ? count : Number((count as { _all?: number } | undefined)?._all ?? 0);
-    }
-
-    // TASK-007: antirisk subclass aggregation (parallel to by_status). Aggregates
-    // backoff_applied + antirisk_signal_detected events by error_subclass over the
-    // last 24h so operators can see behavior_anomaly (-352) vs rate_limit (-429)
-    // counts in the overview without a separate observability call. Mirrors the
-    // Phase 1 main.ts:2018 eval groupBy precedent.
+    // TASK-007: antirisk subclass aggregation (parallel to by_status). Mirrors the
+    // Phase 1 main.ts eval groupBy precedent.
     const since24h = new Date(Date.now() - 24 * 3600 * 1000);
-    const byAntiriskRows = await prisma.observabilityEvent.groupBy({
-      by: ['error_subclass'],
-      where: {
-        event_type: { in: ['backoff_applied', 'antirisk_signal_detected'] },
-        created_at: { gte: since24h },
-        error_subclass: { not: null },
-      },
-      _count: { _all: true },
-    });
-    const byAntiriskSubclass: Record<string, number> = {};
-    for (const row of byAntiriskRows) {
-      const count = row._count as unknown;
-      const key = row.error_subclass;
-      if (key) {
-        byAntiriskSubclass[key] =
-          typeof count === 'number' ? count : Number((count as { _all?: number } | undefined)?._all ?? 0);
-      }
-    }
+    const [totalJobs, totalComments, byStatus, byAntiriskSubclass] = await Promise.all([
+      countReplyJobs(),
+      countComments(),
+      countReplyJobsByStatus(),
+      countObservabilityEventsBySubclass(since24h),
+    ]);
 
     return reply.send({
       ok: true,
@@ -338,10 +298,9 @@ export function registerAdminReportingRoutes(app: FastifyInstance, deps: AdminRe
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
     const days = deps.parseAdminLimit(query.days, 7, 1, 90);
     const since = new Date(Date.now() - days * 86400000);
-    const total = await prisma.operationAuditLog.count({ where: { created_at: { gte: since } } });
+    const total = await countAuditLogsSince(since);
     return reply.send({ ok: true, days, total });
   });
 }

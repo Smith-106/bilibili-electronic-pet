@@ -31,9 +31,10 @@ vi.mock('../src/lib/prisma.js', () => ({
   getPrisma: () => mockPrisma,
 }));
 
-vi.mock('../src/services/db-queries.js', () => ({
-  prisma: () => mockPrisma,
-}));
+vi.mock('../src/services/db-queries.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/services/db-queries.js')>();
+  return { ...actual, prisma: () => mockPrisma };
+});
 
 const trackedEnvKeys = [
   'REPLY_BASE_PROBABILITY',

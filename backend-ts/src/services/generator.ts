@@ -8,6 +8,7 @@
 
 import type { GenerateReplyService } from './interfaces.js';
 import { generateWithLLM } from './llm-client.js';
+import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 import { classifyReplyIntent, shouldSkipByRuleAndIntent } from './intent-agent.js';
 import {
   parseThreeLayerPersona,
@@ -260,6 +261,27 @@ export const generateReplyWithMeta: GenerateReplyService = async (params) => {
     }
   } catch (error) {
     console.warn('[generator] LLM failed, using Doro mock fallback:', error);
+    // OBS: LLM 生成降级到 mock 模板回复, 原仅 console.warn 不可追踪. 补 fire-and-forget
+    // event 使 mock fallback 频率/原因可从统一观测流统计 (不 await 不阻塞回复).
+    void recordObservabilityEvent({
+      event_type: 'llm_mock_fallback',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: {
+        scope: 'generator',
+        role_profile: role_profile,
+        style_mode: style_mode,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'llm_mock_fallback_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
   }
 
   // Fallback: Doro-style mock reply

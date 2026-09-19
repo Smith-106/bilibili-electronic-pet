@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { recordAntiriskSignalMock, prismaMock } = vi.hoisted(() => ({
+const { recordAntiriskSignalMock, recordObservabilityEventMock, prismaMock } = vi.hoisted(() => ({
   recordAntiriskSignalMock: vi.fn(),
+  // OBS: backoff DB rebuild fail-open now emits a fire-and-forget observability event;
+  // mock it (resolved) so the fail-open path stays non-blocking and unhandledRejection-free.
+  recordObservabilityEventMock: vi.fn().mockResolvedValue(undefined),
   prismaMock: {
     observabilityEvent: {
       findMany: vi.fn(),
@@ -11,6 +14,8 @@ const { recordAntiriskSignalMock, prismaMock } = vi.hoisted(() => ({
 
 vi.mock('../src/services/observability.js', () => ({
   recordAntiriskSignal: recordAntiriskSignalMock,
+  recordObservabilityEvent: recordObservabilityEventMock,
+  ensureTraceId: () => 'trace-test',
 }));
 
 vi.mock('../src/services/db-queries.js', () => ({

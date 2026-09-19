@@ -29,3 +29,4 @@ celerybeat-schedule
 
 # admin bundle 由 backend-ts/Dockerfile Stage 0 构建生成 (COPY --from=frontend-builder)
 backend-ts/public/admin/
+.pi/

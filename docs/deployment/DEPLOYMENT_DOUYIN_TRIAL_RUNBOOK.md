@@ -134,7 +134,6 @@ Stop immediately if any of the following remains true:
 
 ## Evidence To Update After Success
 
-- [DEPLOYMENT_REMOTE.md](D:/工作目录/bilibili电子宠物/DEPLOYMENT_REMOTE.md)
-- [EXPANDED_SCOPE_STAGING_TEMPLATE.md](D:/工作目录/bilibili电子宠物/backend-ts/EXPANDED_SCOPE_STAGING_TEMPLATE.md)
-- [staging-report.expanded-scope.template.json](D:/工作目录/bilibili电子宠物/backend-ts/staging-report.expanded-scope.template.json)
+- [DEPLOYMENT_REMOTE.md](./DEPLOYMENT_REMOTE.md)
+- [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) — expanded-scope trial inputs (`PLATFORM_DOUYIN_*`/`PLATFORM_QQ_*`) 与 JSON 报告
 - `.workflow/active/WFS-complete-electronic-pet-multi-platform/.process/ROLL_OUT_SIGNOFF_2026-04-13.md`

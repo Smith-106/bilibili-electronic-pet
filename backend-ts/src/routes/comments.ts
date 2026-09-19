@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { getPrisma } from '../lib/prisma.js';
+import { listComments } from '../services/db-queries.js';
 import type { ReplyJob, RuntimeSettings } from '../server/contracts.js';
 import { buildCommentRouteContext } from '../server/comment-job-queries.js';
 
@@ -23,11 +23,7 @@ export function registerCommentRoutes(app: FastifyInstance, deps: CommentRoutesD
     const query = request.query as Record<string, unknown>;
     const limit = deps.parseAdminLimit(query.limit, 50, 1, 500);
     const offset = deps.parseAdminOffset(query.offset, 0, 0, 100000);
-    const prisma = getPrisma();
-    const [total, items] = await Promise.all([
-      prisma.comment.count(),
-      prisma.comment.findMany({ orderBy: { created_at: 'desc' }, skip: offset, take: limit }),
-    ]);
+    const { total, items } = await listComments({ offset, limit });
     return reply.send({
       ok: true,
       total,

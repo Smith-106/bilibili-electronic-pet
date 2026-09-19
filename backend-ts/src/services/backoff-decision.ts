@@ -19,7 +19,7 @@
  * isPersonaInBackoff 恒返回 false + applyBackoff no-op，回滚到无退避行为。
  */
 
-import { recordAntiriskSignal } from './observability.js';
+import { recordAntiriskSignal, recordObservabilityEvent, ensureTraceId } from './observability.js';
 import type { AntiriskSubclass } from './publisher.js';
 import { prisma as getPrisma } from './db-queries.js';
 
@@ -287,6 +287,22 @@ export async function rebuildBackoffFromDb(): Promise<void> {
         timestamp: new Date().toISOString(),
       }),
     );
+    // OBS: DB rebuild fail-open 原仅 console.warn, 重启后 backoff 状态丢失不可追踪.
+    // 补 fire-and-forget event 统一进观测流 (不 await, 避免 fail-open 路径再被 DB 阻).
+    void recordObservabilityEvent({
+      event_type: 'backoff_rebuild_failed',
+      trace_id: ensureTraceId(),
+      status: 'failed',
+      metadata: { error: error instanceof Error ? error.message : String(error) },
+    }).catch((err: unknown) => {
+      console.warn(
+        JSON.stringify({
+          level: 'warn',
+          message: 'backoff_rebuild_failed_event_record_failed',
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    });
     return;
   }
 

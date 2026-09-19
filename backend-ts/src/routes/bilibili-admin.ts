@@ -1,7 +1,19 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { DuplicateKeyError } from '../lib/duplicate-key-error.js';
-import { getPrisma } from '../lib/prisma.js';
+import {
+  activateBilibiliCredential,
+  countBilibiliCredentials,
+  countCommentsByVideoId,
+  createBilibiliCredential,
+  deleteBilibiliCredential,
+  deleteBilibiliVideo,
+  getBilibiliCredentialById,
+  getBilibiliVideoById,
+  listBilibiliCredentials,
+  updateBilibiliVideoPollEnabled,
+} from '../services/db-queries.js';
+import { pollAllVideos, pollVideoById } from '../services/bilibili-poller.js';
 import type { RuntimeSettings } from '../server/contracts.js';
 import { encrypt } from '../services/credential-crypto.js';
 
@@ -110,8 +122,7 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const videoId = Number((request.params as Record<string, string>).videoId);
     if (!Number.isFinite(videoId)) return reply.code(400).send({ detail: 'invalid_video_id' });
 
-    const prisma = getPrisma();
-    const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
+    const video = await getBilibiliVideoById(videoId);
     if (!video) return reply.code(404).send({ detail: 'video_not_found' });
 
     const body = request.body as Record<string, unknown> | undefined;
@@ -121,7 +132,7 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
       return reply.code(400).send({ detail: 'invalid_poll_enabled' });
     }
     const pollEnabled = requestedPollEnabled ?? !video.poll_enabled;
-    await prisma.bilibiliVideo.update({ where: { id: videoId }, data: { poll_enabled: pollEnabled } });
+    await updateBilibiliVideoPollEnabled(videoId, pollEnabled);
 
     return reply.send({ ok: true, item: { id: videoId, bvid: video.bvid, poll_enabled: pollEnabled } });
   });
@@ -131,11 +142,10 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const videoId = Number((request.params as Record<string, string>).videoId);
     if (!Number.isFinite(videoId)) return reply.code(400).send({ detail: 'invalid_video_id' });
 
-    const prisma = getPrisma();
-    const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
+    const video = await getBilibiliVideoById(videoId);
     if (!video) return reply.code(404).send({ detail: 'video_not_found' });
 
-    await prisma.bilibiliVideo.delete({ where: { id: videoId } });
+    await deleteBilibiliVideo(videoId);
     return reply.send({ ok: true, deleted_id: videoId });
   });
 
@@ -144,11 +154,9 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const videoId = Number((request.params as Record<string, string>).videoId);
     if (!Number.isFinite(videoId)) return reply.code(400).send({ detail: 'invalid_video_id' });
 
-    const prisma = getPrisma();
-    const video = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
+    const video = await getBilibiliVideoById(videoId);
     if (!video) return reply.code(404).send({ detail: 'video_not_found' });
 
-    const { pollVideoById } = await import('../services/bilibili-poller.js');
     const result = await pollVideoById(videoId);
     if (result.status === 'disabled') {
       return reply.code(409).send({ detail: 'bilibili_not_configured', result });
@@ -160,11 +168,9 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
       return reply.code(502).send({ detail: 'bilibili_sync_failed', result });
     }
 
-    const refreshedVideo = await prisma.bilibiliVideo.findUnique({ where: { id: videoId } });
+    const refreshedVideo = await getBilibiliVideoById(videoId);
     const resolvedVideo = refreshedVideo ?? video;
-    const commentCount = await prisma.comment.count({
-      where: { video_id: resolvedVideo.bvid },
-    });
+    const commentCount = await countCommentsByVideoId(resolvedVideo.bvid);
 
     return reply.send({
       ok: true,
@@ -175,7 +181,6 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
 
   app.post('/api/admin/bilibili/poll', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
-    const { pollAllVideos } = await import('../services/bilibili-poller.js');
     const result = await pollAllVideos();
     if (result.status === 'disabled') {
       return reply.code(409).send({ detail: 'bilibili_not_configured', result });
@@ -185,14 +190,9 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
 
   app.get('/api/admin/bilibili/credentials', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
-    const prisma = getPrisma();
-    // PERF-006: 加 take env 守护上界 (spec coding-conventions-012), 与 sibling admin list 一致.
     const credLimitRaw = Number.parseInt(process.env.BILIBILI_CREDENTIAL_LIST_LIMIT || '100', 10);
     const credLimit = Number.isFinite(credLimitRaw) && credLimitRaw > 0 && credLimitRaw <= 1000 ? credLimitRaw : 100;
-    const items = await prisma.bilibiliCredential.findMany({
-      orderBy: { updated_at: 'desc' },
-      take: credLimit,
-    });
+    const items = await listBilibiliCredentials(credLimit);
 
     return reply.send({
       ok: true,
@@ -239,24 +239,21 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
       return reply.code(400).send({ detail: 'invalid_expires_at' });
     }
 
-    const prisma = getPrisma();
-    const existingCount = await prisma.bilibiliCredential.count();
+    const existingCount = await countBilibiliCredentials();
     const isActive = existingCount === 0;
     const encSessdata = encrypt(sessdata);
     const encBiliJct = encrypt(biliJct);
     const encBuvid3 = encrypt(buvid3);
     const encBuvid4 = buvid4 ? encrypt(buvid4) : null;
 
-    const credential = await prisma.bilibiliCredential.create({
-      data: {
-        name,
-        sessdata: encSessdata,
-        bili_jct: encBiliJct,
-        buvid3: encBuvid3,
-        buvid4: encBuvid4,
-        is_active: isActive,
-        expires_at: expiresAt,
-      },
+    const credential = await createBilibiliCredential({
+      name,
+      sessdata: encSessdata,
+      bili_jct: encBiliJct,
+      buvid3: encBuvid3,
+      buvid4: encBuvid4,
+      is_active: isActive,
+      expires_at: expiresAt,
     });
 
     return reply.send({
@@ -275,12 +272,10 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const credentialId = Number((request.params as Record<string, string>).credentialId);
     if (!Number.isFinite(credentialId)) return reply.code(400).send({ detail: 'invalid_credential_id' });
 
-    const prisma = getPrisma();
-    const credential = await prisma.bilibiliCredential.findUnique({ where: { id: credentialId } });
+    const credential = await getBilibiliCredentialById(credentialId);
     if (!credential) return reply.code(404).send({ detail: 'credential_not_found' });
 
-    await prisma.bilibiliCredential.updateMany({ data: { is_active: false } });
-    await prisma.bilibiliCredential.update({ where: { id: credentialId }, data: { is_active: true } });
+    await activateBilibiliCredential(credentialId);
 
     return reply.send({ ok: true, active_credential_id: credentialId });
   });
@@ -290,11 +285,10 @@ export function registerBilibiliAdminRoutes(app: FastifyInstance, deps: Bilibili
     const credentialId = Number((request.params as Record<string, string>).credentialId);
     if (!Number.isFinite(credentialId)) return reply.code(400).send({ detail: 'invalid_credential_id' });
 
-    const prisma = getPrisma();
-    const credential = await prisma.bilibiliCredential.findUnique({ where: { id: credentialId } });
+    const credential = await getBilibiliCredentialById(credentialId);
     if (!credential) return reply.code(404).send({ detail: 'credential_not_found' });
 
-    await prisma.bilibiliCredential.delete({ where: { id: credentialId } });
+    await deleteBilibiliCredential(credentialId);
     return reply.send({ ok: true, deleted_id: credentialId });
   });
 }

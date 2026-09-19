@@ -3,6 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import { upsertCompanionFeedItem } from '../app/memory/companion-feed.js';
 import { buildCommentReplyPublishIntent } from '../domain/publish/comment-reply-intent.js';
 import { recordObservabilityEvent } from '../services/observability.js';
+import { publishIntentWithResult } from '../services/publisher.js';
 
 type AuditLogInput = {
   action: string;
@@ -152,7 +153,6 @@ async function approveJob(deps: CommentJobActionDeps, input: ApproveJobInput): P
     throw { statusCode: 400, detail: 'empty_reply_text' };
   }
 
-  const { publishIntentWithResult } = await import('../services/publisher.js');
   const [published, publishReason, publishedAt, publishResult] = await publishIntentWithResult(
     buildCommentReplyPublishIntent({
       platform: comment.platform || 'bilibili',

@@ -3,6 +3,47 @@
 本文件记录 bilibili-electronic-pet 的版本变更。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2026-09-19
+
+minor 版本：v1.4.1 之后的架构收口与性能/可观测性改进。核心是 route 数据访问层收口、前后端契约单一真源、无界查询分页化、observability 补齐、god-file 拆分，以及仓库文档结构整理。无 breaking change（HTTP 响应字段逐字节不变，公共 API 签名不变）。
+
+### Changed
+
+- **route 数据访问层收口 (ARCH-001 / ISS-20260728-004)**
+  - `backend-ts/src/routes/**` 全部移除 `getPrisma` / 直接 `prisma.*` 调用，改经 `src/services/db-queries.ts` 命名函数（`listComments`/`listReplyJobs`/`listPublishLogs`/`countAuditLogs`/`listAuditLogs` + 视频/凭证 CRUD + 计数/分组函数，共 35 个导出）。
+- **跨层动态 import → 顶层 import (ISS-20260728-003)**
+  - `server/comment-ingest.ts`、`server/comment-job-actions.ts` 的 `await import()` 改顶层静态 import（依赖方向 server→services→workers 单向无环）。
+- **前后端契约单一真源**
+  - 后端 `contracts.ts` 新增 `AdminJobItem`/`AdminBilibiliCredential` wire 类型；新建 `scripts/gen-frontend-contracts.mjs`（root `gen:contracts`）生成 `frontend/src/lib/contracts.generated.ts`（纯类型）；`admin-api.ts` 手写 interface 改 import+别名。
+  - dashboard 9 处 `[snake,camel]` 双键兜底改单一路径（真实信号源 `/readiness`，`metricsOverview` 死代码移除）。
+
+### Performance
+
+- **pollAllVideos 无界 findMany → id 游标分批 (PERF-002 / ISS-20260728-005)**
+  - `bilibili-poller.ts` 按 `id` 升序游标分批拉取全部 enabled 视频（`POLL_VIDEO_BATCH_SIZE` 默认 200 上限 1000），覆盖不变、单批驻留内存有界。
+- **可重复性能基线**
+  - 新建 `backend-ts/scripts/perf-baseline.ts` + root `perf:baseline`：12 条关键路径 p50/p95 + query 计数 + 前端构建体积 gzip，结果落 `perf/baseline/`。
+- **pet-companion-web innerHTML 高频重建优化**
+  - composer 模板/guide DOM 由按 keystroke 全量重建改为签名门控（仅 filter/pending 变化或强制路径重建）。
+
+### Observability
+
+- LLM mock fallback 路径补 `llm_mock_fallback` event（`generator.ts` + `llm-client.ts`）。
+- `backoff-decision.ts` DB rebuild fail-open 补 `backoff_rebuild_failed` event。
+
+### Refactored
+
+- **god-file 拆分**（纯提取，公共导出集合不变）：`services/publisher.ts` 1110→356（拆出 publisher-mode/breaker/failure/store/modes）；`comment-event.task.ts` 700→41（+comment-event-processor/helpers）；`routes/admin-management.ts` 602→22（+admin-management/{deps,knowledge,memory,profiles,role-cards}）；`pet-companion-web/src/app.js` 1451→493（+app/{format,interaction,state,markup,composer}）。
+
+### Documentation
+
+- 部署文档归位 `docs/deployment/`；新建 `STAGING_VALIDATION.md`（补回被删引用）与 `docs/VERSIONING.md`（跨包版本语义）；`RELEASE-NOTES.md` 加 scope header；修复多处失效绝对路径链接。
+- Wiki 图修复：断链 53→0，孤儿 40→17（结构性），health 0/100→83/100。
+
+### Internal
+
+- 3 条 spec 固化（route 禁 getPrisma / 前端类型契约生成 / 禁跨层动态 import）；ISS-20260727-001、ISS-20260728-002/003/004/005/006 关闭。
+
 ## [1.4.1] - 2026-09-18
 
 patch 版本：v1.4.0 之后的 bugfix 与仓库清理收口。核心是 COR-001 错误解析修复，以及把构建产物从版本库移出。

@@ -17,6 +17,8 @@ import {
   upsertCommentQueueBacklog,
 } from './comment-queue.js';
 import type { CommentEvent, InteractionEvent } from './contracts.js';
+import { createCommentEventQueue } from '../workers/tasks/comment-event.task.js';
+import { tryEnqueueTask } from '../workers/task-queue.js';
 
 export type CommentIngestResult = {
   ok: boolean;
@@ -117,8 +119,6 @@ type CommentIngestDeps = {
 
 async function enqueueCommentEventJob(payload: Record<string, unknown>): Promise<CommentQueueJobResult> {
   try {
-    const { createCommentEventQueue } = await import('../workers/tasks/comment-event.task.js');
-    const { tryEnqueueTask } = await import('../workers/task-queue.js');
     const queue = createCommentEventQueue('comment-event');
     try {
       const jobId = `comment-event:${String(payload.platform ?? 'bilibili')}:${String(payload.comment_id ?? '')}`;

@@ -1,7 +1,7 @@
 {
   "name": "bilibili-electronic-pet",
   "private": true,
-  "version": "1.4.1",
+  "version": "1.5.0",
   "type": "module",
   "description": "Repository-level validation scripts for the Bilibili Electronic Pet MVP.",
   "scripts": {
@@ -12,6 +12,8 @@
     "coverage": "npm --prefix backend-ts run test:coverage && npm --prefix frontend run test:coverage && npm --prefix pet-companion-web run test:coverage && npm --prefix docs-site run test:coverage && npm --prefix douyin-sidecar run test:coverage && npm --prefix qq-sidecar run test:coverage",
     "completion:gate": "node scripts/completion-gate.mjs --scope production",
     "completion:gate:repo": "node scripts/completion-gate.mjs --scope repo",
+    "gen:contracts": "node scripts/gen-frontend-contracts.mjs",
+    "perf:baseline": "node scripts/perf-baseline.mjs",
     "smoke:remote-platform": "node scripts/remote-platform-smoke.mjs",
     "test:ui": "playwright test",
     "build": "npm --prefix backend-ts run build && npm --prefix frontend run build && npm --prefix pet-companion-web run build && npm --prefix docs-site run build && npm --prefix douyin-sidecar run build && npm --prefix qq-sidecar run build",

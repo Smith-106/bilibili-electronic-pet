@@ -3,7 +3,21 @@
  * Replaces placeholder implementations with real database operations
  */
 
-import type { Comment, ReplyJob, RoleCard, KnowledgeEntry, RoleCardValue } from '../models/entities.js';
+import type {
+  Comment,
+  ReplyJob,
+  RoleCard,
+  KnowledgeEntry,
+  RoleCardValue,
+} from '../models/entities.js';
+import type {
+  Comment as PrismaComment,
+  ReplyJob as PrismaReplyJob,
+  PublishLog as PrismaPublishLog,
+  OperationAuditLog as PrismaAuditLog,
+  BilibiliVideo as PrismaBilibiliVideo,
+  BilibiliCredential as PrismaBilibiliCredential,
+} from '@prisma/client';
 import { getPrisma } from '../lib/prisma.js';
 
 function parseRoleCardValue(value: unknown): RoleCardValue {
@@ -402,6 +416,195 @@ export async function getReplyJobById(id: number): Promise<ReplyJob | null> {
     published_at: result.published_at,
     created_at: result.created_at,
   };
+}
+
+/* ===== Route-list data access (ISS-20260728-004: routes 不再直连 getPrisma) ===== */
+
+export async function listComments(input: { offset: number; limit: number }): Promise<{ total: number; items: PrismaComment[] }> {
+  const prisma = getPrisma();
+  const [total, items] = await Promise.all([
+    prisma.comment.count(),
+    prisma.comment.findMany({ orderBy: { created_at: 'desc' }, skip: input.offset, take: input.limit }),
+  ]);
+  return { total, items };
+}
+
+export async function listReplyJobs(input: { offset: number; limit: number }): Promise<{ total: number; items: PrismaReplyJob[] }> {
+  const prisma = getPrisma();
+  const [total, items] = await Promise.all([
+    prisma.replyJob.count(),
+    prisma.replyJob.findMany({ orderBy: { created_at: 'desc' }, skip: input.offset, take: input.limit }),
+  ]);
+  return { total, items };
+}
+
+export async function listPublishLogs(input: {
+  status?: string;
+  offset: number;
+  limit: number;
+}): Promise<{ total: number; items: PrismaPublishLog[] }> {
+  const prisma = getPrisma();
+  const where: Record<string, unknown> = {};
+  if (input.status) where.status = input.status;
+  const [total, items] = await Promise.all([
+    prisma.publishLog.count({ where }),
+    prisma.publishLog.findMany({
+      where,
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      skip: input.offset,
+      take: input.limit,
+    }),
+  ]);
+  return { total, items };
+}
+
+export async function countAuditLogs(where: Record<string, unknown>): Promise<number> {
+  const prisma = getPrisma();
+  return prisma.operationAuditLog.count({ where });
+}
+
+export async function listAuditLogs(
+  where: Record<string, unknown>,
+  options: { offset?: number; take?: number; orderBy?: boolean },
+): Promise<PrismaAuditLog[]> {
+  const prisma = getPrisma();
+  return prisma.operationAuditLog.findMany({
+    where,
+    ...(options.orderBy === false ? {} : { orderBy: [{ created_at: 'desc' }, { id: 'desc' }] }),
+    ...(options.offset !== undefined ? { skip: options.offset } : {}),
+    ...(options.take !== undefined ? { take: options.take } : {}),
+  });
+}
+
+export async function getBilibiliVideoById(id: number): Promise<PrismaBilibiliVideo | null> {
+  const prisma = getPrisma();
+  return prisma.bilibiliVideo.findUnique({ where: { id } });
+}
+
+export async function updateBilibiliVideoPollEnabled(id: number, pollEnabled: boolean): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.bilibiliVideo.update({ where: { id }, data: { poll_enabled: pollEnabled } });
+}
+
+export async function deleteBilibiliVideo(id: number): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.bilibiliVideo.delete({ where: { id } });
+}
+
+export async function countCommentsByVideoId(videoId: string): Promise<number> {
+  const prisma = getPrisma();
+  return prisma.comment.count({ where: { video_id: videoId } });
+}
+
+export async function listBilibiliCredentials(limit: number): Promise<PrismaBilibiliCredential[]> {
+  const prisma = getPrisma();
+  return prisma.bilibiliCredential.findMany({ orderBy: { updated_at: 'desc' }, take: limit });
+}
+
+export async function countBilibiliCredentials(): Promise<number> {
+  const prisma = getPrisma();
+  return prisma.bilibiliCredential.count();
+}
+
+export async function getBilibiliCredentialById(id: number): Promise<PrismaBilibiliCredential | null> {
+  const prisma = getPrisma();
+  return prisma.bilibiliCredential.findUnique({ where: { id } });
+}
+
+export async function createBilibiliCredential(data: {
+  name: string;
+  sessdata: string;
+  bili_jct: string;
+  buvid3: string;
+  buvid4: string | null;
+  is_active: boolean;
+  expires_at: Date | null;
+}): Promise<PrismaBilibiliCredential> {
+  const prisma = getPrisma();
+  return prisma.bilibiliCredential.create({ data });
+}
+
+export async function activateBilibiliCredential(id: number): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.bilibiliCredential.updateMany({ data: { is_active: false } });
+  await prisma.bilibiliCredential.update({ where: { id }, data: { is_active: true } });
+}
+
+export async function deleteBilibiliCredential(id: number): Promise<void> {
+  const prisma = getPrisma();
+  await prisma.bilibiliCredential.delete({ where: { id } });
+}
+
+export async function countComments(): Promise<number> {
+  const prisma = getPrisma();
+  return prisma.comment.count();
+}
+
+export async function countReplyJobs(): Promise<number> {
+  const prisma = getPrisma();
+  return prisma.replyJob.count();
+}
+
+export async function listCommentDatesSince(sinceUtc: Date, take: number): Promise<Array<{ created_at: Date | null }>> {
+  const prisma = getPrisma();
+  return prisma.comment.findMany({
+    where: { created_at: { gte: sinceUtc } },
+    select: { created_at: true },
+    orderBy: { created_at: 'asc' },
+    take,
+  });
+}
+
+export async function listJobDatesStatusSince(
+  sinceUtc: Date,
+  take: number,
+): Promise<Array<{ created_at: Date | null; status: string }>> {
+  const prisma = getPrisma();
+  return prisma.replyJob.findMany({
+    where: { created_at: { gte: sinceUtc } },
+    select: { created_at: true, status: true },
+    orderBy: { created_at: 'asc' },
+    take,
+  });
+}
+
+export async function countReplyJobsByStatus(): Promise<Record<string, number>> {
+  const prisma = getPrisma();
+  const rows = await prisma.replyJob.groupBy({ by: ['status'], _count: true });
+  const result: Record<string, number> = {};
+  for (const row of rows) {
+    const count = row._count as unknown;
+    result[row.status] =
+      typeof count === 'number' ? count : Number((count as { _all?: number } | undefined)?._all ?? 0);
+  }
+  return result;
+}
+
+export async function countObservabilityEventsBySubclass(sinceUtc: Date): Promise<Record<string, number>> {
+  const prisma = getPrisma();
+  const rows = await prisma.observabilityEvent.groupBy({
+    by: ['error_subclass'],
+    where: {
+      event_type: { in: ['backoff_applied', 'antirisk_signal_detected'] },
+      created_at: { gte: sinceUtc },
+      error_subclass: { not: null },
+    },
+    _count: { _all: true },
+  });
+  const result: Record<string, number> = {};
+  for (const row of rows) {
+    const count = row._count as unknown;
+    const key = row.error_subclass;
+    if (key) {
+      result[key] = typeof count === 'number' ? count : Number((count as { _all?: number } | undefined)?._all ?? 0);
+    }
+  }
+  return result;
+}
+
+export async function countAuditLogsSince(sinceUtc: Date): Promise<number> {
+  const prisma = getPrisma();
+  return prisma.operationAuditLog.count({ where: { created_at: { gte: sinceUtc } } });
 }
 
 // Export Prisma client for direct access if needed

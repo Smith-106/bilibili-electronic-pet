@@ -15,6 +15,17 @@ import { recordObservabilityEvent, ensureTraceId } from './observability.js';
 const MAX_RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 5000;
 const MAX_PAGES = 5;
+// PERF-002: pollAllVideos 不再一次 findMany 全部 enabled 视频 (表增长后 OOM).
+// 改为按 id 游标分批拉取, 批次大小经 env 可调并加上限守护.
+const DEFAULT_POLL_VIDEO_BATCH_SIZE = 200;
+const MAX_POLL_VIDEO_BATCH_SIZE = 1000;
+
+function resolvePollVideoBatchSize(): number {
+  const raw = Number.parseInt(process.env.POLL_VIDEO_BATCH_SIZE || String(DEFAULT_POLL_VIDEO_BATCH_SIZE), 10);
+  return Number.isFinite(raw) && raw > 0 && raw <= MAX_POLL_VIDEO_BATCH_SIZE
+    ? raw
+    : DEFAULT_POLL_VIDEO_BATCH_SIZE;
+}
 
 export interface BilibiliComment {
   rpid: number;
@@ -325,9 +336,22 @@ export async function pollAllVideos(): Promise<PollResult> {
     return emptyPollResult('disabled');
   }
 
-  const videos = await prisma.bilibiliVideo.findMany({
-    where: { poll_enabled: true },
-  });
+  // PERF-002: 游标分批拉取全部 enabled 视频 (仍覆盖全量, 仅将内存驻留限制在一个批次).
+  const batchSize = resolvePollVideoBatchSize();
+  const videos: Awaited<ReturnType<typeof prisma.bilibiliVideo.findMany>> = [];
+  let cursorId: number | undefined;
+  for (;;) {
+    const batch = await prisma.bilibiliVideo.findMany({
+      where: { poll_enabled: true, ...(cursorId !== undefined ? { id: { gt: cursorId } } : {}) },
+      orderBy: { id: 'asc' },
+      take: batchSize,
+    });
+    videos.push(...batch);
+    if (batch.length < batchSize) {
+      break;
+    }
+    cursorId = batch[batch.length - 1].id;
+  }
 
   if (videos.length === 0) {
     return emptyPollResult('no_videos');

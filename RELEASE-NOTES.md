@@ -1,5 +1,12 @@
 # Release Notes
 
+> **Scope (职责分工):** this file tracks **breaking changes and the
+> upgrade/migration steps** they require — one entry per breaking change,
+> kept indefinitely as an upgrade reference. The complete per-version change
+> history lives in [CHANGELOG.md](./CHANGELOG.md); do not duplicate ordinary
+> feature/fix entries here. Per-package version semantics are in
+> [docs/VERSIONING.md](./docs/VERSIONING.md).
+
 ## Breaking Change — Credential Encryption Fail-Closed (2026-07-09)
 
 ### Summary

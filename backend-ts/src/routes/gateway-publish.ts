@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { getPrisma } from '../lib/prisma.js';
+import { listPublishLogs } from '../services/db-queries.js';
 import { timingSafeStringCompare } from '../lib/timing-safe-compare.js';
 import { listPublishingPlatforms } from '../platforms/registry.js';
 import { ensureTraceId, recordObservabilityEvent } from '../services/observability.js';
@@ -247,24 +247,10 @@ export function registerGatewayPublishRoutes(app: FastifyInstance, deps: Gateway
   app.get('/gateway/publish-logs', async (request, reply) => {
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
     const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
-
     const limit = deps.parseAdminLimit(query.limit, 50, 1, 500);
     const offset = deps.parseAdminOffset(query.offset, 0, 0, 100000);
     const status = deps.parseAdminString(query.status);
-
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-
-    const [total, items] = await Promise.all([
-      prisma.publishLog.count({ where }),
-      prisma.publishLog.findMany({
-        where,
-        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-        skip: offset,
-        take: limit,
-      }),
-    ]);
+    const { total, items } = await listPublishLogs({ status, offset, limit });
 
     return reply.send({
       ok: true,

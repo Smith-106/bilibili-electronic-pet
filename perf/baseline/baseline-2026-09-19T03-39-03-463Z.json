@@ -1,0 +1,238 @@
+{
+  "kind": "perf-baseline",
+  "generated_at": "2026-09-19T03:39:03.463Z",
+  "git_commit": "3bcc7db",
+  "sections": {
+    "backend": {
+      "kind": "backend-perf-baseline",
+      "generated_at": "2026-09-19T03:38:46.135Z",
+      "config": {
+        "runs": 40,
+        "warmup": 5,
+        "seed_rows_per_table": 2000,
+        "db": "sqlite-temp"
+      },
+      "node": "v24.19.0",
+      "results": [
+        {
+          "name": "comments.list (offset=0 limit=50)",
+          "runs": 40,
+          "min_ms": 2.999,
+          "p50_ms": 4.424,
+          "p95_ms": 6.934,
+          "max_ms": 9.082,
+          "mean_ms": 4.961,
+          "queries_per_run": {
+            "p50": 2,
+            "p95": 2,
+            "max": 2
+          }
+        },
+        {
+          "name": "jobs.list (offset=0 limit=50)",
+          "runs": 40,
+          "min_ms": 2.204,
+          "p50_ms": 3.416,
+          "p95_ms": 5.73,
+          "max_ms": 6.198,
+          "mean_ms": 3.643,
+          "queries_per_run": {
+            "p50": 2,
+            "p95": 2,
+            "max": 2
+          }
+        },
+        {
+          "name": "gateway.publish_logs (status=published)",
+          "runs": 40,
+          "min_ms": 3.355,
+          "p50_ms": 5.787,
+          "p95_ms": 7.26,
+          "max_ms": 9.233,
+          "mean_ms": 5.843,
+          "queries_per_run": {
+            "p50": 2,
+            "p95": 2,
+            "max": 2
+          }
+        },
+        {
+          "name": "audit.list+count (action=job_retry)",
+          "runs": 40,
+          "min_ms": 2.303,
+          "p50_ms": 4.345,
+          "p95_ms": 6.177,
+          "max_ms": 15.248,
+          "mean_ms": 4.695,
+          "queries_per_run": {
+            "p50": 2,
+            "p95": 2,
+            "max": 2
+          }
+        },
+        {
+          "name": "comments.count",
+          "runs": 40,
+          "min_ms": 0.506,
+          "p50_ms": 0.829,
+          "p95_ms": 1.418,
+          "max_ms": 1.691,
+          "mean_ms": 0.918,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "jobs.count",
+          "runs": 40,
+          "min_ms": 0.333,
+          "p50_ms": 1.018,
+          "p95_ms": 1.591,
+          "max_ms": 7.246,
+          "mean_ms": 1.185,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "jobs.count_by_status (groupBy)",
+          "runs": 40,
+          "min_ms": 0.512,
+          "p50_ms": 1.164,
+          "p95_ms": 2.332,
+          "max_ms": 3.107,
+          "mean_ms": 1.262,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "observability.count_by_subclass (7d)",
+          "runs": 40,
+          "min_ms": 1.915,
+          "p50_ms": 2.954,
+          "p95_ms": 5.135,
+          "max_ms": 5.692,
+          "mean_ms": 3.271,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "audit.count_since (7d)",
+          "runs": 40,
+          "min_ms": 0.3,
+          "p50_ms": 0.587,
+          "p95_ms": 1.27,
+          "max_ms": 1.497,
+          "mean_ms": 0.7,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "comments.dates_since (7d, take=500)",
+          "runs": 40,
+          "min_ms": 4.059,
+          "p50_ms": 5.31,
+          "p95_ms": 6.197,
+          "max_ms": 6.557,
+          "mean_ms": 5.285,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "videos.credentials.list (take=50)",
+          "runs": 40,
+          "min_ms": 0.31,
+          "p50_ms": 0.462,
+          "p95_ms": 1.036,
+          "max_ms": 1.177,
+          "mean_ms": 0.535,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        },
+        {
+          "name": "videos.count_comments_by_video (in-list)",
+          "runs": 40,
+          "min_ms": 0.519,
+          "p50_ms": 1.25,
+          "p95_ms": 2.478,
+          "max_ms": 2.988,
+          "mean_ms": 1.379,
+          "queries_per_run": {
+            "p50": 1,
+            "p95": 1,
+            "max": 1
+          }
+        }
+      ]
+    },
+    "frontend": {
+      "kind": "frontend-build-size",
+      "out_dir": "backend-ts\\public\\admin",
+      "manual_chunks": [
+        "vendor",
+        "router",
+        "query"
+      ],
+      "largest_entry_js": {
+        "file": "assets/index-DTeIpKkY.js",
+        "bytes": 460617,
+        "gzip_bytes": 137811
+      },
+      "totals": {
+        "files": 5,
+        "raw_bytes": 619916,
+        "gzip_bytes": 179998
+      },
+      "index_html_bytes": 2303,
+      "files": [
+        {
+          "file": "assets/index-DTeIpKkY.js",
+          "bytes": 460617,
+          "gzip_bytes": 137811
+        },
+        {
+          "file": "assets/query-D8JI28Vy.js",
+          "bytes": 50668,
+          "gzip_bytes": 15588
+        },
+        {
+          "file": "assets/router-Dlcl7zP1.js",
+          "bytes": 41631,
+          "gzip_bytes": 14913
+        },
+        {
+          "file": "assets/index-CDoCa6ip.css",
+          "bytes": 66999,
+          "gzip_bytes": 11665
+        },
+        {
+          "file": "assets/vendor-l0sNRNKZ.js",
+          "bytes": 1,
+          "gzip_bytes": 21
+        }
+      ]
+    }
+  },
+  "comparison_notes": {
+    "unbounded_query_fix": "pollAllVideos 由无界 findMany 改为 id 游标分批 (POLL_VIDEO_BATCH_SIZE 默认200上限1000): 全部 enabled 视频仍覆盖, 但单批驻留内存有界 — 见 backend 路径 videos.* 与 changelog PERF-002."
+  }
+}

@@ -106,8 +106,12 @@ describe('pollAllVideos runtime config integration', () => {
 
     const result = await pollAllVideos();
 
+    // PERF-002: pollAllVideos now pages enabled videos by id cursor + take bound
+    // (was an unbounded findMany). First batch still uses where:{poll_enabled:true}.
     expect(mockPrisma.bilibiliVideo.findMany).toHaveBeenCalledWith({
       where: { poll_enabled: true },
+      orderBy: { id: 'asc' },
+      take: 200,
     });
     expect(result).toEqual({
       status: 'no_videos',

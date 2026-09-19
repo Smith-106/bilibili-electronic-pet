@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { getPrisma } from '../lib/prisma.js';
+import { listReplyJobs } from '../services/db-queries.js';
 import type { ReplyJob, RuntimeSettings } from '../server/contracts.js';
 
 export type JobsRouteDependencies = {
@@ -207,13 +207,9 @@ export function registerJobRoutes(app: FastifyInstance, deps: JobsRouteDependenc
     if (!deps.checkApiKey(request, reply, deps.settings)) return;
 
     const query = request.query as Record<string, unknown>;
-    const prisma = getPrisma();
     const limit = deps.parseAdminLimit(query.limit, 50, 1, 500);
     const offset = deps.parseAdminOffset(query.offset, 0, 0, 100000);
-    const [total, items] = await Promise.all([
-      prisma.replyJob.count(),
-      prisma.replyJob.findMany({ orderBy: { created_at: 'desc' }, skip: offset, take: limit }),
-    ]);
+    const { total, items } = await listReplyJobs({ offset, limit });
 
     return reply.send({ ok: true, total, items });
   });

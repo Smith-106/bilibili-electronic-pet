@@ -279,7 +279,7 @@ Validated on 2026-04-07: backend 177 tests passed, frontend 27 tests passed, and
 
 ## Staging Validation
 
-See [STAGING_VALIDATION.md](./STAGING_VALIDATION.md) for:
+See [../docs/deployment/STAGING_VALIDATION.md](../docs/deployment/STAGING_VALIDATION.md) for:
 
 - `--preflight-only` prerequisite inspection before runtime validation
 - baseline / strict / pre-release real-chain validation modes

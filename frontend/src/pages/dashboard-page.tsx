@@ -11,33 +11,35 @@ import { Loader2 } from 'lucide-react'
 
 const api = createAdminApi()
 
+// 单一命名真源: 全部读取 /readiness 实际返回的 snake_case 嵌套路径, 不再做 camelCase 双拼兜底。
 const RUNTIME_SIGNAL_SPECS = [
-  { label: 'LLM 提供方', keys: ['llm_provider', 'llmProvider'] },
-  { label: '搜索提供方', keys: ['search_provider', 'searchProvider'] },
-  { label: '发布模式', keys: ['publisher_mode', 'publisherMode'] },
-  { label: 'LLM Key', keys: ['llm_api_key_configured', 'llmApiKeyConfigured'], format: 'configured' },
-  { label: '搜索 Key', keys: ['search_api_key_configured', 'searchApiKeyConfigured'], format: 'configured' },
-  { label: 'Webhook', keys: ['publisher_webhook_url_configured', 'publisherWebhookUrlConfigured'], format: 'configured' },
-  { label: 'B 站采集', keys: ['bilibili_enabled', 'bilibiliEnabled'], format: 'enabled' },
-  { label: 'B 站发布', keys: ['bilibili_publish_enabled', 'bilibiliPublishEnabled'], format: 'enabled' },
-  { label: 'Kill Switch', keys: ['kill_switch', 'killSwitch'], format: 'enabled' },
+  { label: 'LLM 提供方', path: ['config', 'llm_provider'] },
+  { label: '搜索提供方', path: ['config', 'search_provider'] },
+  { label: '发布模式', path: ['publish', 'mode'] },
+  { label: 'LLM Key', path: ['config', 'llm_api_key_configured'], format: 'configured' },
+  { label: '搜索 Key', path: ['config', 'search_api_key_configured'], format: 'configured' },
+  { label: 'Webhook', path: ['publish', 'webhook_url_configured'], format: 'configured' },
+  { label: 'B 站采集', path: ['publish', 'bilibili_enabled'], format: 'enabled' },
+  { label: 'B 站发布', path: ['publish', 'bilibili_publish_enabled'], format: 'enabled' },
+  { label: 'Kill Switch', path: ['kill_switch'], format: 'enabled' },
 ]
 
 const READINESS_SIGNAL_SPECS = [
-  { label: '基础就绪', keys: ['foundation_ready'], format: 'ready' },
-  { label: '交付就绪', keys: ['delivery_ready'], format: 'ready' },
-  { label: '基础阻塞', keys: ['foundation_blockers'], format: 'count' },
-  { label: '交付阻塞', keys: ['delivery_blockers'], format: 'count' },
-  { label: '能力阻塞', keys: ['delivery_capability_blockers'], format: 'count' },
+  { label: '基础就绪', path: ['foundation_ready'], format: 'ready' },
+  { label: '交付就绪', path: ['delivery_ready'], format: 'ready' },
+  { label: '基础阻塞', path: ['foundation_blockers'], format: 'count' },
+  { label: '交付阻塞', path: ['delivery_blockers'], format: 'count' },
+  { label: '能力阻塞', path: ['delivery_capability_blockers'], format: 'count' },
 ]
 
-function getFirstValue(record, keys) {
-  for (const key of keys) {
-    if (record?.[key] !== undefined && record?.[key] !== null && record?.[key] !== '') {
-      return record[key]
-    }
+// 单一路径读取 (替代原 getFirstValue 多 key 兼容)
+function getPathValue(record, path) {
+  let current = record
+  for (const key of path) {
+    if (current == null || typeof current !== 'object') return undefined
+    current = current[key]
   }
-  return undefined
+  return current === null || current === '' ? undefined : current
 }
 
 function formatSignalValue(value, format) {
@@ -59,10 +61,10 @@ function formatSignalValue(value, format) {
   return String(value)
 }
 
-function buildRuntimeSignals(metricsOverview) {
-  return RUNTIME_SIGNAL_SPECS
+function buildSignals(record, specs) {
+  return specs
     .map((spec) => {
-      const value = getFirstValue(metricsOverview, spec.keys)
+      const value = getPathValue(record, spec.path)
       if (value === undefined) {
         return null
       }
@@ -86,18 +88,7 @@ function buildReadinessSignals(readiness) {
     return []
   }
 
-  const entries = READINESS_SIGNAL_SPECS
-    .map((spec) => {
-      const value = getFirstValue(readiness, spec.keys)
-      if (value === undefined) {
-        return null
-      }
-      return {
-        label: spec.label,
-        value: formatSignalValue(value, spec.format),
-      }
-    })
-    .filter(Boolean)
+  const entries = buildSignals(readiness, READINESS_SIGNAL_SPECS)
 
   const effectivePublishMode = resolveEffectivePublishMode(readiness)
   if (effectivePublishMode) {
@@ -169,11 +160,6 @@ export function DashboardPage() {
     queryFn: () => api.getAuditSummary({ days: 7 }).catch(() => null),
   })
 
-  const { data: metricsOverview, isLoading: loadingMetrics } = useQuery({
-    queryKey: ['metricsOverview'],
-    queryFn: () => api.getMetricsOverview().catch(() => null),
-  })
-
   const { data: observabilitySummary, isLoading: loadingObs } = useQuery({
     queryKey: ['observabilitySummary', { windowMinutes: 120 }],
     queryFn: () => api.getObservabilitySummary({ windowMinutes: 120 }).catch(() => null),
@@ -187,8 +173,9 @@ export function DashboardPage() {
   const gwItems = jobs?.gateway_logs || []
 
   const runtimeSignals = (() => {
-    const metricsSignals = buildRuntimeSignals(metricsOverview || {})
-    return metricsSignals.length > 0 ? metricsSignals : buildReadinessSignals(readinessStatus || {})
+    const readiness = readinessStatus || {}
+    // 运行时配置信号 (LLM/搜索/发布/B站/kill_switch) 与就绪信号同源自 /readiness。
+    return [...buildSignals(readiness, RUNTIME_SIGNAL_SPECS), ...buildReadinessSignals(readiness)]
   })()
 
   const observabilitySignals = flattenObservabilityEntries(observabilitySummary?.summary || observabilitySummary || {}).slice(0, 6)
@@ -217,7 +204,7 @@ export function DashboardPage() {
     { label: '网关事件', value: safeCount(gwItems.length) },
   ]
 
-  if (loadingOverview || loadingJobs || loadingAudit || loadingMetrics || loadingObs || loadingReady) {
+  if (loadingOverview || loadingJobs || loadingAudit || loadingObs || loadingReady) {
     return (
       <div className="space-y-6">
         <Skeleton className="h-[48px] w-full" />

@@ -8,7 +8,7 @@
 
 ## 最新版本状态
 
-当前 release tag：**v1.4.1**
+当前 release tag：**v1.5.0**
 
 按当前仓库与本地验收证据，更准确的对外交付口径是 **Bilibili-first admin/backend/companion MVP 候选**。QQ / Douyin 等外部平台仍作为 gated trial，不纳入已签收产品面，也不能用 placeholder endpoint 代替真实验收。
 
@@ -36,7 +36,7 @@
 | QQ | 试点支持，当前通过 `qq-sidecar` + OneBot HTTP/NapCat 链路完成本地与 CI 验证，远端 rollout 仍需 verified sidecar endpoint 与 `PLATFORM_QQ_*` 配置 |
 | 微信 | 暂不支持 |
 
-Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.4.1
+Release: https://github.com/Smith-106/bilibili-electronic-pet/releases/tag/v1.5.0
 
 ---
 
@@ -1511,7 +1511,7 @@ strict / real-chain 报告里现在还会额外写出：
 2. 再跑 baseline 或 `--strict`，确认运行中的 API、后台资源和 readiness 是否正常。
 3. 只有要做原生 B 站发布演练时，才跑 `--pre-release-real-chain`。
 
-完整说明与环境变量矩阵见 [backend-ts/STAGING_VALIDATION.md](backend-ts/STAGING_VALIDATION.md)。
+完整说明与环境变量矩阵见 [docs/deployment/STAGING_VALIDATION.md](docs/deployment/STAGING_VALIDATION.md)。
 
 ### GHCR 镜像部署变体
 
@@ -1649,7 +1649,7 @@ docker compose --profile sidecar up -d qq-sidecar
 
 - `QQ_ONEBOT_URL=http://host.docker.internal:3000`
 
-当前仓库的 [docker-compose.yml](/D:/工作目录/bilibili电子宠物/docker-compose.yml) 已为 `qq-sidecar` 注入 `host.docker.internal:host-gateway`，因此在支持 `host-gateway` 的 Docker/Compose 环境中，这个地址也能覆盖常见的 Linux 宿主机场景。
+当前仓库的 [docker-compose.yml](docker-compose.yml) 已为 `qq-sidecar` 注入 `host.docker.internal:host-gateway`，因此在支持 `host-gateway` 的 Docker/Compose 环境中，这个地址也能覆盖常见的 Linux 宿主机场景。
 
 如果你要把 `qq-sidecar` 当作一个简单 webhook 转发层，也可以改用：
 
@@ -1948,6 +1948,18 @@ docker compose -f docker-compose.yml -f docker-compose.hostnet.yml up -d
 - `docker-compose.yml:1`
 - `backend-ts/Dockerfile:1`
 - `.env.example:1`
+- `docs/deployment/DEPLOYMENT_REMOTE.md` — 远端部署指南
+- `docs/deployment/DEPLOYMENT_DOUYIN_TRIAL_RUNBOOK.md` — Douyin 灰度 runbook
+- `docs/deployment/STAGING_VALIDATION.md` — staging 校验模式与环境变量矩阵
+- `deploy-remote.ps1` / `deploy-remote-source.ps1` / `deploy-remote-ghcr.ps1` / `deploy-remote-douyin-trial.ps1` / `deploy-remote-status.ps1` / `deploy-admin-remote.ps1` — 远端部署脚本
+- `smoke.ps1` / `rehearse-local.ps1` — staging 校验 wrapper
+
+### 文档
+
+- `CHANGELOG.md` — 全量版本变更史 (release 版本号真源)
+- `RELEASE-NOTES.md` — 破坏性变更与升级指引
+- `docs/VERSIONING.md` — 跨包版本语义
+- `perf/baseline/README.md` — 性能基线重跑与对比方法
 
 ---
 

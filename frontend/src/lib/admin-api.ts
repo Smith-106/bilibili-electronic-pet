@@ -1,4 +1,23 @@
 import { requestJson } from './api-client'
+import type {
+  Job,
+  MemorySpaceView as MemorySpace,
+  MemoryItemView as MemoryItem,
+  BilibiliVideoView as BilibiliVideo,
+  BilibiliCredentialView as BilibiliCredential,
+  RoleCardView as RoleCard,
+} from './contracts.generated'
+
+// 单一真源: 业务实体类型来自 contracts.generated.ts (由后端 contracts.ts 生成)。
+// 保留原导出名以兼容现有页面/组件的 import。
+export type {
+  Job,
+  BilibiliVideo,
+  BilibiliCredential,
+  RoleCard,
+  MemorySpace,
+  MemoryItem,
+}
 
 function qs(params: Record<string, unknown>): string {
   const sp = new URLSearchParams()
@@ -7,66 +26,6 @@ function qs(params: Record<string, unknown>): string {
   }
   const s = sp.toString()
   return s ? `?${s}` : ''
-}
-
-export interface Job {
-  id: string
-  status: string
-  comment_text: string | null
-  route_context: Record<string, unknown>
-  reply_text?: string | null
-  risk_flags: string[]
-  created_at: string | null
-}
-
-export interface MemorySpace {
-  id: number
-  space_key: string
-  space_type: string
-  title: string
-  summary?: string
-  updated_at: string | null
-}
-
-export interface MemoryItem {
-  id: number
-  space_id: number
-  item_key: string
-  content_type: string
-  source: string
-  content: string | null
-  updated_at: string | null
-}
-
-export interface BilibiliVideo {
-  id: number
-  video_id: number
-  bvid: string
-  title: string
-  enabled: boolean
-  poll_enabled: boolean
-  comment_count: number
-  last_polled_at: string | null
-}
-
-export interface BilibiliCredential {
-  id: number
-  credential_id: number
-  name: string
-  active: boolean
-  is_active: boolean
-  expires_at: string | null
-  created_at: string | null
-}
-
-export interface RoleCard {
-  id: number
-  key: string
-  name: string
-  description: string
-  tone: string
-  active: boolean
-  enabled: boolean
 }
 
 export function createAdminApi() {

@@ -285,6 +285,36 @@ export type BilibiliVideo = {
   updated_at?: string | null;
 };
 
+// ===== Admin API wire 契约 (单一真源: 前端类型由本文件生成) =====
+// 对应 normalizers.ts normalizeAdminJobListItem 的输出形状。
+export type AdminJobItem = {
+  id: string;
+  status: string;
+  raw_status?: string;
+  comment_text: string | null;
+  comment_content?: string | null;
+  reply_text?: string | null;
+  risk_flags: string[];
+  route_context: Record<string, unknown> | null;
+  created_at: string | null;
+  updated_at?: string | null;
+  published_at?: string | null;
+};
+
+// 对应 /api/admin/bilibili/credentials 响应 item 形状。
+export type AdminBilibiliCredential = {
+  id: number;
+  name: string;
+  is_active: boolean;
+  has_sessdata?: boolean;
+  has_bili_jct?: boolean;
+  buvid3?: string | null;
+  expires_at: string | null;
+  last_used_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export type {
   CompanionActionEnvelope,
   CompanionInteraction,
